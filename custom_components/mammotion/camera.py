@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import logging
 import secrets
 from collections.abc import Callable
@@ -20,13 +21,14 @@ from homeassistant.core import (
     SupportsResponse,
 )
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from PIL import Image, ImageDraw
 from pymammotion.http.model.camera_stream import (
     StreamSubscriptionResponse,
 )
 from pymammotion.utility.device_type import DeviceType
 
 from . import MammotionConfigEntry
-from .coordinator import MammotionBaseUpdateCoordinator
+from .coordinator import MammotionBaseUpdateCoordinator, MammotionMapUpdateCoordinator
 from .entity import MammotionBaseEntity
 from .models import MammotionMowerData
 
@@ -77,6 +79,9 @@ async def async_setup_entry(
                     _LOGGER.error("No Agora data for %s", mower.device.deviceName)
             except Exception as e:
                 _LOGGER.error("Error on config camera for: %s", e)
+
+        # Add map camera for all mowers
+        entities.append(MammotionMapCamera(mower.map_coordinator))
 
     async_add_entities(entities)
     await async_setup_platform_services(hass, entry)
@@ -141,6 +146,47 @@ class MammotionWebRTCCamera(MammotionBaseEntity, Camera):
             '{"type":"error","error":"Use the Agora SDK for this camera","useAgoraSDK":true}',
             session_id,
         )
+
+
+class MammotionMapCamera(MammotionBaseEntity, Camera):
+    """Camera entity that renders mower path as an image."""
+
+    _attr_has_entity_name = True
+
+    def __init__(self, coordinator: MammotionMapUpdateCoordinator) -> None:
+        """Initialize map camera entity."""
+        super().__init__(coordinator, "map")
+        self.coordinator = coordinator
+        self._attr_name = f"{coordinator.device_name} Map"
+        self._attr_model = coordinator.device.deviceName
+
+    async def async_camera_image(
+        self, width: int | None = None, height: int | None = None
+    ) -> bytes | None:
+        """Return image of mower path."""
+        points = self.coordinator.get_map_data()
+        img_w = width or 500
+        img_h = height or 500
+        image = Image.new("RGB", (img_w, img_h), "white")
+        draw = ImageDraw.Draw(image)
+        if len(points) > 1:
+            lats = [p[0] for p in points]
+            lons = [p[1] for p in points]
+            min_lat, max_lat = min(lats), max(lats)
+            min_lon, max_lon = min(lons), max(lons)
+            lat_range = max(max_lat - min_lat, 0.0001)
+            lon_range = max(max_lon - min_lon, 0.0001)
+            scaled = [
+                (
+                    (lon - min_lon) / lon_range * (img_w - 20) + 10,
+                    (max_lat - lat) / lat_range * (img_h - 20) + 10,
+                )
+                for lat, lon in points
+            ]
+            draw.line(scaled, fill=(34, 139, 34), width=2)
+        buf = io.BytesIO()
+        image.save(buf, format="PNG")
+        return buf.getvalue()
 
 
 # Global
@@ -285,6 +331,12 @@ async def async_setup_platform_services(
         if mower:
             await mower.reporting_coordinator.async_move_back(speed=speed)
 
+    async def handle_clear_map(call) -> None:
+        entity_id = call.data["entity_id"]
+        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
+        if mower:
+            mower.map_coordinator.clear_map()
+
     hass.services.async_register("mammotion", "refresh_stream", handle_refresh_stream)
     hass.services.async_register("mammotion", "start_video", handle_start_video)
     hass.services.async_register("mammotion", "stop_video", handle_stop_video)
@@ -298,3 +350,4 @@ async def async_setup_platform_services(
     hass.services.async_register("mammotion", "move_left", handle_move_left)
     hass.services.async_register("mammotion", "move_right", handle_move_right)
     hass.services.async_register("mammotion", "move_backward", handle_move_backward)
+    hass.services.async_register("mammotion", "clear_map", handle_clear_map)

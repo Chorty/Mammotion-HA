@@ -867,6 +867,7 @@ class MammotionMapUpdateCoordinator(MammotionBaseUpdateCoordinator[MowerInfo]):
             mammotion=mammotion,
             update_interval=MAP_INTERVAL,
         )
+        self._path: list[tuple[float, float]] = []
 
     def get_coordinator_data(self, device: MammotionMixedDeviceManager) -> MowerInfo:
         return device.state.mower_state
@@ -874,6 +875,14 @@ class MammotionMapUpdateCoordinator(MammotionBaseUpdateCoordinator[MowerInfo]):
     def _map_callback(self) -> None:
         """Trigger a resync when the bol hash changes."""
         # TODO setup callback to get bol hash data
+
+    def get_map_data(self) -> list[tuple[float, float]]:
+        """Return the cached path coordinates."""
+        return list(self._path)
+
+    def clear_map(self) -> None:
+        """Clear stored path data."""
+        self._path.clear()
 
     async def _async_update_data(self):
         """Get data from the device."""
@@ -902,8 +911,15 @@ class MammotionMapUpdateCoordinator(MammotionBaseUpdateCoordinator[MowerInfo]):
                 return device.state.mower_state
         except GatewayTimeoutException:
             """Gateway is timing out again."""
-
-        return self.manager.get_device_by_name(self.device_name).state.mower_state
+        state = self.manager.get_device_by_name(self.device_name).state
+        if (
+            state.location.device.latitude is not None
+            and state.location.device.longitude is not None
+        ):
+            self._path.append(
+                (state.location.device.latitude, state.location.device.longitude)
+            )
+        return state.mower_state
 
     async def _async_setup(self) -> None:
         """Setup coordinator with initial call to get map data."""

@@ -375,7 +375,7 @@ def async_add_area_entities(
             )
             added_areas.add(area_id)
 
-    old_areas = set(areas) - added_areas
+    old_areas = added_areas - set(areas)
     if old_areas:
         async_remove_entities(coordinator, old_areas)
         for area in old_areas:
