@@ -34,6 +34,16 @@
         "default": "mdi:map-marker-remove"
       }
     },
+    "camera": {
+      "map_camera": {
+        "default": "mdi:map"
+      }
+    },
+    "vacuum": {
+      "vacuum": {
+        "default": "mdi:mower"
+      }
+    },
     "sensor": {
       "gps_stars": {
         "default": "mdi:satellite-uplink"
