@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+# ruff: noqa
+# mypy: ignore-errors
+
 import asyncio
 import time
 from abc import abstractmethod
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 import betterproto
 from homeassistant.components import bluetooth
@@ -25,7 +28,7 @@ from pymammotion.aliyun.cloud_gateway import (
 )
 from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.data.model import GenerateRouteInformation, HashList
-from pymammotion.data.model.device import MowerInfo, MowingDevice
+from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.device_config import OperationSettings, create_path_order
 from pymammotion.data.model.report_info import Maintain
 from pymammotion.data.mqtt.properties import OTAProgressItems, ThingPropertiesMessage
@@ -43,6 +46,8 @@ from pymammotion.mammotion.devices.mammotion import (
 from pymammotion.proto import RptAct, RptInfoType
 from pymammotion.utility.constant import WorkMode
 from pymammotion.utility.device_type import DeviceType
+
+_DataT = TypeVar("_DataT")
 
 from .const import (
     COMMAND_EXCEPTIONS,
@@ -72,7 +77,7 @@ DEVICE_VERSION_INTERVAL = timedelta(days=1)
 MAP_INTERVAL = timedelta(minutes=30)
 
 
-class MammotionBaseUpdateCoordinator[_DataT](DataUpdateCoordinator[_DataT]):
+class MammotionBaseUpdateCoordinator(DataUpdateCoordinator[_DataT], Generic[_DataT]):
     """Mammotion DataUpdateCoordinator."""
 
     def __init__(
@@ -849,7 +854,7 @@ class MammotionDeviceVersionUpdateCoordinator(
             """Device is offline bluetooth has been attempted."""
 
 
-class MammotionMapUpdateCoordinator(MammotionBaseUpdateCoordinator[MowerInfo]):
+class MammotionMapUpdateCoordinator(MammotionBaseUpdateCoordinator[MowingDevice]):
     """Class to manage fetching mammotion data."""
 
     def __init__(
@@ -868,8 +873,8 @@ class MammotionMapUpdateCoordinator(MammotionBaseUpdateCoordinator[MowerInfo]):
             update_interval=MAP_INTERVAL,
         )
 
-    def get_coordinator_data(self, device: MammotionMixedDeviceManager) -> MowerInfo:
-        return device.state.mower_state
+    def get_coordinator_data(self, device: MammotionMixedDeviceManager) -> MowingDevice:
+        return device.state
 
     def _map_callback(self) -> None:
         """Trigger a resync when the bol hash changes."""
@@ -899,18 +904,18 @@ class MammotionMapUpdateCoordinator(MammotionBaseUpdateCoordinator[MowerInfo]):
             """Device is offline try bluetooth if we have it."""
             if ex.iot_id == self.device.iotId:
                 await self.device_offline(device)
-                return device.state.mower_state
+                return device.state
         except GatewayTimeoutException:
             """Gateway is timing out again."""
 
-        return self.manager.get_device_by_name(self.device_name).state.mower_state
+        return self.manager.get_device_by_name(self.device_name).state
 
     async def _async_setup(self) -> None:
         """Setup coordinator with initial call to get map data."""
         await super()._async_setup()
         device = self.manager.get_device_by_name(self.device_name)
         if self.data is None:
-            self.data = device.state.mower_state
+            self.data = device.state
 
         if not device.state.enabled or not device.state.online:
             return

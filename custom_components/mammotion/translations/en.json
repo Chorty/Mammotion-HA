@@ -164,6 +164,16 @@
         "name": "Clear maps and area names"
       }
     },
+    "camera": {
+      "map_camera": {
+        "name": "Map"
+      }
+    },
+    "vacuum": {
+      "vacuum": {
+        "name": "Vacuum"
+      }
+    },
     "switch": {
       "area": {
         "name": "Area {name}"
