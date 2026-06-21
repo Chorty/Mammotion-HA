@@ -91,7 +91,7 @@ jobs:
             if [[ "$DRY_RUN" != "true" ]]; then
               git push \
                 --force-with-lease="refs/heads/$branch:$fork_sha" \
-                origin "$upstream_sha:refs/heads/$branch"
+                origin "${upstream_sha}:refs/heads/${branch}"
             fi
 
             printf '| `%s` | %s | `%s` | %s |\n' \
