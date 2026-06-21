@@ -1,10 +1,9 @@
 """Tests for the Mammotion config flow."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from homeassistant import config_entries
 from homeassistant.const import CONF_PASSWORD
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -18,32 +17,16 @@ from custom_components.mammotion.const import (
 )
 
 
-@pytest.mark.asyncio
-async def test_validate_credentials_success() -> None:
-    """Valid credentials return the authenticated HTTP client."""
-    login_info = SimpleNamespace(
-        userInformation=SimpleNamespace(userAccount="account-id")
+def _authenticated_client(account_id: str) -> MagicMock:
+    """Return a mocked authenticated PyMammotion client."""
+    client = MagicMock()
+    client.login_and_initiate_cloud = AsyncMock()
+    client.stop = AsyncMock()
+    client.to_cache.return_value = {}
+    client.mammotion_http.login_info = SimpleNamespace(
+        userInformation=SimpleNamespace(userAccount=account_id)
     )
-    with patch(
-        "custom_components.mammotion.config_flow.MammotionHTTPCompat"
-    ) as http_class:
-        http_class.return_value.login = AsyncMock()
-        http_class.return_value.login_info = login_info
-        client, error = await MammotionConfigFlow()._async_validate_credentials(
-            "user@example.com", "password"
-        )
-
-    assert client is http_class.return_value
-    assert error is None
-
-
-@pytest.mark.asyncio
-async def test_validate_credentials_rejects_empty_values() -> None:
-    """Empty cloud credentials are rejected without making a request."""
-    client, error = await MammotionConfigFlow()._async_validate_credentials("", "")
-
-    assert client is None
-    assert error == "invalid_auth"
+    return client
 
 
 @pytest.mark.asyncio
@@ -60,25 +43,22 @@ async def test_reauth_preserves_entry_identity_and_bluetooth(hass) -> None:
         },
     )
     entry.add_to_hass(hass)
-    login_info = SimpleNamespace(
-        userInformation=SimpleNamespace(userAccount="account-id")
-    )
+    client = _authenticated_client("account-id")
 
-    with patch(
-        "custom_components.mammotion.config_flow.MammotionHTTPCompat"
-    ) as http_class:
-        http_class.return_value.login = AsyncMock()
-        http_class.return_value.login_info = login_info
-        result = await hass.config_entries.flow.async_init(
-            DOMAIN,
-            context={
-                "source": config_entries.SOURCE_REAUTH,
-                "entry_id": entry.entry_id,
-            },
-            data=entry.data,
-        )
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
+    with (
+        patch(
+            "custom_components.mammotion.config_flow.MammotionClient",
+            return_value=client,
+        ),
+        patch(
+            "custom_components.mammotion.config_flow.async_get_integration",
+            AsyncMock(return_value=SimpleNamespace(version="0.6.4-beta7")),
+        ),
+    ):
+        flow = MammotionConfigFlow()
+        flow.hass = hass
+        flow.context = {"entry_id": entry.entry_id}
+        result = await flow.async_step_reauth_confirm(
             {
                 CONF_ACCOUNTNAME: "new@example.com",
                 CONF_PASSWORD: "new-password",
@@ -105,25 +85,22 @@ async def test_reauth_rejects_different_account(hass) -> None:
         },
     )
     entry.add_to_hass(hass)
-    login_info = SimpleNamespace(
-        userInformation=SimpleNamespace(userAccount="different-account")
-    )
+    client = _authenticated_client("different-account")
 
-    with patch(
-        "custom_components.mammotion.config_flow.MammotionHTTPCompat"
-    ) as http_class:
-        http_class.return_value.login = AsyncMock()
-        http_class.return_value.login_info = login_info
-        result = await hass.config_entries.flow.async_init(
-            DOMAIN,
-            context={
-                "source": config_entries.SOURCE_REAUTH,
-                "entry_id": entry.entry_id,
-            },
-            data=entry.data,
-        )
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
+    with (
+        patch(
+            "custom_components.mammotion.config_flow.MammotionClient",
+            return_value=client,
+        ),
+        patch(
+            "custom_components.mammotion.config_flow.async_get_integration",
+            AsyncMock(return_value=SimpleNamespace(version="0.6.4-beta7")),
+        ),
+    ):
+        flow = MammotionConfigFlow()
+        flow.hass = hass
+        flow.context = {"entry_id": entry.entry_id}
+        result = await flow.async_step_reauth_confirm(
             {
                 CONF_ACCOUNTNAME: "other@example.com",
                 CONF_PASSWORD: "password",

@@ -2,8 +2,9 @@
 .pytest_cache
 .cache
 .venv
+.secrets.local
+.env
 
 # GITHUB Proposed Python stuff:
 *.py[cod]
 __pycache__
-.secrets.local

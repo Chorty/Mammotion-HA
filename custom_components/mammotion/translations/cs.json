@@ -8,7 +8,14 @@
       "bluetooth_and_account_mismatch": "Zařízení Bluetooth nebylo ve vašem účtu nalezeno",
       "no_longer_present": "Zařízení již není k dispozici",
       "not_supported": "Zařízení není podporováno",
-      "reconfigure_successful": "Rekonfigurace úspěšná"
+      "reconfigure_successful": "Rekonfigurace úspěšná",
+      "api_limit_exceeded": "Byl překročen limit požadavků API. Zkuste to prosím znovu později.",
+      "account_in_use": "Váš účet Mammotion je již aktivní v jiné relaci. Odhlaste se z aplikace Mammotion a zkuste to znovu."
+    },
+    "error": {
+      "login_failed": "Přihlášení se nezdařilo. Zkontrolujte e-mail a heslo svého účtu a zkuste to znovu.",
+      "cannot_connect": "Nelze se připojit ke cloudu Mammotion. Zkontrolujte přihlašovací údaje a síť a zkuste to znovu.",
+      "no_account_no_ble": "Nebyly zadány údaje účtu a nebylo nalezeno žádné zařízení Bluetooth. Zadejte přihlašovací údaje k účtu Mammotion nebo nastavte zařízení Bluetooth."
     },
     "flow_title": "{name}",
     "step": {
@@ -48,13 +55,26 @@
       "init": {
         "data": {
           "title": "Aktualizovat konfiguraci",
-          "stay_connected_bluetooth": "Udržovat připojení Bluetooth"
+          "stay_connected_bluetooth": "Udržovat připojení Bluetooth",
+          "prefer_ble_over_wifi": "Upřednostňovat Bluetooth před Wi-Fi, je-li dostupné",
+          "movement_use_wifi": "Odesílat příkazy pohybu přes Wi-Fi",
+          "mow_path_fetch_enabled": "Povolit načítání cesty sekání (cloud)",
+          "full_map_fetch_enabled": "Povolit úplné načítání mapy (cloud) — pokud vypnuto, načítají se pouze názvy oblastí"
         }
       }
     }
   },
   "entity": {
     "sensor": {
+      "error_1_message": {
+        "name": "Poslední chyba"
+      },
+      "error_1_time": {
+        "name": "Čas poslední chyby"
+      },
+      "error_1_code": {
+        "name": "Kód poslední chyby"
+      },
       "battery_percent": {
         "name": "Baterie"
       },
@@ -98,22 +118,88 @@
         "name": "Zbývající čas"
       },
       "l1_satellites": {
-        "name": "Satelity L1 (společný výhled)"
+        "name": "L1 signal quality"
       },
       "l2_satellites": {
-        "name": "Satelity L2 (společný výhled)"
+        "name": "L2 signal quality"
       },
-      "position_mode": {
+      "positioning_mode": {
         "name": "Poloha RTK"
       },
       "position_type": {
-        "name": "Typ pozice zařízení"
+        "name": "Typ pozice zařízení",
+        "state": {
+          "AREA_BORDER_ON": "Na obvodu",
+          "AREA_INSIDE": "Uvnitř oblasti",
+          "AREA_OUT": "Mimo oblast",
+          "CHANNEL_AREA_OVERLAP": "Překrytí oblastí cesty",
+          "CHANNEL_ON": "Na cestě",
+          "CHARGE_ON": "U nabíjecí stanice",
+          "DUMPING_AREA_INSIDE": "Ve výkladní oblasti",
+          "DUMPING_OUTSIDE": "Mimo výkladní oblast",
+          "ABNORMAL_POSITIONING": "Chyba polohy",
+          "NO_AREAS": "Žádné oblasti nejsou definovány",
+          "OBS_ON": "U překážky",
+          "TURN_AREA_INSIDE": "V oblasti otáčení",
+          "VIRTUAL_INSIDE": "Ve virtuální oblasti"
+        }
+      },
+      "visual_positioning_status": {
+        "name": "Stav vizuálního polohování",
+        "state": {
+          "SIGNAL_NONE": "Žádný",
+          "SIGNAL_INIT": "Inicializace",
+          "SIGNAL_GOOD": "Dobrý",
+          "SIGNAL_BAD": "Špatný",
+          "SIGNAL_UNKNOWN": "Neznámý"
+        }
       },
       "activity_mode": {
-        "name": "Režim činnosti"
+        "name": "Režim činnosti",
+        "state": {
+          "MODE_NOT_ACTIVE": "Neaktivní",
+          "MODE_ONLINE": "Online",
+          "MODE_OFFLINE": "Offline",
+          "MODE_DISABLE": "Zakázáno",
+          "MODE_INITIALIZATION": "Inicializace",
+          "MODE_READY": "Připraveno",
+          "MODE_WORKING": "Pracuje",
+          "MODE_RETURNING": "Návrat",
+          "MODE_CHARGING": "Nabíjení",
+          "MODE_UPDATING": "Aktualizace",
+          "MODE_LOCK": "Zamčeno",
+          "MODE_PAUSE": "Pozastaveno",
+          "MODE_MANUAL_MOWING": "Ruční sekání",
+          "MODE_UPDATE_SUCCESS": "Aktualizace úspěšná",
+          "MODE_OTA_UPGRADE_FAIL": "Aktualizace selhala",
+          "MODE_JOB_DRAW": "Kreslení úlohy",
+          "MODE_OBSTACLE_DRAW": "Kreslení překážek",
+          "MODE_CHANNEL_DRAW": "Kreslení kanálu",
+          "MODE_ERASER_DRAW": "Kreslení mazání",
+          "MODE_EDIT_BOUNDARY": "Úprava hranice",
+          "MODE_LOCATION_ERROR": "Chyba polohy",
+          "MODE_BOUNDARY_JUMP": "Překročení hranice",
+          "MODE_CHARGING_PAUSE": "Nabíjení pozastaveno",
+          "MODE_POWER_OFF": "Vypínání"
+        }
       },
       "work_area": {
-        "name": "Pracovní oblast"
+        "name": "Aktuální poloha"
+      },
+      "map_sync_status": {
+        "name": "Stav synchronizace mapy",
+        "state": {
+          "synced": "Synchronizováno",
+          "syncing": "Probíhá synchronizace",
+          "out_of_sync": "Nesynchronizováno"
+        }
+      },
+      "mqtt_status": {
+        "name": "Stav MQTT",
+        "state": {
+          "reported_online": "Hlášeno online",
+          "reported_offline": "Hlášeno offline"
+        }
       },
       "maintenance_distance": {
         "name": "Celková vzdálenost"
@@ -125,19 +211,145 @@
         "name": "Cykly baterie",
         "unit_of_measurement": "cyklů"
       },
+      "blade_used_time": {
+        "name": "Čas použití nože"
+      },
+      "blade_used_warn_time": {
+        "name": "Čas varování opotřebení nože"
+      },
+      "non_work_hours": {
+        "name": "Hodiny mimo pracovní dobu"
+      },
+      "rtk_lora": {
+        "name": "Verze LoRa"
+      },
       "rtk_latitude": {
-        "name": "RTK zeměpisná šířka"
+        "name": "Zeměpisná šířka"
       },
       "rtk_longitude": {
-        "name": "RTK zeměpisná délka"
+        "name": "Zeměpisná délka"
+      },
+      "rtk_wifi_rssi": {
+        "name": "WiFi RSSI"
+      },
+      "rtk_sats_num": {
+        "name": "Satelity"
+      },
+      "position_mode": {
+        "name": "Režim polohování",
+        "state": {
+          "RTK_OVER_DATALINK": "Antena přes DataLink",
+          "RTK_OVER_INTERNET": "Antena přes internet",
+          "INAVI_NET_RTK": "iNavi NetRTK",
+          "INAVI_RTK_BOX": "iNavi RTK Box",
+          "UNKNOWN": "Neznámé"
+        }
+      },
+      "rtk_app_connect_type": {
+        "name": "Typ připojení",
+        "state": {
+          "UNKNOWN": "Neznámý",
+          "CON_BLE": "BLE",
+          "CON_WIFI": "Wi-Fi"
+        }
+      },
+      "task_area_status": {
+        "name": "Stav oblasti úkolu {name}",
+        "state": {
+          "NOT_STARTED": "Nezahájeno",
+          "WAITING": "Čeká se",
+          "MOWING": "Sečení",
+          "COMPLETE": "Dokončeno",
+          "ABORTED": "Přerušeno"
+        }
+      },
+      "spino_battery": {
+        "name": "Baterie"
+      },
+      "spino_status": {
+        "name": "Stav",
+        "state": {
+          "UNKNOWN": "Neznámý",
+          "IDLE": "Pohotovostní režim",
+          "PREPARE": "Pohotovostní režim",
+          "WAIT_WATER": "Napouštění vody",
+          "WORKING": "Pracuje",
+          "PAUSE_GO_CHARGE": "Návrat k nabíjení (pozastaveno)",
+          "END_GO_CHARGE": "Návrat k nabíjení",
+          "CHARGING": "Nabíjení",
+          "LEAVE_DOCK": "Opouští dok",
+          "RECALLING": "Návrat"
+        }
+      },
+      "spino_work_mode": {
+        "name": "Režim čištění",
+        "state": {
+          "UNKNOWN": "Neznámý",
+          "RECHARGE": "Dobíjení",
+          "AUTO": "Vše",
+          "FLOOR": "Dno",
+          "WALL": "Stěna",
+          "ECO": "Eko",
+          "LINE": "Vodní hladina",
+          "CUSTOM": "Vlastní"
+        }
+      },
+      "spino_error_time": {
+        "name": "Čas poslední chyby"
+      },
+      "spino_error_message": {
+        "name": "Poslední chyba"
+      },
+      "spino_error_code": {
+        "name": "Kód poslední chyby"
+      },
+      "spino_mqtt_status": {
+        "name": "Stav MQTT",
+        "state": {
+          "online": "Online",
+          "offline": "Offline"
+        }
+      },
+      "co_view_l1": {
+        "name": "L1 satellites (co-viewing)"
+      },
+      "co_view_l2": {
+        "name": "L2 satellites (co-viewing)"
+      },
+      "pos_level": {
+        "name": "Position level"
+      },
+      "rtk_signal": {
+        "name": "RTK signal quality"
+      },
+      "device_signal": {
+        "name": "Device signal quality",
+        "state": {
+          "0": "Dobrý",
+          "1": "Dobrý",
+          "2": "Slabý",
+          "3": "Žádný"
+        }
+      },
+      "age": {
+        "name": "RTK correction age"
+      },
+      "base_link_status": {
+        "name": "Base link status",
+        "state": {
+          "0": "Dobrý",
+          "1": "Slabý",
+          "2": "Slabý",
+          "3": "Žádný"
+        }
       }
     },
     "button": {
       "start_map_sync": {
         "name": "Synchronizace mapy"
       },
-      "join_webrtc": {
-        "name": "Spustit kameru"
+      "start_schedule_sync": {
+        "name": "Synchronizovat plány"
       },
       "resync_rtk_dock": {
         "name": "Synchronizovat RTK a dok"
@@ -162,6 +374,15 @@
       },
       "clear_all_mapdata": {
         "name": "Vyčištění map a názvů oblastí"
+      },
+      "relocate_charging_station": {
+        "name": "Přemístit nabíjecí stanici"
+      },
+      "restart_mower": {
+        "name": "Restartovat sekačku"
+      },
+      "spino_refresh_status": {
+        "name": "Obnovit stav"
       }
     },
     "switch": {
@@ -194,6 +415,33 @@
       },
       "schedule_updates": {
         "name": "Zapnout/Vypnout aktualizace"
+      },
+      "bluetooth_enabled": {
+        "name": "Bluetooth"
+      },
+      "cloud_enabled": {
+        "name": "Cloud"
+      },
+      "manual_light": {
+        "name": "Ruční osvětlení zapnuto/vypnuto"
+      },
+      "night_light": {
+        "name": "Automatické osvětlení zapnout/vypnout"
+      },
+      "voice_on_off": {
+        "name": "Hlas zapnuto/vypnuto"
+      },
+      "spino_buzzer": {
+        "name": "Bzučák"
+      },
+      "spino_turbo_clean": {
+        "name": "Turbo čištění"
+      },
+      "spino_platform_cleaning": {
+        "name": "Čištění plošiny"
+      },
+      "spino_waterline_parking": {
+        "name": "Parkování na hladině"
       }
     },
     "select": {
@@ -234,12 +482,12 @@
         }
       },
       "bypass_mode": {
-        "name": "Režim vyhýbání se překážkám",
+        "name": "Detekce překážek",
         "state": {
-          "direct_touch": "Přímý dotek",
+          "direct_touch": "Vypnuto",
           "slow_touch": "Pomalý dotek",
           "less_touch": "Méně dotyků",
-          "no_touch": "Bez dotyku",
+          "no_touch": "Standard",
           "sensitive": "Citlivý"
         }
       },
@@ -252,7 +500,7 @@
         }
       },
       "traversal_mode": {
-        "name": "Způsob otačení",
+        "name": "Způsob otáčení",
         "state": {
           "direct": "Přímý",
           "follow_perimeter": "Podél hranice"
@@ -264,17 +512,53 @@
           "multipoint": "Vícebodové otáčení",
           "zero_turn": "Otáčení na místě"
         }
+      },
+      "cutter_mode": {
+        "name": "Rychlost nožů",
+        "state": {
+          "normal": "Střední",
+          "slow": "Pomalý",
+          "fast": "Rychlá"
+        }
+      },
+      "voice_gender": {
+        "name": "Pohlaví hlasu",
+        "state": {
+          "MAN": "Mužský",
+          "WOMAN": "Ženský"
+        }
+      },
+      "wildlife_safety": {
+        "name": "Ochrana volně žijících živočichů",
+        "state": {
+          "off": "Vypnuto",
+          "stop_mowing": "Zastavit sekání",
+          "low_speed_mowing": "Sekání nízkou rychlostí"
+        }
+      },
+      "spino_work_mode": {
+        "name": "Režim čištění",
+        "state": {
+          "UNKNOWN": "Neznámý",
+          "RECHARGE": "Dobíjení",
+          "AUTO": "Vše",
+          "FLOOR": "Dno",
+          "WALL": "Stěna",
+          "ECO": "Eko",
+          "LINE": "Vodní hladina",
+          "CUSTOM": "Vlastní"
+        }
       }
     },
     "number": {
+      "voice_volume": {
+        "name": "Hlasitost hlasu"
+      },
       "start_progress": {
         "name": "Pokrok při zahájení"
       },
       "blade_height": {
         "name": "Výška nožů"
-      },
-      "blade_height_inches": {
-        "name": "Výška nožů (palce)"
       },
       "working_speed": {
         "name": "Pracovní rychlost"
@@ -290,6 +574,12 @@
       },
       "toward_included_angle": {
         "name": "Úhel křížení"
+      },
+      "map_offset_lat": {
+        "name": "Posun mapy – zeměpisná šířka"
+      },
+      "map_offset_lon": {
+        "name": "Posun mapy – zeměpisná délka"
       }
     },
     "device_tracker": {
@@ -361,6 +651,10 @@
       "name": "Začít sečení",
       "description": "Zahájit sečení s vlastním nastavením.",
       "fields": {
+        "modify": {
+          "name": "Upravit existující úlohu",
+          "description": "Zda upravit existující úlohu nebo spustit novou."
+        },
         "is_mow": {
           "name": "Sečení",
           "description": "Zda je sekání aktivní. (Yuka)."
@@ -440,8 +734,384 @@
         "areas": {
           "name": "Výběr oblasti",
           "description": "Seznam oblastí k sečení (reprezentovaný jako celá čísla)."
+        },
+        "plan_only": {
+          "name": "Pouze plánování",
+          "description": "Vygenerujte plán sečení bez spuštění úlohy."
         }
       }
+    },
+    "start_stop_blades": {
+      "name": "Spustit nebo zastavit nože",
+      "description": "Manuální spuštění nebo zastavení břitů.",
+      "fields": {
+        "start_stop": {
+          "name": "Spustit nebo zastavit",
+          "description": "Zda jsou nože zapnuté nebo vypnuté."
+        },
+        "blade_height": {
+          "name": "Výška nožů",
+          "description": "Výška nožů."
+        }
+      }
+    },
+    "set_non_work_hours": {
+      "name": "Nastavit hodiny mimo pracovní dobu",
+      "description": "Nastavit hodiny, kdy sekačka nepracuje.",
+      "fields": {
+        "start_time": {
+          "name": "Čas začátku",
+          "description": "Čas začátku hodin mimo pracovní dobu."
+        },
+        "end_time": {
+          "name": "Čas konce",
+          "description": "Čas konce hodin mimo pracovní dobu."
+        }
+      }
+    },
+    "set_blade_warning_time": {
+      "name": "Nastavit čas varování nože",
+      "description": "Nastavit čas varování pro výměnu nože v hodinách.",
+      "fields": {
+        "hours": {
+          "name": "Hodiny",
+          "description": "Práh varování v hodinách před doporučenou výměnou nože."
+        }
+      }
+    },
+    "reset_blade_time": {
+      "name": "Resetovat čas nože",
+      "description": "Resetovat čítač doby používání nože."
+    },
+    "get_map_data": {
+      "name": "Získat data mapy",
+      "description": "Vrací surová data mapy (oblasti, SVG dlaždice, názvy oblastí) pro použití s kartou SVG mapy.",
+      "fields": {
+        "entity_id": {
+          "name": "Entita",
+          "description": "Jakákoli Mammotion entita patřící k zařízení."
+        }
+      }
+    },
+    "svg_add": {
+      "name": "Přidat SVG dlaždici",
+      "description": "Odešle novou SVG dlaždici na mapu zařízení. Vrací hash přiřazený zařízením.",
+      "fields": {
+        "entity_id": {
+          "name": "Entita",
+          "description": "Jakákoli Mammotion entita patřící k zařízení."
+        },
+        "area_hash": {
+          "name": "Hash oblasti",
+          "description": "Hash nadřazené sekací oblasti."
+        },
+        "svg_data": {
+          "name": "SVG data",
+          "description": "Surové SVG značkování pro zobrazení na mapě."
+        },
+        "svg_file_name": {
+          "name": "Název souboru",
+          "description": "Název souboru uložený na zařízení (výchozí: pattern.svg)."
+        },
+        "scale": {
+          "name": "Měřítko",
+          "description": "Rovnoměrný faktor měřítka (1,0 = bez měřítka)."
+        },
+        "rotate": {
+          "name": "Otočení",
+          "description": "Otočení v radiánech (CCW-kladné v ENU rámci zařízení)."
+        },
+        "base_width_m": {
+          "name": "Šířka (m)",
+          "description": "Fyzická šířka jedné jednotky dlaždice v metrech (2,5 pro Luba 1/Yuka, 4,0 pro Luba 2)."
+        },
+        "base_height_m": {
+          "name": "Výška (m)",
+          "description": "Fyzická výška jedné jednotky dlaždice v metrech."
+        },
+        "x_move": {
+          "name": "Pozice X",
+          "description": "Přepsání souřadnice X (metry). Výchozí: těžiště oblasti."
+        },
+        "y_move": {
+          "name": "Pozice Y",
+          "description": "Přepsání souřadnice Y (metry). Výchozí: těžiště oblasti."
+        }
+      }
+    },
+    "svg_update": {
+      "name": "Aktualizovat SVG dlaždici",
+      "description": "Nahradí existující SVG dlaždici na mapě zařízení. Použijte device_hash vrácený funkcí svg_add.",
+      "fields": {
+        "entity_id": {
+          "name": "Entita",
+          "description": "Jakákoli Mammotion entita patřící k zařízení."
+        },
+        "device_hash": {
+          "name": "Hash zařízení",
+          "description": "Hash přiřazený zařízením při prvním přidání dlaždice."
+        },
+        "area_hash": {
+          "name": "Hash oblasti",
+          "description": "Hash nadřazené sekací oblasti."
+        },
+        "svg_data": {
+          "name": "SVG data",
+          "description": "Aktualizované SVG značkování."
+        },
+        "svg_file_name": {
+          "name": "Název souboru",
+          "description": "Název souboru uložený na zařízení."
+        },
+        "scale": {
+          "name": "Měřítko",
+          "description": "Rovnoměrný faktor měřítka."
+        },
+        "rotate": {
+          "name": "Otočení",
+          "description": "Otočení v radiánech (CCW-kladné)."
+        },
+        "base_width_m": {
+          "name": "Šířka (m)",
+          "description": "Fyzická šířka jedné jednotky dlaždice v metrech."
+        },
+        "base_height_m": {
+          "name": "Výška (m)",
+          "description": "Fyzická výška jedné jednotky dlaždice v metrech."
+        },
+        "x_move": {
+          "name": "Pozice X",
+          "description": "Přepsání souřadnice X (metry)."
+        },
+        "y_move": {
+          "name": "Pozice Y",
+          "description": "Přepsání souřadnice Y (metry)."
+        }
+      }
+    },
+    "svg_delete": {
+      "name": "Smazat SVG dlaždici",
+      "description": "Odstraní SVG dlaždici z mapy zařízení pomocí jejího hashe přiřazeného zařízením.",
+      "fields": {
+        "entity_id": {
+          "name": "Entita",
+          "description": "Jakákoli Mammotion entita patřící k zařízení."
+        },
+        "device_hash": {
+          "name": "Hash zařízení",
+          "description": "Hash přiřazený zařízením při přidání dlaždice."
+        },
+        "area_hash": {
+          "name": "Hash oblasti",
+          "description": "Hash nadřazené sekací oblasti."
+        }
+      }
+    },
+    "rename_task": {
+      "name": "Přejmenovat úlohu",
+      "description": "Přejmenuje existující plán (sekačka nebo bazénový čistič). Vyberte entitu tlačítka úlohy.",
+      "fields": {
+        "name": {
+          "name": "Nový název",
+          "description": "New display name for the task."
+        }
+      }
+    },
+    "set_task_enabled": {
+      "name": "Povolit / zakázat úlohu",
+      "description": "Přepne příznak povolení plánu bez jeho smazání.",
+      "fields": {
+        "enabled": {
+          "name": "Povoleno",
+          "description": "True to enable the schedule, false to disable it."
+        }
+      }
+    },
+    "delete_task": {
+      "name": "Smazat úlohu",
+      "description": "Trvale smaže plán."
+    },
+    "copy_task": {
+      "name": "Kopírovat úlohu",
+      "description": "Duplikuje plán pod novým ID. Bez názvu se použije 'Copy-N'.",
+      "fields": {
+        "name": {
+          "name": "Nový název",
+          "description": "Override the auto-generated 'Copy-N' name."
+        }
+      }
+    },
+    "edit_task": {
+      "name": "Upravit úlohu",
+      "description": "Upraví podmnožinu polí plánu.",
+      "fields": {
+        "name": {
+          "name": "Name",
+          "description": "Display name."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Whether the schedule is active."
+        },
+        "weeks": {
+          "name": "Weekdays",
+          "description": "List of weekday integers (0 = Sunday … 6 = Saturday) the schedule runs on."
+        },
+        "start_time": {
+          "name": "Start time",
+          "description": "HH:MM (mower only)."
+        },
+        "end_time": {
+          "name": "End time",
+          "description": "HH:MM (mower only)."
+        },
+        "start_date": {
+          "name": "Start date",
+          "description": "YYYY-MM-DD."
+        },
+        "end_date": {
+          "name": "End date",
+          "description": "YYYY-MM-DD."
+        },
+        "trigger_type": {
+          "name": "Trigger type",
+          "description": "0 = weekly, 1 = day interval, 2 = date, 3 = run once."
+        },
+        "day": {
+          "name": "Day interval",
+          "description": "Interval in days when trigger_type is 1 (DAY)."
+        },
+        "knife_height": {
+          "name": "Cut height",
+          "description": "Mower-only blade height in millimetres."
+        },
+        "speed": {
+          "name": "Speed",
+          "description": "Mower: driving speed (float). Spino: fixed32 speed value (int)."
+        },
+        "edge_mode": {
+          "name": "Edge mode",
+          "description": "Mower-only: 0 = none, 1 = once, 2 = twice."
+        },
+        "route_angle": {
+          "name": "Route angle",
+          "description": "Mower-only: mowing pattern angle 0–179 degrees."
+        },
+        "route_spacing": {
+          "name": "Route spacing",
+          "description": "Mower-only: spacing between mow lines in cm."
+        },
+        "zone_hashs": {
+          "name": "Zone hashes",
+          "description": "Mower-only: list of area hashes (fixed64) covered by this schedule."
+        },
+        "work_mode": {
+          "name": "Work mode",
+          "description": "Spino-only: 0 = recharge, 1 = AUTO, 2 = FLOOR, 3 = WALL, 4 = ECO, 5 = LINE, 6 = CUSTOM."
+        },
+        "sub_mode": {
+          "name": "Sub-modes",
+          "description": "Spino-only: list of APP_WORK values for multi-stage cleaning."
+        },
+        "operating_power": {
+          "name": "Operating power",
+          "description": "Spino-only: suction power (fixed32 int)."
+        },
+        "starttime": {
+          "name": "Start timestamp",
+          "description": "Spino-only: unix timestamp (seconds) for the start of the cleaning session."
+        }
+      }
+    },
+    "create_task": {
+      "name": "Vytvořit úlohu",
+      "description": "Vytvoří nový plán na zařízení.",
+      "fields": {
+        "name": {
+          "name": "Name",
+          "description": "Display name for the new schedule."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Whether the schedule starts enabled."
+        },
+        "weeks": {
+          "name": "Weekdays",
+          "description": "List of weekday integers (0 = Sunday … 6 = Saturday)."
+        },
+        "start_time": {
+          "name": "Start time",
+          "description": "HH:MM (mower)."
+        },
+        "end_time": {
+          "name": "End time",
+          "description": "HH:MM (mower)."
+        },
+        "start_date": {
+          "name": "Start date",
+          "description": "YYYY-MM-DD."
+        },
+        "end_date": {
+          "name": "End date",
+          "description": "YYYY-MM-DD."
+        },
+        "trigger_type": {
+          "name": "Trigger type",
+          "description": "0 = weekly, 1 = day interval, 2 = date, 3 = run once."
+        },
+        "day": {
+          "name": "Day interval",
+          "description": "Interval in days for trigger_type = 1."
+        },
+        "knife_height": {
+          "name": "Cut height",
+          "description": "Mower-only blade height in millimetres."
+        },
+        "speed": {
+          "name": "Speed",
+          "description": "Mower or Spino speed."
+        },
+        "edge_mode": {
+          "name": "Edge mode",
+          "description": "Mower-only."
+        },
+        "route_angle": {
+          "name": "Route angle",
+          "description": "Mower-only."
+        },
+        "route_spacing": {
+          "name": "Route spacing",
+          "description": "Mower-only."
+        },
+        "zone_hashs": {
+          "name": "Zone hashes",
+          "description": "Mower-only: list of area hashes covered."
+        },
+        "work_mode": {
+          "name": "Work mode",
+          "description": "Spino-only cleaning mode."
+        },
+        "sub_mode": {
+          "name": "Sub-modes",
+          "description": "Spino-only: list of APP_WORK values."
+        },
+        "operating_power": {
+          "name": "Operating power",
+          "description": "Spino-only."
+        },
+        "starttime": {
+          "name": "Start timestamp",
+          "description": "Spino-only: unix start time."
+        }
+      }
+    },
+    "refresh_tasks": {
+      "name": "Obnovit úlohy",
+      "description": "Znovu načte všechny plány ze zařízení."
+    },
+    "start_task": {
+      "name": "Spustit úlohu",
+      "description": "Okamžitě spustí uložený plán (známé také jako „spustit plán“). Pouze pro sekačku — robot bazénový čistič Spino nemá ekvivalentní příkaz."
     }
   },
   "exceptions": {
@@ -465,6 +1135,21 @@
     },
     "command_failed": {
       "message": "Nepodařilo se odeslat příkaz sekačce."
+    },
+    "api_limit_exceeded": {
+      "message": "Byl překročen limit požadavků API."
+    },
+    "account_in_use": {
+      "message": "Váš účet Mammotion je již aktivní v jiné relaci. Odhlaste se z aplikace Mammotion a zkuste to znovu."
+    },
+    "cloud_setup_failed": {
+      "message": "Nelze se připojit ke cloudu Mammotion. Zkontrolujte síť a zkuste integraci znovu načíst."
+    },
+    "task_not_found": {
+      "message": "Úloha {plan_id} nebyla v zařízení nalezena. Obnovte plán a zkuste to znovu."
+    },
+    "start_task_unsupported_on_spino": {
+      "message": "Spuštění plánu na vyžádání není u bazénového čističe Spino podporováno — firmware nemá příkaz pro okamžité spuštění uloženého plánu."
     }
   }
 }

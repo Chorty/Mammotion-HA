@@ -63,7 +63,7 @@
       "l2_satellites": {
         "default": "mdi:satellite-variant"
       },
-      "position_mode": {
+      "positioning_mode": {
         "default": "mdi:map-marker"
       },
       "connect_type": {
@@ -77,6 +77,12 @@
       },
       "work_area": {
         "default": "mdi:identifier"
+      },
+      "map_sync_status": {
+        "default": "mdi:map-check"
+      },
+      "mqtt_status": {
+        "default": "mdi:cloud-check-variant"
       },
       "activity_mode": {
         "default": "mdi:information-outline"
@@ -194,6 +200,11 @@
       },
       "schedule_updates": {
         "default": "mdi:update"
+      }
+    },
+    "update": {
+      "update": {
+        "default": "mdi:cellphone-arrow-down"
       }
     }
   }

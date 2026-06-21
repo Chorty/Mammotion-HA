@@ -1,33 +1,49 @@
-[tool.poetry]
-name = "Mammotion-HA"
-version = "0.2.74"
-description = "Mammotion lawn mower integration for HACS"
-authors = ["Michael Arthur <michael@jumblesoft.co.nz>", "jLynx <@jlynx>"]
+[project]
+name = "mammotion-ha"
+version = "0.6.4-beta7"
+description = "Mammotion integration for HACS"
+authors = [
+    {name = "Michael Arthur", email = "michael@jumblesoft.co.nz"},
+    {name = "jLynx"},
+]
 readme = "README.md"
-package-mode = false
+requires-python = ">=3.14.2"
+dependencies = [
+    "pymammotion==0.8.8",
+    "homeassistant>=2026.1.0",
+    "autotyping>=24.3.0",
+    "websockets>=15.0.1",
+    "sdp-transform>=1.1.0",
+]
 
-[tool.poetry.dependencies]
-python = "~3.13.0"
-pymammotion = "0.5.3"
-homeassistant = "^2025.3.0"
-autotyping = "^24.3.0"
+[dependency-groups]
+dev = [
+    "pre-commit>=3.8.0",
+    "pylint>=3.3.9",
+    "ruff>=0.14.3",
+    "mypy>=1.18.2",
+    "pytest>=8.0.0",
+]
 
+[tool.uv]
+package = false
 
-[tool.poetry.group.dev.dependencies]
-pre-commit = "^3.7.1"
-pylint = "^3.2.2"
-ruff = "^0.4.6"
-mypy = "^1.10.0"
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
 
+[tool.mypy]
+python_version = "3.14"
+ignore_missing_imports = true
+exclude = ["^\\.venv/"]
 
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
-
+[[tool.mypy.overrides]]
+module = "homeassistant.*"
+follow_imports = "skip"
 
 [tool.pylint.MAIN]
-py-version = "3.12"
+py-version = "3.14"
 
 load-plugins = [
     "pylint.extensions.code_style",
@@ -325,7 +341,6 @@ runtime-typing = false
 [tool.pylint.CODE_STYLE]
 max-line-length-suggestions = 72
 
-
 [tool.ruff]
 required-version = ">=0.4.3"
 
@@ -460,21 +475,3 @@ ignore = [
     "TRY002",
     "TRY301"
 ]
-
-[tool.ruff.lint.per-file-ignores]
-"custom_components/mammotion/*.py" = [
-    "C901",    # Existing complex device command paths need separate refactoring.
-    "D100",    # Legacy modules are not yet fully documented.
-    "D101",
-    "D102",
-    "D103",
-    "D107",
-    "D400",
-    "D401",
-    "D415",
-    "PERF203", # Device-specific exception handling is intentionally local.
-    "PERF401", # Preserve existing entity construction while stabilizing behavior.
-    "PLR1730", # Preserve existing device-limit clamping semantics.
-    "TRY300",  # Preserve existing command retry control flow.
-]
-"tests/**/*.py" = ["SLF001"] # Tests exercise config-flow validation boundaries.

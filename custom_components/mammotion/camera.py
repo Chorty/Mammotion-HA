@@ -2,62 +2,51 @@
 
 from __future__ import annotations
 
+import asyncio
+import collections
+import functools
+import json
 import logging
 import secrets
 from collections.abc import Callable
 from dataclasses import dataclass
-from io import BytesIO
+from pathlib import Path
+from typing import Any
 
-import voluptuous as vol
-from aiohttp import ClientError
+import websockets
 from homeassistant.components.camera import (
-    Camera,
     CameraEntityDescription,
-    StreamType,
+    WebRTCAnswer,
+    WebRTCError,
     WebRTCSendMessage,
+)
+from homeassistant.components.web_rtc import (
+    async_register_ice_servers,
 )
 from homeassistant.core import (
     HomeAssistant,
     ServiceCall,
     ServiceResponse,
     SupportsResponse,
+    callback,
 )
-from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from PIL import Image, ImageDraw
 from pymammotion.http.model.camera_stream import (
     StreamSubscriptionResponse,
 )
 from pymammotion.utility.device_type import DeviceType
+from webrtc_models import RTCIceCandidateInit, RTCIceServer
 
 from . import MammotionConfigEntry
+from .agora_api import AgoraResponse
+from .agora_websocket import AgoraWebSocketHandler
 from .coordinator import MammotionBaseUpdateCoordinator
-from .entity import MammotionBaseEntity
+from .entity import MammotionCameraBaseEntity
 from .models import MammotionMowerData
 
 _LOGGER = logging.getLogger(__name__)
 
-DATA_SERVICES_REGISTERED = "camera_services_registered"
-CAMERA_SERVICES = (
-    "refresh_stream",
-    "start_video",
-    "stop_video",
-    "get_tokens",
-    "move_forward",
-    "move_left",
-    "move_right",
-    "move_backward",
-)
-ENTITY_SERVICE_SCHEMA = vol.Schema({vol.Required("entity_id"): cv.entity_id})
-MOVEMENT_SERVICE_SCHEMA = vol.Schema(
-    {
-        vol.Required("entity_id"): cv.entity_id,
-        vol.Optional("speed", default=0.4): vol.All(
-            vol.Coerce(float), vol.Range(min=0.1, max=1.0)
-        ),
-    }
-)
+PLACEHOLDER = Path(__file__).parent / "placeholder.png"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -71,21 +60,7 @@ class MammotionCameraEntityDescription(CameraEntityDescription):
 CAMERAS: tuple[MammotionCameraEntityDescription, ...] = (
     MammotionCameraEntityDescription(
         key="webrtc_camera",
-        stream_fn=lambda coordinator: coordinator.get_stream_subscription(),
-    ),
-)
-
-
-@dataclass(frozen=True, kw_only=True)
-class MammotionMapCameraEntityDescription(CameraEntityDescription):
-    """Describes Mammotion map camera entity."""
-
-    key: str
-
-
-MAP_CAMERAS: tuple[MammotionMapCameraEntityDescription, ...] = (
-    MammotionMapCameraEntityDescription(
-        key="map_camera",
+        stream_fn=lambda coordinator: coordinator.get_stream_data(),
     ),
 )
 
@@ -96,186 +71,281 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Mammotion camera entities."""
-    mowers = entry.runtime_data
-    entities: list[Camera] = []
-    for mower in mowers:
-        entities.extend(
-            MammotionMapCamera(mower.map_coordinator, description)
-            for description in MAP_CAMERAS
-        )
-        if not DeviceType.is_luba1(mower.device.deviceName):
-            _LOGGER.debug("Config camera for %s", mower.device.deviceName)
-            try:
-                # Try to get stream data
-                stream_data = await mower.api.get_stream_subscription(
-                    mower.device.deviceName, mower.device.iotId
-                )
-                if stream_data:
-                    _LOGGER.debug("Received stream data: %s", stream_data)
-                    entities.extend(
-                        MammotionWebRTCCamera(
-                            mower.reporting_coordinator, entity_description
-                        )
-                        for entity_description in CAMERAS
-                    )
-                else:
-                    _LOGGER.error("No Agora data for %s", mower.device.deviceName)
-            except (ClientError, TimeoutError) as err:
-                _LOGGER.debug("Camera unavailable during setup: %s", err)
+    mowers = entry.runtime_data.mowers
+    entities = []
+    ice_servers = []
 
-    async_add_entities(entities)
-    await async_setup_platform_services(hass)
+    non_luba1_mower = next(
+        (
+            mower
+            for mower in mowers
+            if not DeviceType.is_luba1(mower.device.device_name)
+        ),
+        None,
+    )
 
+    if non_luba1_mower is None:
+        return
 
-class MammotionMapCamera(MammotionBaseEntity, Camera):
-    """Camera entity rendering the mower map."""
+    (
+        stream_data,
+        agora_response,
+    ) = await non_luba1_mower.reporting_coordinator.async_check_stream_expiry()
 
-    entity_description: MammotionMapCameraEntityDescription
-    _attr_has_entity_name = True
-    _attr_content_type = "image/png"
-
-    def __init__(
-        self,
-        coordinator: MammotionBaseUpdateCoordinator,
-        entity_description: MammotionMapCameraEntityDescription,
-    ) -> None:
-        """Initialize the map camera entity."""
-        super().__init__(coordinator, entity_description.key)
-        Camera.__init__(self)
-        self.coordinator = coordinator
-        self.entity_description = entity_description
-        self._attr_translation_key = entity_description.key
-        self._attr_model = coordinator.device.deviceName
-
-    async def async_camera_image(
-        self, width: int | None = None, height: int | None = None
-    ) -> bytes | None:
-        """Return a rendered map image."""
-        map_data = getattr(self.coordinator.data, "map", None)
-        if not map_data:
-            return None
-
-        points = [
-            (getattr(pt, "x", 0), getattr(pt, "y", 0))
-            for plan in getattr(map_data, "plan", {}).values()
-            for pt in getattr(plan, "data", [])
+    if agora_response is not None:
+        ice_servers = [
+            RTCIceServer(
+                urls=ice_server.urls,
+                username=ice_server.username,
+                credential=ice_server.credential,
+            )
+            for ice_server in agora_response.get_ice_servers(use_all_turn_servers=False)
         ]
 
-        if not points:
-            return None
+    for mower in mowers:
+        if not DeviceType.is_luba1(mower.device.device_name):
+            _LOGGER.debug("Config camera for %s", mower.device.device_name)
+            mower.reporting_coordinator._ice_servers = ice_servers
 
-        min_x = min(p[0] for p in points)
-        min_y = min(p[1] for p in points)
-        max_x = max(p[0] for p in points)
-        max_y = max(p[1] for p in points)
-
-        width = width or 500
-        height = height or 500
-        scale_x = width / (max_x - min_x or 1)
-        scale_y = height / (max_y - min_y or 1)
-
-        image = Image.new("RGB", (width, height), "white")
-        draw = ImageDraw.Draw(image)
-        prev = None
-        for x, y in points:
-            px = int((x - min_x) * scale_x)
-            py = int((y - min_y) * scale_y)
-            if prev is not None:
-                draw.line([prev, (px, py)], fill="green", width=2)
-            prev = (px, py)
-
-        buf = BytesIO()
-        image.save(buf, format="PNG")
-        return buf.getvalue()
+            for entity_description in CAMERAS:
+                entities.append(
+                    MammotionWebRTCCamera(
+                        mower.reporting_coordinator, entity_description, hass
+                    )
+                )
+    async_add_entities(entities)
+    await async_setup_platform_services(hass, entry)
 
 
-class MammotionWebRTCCamera(MammotionBaseEntity, Camera):
+class MammotionWebRTCCamera(MammotionCameraBaseEntity):
     """Mammotion WebRTC camera entity."""
 
     entity_description: MammotionCameraEntityDescription
-    _attr_has_entity_name = True
+    _attr_capability_attributes = None
 
     def __init__(
         self,
         coordinator: MammotionBaseUpdateCoordinator,
         entity_description: MammotionCameraEntityDescription,
+        hass: HomeAssistant,
     ) -> None:
         """Initialize the WebRTC camera entity."""
         super().__init__(coordinator, entity_description.key)
+        self._cache: dict[str, Any] = {}
+        self.access_tokens: collections.deque = collections.deque([], 2)
+        self.async_update_token()
+        self._create_stream_lock: asyncio.Lock | None = None
+        self._join_lock = asyncio.Lock()
         self.coordinator = coordinator
+        self._agora_handler = AgoraWebSocketHandler(
+            hass,
+            recover_stream=self._recover_stream,
+            keepalive=self._fpv_keepalive,
+        )
         self.entity_description = entity_description
         self._attr_translation_key = entity_description.key
         self._stream_data: StreamSubscriptionResponse | None = None
-        self._attr_model = coordinator.device.deviceName
+        self._attr_model = coordinator.device.device_name
         self.access_tokens = [secrets.token_hex(16)]
-        self._webrtc_provider = None  # Avoid crash on async_refresh_providers()
-        self._legacy_webrtc_provider = None
-        self._supports_native_sync_webrtc = False
-        self._supports_native_async_webrtc = False
-
-    @property
-    def frontend_stream_type(self) -> StreamType | None:
-        """Return the type of stream supported by this camera."""
-        return StreamType.WEB_RTC
-
-    @property
-    def content_type(self) -> str:
-        """Return the content type of the camera image."""
-        return "image/jpeg"
+        # Get ICE servers from coordinator (populated in async_setup_entry)
+        self.ice_servers = getattr(coordinator, "_ice_servers", [])
+        async_register_ice_servers(hass, self.get_ice_servers)
 
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
-        """Return a still image response from the camera."""
-        # WebRTC cameras typically don't support still images
-        return None
+        """Return a placeholder image for WebRTC cameras that don't support snapshots."""
+        return await self.hass.async_add_executor_job(self.placeholder_image)
+
+    @classmethod
+    @functools.cache
+    def placeholder_image(cls) -> bytes:
+        """Return placeholder image to use when no stream is available."""
+        return PLACEHOLDER.read_bytes()
 
     async def async_handle_async_webrtc_offer(
         self, offer_sdp: str, session_id: str, send_message: WebRTCSendMessage
     ) -> None:
-        """Handle the WebRTC offer from the browser.
+        """Handle WebRTC offer by initiating WebSocket connection to Agora.
 
-        This function is required by the Home Assistant interface,
-        but it will not actually be used because we are using the Agora SDK.
+        This replaces the JavaScript SDK functionality and performs the WebRTC
+        negotiation directly in Python.
         """
-        _LOGGER.warning(
-            "A native WebRTC offer from Home Assistant was received, "
-            "but it will be ignored because we are using the Agora SDK directly in the frontend."
+
+        if self._join_lock.locked():
+            _LOGGER.warning(
+                "WebRTC offer already in progress for session %s — ignoring duplicate",
+                session_id,
+            )
+            send_message(WebRTCError("409", "WebRTC negotiation already in progress"))
+            return
+
+        async with self._join_lock:
+            (
+                stream_data,
+                agora_response,
+            ) = await self.coordinator.async_check_stream_expiry(force=True)
+            # Reset candidates list for new session
+            await self.coordinator.async_send_command(
+                "send_todev_ble_sync", sync_type=3
+            )
+            self._agora_handler.candidates = []
+            _LOGGER.info("Handling WebRTC offer for session %s", session_id)
+            # _LOGGER.info("Raw OFFER SDP %s", offer_sdp)
+
+            try:
+                # Get stream data (appid, channelName, token, uid)
+                if not stream_data:
+                    _LOGGER.error("No stream data available for WebRTC offer")
+                    send_message(
+                        WebRTCError(
+                            "500",
+                            "No stream data available for WebRTC offer",
+                        )
+                    )
+                    return
+
+                agora_data = stream_data
+
+                # Start WebSocket connection and WebRTC negotiation
+                answer_sdp = await self._perform_webrtc_negotiation(
+                    offer_sdp, agora_data, session_id, agora_response
+                )
+
+                if answer_sdp:
+                    send_message(WebRTCAnswer(answer_sdp))
+                    _LOGGER.info("WebRTC negotiation completed successfully")
+                else:
+                    send_message(WebRTCError("500", "WebRTC negotiation failed"))
+
+            except (
+                websockets.exceptions.WebSocketException,
+                json.JSONDecodeError,
+            ) as ex:
+                _LOGGER.error("Error handling WebRTC offer: %s", ex)
+                send_message(WebRTCError("500", f"Error handling WebRTC offer: {ex}"))
+
+    async def async_on_webrtc_candidate(
+        self, session_id: str, candidate: RTCIceCandidateInit
+    ) -> None:
+        """Collect WebRTC candidates for inclusion in join message."""
+        _LOGGER.info(
+            "Received WebRTC candidate for session %s: %s", session_id, candidate
         )
 
-        # Informs the frontend that it must use the Agora SDK
-        send_message(
-            '{"type":"error","error":"Use the Agora SDK for this camera","useAgoraSDK":true}',
-            session_id,
+        # Collect candidates - they'll be included in the join message
+        self._agora_handler.candidates.append(candidate)
+
+    @callback
+    async def async_close_webrtc_session(self, session_id: str) -> None:
+        """Close WebRTC session."""
+        await self._agora_handler.disconnect()
+        # Tear the device encoder down cleanly (mirrors the app's vi_switch=0 on
+        # close). Harmless / no-op on new firmware that stops on its own.
+        try:
+            await self.coordinator.async_send_command(
+                "device_agora_join_channel_with_position", enter_state=0
+            )
+        except Exception as ex:  # noqa: BLE001
+            _LOGGER.debug("Leave-channel command failed on close: %s", ex)
+
+    async def _fpv_keepalive(self) -> bool:
+        """Re-arm the mower's video encoder on 4G; return False on WiFi.
+
+        Invoked by AgoraWebSocketHandler every few seconds while a session is
+        live. Over cellular the encoder stops publishing unless poked with
+        ``refresh_fpv``; on WiFi the stream is continuous, so return False to
+        stop the keep-alive loop without sending anything.
+        """
+        if not self.coordinator.is_on_4g:
+            return False
+        await self.coordinator.async_send_command("refresh_fpv")
+        return True
+
+    async def _recover_stream(self) -> None:
+        """Re-establish the stream after the mower drops out of the Agora channel.
+
+        Invoked by AgoraWebSocketHandler once the mower (peer) has been gone for
+        its debounce window: nudge the device with a BLE sync, then refresh the
+        stream subscription so it rejoins the channel.
+        """
+        await self.coordinator.async_send_command("send_todev_ble_sync", sync_type=3)
+        await self.coordinator.manager.get_stream_subscription(
+            self.coordinator.device.device_name, self.coordinator.device.iot_id
         )
+
+    async def _perform_webrtc_negotiation(
+        self,
+        offer_sdp: str,
+        agora_data: StreamSubscriptionResponse,
+        session_id: str,
+        agora_response: AgoraResponse,
+    ) -> str | None:
+        """Perform WebRTC negotiation through Agora WebSocket.
+
+        Args:
+            self: The camera instance
+            offer_sdp: The WebRTC offer SDP from the browser
+            agora_data: Dict containing appid, channelName, token, uid
+            session_id: Session ID for this WebRTC connection
+            agora_response: AgoraResponse object containing ICE servers
+
+        Returns:
+            Answer SDP if successful, None otherwise
+
+        """
+        _LOGGER.debug("Starting WebRTC negotiation with Agora data: %s", agora_data)
+        # _LOGGER.debug("Starting WebRTC negotiation with offer_sdp data: %s", offer_sdp)
+
+        # Use the new AgoraWebSocketHandler for negotiation
+        try:
+            answer_sdp = await self._agora_handler.connect_and_join(
+                agora_data, offer_sdp, session_id, agora_response
+            )
+
+            if answer_sdp:
+                _LOGGER.info("Successfully negotiated WebRTC through Agora")
+                return answer_sdp
+
+            _LOGGER.error(
+                "Failed to get answer SDP from Agora negotiation, using handler fallback"
+            )
+            # Use the handler's fallback SDP generation as last resort
+            return None
+
+        except (OSError, ValueError, TypeError) as ex:
+            _LOGGER.error("WebRTC negotiation failed: %s", ex)
+            return None
+
+    def get_ice_servers(self) -> list[RTCIceServer]:
+        """Return the ICE servers from Agora API."""
+        return self.ice_servers
 
 
 # Global
-async def async_setup_platform_services(  # noqa: C901
-    hass: HomeAssistant,
+async def async_setup_platform_services(
+    hass: HomeAssistant, entry: MammotionConfigEntry
 ) -> None:
     """Register custom services for streaming."""
 
-    domain_data = hass.data.setdefault("mammotion", {})
-    if domain_data.get(DATA_SERVICES_REGISTERED):
-        return
-
     def _get_mower_by_entity_id(entity_id: str) -> MammotionMowerData | None:
-        entity_entry = er.async_get(hass).async_get(entity_id)
-        if entity_entry is None or entity_entry.platform != "mammotion":
-            return None
-        for config_entry in hass.config_entries.async_entries("mammotion"):
-            for mower in getattr(config_entry, "runtime_data", ()):
-                if entity_entry.unique_id.startswith(f"{mower.name}_"):
-                    return mower
-        return None
+        state = hass.states.get(entity_id)
+        name = state.attributes.get("model_name")
+        return next(
+            (
+                mower
+                for mower in entry.runtime_data.mowers
+                if mower.device.device_name == name
+            ),
+            None,
+        )
 
-    async def handle_refresh_stream(call) -> None:
+    async def handle_refresh_stream(call: ServiceCall) -> None:
         entity_id = call.data["entity_id"]
-        mower = _get_mower_by_entity_id(entity_id)
+        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
         if mower:
             stream_data = await mower.api.get_stream_subscription(
-                mower.device.deviceName, mower.device.iotId
+                mower.device.device_name, mower.device.iot_id
             )
             _LOGGER.debug("Refresh stream data : %s", stream_data)
 
@@ -284,19 +354,19 @@ async def async_setup_platform_services(  # noqa: C901
 
     async def handle_start_video(call) -> None:
         entity_id = call.data["entity_id"]
-        mower = _get_mower_by_entity_id(entity_id)
+        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
         if mower:
             await mower.reporting_coordinator.join_webrtc_channel()
 
     async def handle_stop_video(call) -> None:
         entity_id = call.data["entity_id"]
-        mower = _get_mower_by_entity_id(entity_id)
+        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
         if mower:
             await mower.reporting_coordinator.leave_webrtc_channel()
 
     async def handle_get_tokens(call: ServiceCall) -> ServiceResponse:
         entity_id = call.data["entity_id"]
-        mower = _get_mower_by_entity_id(entity_id)
+        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
         if mower is not None:
             stream_data = mower.reporting_coordinator.get_stream_data()
 
@@ -306,75 +376,140 @@ async def async_setup_platform_services(  # noqa: C901
             return stream_data.data.to_dict()
         return {}
 
-    async def handle_move_forward(call) -> None:
+    async def handle_move_forward(call: ServiceCall) -> None:
         entity_id = call.data["entity_id"]
 
-        speed = call.data["speed"]
+        # Check if speed parameter exists and validate it
+        speed = 0.4  # Default speed
+        raw_speed = call.data["speed"]
+        use_wifi = call.data["use_wifi"]
+        if raw_speed is not None:
+            try:
+                speed_value = float(raw_speed)
+                if 0.1 <= speed_value <= 1:
+                    speed = speed_value
+                else:
+                    _LOGGER.warning(
+                        "Invalid speed value for %s: %s. Must be between 0 and 1. Using default.",
+                        entity_id,
+                        speed_value,
+                    )
+            except (ValueError, TypeError):
+                _LOGGER.warning(
+                    "Invalid speed format for %s: %s. Must be a number. Using default.",
+                    entity_id,
+                    raw_speed,
+                )
 
-        mower = _get_mower_by_entity_id(entity_id)
+        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
         if mower:
-            await mower.reporting_coordinator.async_move_forward(speed=speed)
+            await mower.reporting_coordinator.async_move_forward(
+                speed=speed, use_wifi=use_wifi
+            )
 
-    async def handle_move_left(call) -> None:
+    async def handle_move_left(call: ServiceCall) -> None:
         entity_id = call.data["entity_id"]
 
-        speed = call.data["speed"]
+        # Check if speed parameter exists and validate it
+        speed = 0.4  # Default speed
+        raw_speed = call.data["speed"]
+        use_wifi = call.data["use_wifi"]
+        if raw_speed is not None:
+            try:
+                speed_value = float(raw_speed)
+                if 0.1 <= speed_value <= 1:
+                    speed = speed_value
+                else:
+                    _LOGGER.warning(
+                        "Invalid speed value for %s: %s. Must be between 0 and 1. Using default.",
+                        entity_id,
+                        speed_value,
+                    )
+            except (ValueError, TypeError):
+                _LOGGER.warning(
+                    "Invalid speed format for %s: %s. Must be a number. Using default.",
+                    entity_id,
+                    raw_speed,
+                )
 
-        mower = _get_mower_by_entity_id(entity_id)
+        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
         if mower:
-            await mower.reporting_coordinator.async_move_left(speed=speed)
+            await mower.reporting_coordinator.async_move_left(
+                speed=speed, use_wifi=use_wifi
+            )
 
-    async def handle_move_right(call) -> None:
+    async def handle_move_right(call: ServiceCall) -> None:
         entity_id = call.data["entity_id"]
 
-        speed = call.data["speed"]
+        # Check if speed parameter exists and validate it
+        speed = 0.4  # Default speed
+        raw_speed = call.data["speed"]
+        use_wifi = call.data["use_wifi"]
+        if raw_speed is not None:
+            try:
+                speed_value = float(raw_speed)
+                if 0.1 <= speed_value <= 1:
+                    speed = speed_value
+                else:
+                    _LOGGER.warning(
+                        "Invalid speed value for %s: %s. Must be between 0 and 1. Using default.",
+                        entity_id,
+                        speed_value,
+                    )
+            except (ValueError, TypeError):
+                _LOGGER.warning(
+                    "Invalid speed format for %s: %s. Must be a number. Using default.",
+                    entity_id,
+                    raw_speed,
+                )
 
-        mower = _get_mower_by_entity_id(entity_id)
+        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
         if mower:
-            await mower.reporting_coordinator.async_move_right(speed=speed)
+            await mower.reporting_coordinator.async_move_right(
+                speed=speed, use_wifi=use_wifi
+            )
 
-    async def handle_move_backward(call) -> None:
+    async def handle_move_backward(call: ServiceCall) -> None:
         entity_id = call.data["entity_id"]
 
-        speed = call.data["speed"]
+        # Check if speed parameter exists and validate it
+        speed = 0.4  # Default speed
+        raw_speed = call.data["speed"]
+        use_wifi = call.data["use_wifi"]
+        if raw_speed is not None:
+            try:
+                speed_value = float(raw_speed)
+                if 0.1 <= speed_value <= 1:
+                    speed = speed_value
+                else:
+                    _LOGGER.warning(
+                        "Invalid speed value for %s: %s. Must be between 0 and 1. Using default.",
+                        entity_id,
+                        speed_value,
+                    )
+            except (ValueError, TypeError):
+                _LOGGER.warning(
+                    "Invalid speed format for %s: %s. Must be a number. Using default.",
+                    entity_id,
+                    raw_speed,
+                )
 
-        mower = _get_mower_by_entity_id(entity_id)
+        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
         if mower:
-            await mower.reporting_coordinator.async_move_back(speed=speed)
+            await mower.reporting_coordinator.async_move_back(
+                speed=speed, use_wifi=use_wifi
+            )
 
-    hass.services.async_register(
-        "mammotion", "refresh_stream", handle_refresh_stream, ENTITY_SERVICE_SCHEMA
-    )
-    hass.services.async_register(
-        "mammotion", "start_video", handle_start_video, ENTITY_SERVICE_SCHEMA
-    )
-    hass.services.async_register(
-        "mammotion", "stop_video", handle_stop_video, ENTITY_SERVICE_SCHEMA
-    )
+    hass.services.async_register("mammotion", "refresh_stream", handle_refresh_stream)
+    hass.services.async_register("mammotion", "start_video", handle_start_video)
+    hass.services.async_register("mammotion", "stop_video", handle_stop_video)
     hass.services.async_register(
         "mammotion",
         "get_tokens",
         handle_get_tokens,
-        ENTITY_SERVICE_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
-    hass.services.async_register(
-        "mammotion", "move_forward", handle_move_forward, MOVEMENT_SERVICE_SCHEMA
-    )
-    hass.services.async_register(
-        "mammotion", "move_left", handle_move_left, MOVEMENT_SERVICE_SCHEMA
-    )
-    hass.services.async_register(
-        "mammotion", "move_right", handle_move_right, MOVEMENT_SERVICE_SCHEMA
-    )
-    hass.services.async_register(
-        "mammotion", "move_backward", handle_move_backward, MOVEMENT_SERVICE_SCHEMA
-    )
-    domain_data[DATA_SERVICES_REGISTERED] = True
-
-
-def async_remove_platform_services(hass: HomeAssistant) -> None:
-    """Remove global camera services after the final entry unloads."""
-    for service in CAMERA_SERVICES:
-        hass.services.async_remove("mammotion", service)
-    hass.data.setdefault("mammotion", {}).pop(DATA_SERVICES_REGISTERED, None)
+    hass.services.async_register("mammotion", "move_forward", handle_move_forward)
+    hass.services.async_register("mammotion", "move_left", handle_move_left)
+    hass.services.async_register("mammotion", "move_right", handle_move_right)
+    hass.services.async_register("mammotion", "move_backward", handle_move_backward)

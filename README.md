@@ -11,14 +11,14 @@ This integration allows you to control and monitor Mammotion products, e.g robot
 ## Roadmap 🗺️
 
 - [x] Bluetooth (BLE) support
-- [x] Wi-Fi support (Including SIM 3G)
-- [x] Run existing scheduled tasks
-- [ ] Create and edit schedules
-- [x] Map display and area selection
-- [ ] Edit zone geometry and map metadata
-- [x] Firmware updates (experimental)
+- [x] Wi-Fi support (Including SIM 3G/4G)
+- [x] Camera stream
+- [ ] Scheduling
+- [ ] Mapping and zone management
+- [x] Maps
+- [x] Firmware updates
 - [x] Automations
-- [ ] Expand tested device and firmware compatibility
+- [ ] More...
 
 ## Features ✨
 
@@ -28,20 +28,22 @@ This integration allows you to control and monitor Mammotion products, e.g robot
 - Start a mow based on configuration
 - Start an existing scheduled task/s
 - More features being added all the time!
-- Render the mower's path as a map camera for use with front-end map cards
-- Install available mower firmware updates (experimental)
 
-### Connection modes
-
-- **Wi-Fi/cloud:** Supports normal monitoring, control, maps, schedules, camera features on compatible models, and firmware checks. Use a secondary Mammotion account shared with the mower to avoid signing the mobile app out.
-- **Bluetooth:** Used directly or as a fallback when a supported mower is reachable through Home Assistant Bluetooth. A Bluetooth proxy is recommended when Home Assistant is not physically near the mower.
-- **Multiple accounts:** Separate config entries are supported. Services resolve the selected entity to the correct account and mower.
+- Supports Spino pool cleaners
 
 ## Prerequisites 📋
+
 > [!WARNING]
-> **Home Assistant Minimum Version 2025.3.0**
+> **Home Assistant Minimum Version 2026.1.0**
+
 - A second account with your mower/s shared to it for using Wi-Fi (If you use your primary accouunt it will log you out of your mobile app)
 - (Optional)[Bluetooth proxy for Home Assistant](https://esphome.io/components/bluetooth_proxy.html)
+
+## Troubleshooting
+
+- Sometimes using the account number works instead of email address when adding via discovery (not sure why)
+
+- Connection timeout to host https://api.link.aliyun.com/living/account/region/get - unblock china
 
 ## Installation 🛠️
 
@@ -63,19 +65,48 @@ This integration is not available in the default HACS store. You will need to ad
 ## Usage 🎮
 
 ### Getting Started
+
 See the wiki for how to [get started](https://github.com/mikey0000/Mammotion-HA/wiki/Getting-Started)
 
 Once the integration is set up, you can control and monitor your Mammotion mower using Home Assistant. 🎉
 
-### Map display
+## Map Position Offset
 
-This integration creates a `camera` entity that draws the mower's path and a companion `vacuum` entity for compatibility with map cards. When using the [Lovelace Xiaomi Vacuum Map card](https://github.com/PiotrMachowski/lovelace-xiaomi-vacuum-map-card), set the card's `entity` to the mower's vacuum entity and `camera_entity` to the map camera.
+Satellite map tiles (Google Maps, OpenStreetMap, etc.) are sometimes misaligned relative to RTK GPS coordinates by several metres. Each mower exposes two number entities to correct this:
 
-### Reauthentication and diagnostics
+- **Map offset latitude** — shifts the mower pin north (positive) or south (negative), in metres
+- **Map offset longitude** — shifts the mower pin east (positive) or west (negative), in metres
 
-If Mammotion credentials expire, Home Assistant will prompt you to reauthenticate the existing integration entry. Use credentials for the same Mammotion account; devices and entity IDs are preserved.
+**How to calibrate:**
 
-Diagnostics are intentionally bounded and exclude credentials, account identifiers, serial numbers, MAC addresses, coordinates, map geometry, tokens, session data, and raw protocol payloads.
+1. Add a [Map card](https://www.home-assistant.io/dashboards/map/) and both offset entities to a Lovelace dashboard.
+2. Start the mower so it is moving at a known location you can identify on satellite imagery.
+3. Adjust **Map offset latitude** and **Map offset longitude** until the pin aligns with the mower's real position on the satellite layer.
+4. Values are saved automatically and survive restarts.
+
+Typical offsets are within ±20 m. Positive latitude = north, positive longitude = east.
+
+## Dashboard Plugins
+
+Companion HACS dashboard plugins that extend the Mammotion integration with visual tools.
+
+### Mammotion Assets
+
+Images and scripts for displaying Mammotion mowers on a map in Home Assistant — mower card backgrounds, side-profile images, map icons, RTK/dock assets, and the `geojson.js` script that renders mowing areas with labels.
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=mikey0000&repository=ha-mammotion-assets&category=plugin)
+
+### Mammotion GeoJSON Map Plugin
+
+A Lovelace resource that renders GeoJSON mowing areas on the map with area names and zone labels.
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=mikey0000&repository=ha-mammotion-geojson-map-plugin&category=plugin)
+
+### Mammotion SVG Pick and Place
+
+An interactive Lovelace card for placing, editing, and deleting SVG pattern tiles on your mower's map directly from the dashboard. Load an SVG, drag it into position, scale and rotate it, then send it to the device in one click via the `mammotion.svg_add` service.
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=mikey0000&repository=ha-mammotion-svg-pick-n-place&category=plugin)
 
 ## Troubleshooting 🔧
 
@@ -84,14 +115,7 @@ If you encounter any issues with the Mammotion integration, please check the Hom
 - Verify that you have Bluetooth proxy setup with Home Assistant.
 - Ensure that your mower is connected to your home network and accessible from Home Assistant.
 - Restart Home Assistant and check if the issue persists.
-- If the integration reports an authentication failure, open **Settings > Devices & services**, select Mammotion, and complete the reauthentication prompt.
-
-### Known limitations
-
-- Schedule creation and editing must currently be performed in the Mammotion app; Home Assistant can run existing schedules.
-- Map rendering and area selection are supported, but editing zone geometry is not.
-- Firmware installation is experimental and depends on model, current firmware, cloud availability, and Mammotion account permissions.
-- Camera streaming is unavailable on some mower generations and uses Mammotion's Agora service rather than native Home Assistant WebRTC.
+- Make sure your not blocking China (Connection timeout to host https://api.link.aliyun.com/living/account/region/get)
 
 ## Contributing to Translations
 
@@ -103,7 +127,6 @@ We use Crowdin to manage our translations. If you'd like to contribute:
 
 Your contributions will be automatically submitted as pull requests to this repository.
 
-
 ## PyMammotion Library 📚
 
 This integration uses the [PyMammotion library](https://github.com/mikey0000/PyMammotion) to communicate with Mammotion mowers. PyMammotion provides a Python API for controlling and monitoring Mammotion robot mowers via MQTT, Cloud, and Bluetooth.
@@ -111,10 +134,13 @@ This integration uses the [PyMammotion library](https://github.com/mikey0000/PyM
 If the problem continues, please file an issue on the GitHub repository for further assistance. 🙏
 
 ## Support me
+
 <a href='https://ko-fi.com/DenimJackRabbit' target='_blank'><img height='46' style='border:0px;height:46px;' src='https://az743702.vo.msecnd.net/cdn/kofi3.png?v=0' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a>
+
 ### Referral Links
-[Buy a Mammotion Lawn mower (Amazon)](https://amzn.to/4cOLULU)
-[Buy a Mammotion Lawn mower (Mammotion)](https://mammotion.com/?ref=denimjackrabbit)
+
+[Buy a Mammotion Lawn Mower (Amazon)](https://amzn.to/4cOLULU)
+[Buy a Mammotion Lawn Mower (Mammotion)](https://mammotion.com/?ref=denimjackrabbit)
 
 ## Credits 👥
 
