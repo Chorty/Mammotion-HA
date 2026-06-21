@@ -3,6 +3,7 @@
 from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
+from aiohttp import ClientConnectorError
 from aiohttp.web_exceptions import HTTPException
 from bleak.backends.device import BLEDevice
 from homeassistant import config_entries
@@ -22,21 +23,38 @@ from homeassistant.core import callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import CONNECTION_BLUETOOTH, format_mac
-from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
-from pymammotion.http.http import MammotionHTTP
-from pymammotion.mammotion.devices.mammotion import Mammotion
+from Tea.exceptions import UnretryableException
 
 from .const import (
     CONF_ACCOUNT_ID,
     CONF_ACCOUNTNAME,
+    CONF_AEP_DATA,
+    CONF_AUTH_DATA,
     CONF_BLE_DEVICES,
+    CONF_CONNECT_DATA,
+    CONF_DEVICE_DATA,
     CONF_DEVICE_NAME,
+    CONF_MAMMOTION_DATA,
+    CONF_REGION_DATA,
+    CONF_SESSION_DATA,
     CONF_STAY_CONNECTED_BLUETOOTH,
     CONF_USE_WIFI,
     DEVICE_SUPPORT,
     DOMAIN,
+    EXPIRED_CREDENTIAL_EXCEPTIONS,
     LOGGER,
 )
+from .http import MammotionHTTPCompat, MammotionResponseError
+
+CLOUD_SESSION_KEYS = {
+    CONF_AEP_DATA,
+    CONF_AUTH_DATA,
+    CONF_CONNECT_DATA,
+    CONF_DEVICE_DATA,
+    CONF_MAMMOTION_DATA,
+    CONF_REGION_DATA,
+    CONF_SESSION_DATA,
+}
 
 
 class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -46,11 +64,12 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self._config: dict = {}
         self._stay_connected = False
-        self._cloud_client: CloudIOTGateway | None = None
         self._discovered_device: BLEDevice | None = None
         self._discovered_devices: dict[str, str] = {}
 
-    async def check_and_update_bluetooth_device(self, device: BLEDevice) -> ConfigEntry:
+    async def check_and_update_bluetooth_device(
+        self, device: BLEDevice
+    ) -> ConfigEntry | None:
         """Check if the device is already configured and update ble mac if needed."""
         device_registry = dr.async_get(self.hass)
         current_entries = self.hass.config_entries.async_entries(DOMAIN)
@@ -69,7 +88,7 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
                 if device.name in identifiers:
                     await self.async_set_unique_id(entry.data.get(CONF_ACCOUNT_ID))
                     # # Update existing entry with BLE info
-                    formatted_ble = format_mac(self._discovered_device.address)
+                    formatted_ble = format_mac(device.address)
 
                     if (
                         CONNECTION_BLUETOOTH,
@@ -137,11 +156,11 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._discovered_device.name: format_mac(
                     self._discovered_device.address
                 ),
-                **entry.data.get(CONF_BLE_DEVICES, None),
+                **entry.data.get(CONF_BLE_DEVICES, {}),
             }
             self._abort_if_unique_id_configured(updates={CONF_BLE_DEVICES: ble_devices})
 
-        ble_devices: dict[str, str] = {
+        ble_devices = {
             self._discovered_device.name: format_mac(self._discovered_device.address)
         }
         self._config = {
@@ -149,6 +168,7 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
         }
 
         if user_input is not None:
+            self._stay_connected = user_input.get(CONF_STAY_CONNECTED_BLUETOOTH, False)
             return await self.async_step_wifi(user_input)
 
         return self.async_show_form(
@@ -215,14 +235,16 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
         ):
             account = user_input.get(CONF_ACCOUNTNAME, "")
             password = user_input.get(CONF_PASSWORD, "")
-            mammotion_http = MammotionHTTP()
-
-            try:
-                await mammotion_http.login(account, password)
-                if mammotion_http.login_info is None:
-                    return self.async_abort(reason=str(mammotion_http.msg))
-            except HTTPException as err:
-                return self.async_abort(reason=str(err))
+            mammotion_http, error = await self._async_validate_credentials(
+                account, password
+            )
+            if error:
+                return self.async_show_form(
+                    step_id="wifi",
+                    data_schema=self._wifi_schema(user_input),
+                    errors={"base": error},
+                )
+            assert mammotion_http is not None
 
             user_account = mammotion_http.login_info.userInformation.userAccount
 
@@ -245,6 +267,12 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
             )
 
         if user_input is not None and user_input.get(CONF_USE_WIFI) is False:
+            if self._discovered_device is None:
+                return self.async_show_form(
+                    step_id="wifi",
+                    data_schema=self._wifi_schema(user_input),
+                    errors={"base": "no_bluetooth_device"},
+                )
             return self.async_create_entry(
                 title=self._discovered_device.name,
                 data={
@@ -254,51 +282,44 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
                 options={CONF_STAY_CONNECTED_BLUETOOTH: self._stay_connected},
             )
 
-        schema = {
-            vol.Optional(CONF_ACCOUNTNAME): cv.string,
-            vol.Optional(CONF_PASSWORD): cv.string,
-            vol.Optional(CONF_USE_WIFI, default=True): cv.boolean,
-        }
+        return self.async_show_form(step_id="wifi", data_schema=self._wifi_schema())
 
-        return self.async_show_form(step_id="wifi", data_schema=vol.Schema(schema))
+    @staticmethod
+    def _wifi_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
+        """Return the Wi-Fi setup schema."""
+        defaults = defaults or {}
+        return vol.Schema(
+            {
+                vol.Optional(
+                    CONF_ACCOUNTNAME, default=defaults.get(CONF_ACCOUNTNAME, "")
+                ): cv.string,
+                vol.Optional(
+                    CONF_PASSWORD, default=defaults.get(CONF_PASSWORD, "")
+                ): cv.string,
+                vol.Optional(
+                    CONF_USE_WIFI, default=defaults.get(CONF_USE_WIFI, True)
+                ): cv.boolean,
+            }
+        )
 
-    async def async_step_wifi_confirm(
-        self, user_input: dict[str, Any]
-    ) -> ConfigFlowResult:
-        """Confirm device discovery."""
-        mammotion = Mammotion()
-
-        if user_input is not None:
-            account = user_input.get(CONF_ACCOUNTNAME)
-            password = user_input.get(CONF_PASSWORD)
-
-            if self._cloud_client is None:
-                try:
-                    if mammotion.mqtt_list.get(account) is None:
-                        self._cloud_client = await Mammotion().login(account, password)
-                    else:
-                        self._cloud_client = mammotion.mqtt_list.get(
-                            account
-                        ).cloud_client
-                except HTTPException as err:
-                    return self.async_abort(reason=str(err))
-            user_account = (
-                self._cloud_client.mammotion_http.login_info.userInformation.userAccount
-            )
-
-            await self.async_set_unique_id(user_account, raise_on_progress=False)
-            self._abort_if_unique_id_configured()
-
-            return self.async_create_entry(
-                title=user_account,
-                data={
-                    CONF_ACCOUNTNAME: account,
-                    CONF_PASSWORD: password,
-                    CONF_USE_WIFI: user_input.get(CONF_USE_WIFI, True),
-                    **self._config,
-                },
-                options={CONF_STAY_CONNECTED_BLUETOOTH: self._stay_connected},
-            )
+    async def _async_validate_credentials(
+        self, account: str, password: str
+    ) -> tuple[MammotionHTTPCompat | None, str | None]:
+        """Validate cloud credentials and return a translated flow error."""
+        if not account or not password:
+            return None, "invalid_auth"
+        mammotion_http = MammotionHTTPCompat()
+        try:
+            await mammotion_http.login(account, password)
+        except (ClientConnectorError, MammotionResponseError):
+            return None, "cannot_connect"
+        except (HTTPException, UnretryableException, *EXPIRED_CREDENTIAL_EXCEPTIONS):
+            return None, "invalid_auth"
+        except TimeoutError:
+            return None, "cannot_connect"
+        if mammotion_http.login_info is None:
+            return None, "invalid_auth"
+        return mammotion_http, None
 
     @staticmethod
     @callback
@@ -316,14 +337,25 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
         if TYPE_CHECKING:
             assert entry
 
-        errors: dict[str, str] | None = None
+        errors: dict[str, str] = {}
         user_input = user_input or {}
         if user_input:
+            if user_input.get(CONF_USE_WIFI, True):
+                _, error = await self._async_validate_credentials(
+                    user_input[CONF_ACCOUNTNAME], user_input[CONF_PASSWORD]
+                )
+                if error:
+                    errors["base"] = error
             if not errors:
+                data = {
+                    key: value
+                    for key, value in entry.data.items()
+                    if key not in CLOUD_SESSION_KEYS
+                }
                 return self.async_update_reload_and_abort(
                     entry,
                     data={
-                        **entry.data,
+                        **data,
                         **user_input,
                     },
                     reason="reconfigure_successful",
@@ -344,6 +376,59 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=vol.Schema(schema),
+            errors=errors,
+        )
+
+    async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
+        """Start reauthentication for an existing config entry."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Validate and store replacement credentials."""
+        entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        if TYPE_CHECKING:
+            assert entry
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            mammotion_http, error = await self._async_validate_credentials(
+                user_input[CONF_ACCOUNTNAME], user_input[CONF_PASSWORD]
+            )
+            if error:
+                errors["base"] = error
+            else:
+                assert mammotion_http is not None
+                user_account = mammotion_http.login_info.userInformation.userAccount
+                if entry.unique_id is not None and str(user_account) != entry.unique_id:
+                    errors["base"] = "wrong_account"
+                else:
+                    data = {
+                        key: value
+                        for key, value in entry.data.items()
+                        if key not in CLOUD_SESSION_KEYS
+                    }
+                    return self.async_update_reload_and_abort(
+                        entry,
+                        data={
+                            **data,
+                            **user_input,
+                            CONF_ACCOUNT_ID: user_account,
+                        },
+                        reason="reauth_successful",
+                    )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_ACCOUNTNAME,
+                        default=entry.data.get(CONF_ACCOUNTNAME, ""),
+                    ): cv.string,
+                    vol.Required(CONF_PASSWORD): cv.string,
+                }
+            ),
             errors=errors,
         )
 

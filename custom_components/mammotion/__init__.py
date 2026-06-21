@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from contextlib import suppress
 from typing import TypeAlias
 
 from aiohttp import ClientConnectorError
@@ -11,7 +10,10 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    ConfigEntryNotReady,
+)
 from homeassistant.helpers.device_registry import DeviceEntry
 from pymammotion import CloudIOTGateway
 from pymammotion.aliyun.model.aep_response import AepResponse
@@ -22,8 +24,6 @@ from pymammotion.aliyun.model.regions_response import RegionResponse
 from pymammotion.aliyun.model.session_by_authcode_response import (
     SessionByAuthCodeResponse,
 )
-from pymammotion.data.model.account import Credentials
-from pymammotion.http.http import MammotionHTTP
 from pymammotion.http.model.http import LoginResponseData, Response
 from pymammotion.http.model.response_factory import response_factory
 from pymammotion.mammotion.devices.mammotion import ConnectionPreference, Mammotion
@@ -53,6 +53,7 @@ from .coordinator import (
     MammotionMapUpdateCoordinator,
     MammotionReportUpdateCoordinator,
 )
+from .http import MammotionHTTPCompat, MammotionResponseError
 from .models import MammotionMowerData
 
 PLATFORMS: list[Platform] = [
@@ -70,6 +71,8 @@ PLATFORMS: list[Platform] = [
 ]
 
 MammotionConfigEntry: TypeAlias = ConfigEntry[list[MammotionMowerData]]
+
+DATA_STATIC_PATH_REGISTERED = "static_path_registered"
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: MammotionConfigEntry) -> bool:  # noqa: C901
@@ -95,27 +98,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: MammotionConfigEntry) ->
     mammotion_devices: list[MammotionMowerData] = []
 
     if account and password:
-        credentials = Credentials()
-        credentials.email = account
-        credentials.password = password
         try:
             cloud_client = await check_and_restore_cloud(hass, entry)
             if cloud_client is None:
-                await mammotion.login_and_initiate_cloud(account, password)
+                await async_login_and_initiate_cloud(mammotion, account, password)
             else:
                 # sometimes mammotion_data is missing....
                 if cloud_client.mammotion_http is None:
-                    mammotion_http = MammotionHTTP()
+                    mammotion_http = MammotionHTTPCompat()
                     await mammotion_http.login(account, password)
                     cloud_client.set_http(mammotion_http)
                 await mammotion.initiate_cloud_connection(account, cloud_client)
         except ClientConnectorError as err:
             raise ConfigEntryNotReady from err
+        except MammotionResponseError as err:
+            raise ConfigEntryNotReady from err
         except EXPIRED_CREDENTIAL_EXCEPTIONS as exc:
-            LOGGER.debug(exc)
-            await mammotion.login_and_initiate_cloud(account, password, True)
+            raise ConfigEntryAuthFailed from exc
         except UnretryableException as err:
-            raise ConfigEntryError from err
+            raise ConfigEntryAuthFailed from err
 
         if mqtt_client := mammotion.mqtt_list.get(account):
             store_cloud_credentials(hass, entry, mqtt_client.cloud_client)
@@ -190,8 +191,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: MammotionConfigEntry) ->
                         map_coordinator=map_coordinator,
                     )
                 )
-                with suppress(Exception):
-                    await map_coordinator.async_request_refresh()
+                await map_coordinator.async_request_refresh()
 
     # if not any(mammotion.get_device_by_name(mammotion_device.device.deviceName).preference == ConnectionPreference.WIFI for mammotion_device in mammotion_devices):
     #     for mammotion_device in mammotion_devices:
@@ -201,10 +201,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: MammotionConfigEntry) ->
     #         mower.remove_cloud()
 
     entry.runtime_data = mammotion_devices
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # Record the path to the static files needed for WebRTC
-    if hasattr(hass, "http"):
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    if hasattr(hass, "http") and not domain_data.get(DATA_STATIC_PATH_REGISTERED):
         await hass.http.async_register_static_paths(
             [
                 StaticPathConfig(
@@ -214,14 +216,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: MammotionConfigEntry) ->
                 )
             ]
         )
-
-    # Make sure the 'www' folder exists
-    import os
-
-    www_dir = hass.config.path("custom_components/mammotion/www")
-    os.makedirs(www_dir, exist_ok=True)
+        domain_data[DATA_STATIC_PATH_REGISTERED] = True
 
     return True
+
+
+async def async_login_and_initiate_cloud(
+    mammotion: Mammotion, account: str, password: str
+) -> None:
+    """Log in with the compatible HTTP client and initialize cloud transport."""
+    mammotion_http = MammotionHTTPCompat()
+    cloud_client = CloudIOTGateway(mammotion_http)
+    await mammotion_http.login(account, password)
+    if mammotion_http.login_info is None:
+        raise ConfigEntryAuthFailed
+    await mammotion.connect_iot(cloud_client)
+    await mammotion.initiate_cloud_connection(account, cloud_client)
 
 
 def store_cloud_credentials(
@@ -281,7 +291,7 @@ async def check_and_restore_cloud(
         if isinstance(mammotion_data, dict)
         else mammotion_data
     )
-    mammotion_http = MammotionHTTP()
+    mammotion_http = MammotionHTTPCompat()
     mammotion_http.response = mammotion_response_data
     mammotion_http.login_info = (
         LoginResponseData.from_dict(mammotion_response_data.data)
@@ -327,8 +337,19 @@ async def async_unload_entry(hass: HomeAssistant, entry: MammotionConfigEntry) -
 
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         for mower in entry.runtime_data:
-            with suppress(TimeoutError):
+            try:
                 await mower.api.remove_device(mower.name)
+            except TimeoutError:
+                LOGGER.debug("Timed out disconnecting %s during unload", mower.name)
+
+        if not any(
+            other.entry_id != entry.entry_id
+            and other.state.name in {"LOADED", "SETUP_RETRY"}
+            for other in hass.config_entries.async_entries(DOMAIN)
+        ):
+            from .camera import async_remove_platform_services
+
+            async_remove_platform_services(hass)
     return unload_ok
 
 
@@ -336,12 +357,13 @@ async def async_remove_config_entry_device(
     hass: HomeAssistant, config_entry: ConfigEntry, device_entry: DeviceEntry
 ) -> bool:
     """Remove a config entry from a device."""
-    mower_name = (
-        next(
+    mower_name = next(
+        (
             identifier[1]
             for identifier in device_entry.identifiers
             if identifier[0] == DOMAIN
         ),
+        None,
     )
     mower = next(
         (mower for mower in config_entry.runtime_data if mower.name == mower_name), None

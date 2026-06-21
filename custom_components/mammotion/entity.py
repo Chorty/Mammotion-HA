@@ -90,6 +90,7 @@ class MammotionBaseEntity(CoordinatorEntity[MammotionBaseUpdateCoordinator]):
         """Return True if entity is available."""
         return (
             self.coordinator.data is not None
+            and self.coordinator.last_update_success
             and self.coordinator.update_failures
             <= self.coordinator.config_entry.options.get(
                 CONF_RETRY_COUNT, DEFAULT_RETRY_COUNT

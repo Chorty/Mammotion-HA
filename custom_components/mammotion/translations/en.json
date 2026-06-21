@@ -8,7 +8,14 @@
       "bluetooth_and_account_mismatch": "Bluetooth device not found in your account",
       "no_longer_present": "Device is no longer present",
       "not_supported": "Device not supported",
-      "reconfigure_successful": "Re-configure successful"
+      "reconfigure_successful": "Reconfiguration successful",
+      "reauth_successful": "Reauthentication successful"
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to Mammotion. Check your network and try again.",
+      "invalid_auth": "Invalid Mammotion account name or password.",
+      "no_bluetooth_device": "No supported Bluetooth mower was discovered.",
+      "wrong_account": "The credentials belong to a different Mammotion account."
     },
     "flow_title": "{name}",
     "step": {
@@ -21,6 +28,14 @@
       "reconfigure": {
         "data": {
           "use_wifi": "Use Wi-Fi",
+          "account_name": "Mammotion email or account number",
+          "password": "Mammotion account password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reconnect to Mammotion",
+        "description": "Enter updated credentials for the same Mammotion account.",
+        "data": {
           "account_name": "Mammotion email or account number",
           "password": "Mammotion account password"
         }
@@ -452,7 +467,15 @@
           "description": "List of areas to mow (represented as integers)."
         }
       }
-    }
+    },
+    "refresh_stream": {"name": "Refresh camera stream", "description": "Requests fresh camera stream credentials.", "fields": {"entity_id": {"name": "Camera", "description": "Mammotion camera entity."}}},
+    "start_video": {"name": "Start camera video", "description": "Starts the mower camera stream.", "fields": {"entity_id": {"name": "Camera", "description": "Mammotion camera entity."}}},
+    "stop_video": {"name": "Stop camera video", "description": "Stops the mower camera stream.", "fields": {"entity_id": {"name": "Camera", "description": "Mammotion camera entity."}}},
+    "get_tokens": {"name": "Get camera tokens", "description": "Returns camera stream credentials.", "fields": {"entity_id": {"name": "Camera", "description": "Mammotion camera entity."}}},
+    "move_forward": {"name": "Move forward", "description": "Moves the mower forward manually.", "fields": {"entity_id": {"name": "Entity", "description": "Mammotion mower entity."}, "speed": {"name": "Speed", "description": "Movement speed from 0.1 to 1.0."}}},
+    "move_left": {"name": "Move left", "description": "Turns the mower left manually.", "fields": {"entity_id": {"name": "Entity", "description": "Mammotion mower entity."}, "speed": {"name": "Speed", "description": "Movement speed from 0.1 to 1.0."}}},
+    "move_right": {"name": "Move right", "description": "Turns the mower right manually.", "fields": {"entity_id": {"name": "Entity", "description": "Mammotion mower entity."}, "speed": {"name": "Speed", "description": "Movement speed from 0.1 to 1.0."}}},
+    "move_backward": {"name": "Move backward", "description": "Moves the mower backward manually.", "fields": {"entity_id": {"name": "Entity", "description": "Mammotion mower entity."}, "speed": {"name": "Speed", "description": "Movement speed from 0.1 to 1.0."}}}
   },
   "exceptions": {
     "device_not_ready": {

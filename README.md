@@ -12,11 +12,13 @@ This integration allows you to control and monitor Mammotion products, e.g robot
 
 - [x] Bluetooth (BLE) support
 - [x] Wi-Fi support (Including SIM 3G)
-- [ ] Scheduling
-- [ ] Mapping and zone management
-- [ ] Firmware updates
+- [x] Run existing scheduled tasks
+- [ ] Create and edit schedules
+- [x] Map display and area selection
+- [ ] Edit zone geometry and map metadata
+- [x] Firmware updates (experimental)
 - [x] Automations
-- [ ] More...
+- [ ] Expand tested device and firmware compatibility
 
 ## Features ✨
 
@@ -27,6 +29,13 @@ This integration allows you to control and monitor Mammotion products, e.g robot
 - Start an existing scheduled task/s
 - More features being added all the time!
 - Render the mower's path as a map camera for use with front-end map cards
+- Install available mower firmware updates (experimental)
+
+### Connection modes
+
+- **Wi-Fi/cloud:** Supports normal monitoring, control, maps, schedules, camera features on compatible models, and firmware checks. Use a secondary Mammotion account shared with the mower to avoid signing the mobile app out.
+- **Bluetooth:** Used directly or as a fallback when a supported mower is reachable through Home Assistant Bluetooth. A Bluetooth proxy is recommended when Home Assistant is not physically near the mower.
+- **Multiple accounts:** Separate config entries are supported. Services resolve the selected entity to the correct account and mower.
 
 ## Prerequisites 📋
 > [!WARNING]
@@ -62,6 +71,12 @@ Once the integration is set up, you can control and monitor your Mammotion mower
 
 This integration creates a `camera` entity that draws the mower's path and a companion `vacuum` entity for compatibility with map cards. When using the [Lovelace Xiaomi Vacuum Map card](https://github.com/PiotrMachowski/lovelace-xiaomi-vacuum-map-card), set the card's `entity` to the mower's vacuum entity and `camera_entity` to the map camera.
 
+### Reauthentication and diagnostics
+
+If Mammotion credentials expire, Home Assistant will prompt you to reauthenticate the existing integration entry. Use credentials for the same Mammotion account; devices and entity IDs are preserved.
+
+Diagnostics are intentionally bounded and exclude credentials, account identifiers, serial numbers, MAC addresses, coordinates, map geometry, tokens, session data, and raw protocol payloads.
+
 ## Troubleshooting 🔧
 
 If you encounter any issues with the Mammotion integration, please check the Home Assistant logs for error messages. You can also try the following troubleshooting steps:
@@ -69,6 +84,14 @@ If you encounter any issues with the Mammotion integration, please check the Hom
 - Verify that you have Bluetooth proxy setup with Home Assistant.
 - Ensure that your mower is connected to your home network and accessible from Home Assistant.
 - Restart Home Assistant and check if the issue persists.
+- If the integration reports an authentication failure, open **Settings > Devices & services**, select Mammotion, and complete the reauthentication prompt.
+
+### Known limitations
+
+- Schedule creation and editing must currently be performed in the Mammotion app; Home Assistant can run existing schedules.
+- Map rendering and area selection are supported, but editing zone geometry is not.
+- Firmware installation is experimental and depends on model, current firmware, cloud availability, and Mammotion account permissions.
+- Camera streaming is unavailable on some mower generations and uses Mammotion's Agora service rather than native Home Assistant WebRTC.
 
 ## Contributing to Translations
 

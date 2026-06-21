@@ -102,7 +102,7 @@ async def async_setup_entry(
         )
 
         update_tasks()
-        coordinator.async_add_listener(update_tasks)
+        entry.async_on_unload(coordinator.async_add_listener(update_tasks))
 
         async_add_entities(
             MammotionButtonSensorEntity(mower.reporting_coordinator, entity_description)

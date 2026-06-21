@@ -300,7 +300,7 @@ async def async_setup_entry(
     """Set up sensor platform."""
     mammotion_devices = entry.runtime_data
 
-    entities = []
+    entities: list[MammotionBaseEntity] = []
     for mower in mammotion_devices:
         if not DeviceType.is_yuka(mower.device.deviceName):
             entities.extend(

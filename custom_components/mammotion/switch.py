@@ -138,7 +138,7 @@ async def async_setup_entry(
         )
 
         update_areas()
-        coordinator.async_add_listener(update_areas)
+        entry.async_on_unload(coordinator.async_add_listener(update_areas))
 
         entities = []
         for entity_description in SWITCH_ENTITIES:

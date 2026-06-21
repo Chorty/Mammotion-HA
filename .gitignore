@@ -6,3 +6,4 @@
 # GITHUB Proposed Python stuff:
 *.py[cod]
 __pycache__
+.secrets.local

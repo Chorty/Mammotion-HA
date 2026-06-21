@@ -30,7 +30,7 @@ class MammotionConfigNumberEntityDescription(NumberEntityDescription):
     """Describes Mammotion number entity."""
 
     set_fn: Callable[[MammotionBaseUpdateCoordinator, float], None]
-    get_fn: Callable[[MammotionBaseUpdateCoordinator], float | None] = None
+    get_fn: Callable[[MammotionBaseUpdateCoordinator], float | None] | None = None
 
 
 NUMBER_ENTITIES: tuple[MammotionConfigNumberEntityDescription, ...] = (

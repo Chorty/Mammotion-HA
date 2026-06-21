@@ -1,6 +1,5 @@
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Awaitable
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.const import EntityCategory
@@ -243,9 +242,12 @@ class MammotionAsyncConfigSelectEntity(
         self._attr_translation_key = entity_description.key
         self._attr_options = entity_description.options
         if callable(entity_description.get_fn):
-            self._attr_current_option = self._attr_options[
-                entity_description.get_fn(self.coordinator)
-            ]
+            option_index = entity_description.get_fn(self.coordinator)
+            self._attr_current_option = (
+                self._attr_options[option_index]
+                if option_index is not None
+                else self._attr_options[0]
+            )
         else:
             self._attr_current_option = self._attr_options[0]
 
@@ -263,7 +265,10 @@ class MammotionAsyncConfigSelectEntity(
 
     async def async_update(self) -> None:
         if callable(self.entity_description.get_fn):
-            self._attr_current_option = self._attr_options[
-                self.entity_description.get_fn(self.coordinator)
-            ]
+            option_index = self.entity_description.get_fn(self.coordinator)
+            self._attr_current_option = (
+                self._attr_options[option_index]
+                if option_index is not None
+                else self._attr_options[0]
+            )
         self.async_write_ha_state()

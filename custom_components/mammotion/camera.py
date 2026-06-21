@@ -8,6 +8,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from io import BytesIO
 
+import voluptuous as vol
+from aiohttp import ClientError
 from homeassistant.components.camera import (
     Camera,
     CameraEntityDescription,
@@ -20,6 +22,8 @@ from homeassistant.core import (
     ServiceResponse,
     SupportsResponse,
 )
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from PIL import Image, ImageDraw
 from pymammotion.http.model.camera_stream import (
@@ -33,6 +37,27 @@ from .entity import MammotionBaseEntity
 from .models import MammotionMowerData
 
 _LOGGER = logging.getLogger(__name__)
+
+DATA_SERVICES_REGISTERED = "camera_services_registered"
+CAMERA_SERVICES = (
+    "refresh_stream",
+    "start_video",
+    "stop_video",
+    "get_tokens",
+    "move_forward",
+    "move_left",
+    "move_right",
+    "move_backward",
+)
+ENTITY_SERVICE_SCHEMA = vol.Schema({vol.Required("entity_id"): cv.entity_id})
+MOVEMENT_SERVICE_SCHEMA = vol.Schema(
+    {
+        vol.Required("entity_id"): cv.entity_id,
+        vol.Optional("speed", default=0.4): vol.All(
+            vol.Coerce(float), vol.Range(min=0.1, max=1.0)
+        ),
+    }
+)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -95,11 +120,11 @@ async def async_setup_entry(
                     )
                 else:
                     _LOGGER.error("No Agora data for %s", mower.device.deviceName)
-            except Exception as e:  # noqa: BLE001
-                _LOGGER.error("Error on config camera for: %s", e)
+            except (ClientError, TimeoutError) as err:
+                _LOGGER.debug("Camera unavailable during setup: %s", err)
 
     async_add_entities(entities)
-    await async_setup_platform_services(hass, entry)
+    await async_setup_platform_services(hass)
 
 
 class MammotionMapCamera(MammotionBaseEntity, Camera):
@@ -227,21 +252,27 @@ class MammotionWebRTCCamera(MammotionBaseEntity, Camera):
 
 # Global
 async def async_setup_platform_services(  # noqa: C901
-    hass: HomeAssistant, entry: MammotionConfigEntry
+    hass: HomeAssistant,
 ) -> None:
     """Register custom services for streaming."""
 
-    def _get_mower_by_entity_id(entity_id: str):
-        state = hass.states.get(entity_id)
-        name = state.attributes.get("model_name")
-        return next(
-            (mower for mower in entry.runtime_data if mower.device.deviceName == name),
-            None,
-        )
+    domain_data = hass.data.setdefault("mammotion", {})
+    if domain_data.get(DATA_SERVICES_REGISTERED):
+        return
+
+    def _get_mower_by_entity_id(entity_id: str) -> MammotionMowerData | None:
+        entity_entry = er.async_get(hass).async_get(entity_id)
+        if entity_entry is None or entity_entry.platform != "mammotion":
+            return None
+        for config_entry in hass.config_entries.async_entries("mammotion"):
+            for mower in getattr(config_entry, "runtime_data", ()):
+                if entity_entry.unique_id.startswith(f"{mower.name}_"):
+                    return mower
+        return None
 
     async def handle_refresh_stream(call) -> None:
         entity_id = call.data["entity_id"]
-        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
+        mower = _get_mower_by_entity_id(entity_id)
         if mower:
             stream_data = await mower.api.get_stream_subscription(
                 mower.device.deviceName, mower.device.iotId
@@ -253,19 +284,19 @@ async def async_setup_platform_services(  # noqa: C901
 
     async def handle_start_video(call) -> None:
         entity_id = call.data["entity_id"]
-        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
+        mower = _get_mower_by_entity_id(entity_id)
         if mower:
             await mower.reporting_coordinator.join_webrtc_channel()
 
     async def handle_stop_video(call) -> None:
         entity_id = call.data["entity_id"]
-        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
+        mower = _get_mower_by_entity_id(entity_id)
         if mower:
             await mower.reporting_coordinator.leave_webrtc_channel()
 
     async def handle_get_tokens(call: ServiceCall) -> ServiceResponse:
         entity_id = call.data["entity_id"]
-        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
+        mower = _get_mower_by_entity_id(entity_id)
         if mower is not None:
             stream_data = mower.reporting_coordinator.get_stream_data()
 
@@ -278,123 +309,72 @@ async def async_setup_platform_services(  # noqa: C901
     async def handle_move_forward(call) -> None:
         entity_id = call.data["entity_id"]
 
-        # Check if speed parameter exists and validate it
-        speed = 0.4  # Default speed
-        if "speed" in call.data:
-            try:
-                speed_value = float(call.data["speed"])
-                if 0.1 <= speed_value <= 1:
-                    speed = speed_value
-                else:
-                    _LOGGER.warning(
-                        "Invalid speed value for %s: %s. Must be between 0 and 1. Using default.",
-                        entity_id,
-                        speed_value,
-                    )
-            except (ValueError, TypeError):
-                _LOGGER.warning(
-                    "Invalid speed format for %s: %s. Must be a number. Using default.",
-                    entity_id,
-                    call.data["speed"],
-                )
+        speed = call.data["speed"]
 
-        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
+        mower = _get_mower_by_entity_id(entity_id)
         if mower:
             await mower.reporting_coordinator.async_move_forward(speed=speed)
 
     async def handle_move_left(call) -> None:
         entity_id = call.data["entity_id"]
 
-        # Check if speed parameter exists and validate it
-        speed = 0.4  # Default speed
-        if "speed" in call.data:
-            try:
-                speed_value = float(call.data["speed"])
-                if 0.1 <= speed_value <= 1:
-                    speed = speed_value
-                else:
-                    _LOGGER.warning(
-                        "Invalid speed value for %s: %s. Must be between 0 and 1. Using default.",
-                        entity_id,
-                        speed_value,
-                    )
-            except (ValueError, TypeError):
-                _LOGGER.warning(
-                    "Invalid speed format for %s: %s. Must be a number. Using default.",
-                    entity_id,
-                    call.data["speed"],
-                )
+        speed = call.data["speed"]
 
-        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
+        mower = _get_mower_by_entity_id(entity_id)
         if mower:
             await mower.reporting_coordinator.async_move_left(speed=speed)
 
     async def handle_move_right(call) -> None:
         entity_id = call.data["entity_id"]
 
-        # Check if speed parameter exists and validate it
-        speed = 0.4  # Default speed
-        if "speed" in call.data:
-            try:
-                speed_value = float(call.data["speed"])
-                if 0.1 <= speed_value <= 1:
-                    speed = speed_value
-                else:
-                    _LOGGER.warning(
-                        "Invalid speed value for %s: %s. Must be between 0 and 1. Using default.",
-                        entity_id,
-                        speed_value,
-                    )
-            except (ValueError, TypeError):
-                _LOGGER.warning(
-                    "Invalid speed format for %s: %s. Must be a number. Using default.",
-                    entity_id,
-                    call.data["speed"],
-                )
+        speed = call.data["speed"]
 
-        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
+        mower = _get_mower_by_entity_id(entity_id)
         if mower:
             await mower.reporting_coordinator.async_move_right(speed=speed)
 
     async def handle_move_backward(call) -> None:
         entity_id = call.data["entity_id"]
 
-        # Check if speed parameter exists and validate it
-        speed = 0.4  # Default speed
-        if "speed" in call.data:
-            try:
-                speed_value = float(call.data["speed"])
-                if 0.1 <= speed_value <= 1:
-                    speed = speed_value
-                else:
-                    _LOGGER.warning(
-                        "Invalid speed value for %s: %s. Must be between 0 and 1. Using default.",
-                        entity_id,
-                        speed_value,
-                    )
-            except (ValueError, TypeError):
-                _LOGGER.warning(
-                    "Invalid speed format for %s: %s. Must be a number. Using default.",
-                    entity_id,
-                    call.data["speed"],
-                )
+        speed = call.data["speed"]
 
-        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
+        mower = _get_mower_by_entity_id(entity_id)
         if mower:
             await mower.reporting_coordinator.async_move_back(speed=speed)
 
-    hass.services.async_register("mammotion", "refresh_stream", handle_refresh_stream)
-    hass.services.async_register("mammotion", "start_video", handle_start_video)
-    hass.services.async_register("mammotion", "stop_video", handle_stop_video)
+    hass.services.async_register(
+        "mammotion", "refresh_stream", handle_refresh_stream, ENTITY_SERVICE_SCHEMA
+    )
+    hass.services.async_register(
+        "mammotion", "start_video", handle_start_video, ENTITY_SERVICE_SCHEMA
+    )
+    hass.services.async_register(
+        "mammotion", "stop_video", handle_stop_video, ENTITY_SERVICE_SCHEMA
+    )
     hass.services.async_register(
         "mammotion",
         "get_tokens",
         handle_get_tokens,
+        ENTITY_SERVICE_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
-    hass.services.async_register("mammotion", "move_forward", handle_move_forward)
-    hass.services.async_register("mammotion", "move_left", handle_move_left)
-    hass.services.async_register("mammotion", "move_right", handle_move_right)
-    hass.services.async_register("mammotion", "move_backward", handle_move_backward)
-    
-"""Mammotion bmoeo2-codex"""
+    hass.services.async_register(
+        "mammotion", "move_forward", handle_move_forward, MOVEMENT_SERVICE_SCHEMA
+    )
+    hass.services.async_register(
+        "mammotion", "move_left", handle_move_left, MOVEMENT_SERVICE_SCHEMA
+    )
+    hass.services.async_register(
+        "mammotion", "move_right", handle_move_right, MOVEMENT_SERVICE_SCHEMA
+    )
+    hass.services.async_register(
+        "mammotion", "move_backward", handle_move_backward, MOVEMENT_SERVICE_SCHEMA
+    )
+    domain_data[DATA_SERVICES_REGISTERED] = True
+
+
+def async_remove_platform_services(hass: HomeAssistant) -> None:
+    """Remove global camera services after the final entry unloads."""
+    for service in CAMERA_SERVICES:
+        hass.services.async_remove("mammotion", service)
+    hass.data.setdefault("mammotion", {}).pop(DATA_SERVICES_REGISTERED, None)
