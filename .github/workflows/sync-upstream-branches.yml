@@ -1,0 +1,137 @@
+name: Sync upstream branches
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Report branch changes without pushing them
+        required: false
+        default: true
+        type: boolean
+  schedule:
+    - cron: "17 5 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream-branches
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Synchronize non-main branches
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Synchronize branches
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+          UPSTREAM_URL: https://github.com/mikey0000/Mammotion-HA.git
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git remote add upstream-sync "$UPSTREAM_URL"
+          git fetch --prune --no-tags upstream-sync \
+            '+refs/heads/*:refs/remotes/upstream-sync/*'
+          git fetch --prune --no-tags origin \
+            '+refs/heads/*:refs/remotes/origin/*'
+
+          created=0
+          updated=0
+          unchanged=0
+          skipped=0
+
+          {
+            echo "## Upstream branch synchronization"
+            echo
+            echo "Dry run: \`$DRY_RUN\`"
+            echo
+            echo "| Branch | Result | Upstream SHA | Previous fork SHA |"
+            echo "| --- | --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          while IFS= read -r ref; do
+            branch="${ref#refs/remotes/upstream-sync/}"
+
+            if [[ "$branch" == "HEAD" || "$branch" == "main" ]]; then
+              printf '| `%s` | skipped | — | — |\n' "$branch" \
+                >> "$GITHUB_STEP_SUMMARY"
+              ((skipped += 1))
+              continue
+            fi
+
+            upstream_sha="$(git rev-parse "$ref")"
+            fork_ref="refs/remotes/origin/$branch"
+            fork_sha="$(git rev-parse --verify --quiet "$fork_ref" || true)"
+
+            if [[ "$fork_sha" == "$upstream_sha" ]]; then
+              printf '| `%s` | unchanged | `%s` | `%s` |\n' \
+                "$branch" "$upstream_sha" "$fork_sha" \
+                >> "$GITHUB_STEP_SUMMARY"
+              ((unchanged += 1))
+              continue
+            fi
+
+            if [[ -z "$fork_sha" ]]; then
+              result=created
+              previous='—'
+              ((created += 1))
+            else
+              result=updated
+              previous="\`$fork_sha\`"
+              ((updated += 1))
+            fi
+
+            if [[ "$DRY_RUN" != "true" ]]; then
+              git push \
+                --force-with-lease="refs/heads/$branch:$fork_sha" \
+                origin "$upstream_sha:refs/heads/$branch"
+            fi
+
+            printf '| `%s` | %s | `%s` | %s |\n' \
+              "$branch" "$result" "$upstream_sha" "$previous" \
+              >> "$GITHUB_STEP_SUMMARY"
+          done < <(
+            git for-each-ref \
+              --format='%(refname)' \
+              refs/remotes/upstream-sync \
+              | sort
+          )
+
+          mapfile -t fork_only_branches < <(
+            comm -23 \
+              <(
+                git for-each-ref --format='%(refname:strip=3)' refs/remotes/origin \
+                  | grep -v '^HEAD$' \
+                  | sort
+              ) \
+              <(
+                git for-each-ref \
+                  --format='%(refname:strip=3)' \
+                  refs/remotes/upstream-sync \
+                  | grep -v '^HEAD$' \
+                  | sort
+              )
+          )
+
+          {
+            echo
+            echo "### Totals"
+            echo
+            echo "- Created: $created"
+            echo "- Updated: $updated"
+            echo "- Unchanged: $unchanged"
+            echo "- Skipped: $skipped"
+            echo "- Fork-only branches preserved: ${#fork_only_branches[@]}"
+            if ((${#fork_only_branches[@]})); then
+              printf '%s\n' "${fork_only_branches[@]}" \
+                | sed 's/^/- `/' \
+                | sed 's/$/`/'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
