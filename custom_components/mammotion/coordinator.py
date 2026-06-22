@@ -14,6 +14,7 @@ from collections.abc import Callable, Mapping
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, cast
 
+from aiohttp import ClientError
 from habluetooth import BluetoothScanningMode
 from habluetooth.models import BluetoothServiceInfoBleak
 from homeassistant.components import bluetooth
@@ -114,6 +115,7 @@ MAP_SYNC_STATUSES = ("synced", "syncing", "out_of_sync")
 # device is unreachable ("Device not responding. Please check the network
 # connection").  Treated as a device-offline signal.
 DEVICE_NOT_RESPONDING_CODE = 50504
+STREAM_RETRY_DELAYS = (0, 2, 4)
 
 
 class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):  # type: ignore[misc]
@@ -188,7 +190,7 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):  # ty
     async def async_check_stream_expiry(
         self, force: bool = False
     ) -> tuple[StreamSubscriptionResponse | None, AgoraResponse | None]:
-        """Return cached Agora stream data, refreshing only when the token is absent or stale."""
+        """Return cached Agora data or establish a fresh camera session."""
         now = time.monotonic()
         token_age = now - self._stream_data_fetched_at
         cached_data = self._stream_data
@@ -202,88 +204,113 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):  # ty
             LOGGER.debug("Reusing cached stream token (age=%.0fs)", token_age)
             return cached_data.data, self._agora_response
 
-        stream_data = None
+        self.clear_stream_data()
+        try:
+            await self.async_send_command("send_todev_ble_sync", sync_type=3)
+            await self.join_webrtc_channel()
+        except (
+            AuthError,
+            ClientError,
+            CommandTimeoutError,
+            ConcurrentRequestError,
+            DeviceOfflineException,
+            FailedRequestException,
+            GatewayTimeoutException,
+            HomeAssistantError,
+            NoTransportAvailableError,
+            TimeoutError,
+        ) as err:
+            LOGGER.warning("Unable to start camera session: %s", type(err).__name__)
+            return None, None
+
+        stream_data: Response[StreamSubscriptionResponse] | None = None
+        for delay in STREAM_RETRY_DELAYS:
+            if delay:
+                await asyncio.sleep(delay)
+            try:
+                stream_data = await self.manager.refresh_stream_subscription(
+                    self.device_name, self.device.iot_id
+                )
+            except (
+                AuthError,
+                ClientError,
+                DeviceOfflineException,
+                FailedRequestException,
+                GatewayTimeoutException,
+                HomeAssistantError,
+                TimeoutError,
+            ) as err:
+                LOGGER.warning("Camera token request failed: %s", type(err).__name__)
+                self.clear_stream_data()
+                return None, None
+            if stream_data is not None and stream_data.data is not None:
+                break
+            if stream_data is None or stream_data.code != DEVICE_NOT_RESPONDING_CODE:
+                break
+
+        if stream_data is None or stream_data.data is None:
+            code = stream_data.code if stream_data is not None else "no_response"
+            LOGGER.warning("Camera stream is temporarily unavailable (code %s)", code)
+            self.clear_stream_data()
+            return None, None
+
+        subscription = stream_data.data.to_dict()
+        try:
+            async with AgoraAPIClient() as agora_client:
+                agora_response = await agora_client.choose_server(
+                    app_id=subscription["appid"],
+                    token=subscription["token"],
+                    channel_name=subscription["channelName"],
+                    user_id=int(subscription["uid"]),
+                    service_flags=[
+                        SERVICE_IDS["CHOOSE_SERVER"],
+                        SERVICE_IDS["CLOUD_PROXY_FALLBACK"],
+                    ],
+                )
+        except (
+            ClientError,
+            json.JSONDecodeError,
+            KeyError,
+            OSError,
+            TypeError,
+            ValueError,
+        ) as err:
+            LOGGER.warning("Unable to configure camera relay: %s", type(err).__name__)
+            self.clear_stream_data()
+            return None, None
+
+        if agora_response is None:
+            self.clear_stream_data()
+            return None, None
 
         try:
-            stream_data = await self.manager.get_stream_subscription(
-                self.device_name, self.device.iot_id
-            )
-            self.set_stream_data(stream_data)
-            self._stream_data_fetched_at = time.monotonic()
-
-            # A 50504 means the cloud couldn't reach the device — bail out
-            # cleanly rather than continuing on to the Agora setup with no data.
-            if (
-                stream_data is not None
-                and stream_data.code == DEVICE_NOT_RESPONDING_CODE
-            ):
-                LOGGER.warning(
-                    "Stream subscription for %s reports device not responding "
-                    "(code %s: %s)",
-                    self.device_name,
-                    stream_data.code,
-                    stream_data.msg,
+            self._ice_servers = [
+                RTCIceServer(
+                    urls=ice_server.urls,
+                    username=ice_server.username,
+                    credential=ice_server.credential,
                 )
-                return None, self._agora_response
-
-            if stream_data is not None and stream_data.data is not None:
-                LOGGER.debug("Received stream data: %s", stream_data)
-
-                # Get ICE servers from Agora API
-                try:
-                    subscription = stream_data.data.to_dict()
-                    async with AgoraAPIClient() as agora_client:
-                        agora_response = await agora_client.choose_server(
-                            app_id=subscription["appid"],
-                            token=subscription["token"],
-                            channel_name=subscription["channelName"],
-                            user_id=int(subscription["uid"]),
-                            service_flags=[
-                                SERVICE_IDS["CHOOSE_SERVER"],  # Gateway addresses
-                                SERVICE_IDS["CLOUD_PROXY_FALLBACK"],  # TURN servers
-                            ],
-                        )
-
-                        # Get ICE servers and convert to RTCIceServer format - use only first TURN server to match SDK (3 entries)
-                        ice_servers_agora = agora_response.get_ice_servers(
-                            use_all_turn_servers=False
-                        )
-                        LOGGER.info("Ice Servers from Agora API:%s", ice_servers_agora)
-                        ice_servers = [
-                            RTCIceServer(
-                                urls=ice_server.urls,
-                                username=ice_server.username,
-                                credential=ice_server.credential,
-                            )
-                            for ice_server in ice_servers_agora
-                        ]
-
-                        # Store ICE servers in coordinator
-                        self._ice_servers = ice_servers
-                        self._agora_response = agora_response
-                        LOGGER.info(
-                            "Retrieved %d ICE servers from Agora API",
-                            len(ice_servers),
-                        )
-                except Exception as e:
-                    LOGGER.error("Failed to get ICE servers from Agora API: %s", e)
-                    self._ice_servers = []
-
-            LOGGER.debug("Stream token refreshed successfully")
-        except Exception as ex:
-            LOGGER.error("Failed to refresh stream token: %s", ex)
-        return (
-            stream_data.data if stream_data is not None else None,
-            self._agora_response,
-        )
+                for ice_server in agora_response.get_ice_servers(
+                    use_all_turn_servers=False
+                )
+            ]
+        except (AttributeError, TypeError, ValueError) as err:
+            LOGGER.warning("Invalid camera relay response: %s", type(err).__name__)
+            self.clear_stream_data()
+            return None, None
+        self._stream_data = stream_data
+        self._stream_data_fetched_at = time.monotonic()
+        self._agora_response = agora_response
+        LOGGER.debug("Camera stream credentials refreshed")
+        return stream_data.data, agora_response
 
     def set_stream_data(
-        self, stream_data: Response[StreamSubscriptionResponse]
+        self, stream_data: Response[StreamSubscriptionResponse] | None
     ) -> None:
         """Set stream data."""
         self._stream_data = stream_data
 
-    def get_stream_data(self) -> Response[StreamSubscriptionResponse]:
+    def get_stream_data(self) -> Response[StreamSubscriptionResponse] | None:
         """Return stream data."""
         return self._stream_data
 
@@ -298,9 +325,25 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):  # ty
 
     async def join_webrtc_channel(self) -> None:
         """Start stream command."""
+        await self.async_send_command(
+            "device_agora_join_channel_with_position", enter_state=1
+        )
 
     async def leave_webrtc_channel(self) -> None:
         """End stream command."""
+        try:
+            await self.async_send_command(
+                "device_agora_join_channel_with_position", enter_state=0
+            )
+        finally:
+            self.clear_stream_data()
+
+    def clear_stream_data(self) -> None:
+        """Discard cached stream and relay credentials."""
+        self._stream_data = None
+        self._stream_data_fetched_at = 0.0
+        self._agora_response = None
+        self._ice_servers = []
 
     async def set_scheduled_updates(self, enabled: bool) -> None:
         """Enable or disable scheduled polling updates for this device."""

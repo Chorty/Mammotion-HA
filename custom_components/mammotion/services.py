@@ -30,6 +30,14 @@ SERVICE_GET_MAP_DATA = "get_map_data"
 SERVICE_SVG_ADD = "svg_add"
 SERVICE_SVG_UPDATE = "svg_update"
 SERVICE_SVG_DELETE = "svg_delete"
+SERVICE_REFRESH_STREAM = "refresh_stream"
+SERVICE_START_VIDEO = "start_video"
+SERVICE_STOP_VIDEO = "stop_video"
+SERVICE_GET_TOKENS = "get_tokens"
+SERVICE_MOVE_FORWARD = "move_forward"
+SERVICE_MOVE_LEFT = "move_left"
+SERVICE_MOVE_RIGHT = "move_right"
+SERVICE_MOVE_BACKWARD = "move_backward"
 
 # --- Task / schedule CRUD services ---------------------------------------
 # Modify ops target a task button entity (entity_id).  Create / refresh
@@ -160,6 +168,21 @@ GEOJSON_SCHEMA = vol.Schema(
     {vol.Required(ATTR_ENTITY_ID): cv.entity_id}, extra=vol.ALLOW_EXTRA
 )
 
+CAMERA_SCHEMA = vol.Schema(
+    {vol.Required(ATTR_ENTITY_ID): cv.entity_id}, extra=vol.ALLOW_EXTRA
+)
+
+MOVEMENT_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+        vol.Optional("speed", default=0.4): vol.All(
+            vol.Coerce(float), vol.Range(min=0.1, max=1.0)
+        ),
+        vol.Optional("use_wifi", default=False): cv.boolean,
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
 _SVG_COMMON_FIELDS = {
     vol.Optional("svg_file_name", default="pattern.svg"): str,
     vol.Optional("scale", default=1.0): vol.Coerce(float),
@@ -252,6 +275,28 @@ def _get_mower_by_entity_id(
         if mower is not None:
             return mower
     return None
+
+
+def _get_camera_mower(hass: HomeAssistant, entity_id: str) -> MammotionMowerData | None:
+    """Resolve a Mammotion camera entity across all config entries."""
+    entity_entry = er.async_get(hass).async_get(entity_id)
+    if (
+        entity_entry is None
+        or entity_entry.domain != "camera"
+        or entity_entry.platform != DOMAIN
+    ):
+        return None
+    return _get_mower_by_entity_id(hass, entity_id)
+
+
+def _require_camera_mower(hass: HomeAssistant, entity_id: str) -> MammotionMowerData:
+    """Resolve a camera target or raise a translated service error."""
+    if mower := _get_camera_mower(hass, entity_id):
+        return mower
+    raise HomeAssistantError(
+        translation_domain=DOMAIN,
+        translation_key="camera_target_not_found",
+    )
 
 
 def _resolve_mower_task(
@@ -404,6 +449,93 @@ def _build_spino_plan(data: dict[str, Any], base: PoolPlan | None = None) -> Poo
 @callback
 def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
     """Register Mammotion services."""
+
+    async def handle_refresh_stream(call: ServiceCall) -> None:
+        mower = _require_camera_mower(hass, call.data[ATTR_ENTITY_ID])
+        (
+            stream_data,
+            agora_response,
+        ) = await mower.reporting_coordinator.async_check_stream_expiry(force=True)
+        if stream_data is None or agora_response is None:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="camera_temporarily_unavailable",
+            )
+
+    async def handle_start_video(call: ServiceCall) -> None:
+        mower = _require_camera_mower(hass, call.data[ATTR_ENTITY_ID])
+        try:
+            await mower.reporting_coordinator.join_webrtc_channel()
+        except HomeAssistantError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="camera_temporarily_unavailable",
+            ) from err
+
+    async def handle_stop_video(call: ServiceCall) -> None:
+        mower = _require_camera_mower(hass, call.data[ATTR_ENTITY_ID])
+        try:
+            await mower.reporting_coordinator.leave_webrtc_channel()
+        except HomeAssistantError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="camera_temporarily_unavailable",
+            ) from err
+
+    async def handle_get_tokens(call: ServiceCall) -> dict[str, Any]:
+        mower = _require_camera_mower(hass, call.data[ATTR_ENTITY_ID])
+        coordinator = mower.reporting_coordinator
+        cached = coordinator.get_stream_data()
+        if cached is None or cached.data is None:
+            stream_data, agora_response = await coordinator.async_check_stream_expiry(
+                force=True
+            )
+            if stream_data is None or agora_response is None:
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN,
+                    translation_key="camera_temporarily_unavailable",
+                )
+            return stream_data.to_dict()
+        return cached.data.to_dict()
+
+    async def handle_movement(call: ServiceCall, direction: str) -> None:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="mower_target_not_found",
+            )
+        method = getattr(mower.reporting_coordinator, direction)
+        await method(speed=call.data["speed"], use_wifi=call.data["use_wifi"])
+
+    hass.services.async_register(
+        DOMAIN, SERVICE_REFRESH_STREAM, handle_refresh_stream, schema=CAMERA_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_START_VIDEO, handle_start_video, schema=CAMERA_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_STOP_VIDEO, handle_stop_video, schema=CAMERA_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_TOKENS,
+        handle_get_tokens,
+        schema=CAMERA_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    for service_name, method_name in (
+        (SERVICE_MOVE_FORWARD, "async_move_forward"),
+        (SERVICE_MOVE_LEFT, "async_move_left"),
+        (SERVICE_MOVE_RIGHT, "async_move_right"),
+        (SERVICE_MOVE_BACKWARD, "async_move_back"),
+    ):
+        hass.services.async_register(
+            DOMAIN,
+            service_name,
+            lambda call, method_name=method_name: handle_movement(call, method_name),
+            schema=MOVEMENT_SCHEMA,
+        )
 
     async def handle_get_geojson(call: ServiceCall) -> dict[str, Any]:
         mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])

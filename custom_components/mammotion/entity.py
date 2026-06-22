@@ -256,7 +256,7 @@ class MammotionCameraBaseEntity(Camera, ABC):  # type: ignore[misc]
 
     _attr_has_entity_name = True
     _attr_name = None
-    _attr_is_streaming = True
+    _attr_is_streaming = False
     _attr_supported_features = CameraEntityFeature.STREAM
 
     def __init__(

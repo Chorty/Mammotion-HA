@@ -155,10 +155,9 @@ class AgoraResponse:
             detail = {**detail, **buffer.get("detail", {})}
             uid = buffer.get("uid", 0)
 
-            _log.info(
-                "Parsing response flag=%d, uid=%d, edges_count=%d",
+            _log.debug(
+                "Parsing Agora response flag=%d with %d edges",
                 flag,
-                uid,
                 len(edges_services),
             )
 
@@ -273,27 +272,13 @@ class AgoraResponse:
         )
 
         for addr in addresses_to_use:
-            _log.debug(
-                "Processing TURN address: ip=%s, port=%d, username=%s, cred_len=%s",
-                addr.ip,
-                addr.port,
-                addr.username,
-                len(addr.credentials) if addr.credentials else 0,
-            )
+            _log.debug("Processing TURN relay configuration")
 
             # VALIDATION: Check credentials are present before creating ICE servers
             if not addr.username:
-                _log.error(
-                    "CRITICAL: TURN address %s:%d has empty username! This will cause 401 errors.",
-                    addr.ip,
-                    addr.port,
-                )
+                _log.error("TURN relay has an empty username")
             if not addr.credentials:
-                _log.error(
-                    "CRITICAL: TURN address %s:%d has empty credentials! This will cause 401 errors.",
-                    addr.ip,
-                    addr.port,
-                )
+                _log.error("TURN relay has empty credentials")
 
             # Based on new_turn_mode (from agoraRTC_N.js:30764-30796)
             if new_turn_mode in [1, 4]:  # UDP
@@ -329,18 +314,7 @@ class AgoraResponse:
             len(addresses_to_use),
         )
 
-        # SUMMARY: Log all created ICE servers for validation
-        if ice_servers:
-            _log.info("ICE Server Summary:")
-            for i, server in enumerate(ice_servers):
-                _log.info(
-                    "  [%d] urls=%s, username=%s, cred_present=%s",
-                    i,
-                    server.urls,
-                    server.username,
-                    bool(server.credential),
-                )
-        else:
+        if not ice_servers:
             _log.error(
                 "WARNING: No ICE servers were created! This will prevent TURN connections."
             )
@@ -596,7 +570,7 @@ class AgoraAPIClient:
             uri=22,  # Choose server operation
         )
         _log = logging.getLogger(__name__)
-        _log.debug("Agora choose_server request payload: %s", request_payload)
+        _log.debug("Sending Agora server-selection request")
         # Make API call
         response = await self._make_api_call(request_payload, proxy_server=proxy_server)
 
@@ -664,7 +638,7 @@ class AgoraAPIClient:
         )
 
         _log = logging.getLogger(__name__)
-        _log.debug("Agora update_ticket request payload: %s", request_payload)
+        _log.debug("Sending Agora ticket-update request")
 
         # Make API call
         response = await self._make_api_call(request_payload, proxy_server=proxy_server)
@@ -744,7 +718,7 @@ class AgoraAPIClient:
         )
 
         _log = logging.getLogger(__name__)
-        _log.debug("Built detail field for request: %s", detail)
+        _log.debug("Built Agora request metadata")
         # Build buffer
         buffer = {
             "cname": channel_name,

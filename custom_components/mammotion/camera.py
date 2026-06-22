@@ -7,7 +7,6 @@ import collections
 import functools
 import json
 import logging
-import secrets
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -73,40 +72,9 @@ async def async_setup_entry(
     """Set up the Mammotion camera entities."""
     mowers = entry.runtime_data.mowers
     entities = []
-    ice_servers = []
-
-    non_luba1_mower = next(
-        (
-            mower
-            for mower in mowers
-            if not DeviceType.is_luba1(mower.device.device_name)
-        ),
-        None,
-    )
-
-    if non_luba1_mower is None:
-        return
-
-    (
-        stream_data,
-        agora_response,
-    ) = await non_luba1_mower.reporting_coordinator.async_check_stream_expiry()
-
-    if agora_response is not None:
-        ice_servers = [
-            RTCIceServer(
-                urls=ice_server.urls,
-                username=ice_server.username,
-                credential=ice_server.credential,
-            )
-            for ice_server in agora_response.get_ice_servers(use_all_turn_servers=False)
-        ]
 
     for mower in mowers:
         if not DeviceType.is_luba1(mower.device.device_name):
-            _LOGGER.debug("Config camera for %s", mower.device.device_name)
-            mower.reporting_coordinator._ice_servers = ice_servers
-
             for entity_description in CAMERAS:
                 entities.append(
                     MammotionWebRTCCamera(
@@ -114,7 +82,6 @@ async def async_setup_entry(
                     )
                 )
     async_add_entities(entities)
-    await async_setup_platform_services(hass, entry)
 
 
 class MammotionWebRTCCamera(MammotionCameraBaseEntity):
@@ -146,9 +113,6 @@ class MammotionWebRTCCamera(MammotionCameraBaseEntity):
         self._attr_translation_key = entity_description.key
         self._stream_data: StreamSubscriptionResponse | None = None
         self._attr_model = coordinator.device.device_name
-        self.access_tokens = [secrets.token_hex(16)]
-        # Get ICE servers from coordinator (populated in async_setup_entry)
-        self.ice_servers = getattr(coordinator, "_ice_servers", [])
         async_register_ice_servers(hass, self.get_ice_servers)
 
     async def async_camera_image(
@@ -181,26 +145,20 @@ class MammotionWebRTCCamera(MammotionCameraBaseEntity):
             return
 
         async with self._join_lock:
+            self._set_streaming(False)
             (
                 stream_data,
                 agora_response,
             ) = await self.coordinator.async_check_stream_expiry(force=True)
-            # Reset candidates list for new session
-            await self.coordinator.async_send_command(
-                "send_todev_ble_sync", sync_type=3
-            )
             self._agora_handler.candidates = []
-            _LOGGER.info("Handling WebRTC offer for session %s", session_id)
-            # _LOGGER.info("Raw OFFER SDP %s", offer_sdp)
 
             try:
-                # Get stream data (appid, channelName, token, uid)
-                if not stream_data:
-                    _LOGGER.error("No stream data available for WebRTC offer")
+                if stream_data is None or agora_response is None:
+                    _LOGGER.warning("Camera stream is temporarily unavailable")
                     send_message(
                         WebRTCError(
-                            "500",
-                            "No stream data available for WebRTC offer",
+                            "503",
+                            "Camera stream is temporarily unavailable",
                         )
                     )
                     return
@@ -214,24 +172,25 @@ class MammotionWebRTCCamera(MammotionCameraBaseEntity):
 
                 if answer_sdp:
                     send_message(WebRTCAnswer(answer_sdp))
+                    self._set_streaming(True)
                     _LOGGER.info("WebRTC negotiation completed successfully")
                 else:
+                    self.coordinator.clear_stream_data()
                     send_message(WebRTCError("500", "WebRTC negotiation failed"))
 
             except (
                 websockets.exceptions.WebSocketException,
                 json.JSONDecodeError,
             ) as ex:
-                _LOGGER.error("Error handling WebRTC offer: %s", ex)
-                send_message(WebRTCError("500", f"Error handling WebRTC offer: {ex}"))
+                self.coordinator.clear_stream_data()
+                _LOGGER.error("WebRTC offer failed: %s", type(ex).__name__)
+                send_message(WebRTCError("500", "WebRTC negotiation failed"))
 
     async def async_on_webrtc_candidate(
         self, session_id: str, candidate: RTCIceCandidateInit
     ) -> None:
         """Collect WebRTC candidates for inclusion in join message."""
-        _LOGGER.info(
-            "Received WebRTC candidate for session %s: %s", session_id, candidate
-        )
+        _LOGGER.debug("Received WebRTC candidate")
 
         # Collect candidates - they'll be included in the join message
         self._agora_handler.candidates.append(candidate)
@@ -240,14 +199,11 @@ class MammotionWebRTCCamera(MammotionCameraBaseEntity):
     async def async_close_webrtc_session(self, session_id: str) -> None:
         """Close WebRTC session."""
         await self._agora_handler.disconnect()
-        # Tear the device encoder down cleanly (mirrors the app's vi_switch=0 on
-        # close). Harmless / no-op on new firmware that stops on its own.
         try:
-            await self.coordinator.async_send_command(
-                "device_agora_join_channel_with_position", enter_state=0
-            )
-        except Exception as ex:  # noqa: BLE001
-            _LOGGER.debug("Leave-channel command failed on close: %s", ex)
+            await self.coordinator.leave_webrtc_channel()
+        except Exception as ex:  # noqa: BLE001 - closing is best effort
+            _LOGGER.debug("Camera close failed: %s", type(ex).__name__)
+        self._set_streaming(False)
 
     async def _fpv_keepalive(self) -> bool:
         """Re-arm the mower's video encoder on 4G; return False on WiFi.
@@ -269,10 +225,11 @@ class MammotionWebRTCCamera(MammotionCameraBaseEntity):
         its debounce window: nudge the device with a BLE sync, then refresh the
         stream subscription so it rejoins the channel.
         """
-        await self.coordinator.async_send_command("send_todev_ble_sync", sync_type=3)
-        await self.coordinator.manager.get_stream_subscription(
-            self.coordinator.device.device_name, self.coordinator.device.iot_id
+        stream_data, agora_response = await self.coordinator.async_check_stream_expiry(
+            force=True
         )
+        if stream_data is None or agora_response is None:
+            self._set_streaming(False)
 
     async def _perform_webrtc_negotiation(
         self,
@@ -294,10 +251,6 @@ class MammotionWebRTCCamera(MammotionCameraBaseEntity):
             Answer SDP if successful, None otherwise
 
         """
-        _LOGGER.debug("Starting WebRTC negotiation with Agora data: %s", agora_data)
-        # _LOGGER.debug("Starting WebRTC negotiation with offer_sdp data: %s", offer_sdp)
-
-        # Use the new AgoraWebSocketHandler for negotiation
         try:
             answer_sdp = await self._agora_handler.connect_and_join(
                 agora_data, offer_sdp, session_id, agora_response
@@ -319,7 +272,13 @@ class MammotionWebRTCCamera(MammotionCameraBaseEntity):
 
     def get_ice_servers(self) -> list[RTCIceServer]:
         """Return the ICE servers from Agora API."""
-        return self.ice_servers
+        return list(getattr(self.coordinator, "_ice_servers", []) or [])
+
+    def _set_streaming(self, streaming: bool) -> None:
+        """Update the camera's actual streaming state."""
+        self._attr_is_streaming = streaming
+        if self.hass is not None:
+            self.async_write_ha_state()
 
 
 # Global
@@ -347,7 +306,7 @@ async def async_setup_platform_services(
             stream_data = await mower.api.get_stream_subscription(
                 mower.device.device_name, mower.device.iot_id
             )
-            _LOGGER.debug("Refresh stream data : %s", stream_data)
+            _LOGGER.debug("Camera stream refresh completed")
 
             mower.reporting_coordinator.set_stream_data(stream_data)
             mower.reporting_coordinator.async_update_listeners()

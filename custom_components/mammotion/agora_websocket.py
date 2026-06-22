@@ -203,7 +203,7 @@ class AgoraWebSocketHandler:
             await self.disconnect()
 
         _LOGGER.debug("Starting Agora WebSocket connection for session %s", session_id)
-        _LOGGER.debug("Agora data: %s", agora_data)
+        _LOGGER.debug("Starting Agora session negotiation")
 
         # Fresh UUIDs for this session's answer SDP msid attributes
         self._msid_stream_id = 1
@@ -333,7 +333,9 @@ class AgoraWebSocketHandler:
                 async for message in websocket:
                     try:
                         response = json.loads(message)
-                        _LOGGER.debug("Received Agora message: %s", response)
+                        _LOGGER.debug(
+                            "Received Agora message type %s", response.get("_type")
+                        )
 
                         message_type = response.get("_type")
                         message_id = response.get("_id")
@@ -557,14 +559,13 @@ class AgoraWebSocketHandler:
         self._vid = message.get("vid", 0)
         self._channel_name = message.get("cname", "")
         if self._rejoin_token:
-            _LOGGER.debug("Stored rejoin_token: %s...", self._rejoin_token[:20])
+            _LOGGER.debug("Stored Agora rejoin credential")
 
         if not ortc:
             _LOGGER.error("No ORTC parameters in join success response")
-            _LOGGER.debug("Full response message: %s", message)
             return None
 
-        _LOGGER.debug("ORTC parameters: %s", ortc)
+        _LOGGER.debug("Received Agora ORTC parameters")
 
         # Inject fingerprint from Agora Response (Auth) to ensure we have the correct server certificates.
         # This fixes the "bytes sent but not received" issue where DTLS fails due to missing/mismatched fingerprints.
@@ -1045,7 +1046,7 @@ class AgoraWebSocketHandler:
 
             parts = cand_str.split()
             if len(parts) < 8:
-                _LOGGER.warning("Invalid candidate format: %s", candidate.candidate)
+                _LOGGER.warning("Ignoring an invalid ICE candidate")
                 continue
 
             try:
@@ -1129,7 +1130,7 @@ class AgoraWebSocketHandler:
         try:
             # Parse SDP using sdp_transform
             parsed_sdp = sdp_parse(offer_sdp)
-            _LOGGER.debug("Parsed SDP structure: %s", parsed_sdp)
+            _LOGGER.debug("Parsed WebRTC offer SDP")
 
             # Extract fingerprint
             fingerprint = ""
@@ -1359,8 +1360,7 @@ class AgoraWebSocketHandler:
                 or rtp_capabilities
             )
 
-            _LOGGER.debug("ICE params: %s", ice_params)
-            _LOGGER.debug("DTLS params: %s", dtls_params)
+            _LOGGER.debug("Received ICE and DTLS parameters")
             # Promoted to INFO: this single line is the ground truth for which
             # codec(s)/PTs Agora advertises for the publisher. If video fails to
             # decode in the browser, comparing this to the browser's offered
@@ -1390,16 +1390,14 @@ class AgoraWebSocketHandler:
             ice_pwd = ice_params.get("icePwd", "") or ""
 
             _LOGGER.debug(
-                "Answer SDP will use ICE ufrag: %s, "
-                "and will include %d candidates from Agora response",
-                ice_ufrag,
+                "Answer SDP will include %d Agora candidates",
                 len(ortc_candidates),
             )
 
             # fallback credentials
             if not ice_ufrag:
                 ice_ufrag = secrets.token_hex(4)
-                _LOGGER.warning("Using fallback ICE ufrag: %s", ice_ufrag)
+                _LOGGER.warning("Using fallback ICE username fragment")
             if not ice_pwd:
                 ice_pwd = secrets.token_hex(16)
                 _LOGGER.warning("Using fallback ICE pwd")
@@ -1432,7 +1430,7 @@ class AgoraWebSocketHandler:
                 if c.get("generation") is not None:
                     cand_line += f" generation {c.get('generation')}"
                 candidates_by_mid["*"].append(cand_line)
-                _LOGGER.debug("Built candidate line: %s", cand_line)
+                _LOGGER.debug("Built ICE candidate")
 
             # Extract codec lists and extensions from ORTC
             video_codecs = rtp_caps.get("videoCodecs", []) or []
@@ -1826,10 +1824,8 @@ class AgoraWebSocketHandler:
 
                 # Read response as JSON
                 response_text = await response.text()
-                _LOGGER.debug("Agora API raw response: %s", response_text)
-
                 response_data = json.loads(response_text)
-                _LOGGER.debug("Agora API parsed response: %s", response_data)
+                _LOGGER.debug("Parsed Agora edge-service response")
 
                 # Extract edge services from response
                 response_bodies = response_data.get("response_body", [])

@@ -983,6 +983,15 @@
     }
   },
   "exceptions": {
+    "camera_target_not_found": {
+      "message": "Select a Mammotion camera entity."
+    },
+    "camera_temporarily_unavailable": {
+      "message": "The mower camera is temporarily unavailable. Check the mower network connection and try again."
+    },
+    "mower_target_not_found": {
+      "message": "Select an entity belonging to a Mammotion mower."
+    },
     "task_not_found": {
       "message": "Task {plan_id} could not be found on the device. Refresh the schedule and try again."
     },
