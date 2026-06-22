@@ -202,7 +202,7 @@ class AgoraWebSocketHandler:
             )
             await self.disconnect()
 
-        _LOGGER.debug("Starting Agora WebSocket connection for session %s", session_id)
+        _LOGGER.debug("Starting Agora WebSocket connection")
         _LOGGER.debug("Starting Agora session negotiation")
 
         # Fresh UUIDs for this session's answer SDP msid attributes
@@ -247,7 +247,7 @@ class AgoraWebSocketHandler:
                     )
                     self._websocket = websocket
                     self._connection_state = "CONNECTED"
-                    _LOGGER.debug("Connected to Agora WebSocket: %s", ws_url)
+                    _LOGGER.debug("Connected to Agora WebSocket")
 
                     # Store SDP info for later use in trickle ICE
                     self._sdp_info = ortc_info
@@ -262,7 +262,7 @@ class AgoraWebSocketHandler:
                         session_id,
                     )
                     await websocket.send(json.dumps(join_message))
-                    _LOGGER.debug("Sent join message to Agora %s", join_message)
+                    _LOGGER.debug("Sent Agora join message")
 
                     # Wait for join response and get answer SDP
                     answer_sdp = await self._wait_for_join_response(
@@ -291,9 +291,7 @@ class AgoraWebSocketHandler:
                     self._websocket = None
 
             except TimeoutError:
-                _LOGGER.warning(
-                    "Connection timeout for edge address %s, trying next", ws_url
-                )
+                _LOGGER.warning("Agora edge connection timed out; trying next")
                 if self._websocket:
                     try:
                         await self._websocket.close()
@@ -301,8 +299,8 @@ class AgoraWebSocketHandler:
                         pass
                     self._websocket = None
                 continue
-            except (WebSocketException, json.JSONDecodeError) as ex:
-                _LOGGER.warning("WebSocket connection failed for %s: %s", ws_url, ex)
+            except (WebSocketException, json.JSONDecodeError):
+                _LOGGER.warning("Agora WebSocket connection failed; trying next")
                 if self._websocket:
                     try:
                         await self._websocket.close()
@@ -361,13 +359,13 @@ class AgoraWebSocketHandler:
                                 response, sdp_info, agora_response
                             )
 
-                    except json.JSONDecodeError as ex:
-                        _LOGGER.error("Failed to parse Agora message: %s", ex)
+                    except json.JSONDecodeError:
+                        _LOGGER.error("Failed to parse Agora message")
 
         except TimeoutError:
             _LOGGER.error("Timeout waiting for join response")
-        except WebSocketException as ex:
-            _LOGGER.error("WebSocket communication error during join: %s", ex)
+        except WebSocketException:
+            _LOGGER.error("WebSocket communication error during join")
             self._connection_state = "DISCONNECTED"
 
         # Fallback: generate basic SDP if no proper response was received
@@ -387,7 +385,7 @@ class AgoraWebSocketHandler:
 
         Handles: on_add_video_stream, subscribe, token refresh, p2p_lost, etc.
         """
-        _LOGGER.debug("Started background message loop for session %s", session_id)
+        _LOGGER.debug("Started background Agora message loop")
         try:
             async for message in websocket:
                 try:
@@ -405,13 +403,7 @@ class AgoraWebSocketHandler:
                         )
                         continue
 
-                    # Log all messages (non-ping)
-                    _LOGGER.debug(
-                        "[msg_loop] type=%s result=%s msg=%s",
-                        message_type,
-                        message_result,
-                        response,
-                    )
+                    _LOGGER.debug("Agora message type=%s", message_type)
 
                     # Dispatch to handlers
                     if message_type in self._message_handlers:
@@ -428,13 +420,13 @@ class AgoraWebSocketHandler:
                         # regardless of how recently we last tried.
                         self._last_renew_token_at = 0.0
 
-                except json.JSONDecodeError as ex:
-                    _LOGGER.error("[msg_loop] Failed to parse message: %s", ex)
+                except json.JSONDecodeError:
+                    _LOGGER.error("Agora message loop received invalid JSON")
 
         except asyncio.CancelledError:
             _LOGGER.debug("Message loop cancelled")
-        except WebSocketException as ex:
-            _LOGGER.warning("WebSocket closed in message loop: %s", ex)
+        except WebSocketException:
+            _LOGGER.warning("Agora WebSocket message loop closed")
         finally:
             self._connection_state = "DISCONNECTED"
             _LOGGER.debug("Message loop ended")
@@ -455,8 +447,8 @@ class AgoraWebSocketHandler:
                             "_type": "ping",
                         }
                         await self._websocket.send(json.dumps(ping_msg))
-                    except (WebSocketException, ConnectionError) as ex:
-                        _LOGGER.warning("Ping failed: %s", ex)
+                    except (WebSocketException, ConnectionError):
+                        _LOGGER.warning("Agora ping failed")
                         break
         except asyncio.CancelledError:
             _LOGGER.debug("Ping loop cancelled")
@@ -532,8 +524,8 @@ class AgoraWebSocketHandler:
             }
             await self._websocket.send(json.dumps(renew_msg))
             _LOGGER.debug("Token will expire soon, sent renew_token")
-        except (WebSocketException, ConnectionError) as ex:
-            _LOGGER.error("Failed to send renew_token: %s", ex)
+        except (WebSocketException, ConnectionError):
+            _LOGGER.error("Failed to renew Agora credential")
             # Reset debounce so the next event can retry rather than waiting
             # 30 s after a send that never actually went out.
             self._last_renew_token_at = 0.0
@@ -639,13 +631,9 @@ class AgoraWebSocketHandler:
         message = response.get("_message", {})
         uid = message.get("uid")
         proxy = message.get("proxy", False)
-        _LOGGER.debug("P2P connection established (proxy=%s, uid=%s)", proxy, uid)
+        _LOGGER.debug("P2P connection established (proxy=%s)", proxy)
         if uid and self._uid and uid != self._uid:
-            _LOGGER.warning(
-                "on_p2p_ok uid mismatch: expected %s, got %s",
-                self._uid,
-                uid,
-            )
+            _LOGGER.warning("Agora peer identifier mismatch")
 
     async def _handle_p2p_lost(self, response: dict[str, Any]) -> None:
         """Handle P2P connection lost message.
@@ -655,10 +643,8 @@ class AgoraWebSocketHandler:
         loop will exit on its own once the underlying socket is closed.
         """
         error_code = response.get("error_code")
-        error_str = response.get("error_str", "Unknown error")
         _LOGGER.warning(
-            "P2P connection lost: %s (code: %s) — scheduling WebSocket restart",
-            error_str,
+            "P2P connection lost (code: %s); scheduling WebSocket restart",
             error_code,
         )
 
@@ -667,14 +653,12 @@ class AgoraWebSocketHandler:
 
     async def _handle_error(self, response: dict[str, Any]) -> None:
         """Handle error message."""
-        message = response.get("_message", {})
-        error = message.get("error", "Unknown error")
-        _LOGGER.error("Agora WebSocket error: %s", error)
+        _LOGGER.error("Agora WebSocket reported an error")
 
     async def _handle_rtp_capability_change(self, response: dict[str, Any]) -> None:
         """Handle RTP capability change notification."""
         message = response.get("_message", {})
-        _LOGGER.debug("RTP capabilities changed: %s", message)
+        _LOGGER.debug("RTP capabilities changed")
         # Store capabilities if needed
         video_codecs = message.get("video_codec", [])
         extmap_allow_mixed = message.get("extmap_allow_mixed", False)
@@ -697,16 +681,13 @@ class AgoraWebSocketHandler:
         uid = message.get("uid")
         if uid:
             self._online_users.add(uid)
-            _LOGGER.debug("User %s came online", uid)
+            _LOGGER.debug("Agora peer came online")
 
             # Check if we already have a pending video stream for this user
             if uid in self._video_streams and self._websocket:
                 stream_info = self._video_streams[uid]
                 if not stream_info.get("subscribed"):
-                    _LOGGER.debug(
-                        "User %s is online and has pending video stream, subscribing now",
-                        uid,
-                    )
+                    _LOGGER.debug("Subscribing to pending Agora video stream")
                     stream_info["subscribed"] = True
                     await self._send_subscribe(
                         stream_id=uid,
@@ -784,9 +765,8 @@ class AgoraWebSocketHandler:
         """
         message = response.get("_message", {})
         uid = message.get("uid")
-        reason = message.get("reason", "unknown")
         if uid:
-            _LOGGER.debug("User %s went offline (reason: %s)", uid, reason)
+            _LOGGER.debug("Agora peer went offline")
             self._online_users.discard(uid)
 
             # Unsubscribe if we had an active subscription
@@ -882,7 +862,7 @@ class AgoraWebSocketHandler:
             },
         }
 
-        _LOGGER.debug("Sending unsubscribe message: %s", message)
+        _LOGGER.debug("Sending Agora unsubscribe message")
         await self._websocket.send(json.dumps(message))
 
     def _create_join_message(
@@ -973,7 +953,7 @@ class AgoraWebSocketHandler:
             },
         }
 
-        _LOGGER.debug("Sending set_client_role message: %s", message)
+        _LOGGER.debug("Sending Agora client-role message")
         await self._websocket.send(json.dumps(message))
 
     async def _send_subscribe(
@@ -1023,7 +1003,7 @@ class AgoraWebSocketHandler:
             },
         }
 
-        _LOGGER.debug("Sending subscribe message: %s", message)
+        _LOGGER.debug("Sending Agora subscribe message")
         await self._websocket.send(json.dumps(message))
 
     def _convert_candidates_to_ortc(self) -> list[dict[str, Any]]:
