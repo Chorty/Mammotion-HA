@@ -135,6 +135,24 @@
         opacity: 0.5;
         cursor: not-allowed;
       }
+      .btn-audio {
+        background: #7c3aed;
+        color: white;
+        flex: 1;
+      }
+      .btn-audio:hover {
+        filter: brightness(1.15);
+      }
+      .btn-audio:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .hint {
+        color: var(--text-dim);
+        font-size: 0.72rem;
+        line-height: 1.4;
+        margin: 4px 0 10px;
+      }
 
       /* Status */
       .status-grid {
@@ -319,6 +337,50 @@
           </button>
         </div>
 
+        <h2>Outbound Audio Probe</h2>
+        <p class="hint">
+          SDK mode only. Start with the quiet tone. A successful Agora publish
+          does not prove the mower consumed the audio; confirm at the mower.
+        </p>
+        <div class="field">
+          <label>Test tone frequency (Hz)</label>
+          <input id="toneFrequency" type="number" min="100" max="4000" value="880" />
+        </div>
+        <div class="field">
+          <label>Duration (seconds, maximum 5)</label>
+          <input id="toneDuration" type="number" min="0.1" max="5" step="0.1" value="1" />
+        </div>
+        <div class="field">
+          <label>Audio file (WAV/MP3/Opus; useful for generated TTS)</label>
+          <input id="audioFile" type="file" accept="audio/*" />
+        </div>
+        <div class="btn-row">
+          <button
+            class="btn-audio"
+            id="btnPublishTone"
+            onclick="publishTestTone()"
+            disabled
+          >
+            Publish Quiet Tone
+          </button>
+          <button
+            class="btn-audio"
+            id="btnPublishFile"
+            onclick="publishAudioFile()"
+            disabled
+          >
+            Publish Audio File
+          </button>
+          <button
+            class="btn-disconnect"
+            id="btnStopAudio"
+            onclick="stopOutboundAudio()"
+            disabled
+          >
+            Stop Audio
+          </button>
+        </div>
+
         <h2>Connection State</h2>
         <div class="status-grid">
           <div class="status-item">
@@ -404,6 +466,11 @@
       let joinVid = null; // VID from join response
       let agoraClient = null; // Agora SDK client (for SDK mode)
       let sdkMode = false; // Whether using SDK mode
+      let sdkAudioTrack = null; // Agora custom track used for the uplink probe
+      let outboundAudioContext = null;
+      let outboundAudioSource = null;
+      let outboundAudioStopTimer = null;
+      let automatedProbeStarted = false;
       let onlineUsers = new Set(); // Track online user UIDs
       let pendingStreams = {}; // Track video streams pending subscription { uid: { ssrcId, rtxSsrcId, cname, subscribed } }
 
@@ -425,6 +492,209 @@
         const el = document.getElementById(id);
         el.textContent = val;
         el.className = "value " + val.toLowerCase().replace(/[^a-z]/g, "");
+      }
+
+      function setAudioProbeReady(ready) {
+        document.getElementById("btnPublishTone").disabled = !ready;
+        document.getElementById("btnPublishFile").disabled = !ready;
+      }
+
+      function setAudioProbePlaying(playing) {
+        setAudioProbeReady(!playing && sdkMode && !!agoraClient);
+        document.getElementById("btnStopAudio").disabled = !playing;
+      }
+
+      async function createAndPublishAudioSource(buildSource) {
+        if (!sdkMode || !agoraClient || !window.AgoraRTC) {
+          throw new Error("Connect with SDK mode before publishing audio");
+        }
+        if (sdkAudioTrack) {
+          throw new Error("An outbound audio probe is already running");
+        }
+
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        const context = new AudioContextClass({ sampleRate: 48000 });
+        const destination = context.createMediaStreamDestination();
+        const gain = context.createGain();
+        // Keep the probe deliberately quiet. File audio is also capped here.
+        gain.gain.value = 0.05;
+        gain.connect(destination);
+
+        const sourceConfig = await buildSource(context, gain);
+        const source = sourceConfig.source;
+        const mediaStreamTrack = destination.stream.getAudioTracks()[0];
+        if (!mediaStreamTrack) {
+          await context.close();
+          throw new Error("Browser did not create an outbound audio track");
+        }
+
+        const customTrack = window.AgoraRTC.createCustomAudioTrack({
+          mediaStreamTrack,
+        });
+
+        outboundAudioContext = context;
+        outboundAudioSource = source;
+        sdkAudioTrack = customTrack;
+        setAudioProbePlaying(true);
+
+        try {
+          await context.resume();
+          await agoraClient.publish(customTrack);
+          log("AUDIO", "Outbound Opus track published to Agora", "log-ws");
+          source.start();
+          if (sourceConfig.stopAfterSeconds) {
+            source.stop(context.currentTime + sourceConfig.stopAfterSeconds);
+            outboundAudioStopTimer = window.setTimeout(
+              () => void stopOutboundAudio(),
+              sourceConfig.stopAfterSeconds * 1000 + 250,
+            );
+          }
+        } catch (err) {
+          await stopOutboundAudio();
+          throw err;
+        }
+      }
+
+      async function publishTestTone() {
+        const frequency = Math.min(
+          4000,
+          Math.max(100, Number(document.getElementById("toneFrequency").value) || 880),
+        );
+        const duration = Math.min(
+          5,
+          Math.max(0.1, Number(document.getElementById("toneDuration").value) || 1),
+        );
+
+        try {
+          await createAndPublishAudioSource(async (context, output) => {
+            const oscillator = context.createOscillator();
+            oscillator.type = "sine";
+            oscillator.frequency.value = frequency;
+            oscillator.connect(output);
+            oscillator.onended = () => void stopOutboundAudio();
+            return { source: oscillator, stopAfterSeconds: duration };
+          });
+          log(
+            "AUDIO",
+            `Publishing ${frequency} Hz tone for ${duration.toFixed(1)} s at 5% gain`,
+            "log-info",
+          );
+        } catch (err) {
+          log("AUDIO", `Tone publish failed: ${err.message}`, "log-err");
+        }
+      }
+
+      function getProbeParams() {
+        const params = new URLSearchParams(window.location.search);
+        if (window.location.hash.length > 1) {
+          const hashParams = new URLSearchParams(window.location.hash.slice(1));
+          hashParams.forEach((value, key) => params.set(key, value));
+        }
+        return params;
+      }
+
+      function applyProbeParams() {
+        const params = getProbeParams();
+        const mappings = [
+          ["appId", ["appId", "appid", "app_id"]],
+          ["channelName", ["channelName", "channel", "channel_name"]],
+          ["token", ["token"]],
+          ["uid", ["uid"]],
+          ["toneFrequency", ["toneFrequency", "frequency", "freq"]],
+          ["toneDuration", ["toneDuration", "duration", "seconds"]],
+        ];
+
+        for (const [fieldId, keys] of mappings) {
+          const value = keys.map((key) => params.get(key)).find(Boolean);
+          if (value) document.getElementById(fieldId).value = value;
+        }
+
+        return params;
+      }
+
+      async function startAutomatedAudioProbe() {
+        if (automatedProbeStarted) return;
+        automatedProbeStarted = true;
+
+        log(
+          "AUTO",
+          "Starting automated SDK connection and quiet tone publish",
+          "log-info",
+        );
+        await startConnectSdk();
+
+        if (!sdkMode || !agoraClient) {
+          log("AUTO", "SDK connection did not complete; skipping tone", "log-err");
+          return;
+        }
+
+        await publishTestTone();
+      }
+
+      async function publishAudioFile() {
+        const input = document.getElementById("audioFile");
+        const file = input.files && input.files[0];
+        if (!file) {
+          log("AUDIO", "Select an audio file first", "log-err");
+          return;
+        }
+
+        try {
+          await createAndPublishAudioSource(async (context, output) => {
+            const audioBuffer = await context.decodeAudioData(await file.arrayBuffer());
+            const source = context.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(output);
+            source.onended = () => void stopOutboundAudio();
+            return { source };
+          });
+          log(
+            "AUDIO",
+            `Publishing ${file.name} at 5% gain`,
+            "log-info",
+          );
+        } catch (err) {
+          log("AUDIO", `File publish failed: ${err.message}`, "log-err");
+        }
+      }
+
+      async function stopOutboundAudio() {
+        if (outboundAudioStopTimer) {
+          window.clearTimeout(outboundAudioStopTimer);
+          outboundAudioStopTimer = null;
+        }
+
+        const track = sdkAudioTrack;
+        sdkAudioTrack = null;
+        if (track && agoraClient) {
+          try {
+            await agoraClient.unpublish(track);
+          } catch (err) {
+            log("AUDIO", `Unpublish warning: ${err.message}`, "log-err");
+          }
+        }
+        if (track) track.close();
+
+        const source = outboundAudioSource;
+        outboundAudioSource = null;
+        if (source) {
+          source.onended = null;
+          try {
+            source.stop();
+          } catch (err) {
+            // The source may already have ended.
+          }
+          try {
+            source.disconnect();
+          } catch (err) {}
+        }
+
+        const context = outboundAudioContext;
+        outboundAudioContext = null;
+        if (context && context.state !== "closed") await context.close();
+
+        setAudioProbePlaying(false);
+        if (track) log("AUDIO", "Outbound audio stopped", "log-info");
       }
 
       // ---- Crypto: derive_password (SHA-256 of uid string) ----
@@ -2080,22 +2350,25 @@
           );
           log("SDK", `Joined! Assigned UID: ${assignedUid}`, "log-ws");
           setStatus("stConn", "CONNECTED");
+          setAudioProbeReady(true);
         } catch (err) {
           log("SDK", `Connection failed: ${err.message}`, "log-err");
           console.error(err);
           sdkMode = false;
+          setAudioProbeReady(false);
           document.getElementById("btnConnect").disabled = false;
           document.getElementById("btnConnectSdk").disabled = false;
           document.getElementById("btnDisconnect").disabled = true;
         }
       }
 
-      function doDisconnect() {
+      async function doDisconnect() {
         log("INFO", "Disconnecting...", "log-info");
 
         // SDK mode cleanup
         if (sdkMode && agoraClient) {
-          agoraClient.leave().catch((e) => console.warn("SDK leave error:", e));
+          await stopOutboundAudio();
+          await agoraClient.leave().catch((e) => console.warn("SDK leave error:", e));
           agoraClient = null;
           sdkMode = false;
           const container = document.getElementById("sdkVideoContainer");
@@ -2151,6 +2424,8 @@
         document.getElementById("btnConnect").disabled = false;
         document.getElementById("btnConnectSdk").disabled = false;
         document.getElementById("btnDisconnect").disabled = true;
+        setAudioProbeReady(false);
+        document.getElementById("btnStopAudio").disabled = true;
 
         log("INFO", "Disconnected", "log-info");
       }
@@ -2161,6 +2436,15 @@
           const saved = localStorage.getItem("agora_" + id);
           if (saved) document.getElementById(id).value = saved;
         });
+
+        const params = applyProbeParams();
+        if (["1", "true", "yes"].includes((params.get("auto") || "").toLowerCase())) {
+          window.setTimeout(() => {
+            startAutomatedAudioProbe().catch((err) => {
+              log("AUTO", `Automated probe failed: ${err.message}`, "log-err");
+            });
+          }, 250);
+        }
       });
       window.addEventListener("beforeunload", () => {
         ["appId", "channelName", "token", "uid"].forEach((id) => {
