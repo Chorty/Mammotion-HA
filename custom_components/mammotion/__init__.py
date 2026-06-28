@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from aiohttp import ClientConnectorError
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import (
     BluetoothCallbackMatcher,
@@ -297,10 +298,14 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     """Set up the Mammotion integration."""
     apply_pymammotion_compat_patches()
     async_setup_services(hass)
-    hass.http.async_register_static_path(
-        "/mammotion",
-        str(WWW_DIR),
-        cache_headers=True,
+    await hass.http.async_register_static_paths(
+        [
+            StaticPathConfig(
+                "/mammotion",
+                str(WWW_DIR),
+                cache_headers=True,
+            )
+        ]
     )
     return True
 
