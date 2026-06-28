@@ -32,6 +32,9 @@
       },
       "clear_all_mapdata": {
         "default": "mdi:map-marker-remove"
+      },
+      "camera_wiper": {
+        "default": "mdi:wiper"
       }
     },
     "camera": {
@@ -63,7 +66,7 @@
       "l2_satellites": {
         "default": "mdi:satellite-variant"
       },
-      "position_mode": {
+      "positioning_mode": {
         "default": "mdi:map-marker"
       },
       "connect_type": {
@@ -77,6 +80,12 @@
       },
       "work_area": {
         "default": "mdi:identifier"
+      },
+      "map_sync_status": {
+        "default": "mdi:map-check"
+      },
+      "mqtt_status": {
+        "default": "mdi:cloud-check-variant"
       },
       "activity_mode": {
         "default": "mdi:information-outline"
@@ -134,9 +143,21 @@
           "direct": "mdi:selection-ellipse-arrow-inside",
           "follow_perimeter": "mdi:select-arrow-down"
         }
+      },
+      "voice_language": {
+        "default": "mdi:translate"
+      },
+      "voice_gender": {
+        "default": "mdi:account-voice"
       }
     },
     "number": {
+      "prompt_volume": {
+        "default": "mdi:volume-high"
+      },
+      "voice_volume": {
+        "default": "mdi:volume-medium"
+      },
       "start_progress": {
         "default": "mdi:progress-helper"
       },
@@ -194,6 +215,20 @@
       },
       "schedule_updates": {
         "default": "mdi:update"
+      },
+      "voice_on_off": {
+        "default": "mdi:account-voice"
+      },
+      "device_wifi_enabled": {
+        "default": "mdi:wifi"
+      },
+      "device_4g_enabled": {
+        "default": "mdi:signal-cellular-3"
+      }
+    },
+    "update": {
+      "update": {
+        "default": "mdi:cellphone-arrow-down"
       }
     }
   }

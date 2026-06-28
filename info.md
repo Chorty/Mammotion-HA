@@ -1,60 +1,9 @@
-# Mammotion - Home Assistant Integration [![Discord](https://img.shields.io/discord/1247286396297678879)](https://discord.gg/vpZdWhJX8x)
+# Mammotion – Home Assistant Integration
 
-💬 [Join us on Discord](https://discord.gg/vpZdWhJX8x)
+Control and monitor supported Mammotion Luba and Yuka robot mowers through Wi-Fi/cloud and Bluetooth.
 
-[Support this project on Ko-fi!](https://ko-fi.com/DenimJackRabbit)
+The canonical feature list, roadmap, prerequisites, connection modes, limitations, troubleshooting instructions, and privacy details are maintained in the [README](https://github.com/mikey0000/Mammotion-HA#readme).
 
-This integration allows you to control and monitor your Mammotion Luba, Luba 2 & Yuka robot mowers using Home Assistant.
+Key capabilities include mower control and status, area-based mowing configuration, existing scheduled-task execution, map rendering, camera support on compatible models, and experimental firmware installation.
 
-⚠️ **Please note:** This integration is still a work in progress. You may encounter unfinished features or bugs. If you come across any issues, please open an issue on the GitHub repository. 🐛
-
-## Roadmap 🗺️
-
-- [x] Bluetooth (BLE) support
-- [x] Wi-Fi support
-- [ ] Scheduling
-- [ ] Mapping and zone management
-- [ ] Firmware updates
-- [x] Automations
-- [ ] More...
-
-## Features ✨
-
-- Start and stop the mower
-- Monitor the mower's status (e.g., mowing, charging, idle)
-- View the mower's battery level
-- More features being added all the time!
-
-## Prerequisites 📋
-
-- Home Assistant installed and running
-- Mower connected to your home network
-- [Bluetooth proxy for Home Assistant](https://esphome.io/components/bluetooth_proxy.html)
-
-Here's a cleaned-up version of the installation instructions for your GitHub repo README:
-
-## Usage 🎮
-
-Once the integration is set up, you can control and monitor your Mammotion mower using Home Assistant. 🎉
-
-## Troubleshooting 🔧
-
-If you encounter any issues with the Mammotion integration, please check the Home Assistant logs for error messages. You can also try the following troubleshooting steps:
-
-- Verify that you have Bluetooth proxy setup with Home Assistant.
-- Ensure that your mower is connected to your home network and accessible from Home Assistant.
-- Restart Home Assistant and check if the issue persists.
-
-## PyMammotion Library 📚
-
-This integration uses the [PyMammotion library](https://github.com/mikey0000/PyMammotion) to communicate with Mammotion mowers. PyMammotion provides a Python API for controlling and monitoring Mammotion robot mowers via MQTT, Cloud, and Bluetooth.
-
-If the problem continues, please file an issue on the GitHub repository for further assistance. 🙏
-
-## Credits 👥
-
-[![Contributors](https://contrib.rocks/image?repo=mikey0000/Mammotion-HA)](https://github.com/mikey0000/Mammotion-HA/graphs/contributors)
-
-## Supporters
-
-Thank you so much!
+For setup instructions, see the [Getting Started wiki](https://github.com/mikey0000/Mammotion-HA/wiki/Getting-Started). For support, [open an issue](https://github.com/mikey0000/Mammotion-HA/issues) or join the [Discord community](https://discord.gg/vpZdWhJX8x).
