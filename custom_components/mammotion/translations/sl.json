@@ -342,6 +342,27 @@
           "2": "Šibko",
           "3": "Brez"
         }
+      },
+      "task_count": {
+        "name": "Task count"
+      },
+      "enabled_task_count": {
+        "name": "Enabled task count"
+      },
+      "area_count": {
+        "name": "Area count"
+      },
+      "map_area_name_count": {
+        "name": "Map area name count"
+      },
+      "last_map_sync": {
+        "name": "Last map sync"
+      },
+      "last_task_sync": {
+        "name": "Last task sync"
+      },
+      "last_map_task_error": {
+        "name": "Last map/task error"
       }
     },
     "button": {
@@ -383,6 +404,9 @@
       },
       "spino_refresh_status": {
         "name": "Osveži stanje"
+      },
+      "camera_wiper": {
+        "name": "Run camera wiper"
       }
     },
     "switch": {
@@ -442,6 +466,12 @@
       },
       "spino_waterline_parking": {
         "name": "Parkiranje na vodni gladini"
+      },
+      "device_wifi_enabled": {
+        "name": "Device Wi-Fi"
+      },
+      "device_4g_enabled": {
+        "name": "Device 4G"
       }
     },
     "select": {
@@ -548,6 +578,19 @@
           "LINE": "Vodna gladina",
           "CUSTOM": "Po meri"
         }
+      },
+      "voice_language": {
+        "name": "Voice language",
+        "state": {
+          "ENGLISH": "English",
+          "GERMAN": "German",
+          "FRENCH": "French",
+          "ITALIAN": "Italian",
+          "SPANISH": "Spanish",
+          "PORTUGUESE": "Portuguese",
+          "DUTCH": "Dutch",
+          "SWEDISH": "Swedish"
+        }
       }
     },
     "number": {
@@ -580,6 +623,9 @@
       },
       "map_offset_lon": {
         "name": "Zamik zemljevida dolžina"
+      },
+      "prompt_volume": {
+        "name": "Prompt volume"
       }
     },
     "device_tracker": {
@@ -1112,6 +1158,98 @@
     "start_task": {
       "name": "Zaženi opravilo",
       "description": "Takoj zažene shranjen urnik (znano tudi kot „zaženi urnik“). Samo kosilnica — bazenski robot Spino nima enakovrednega ukaza."
+    },
+    "get_tasks": {
+      "name": "Get tasks",
+      "description": "Returns normalized read-only mower task/schedule data.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        }
+      }
+    },
+    "get_areas": {
+      "name": "Get areas",
+      "description": "Returns normalized read-only mower map area data and task references.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        }
+      }
+    },
+    "export_map": {
+      "name": "Export map",
+      "description": "Returns read-only mower map data for custom path planning and debugging. Does not send commands to the mower.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        }
+      }
+    },
+    "export_tasks": {
+      "name": "Export tasks",
+      "description": "Returns read-only mower task data and sync metadata for custom path planning and debugging.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        }
+      }
+    },
+    "validate_custom_path": {
+      "name": "Validate custom path",
+      "description": "Validates a proposed mower-map x/y path without sending movement commands.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        },
+        "points": {
+          "name": "Points",
+          "description": "List of map-local points, each with x and y."
+        },
+        "area_hash": {
+          "name": "Area hash",
+          "description": "Optional area hash to constrain containment validation."
+        },
+        "speed": {
+          "name": "Speed",
+          "description": "Proposed path speed. Used for validation only."
+        },
+        "blade_mode": {
+          "name": "Blade mode",
+          "description": "Must be off. This validation pass does not support blade movement."
+        }
+      }
+    },
+    "preview_custom_path": {
+      "name": "Preview custom path",
+      "description": "Validates a proposed mower-map x/y path and returns GeoJSON preview data without sending movement commands.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        },
+        "points": {
+          "name": "Points",
+          "description": "List of map-local points, each with x and y."
+        },
+        "area_hash": {
+          "name": "Area hash",
+          "description": "Optional area hash to constrain containment validation."
+        },
+        "speed": {
+          "name": "Speed",
+          "description": "Proposed path speed. Used for validation only."
+        },
+        "blade_mode": {
+          "name": "Blade mode",
+          "description": "Must be off. This preview pass does not support blade movement."
+        }
+      }
     }
   },
   "exceptions": {

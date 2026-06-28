@@ -5,6 +5,7 @@ from __future__ import annotations
 from asyncio import CancelledError
 from contextlib import suppress
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from aiohttp import ClientConnectorError
@@ -104,6 +105,8 @@ PLATFORMS: list[Platform] = [
 ]
 
 type MammotionConfigEntry = ConfigEntry[MammotionDevices]
+
+WWW_DIR = Path(__file__).parent / "www"
 
 
 def _has_ble_devices(entry: MammotionConfigEntry) -> bool:
@@ -294,6 +297,11 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     """Set up the Mammotion integration."""
     apply_pymammotion_compat_patches()
     async_setup_services(hass)
+    hass.http.async_register_static_path(
+        "/mammotion",
+        str(WWW_DIR),
+        cache_headers=True,
+    )
     return True
 
 

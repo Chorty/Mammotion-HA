@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import math
 from typing import TYPE_CHECKING, Any, cast
 
 import voluptuous as vol
@@ -29,6 +30,10 @@ SERVICE_GET_MOW_PROGRESS_GEOJSON = "get_mow_progress_geojson"
 SERVICE_GET_MAP_DATA = "get_map_data"
 SERVICE_GET_TASKS = "get_tasks"
 SERVICE_GET_AREAS = "get_areas"
+SERVICE_EXPORT_MAP = "export_map"
+SERVICE_EXPORT_TASKS = "export_tasks"
+SERVICE_VALIDATE_CUSTOM_PATH = "validate_custom_path"
+SERVICE_PREVIEW_CUSTOM_PATH = "preview_custom_path"
 SERVICE_SVG_ADD = "svg_add"
 SERVICE_SVG_UPDATE = "svg_update"
 SERVICE_SVG_DELETE = "svg_delete"
@@ -170,6 +175,29 @@ GEOJSON_SCHEMA = vol.Schema(
     {vol.Required(ATTR_ENTITY_ID): cv.entity_id}, extra=vol.ALLOW_EXTRA
 )
 
+_CUSTOM_PATH_POINT_SCHEMA = vol.Schema(
+    {
+        vol.Required("x"): vol.Coerce(float),
+        vol.Required("y"): vol.Coerce(float),
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
+VALIDATE_CUSTOM_PATH_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+        vol.Required("points"): vol.All(
+            cv.ensure_list, [_CUSTOM_PATH_POINT_SCHEMA]
+        ),
+        vol.Optional("area_hash"): vol.Coerce(int),
+        vol.Optional("speed", default=0.2): vol.All(
+            vol.Coerce(float), vol.Range(min=0.05, max=0.6)
+        ),
+        vol.Optional("blade_mode", default="off"): vol.In(["off"]),
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
 CAMERA_SCHEMA = vol.Schema(
     {vol.Required(ATTR_ENTITY_ID): cv.entity_id}, extra=vol.ALLOW_EXTRA
 )
@@ -254,6 +282,19 @@ def _json_safe_int(value: int) -> int | str:
     return str(value) if abs(value) > _JS_MAX_SAFE_INT else value
 
 
+def _safe_asdict(obj: Any) -> Any:
+    """Return a JSON-ish representation for dataclass or plain test objects."""
+    if dataclasses.is_dataclass(obj):
+        return dataclasses.asdict(obj)
+    if isinstance(obj, dict):
+        return {key: _safe_asdict(value) for key, value in obj.items()}
+    if isinstance(obj, list):
+        return [_safe_asdict(value) for value in obj]
+    if hasattr(obj, "__dict__"):
+        return {key: _safe_asdict(value) for key, value in vars(obj).items()}
+    return obj
+
+
 def _plan_area_names(
     coordinator: MammotionReportUpdateCoordinator, zone_hashs: list[int]
 ) -> list[str | None]:
@@ -328,6 +369,281 @@ def _normalize_mower_areas(
             }
         )
     return areas
+
+
+def _area_polygons(
+    coordinator: MammotionReportUpdateCoordinator, area_hash: int | None = None
+) -> dict[int, list[dict[str, float]]]:
+    """Return known map area polygons as map-local x/y point lists."""
+    from pymammotion.data.model.device import MowingDevice  # noqa: PLC0415
+
+    device_data = cast(MowingDevice, coordinator.data)
+    polygons: dict[int, list[dict[str, float]]] = {}
+    for current_hash, frame_list in device_data.map.area.items():
+        if area_hash is not None and current_hash != area_hash:
+            continue
+        points: list[dict[str, float]] = []
+        for frame in sorted(
+            getattr(frame_list, "data", []) or [],
+            key=lambda f: getattr(f, "current_frame", 0),
+        ):
+            for point in getattr(frame, "data_couple", []) or []:
+                if hasattr(point, "x") and hasattr(point, "y"):
+                    points.append({"x": float(point.x), "y": float(point.y)})
+        polygons[current_hash] = points
+    return polygons
+
+
+def _point_on_segment(
+    point: dict[str, float],
+    start: dict[str, float],
+    end: dict[str, float],
+    *,
+    tolerance: float = 1e-9,
+) -> bool:
+    """Return True if *point* lies on the line segment from *start* to *end*."""
+    cross = (point["y"] - start["y"]) * (end["x"] - start["x"]) - (
+        point["x"] - start["x"]
+    ) * (end["y"] - start["y"])
+    if abs(cross) > tolerance:
+        return False
+    dot = (point["x"] - start["x"]) * (end["x"] - start["x"]) + (
+        point["y"] - start["y"]
+    ) * (end["y"] - start["y"])
+    if dot < -tolerance:
+        return False
+    squared_len = (end["x"] - start["x"]) ** 2 + (end["y"] - start["y"]) ** 2
+    return dot <= squared_len + tolerance
+
+
+def _point_in_polygon(
+    point: dict[str, float], polygon: list[dict[str, float]]
+) -> bool:
+    """Return True when a map-local point is inside or on a polygon boundary."""
+    if len(polygon) < 3:
+        return False
+    inside = False
+    previous = polygon[-1]
+    for current in polygon:
+        if _point_on_segment(point, previous, current):
+            return True
+        crosses = (current["y"] > point["y"]) != (previous["y"] > point["y"])
+        if crosses:
+            x_at_y = (previous["x"] - current["x"]) * (
+                point["y"] - current["y"]
+            ) / (previous["y"] - current["y"]) + current["x"]
+            if point["x"] <= x_at_y:
+                inside = not inside
+        previous = current
+    return inside
+
+
+def _path_distance(points: list[dict[str, float]]) -> float:
+    """Return total map-local path distance in mower map units."""
+    return sum(
+        math.hypot(end["x"] - start["x"], end["y"] - start["y"])
+        for start, end in zip(points, points[1:], strict=False)
+    )
+
+
+def _isoformat_or_none(value: Any) -> str | None:
+    """Return datetime-like values as ISO strings for HA service responses."""
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return str(value.isoformat())
+    return str(value)
+
+
+def _export_mower_map(coordinator: MammotionReportUpdateCoordinator) -> dict[str, Any]:
+    """Return read-only map export data for route planning/debugging."""
+    from pymammotion.data.model.device import MowingDevice  # noqa: PLC0415
+
+    device_data = cast(MowingDevice, coordinator.data)
+    map_dict = _safe_asdict(device_data.map)
+    polygons = _area_polygons(coordinator)
+    return cast(
+        dict[str, Any],
+        _stringify_large_ints(
+            {
+                "coordinate_system": "mower_map_xy",
+                "areas": _normalize_mower_areas(coordinator),
+                "area_polygons": {
+                    str(_json_safe_int(area_hash)): points
+                    for area_hash, points in polygons.items()
+                },
+                "raw": {
+                    "area": map_dict.get("area", {}),
+                    "svg": map_dict.get("svg", {}),
+                    "area_name": map_dict.get("area_name", []),
+                },
+            }
+        ),
+    )
+
+
+def _export_mower_tasks(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> dict[str, Any]:
+    """Return read-only task export data for route planning/debugging."""
+    tasks = _normalize_mower_tasks(coordinator)
+    return {
+        "tasks": tasks,
+        "task_count": len(tasks),
+        "enabled_task_count": sum(1 for task in tasks if task["enabled"]),
+        "last_task_sync": _isoformat_or_none(coordinator.last_task_sync),
+        "last_map_task_error": coordinator.last_map_task_error,
+    }
+
+
+def _validate_custom_path(
+    coordinator: MammotionReportUpdateCoordinator,
+    points: list[dict[str, float]],
+    *,
+    area_hash: int | None = None,
+    speed: float = 0.2,
+    blade_mode: str = "off",
+) -> dict[str, Any]:
+    """Validate a proposed custom path without sending movement commands."""
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    normalized_points = [
+        {"x": float(point["x"]), "y": float(point["y"])} for point in points
+    ]
+
+    if len(normalized_points) < 2:
+        errors.append("path_requires_at_least_two_points")
+    if len(normalized_points) > 500:
+        errors.append("path_has_too_many_points")
+    if blade_mode != "off":
+        errors.append("blade_mode_must_be_off")
+    if speed > 0.4:
+        warnings.append("speed_above_recommended_validation_default")
+
+    polygons = _area_polygons(coordinator, area_hash)
+    if area_hash is not None and not polygons:
+        errors.append("area_hash_not_found")
+    valid_polygons = {
+        current_hash: polygon
+        for current_hash, polygon in polygons.items()
+        if len(polygon) >= 3
+    }
+    if not valid_polygons:
+        warnings.append("no_area_geometry_available_for_containment_check")
+    else:
+        outside: list[int] = []
+        for index, point in enumerate(normalized_points):
+            if not any(
+                _point_in_polygon(point, polygon)
+                for polygon in valid_polygons.values()
+            ):
+                outside.append(index)
+        if outside:
+            errors.append("path_points_outside_known_area_geometry")
+
+    distance = _path_distance(normalized_points)
+    if distance == 0 and len(normalized_points) >= 2:
+        errors.append("path_distance_must_be_greater_than_zero")
+
+    return {
+        "valid": not errors,
+        "errors": errors,
+        "warnings": warnings,
+        "coordinate_system": "mower_map_xy",
+        "blade_mode": blade_mode,
+        "speed": speed,
+        "area_hash": _json_safe_int(area_hash) if area_hash is not None else None,
+        "point_count": len(normalized_points),
+        "distance": distance,
+        "points": normalized_points,
+    }
+
+
+def _custom_path_preview_geojson(
+    validation: dict[str, Any],
+) -> dict[str, Any]:
+    """Build GeoJSON preview data for a validated custom path response."""
+    points = validation["points"]
+    features: list[dict[str, Any]] = []
+    if points:
+        features.append(
+            {
+                "type": "Feature",
+                "properties": {
+                    "type_name": "custom_path_start",
+                    "Name": "Start",
+                    "marker": "start",
+                },
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [points[0]["x"], points[0]["y"]],
+                },
+            }
+        )
+    if len(points) >= 2:
+        features.append(
+            {
+                "type": "Feature",
+                "properties": {
+                    "type_name": "custom_path",
+                    "Name": "Custom path",
+                    "valid": validation["valid"],
+                    "distance": validation["distance"],
+                    "color": "#22c55e" if validation["valid"] else "#ef4444",
+                    "weight": 3,
+                },
+                "geometry": {
+                    "type": "LineString",
+                    "coordinates": [[point["x"], point["y"]] for point in points],
+                },
+            }
+        )
+        features.append(
+            {
+                "type": "Feature",
+                "properties": {
+                    "type_name": "custom_path_end",
+                    "Name": "End",
+                    "marker": "end",
+                },
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [points[-1]["x"], points[-1]["y"]],
+                },
+            }
+        )
+    return {
+        "type": "FeatureCollection",
+        "features": features,
+    }
+
+
+def _preview_custom_path(
+    coordinator: MammotionReportUpdateCoordinator,
+    points: list[dict[str, float]],
+    *,
+    area_hash: int | None = None,
+    speed: float = 0.2,
+    blade_mode: str = "off",
+) -> dict[str, Any]:
+    """Return a read-only custom path validation plus display preview."""
+    validation = _validate_custom_path(
+        coordinator,
+        points,
+        area_hash=area_hash,
+        speed=speed,
+        blade_mode=blade_mode,
+    )
+    return {
+        **validation,
+        "geojson": _custom_path_preview_geojson(validation),
+        "path": {
+            "coordinate_system": validation["coordinate_system"],
+            "points": validation["points"],
+            "distance": validation["distance"],
+        },
+    }
 
 
 def _get_mower_by_entity_id(
@@ -718,6 +1034,46 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             return {}
         return {"areas": _normalize_mower_areas(mower.reporting_coordinator)}
 
+    async def handle_export_map(call: ServiceCall) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        return _export_mower_map(mower.reporting_coordinator)
+
+    async def handle_export_tasks(call: ServiceCall) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        return _export_mower_tasks(mower.reporting_coordinator)
+
+    async def handle_validate_custom_path(call: ServiceCall) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        return _validate_custom_path(
+            mower.reporting_coordinator,
+            cast(list[dict[str, float]], call.data["points"]),
+            area_hash=call.data.get("area_hash"),
+            speed=call.data["speed"],
+            blade_mode=call.data["blade_mode"],
+        )
+
+    async def handle_preview_custom_path(call: ServiceCall) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        return _preview_custom_path(
+            mower.reporting_coordinator,
+            cast(list[dict[str, float]], call.data["points"]),
+            area_hash=call.data.get("area_hash"),
+            speed=call.data["speed"],
+            blade_mode=call.data["blade_mode"],
+        )
+
     async def handle_svg_add(call: ServiceCall) -> dict[str, Any]:
         from pymammotion.data.model.device import MowingDevice  # noqa: PLC0415
         from pymammotion.utility.svg import build_svg_for_area  # noqa: PLC0415
@@ -822,6 +1178,34 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         SERVICE_GET_AREAS,
         handle_get_areas,
         schema=GEOJSON_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_EXPORT_MAP,
+        handle_export_map,
+        schema=GEOJSON_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_EXPORT_TASKS,
+        handle_export_tasks,
+        schema=GEOJSON_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_VALIDATE_CUSTOM_PATH,
+        handle_validate_custom_path,
+        schema=VALIDATE_CUSTOM_PATH_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_PREVIEW_CUSTOM_PATH,
+        handle_preview_custom_path,
+        schema=VALIDATE_CUSTOM_PATH_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(

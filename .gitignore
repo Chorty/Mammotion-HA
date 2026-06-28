@@ -5,6 +5,10 @@
 .secrets.local
 .env
 
+# Large reverse-engineering artifacts; keep outside commits unless intentionally needed.
+*.apk
+*.xapk
+
 # GITHUB Proposed Python stuff:
 *.py[cod]
 __pycache__

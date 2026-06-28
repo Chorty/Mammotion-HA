@@ -727,6 +727,78 @@
         }
       }
     },
+    "export_map": {
+      "name": "Export map",
+      "description": "Returns read-only mower map data for custom path planning and debugging. Does not send commands to the mower.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        }
+      }
+    },
+    "export_tasks": {
+      "name": "Export tasks",
+      "description": "Returns read-only mower task data and sync metadata for custom path planning and debugging.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        }
+      }
+    },
+    "validate_custom_path": {
+      "name": "Validate custom path",
+      "description": "Validates a proposed mower-map x/y path without sending movement commands.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        },
+        "points": {
+          "name": "Points",
+          "description": "List of map-local points, each with x and y."
+        },
+        "area_hash": {
+          "name": "Area hash",
+          "description": "Optional area hash to constrain containment validation."
+        },
+        "speed": {
+          "name": "Speed",
+          "description": "Proposed path speed. Used for validation only."
+        },
+        "blade_mode": {
+          "name": "Blade mode",
+          "description": "Must be off. This validation pass does not support blade movement."
+        }
+      }
+    },
+    "preview_custom_path": {
+      "name": "Preview custom path",
+      "description": "Validates a proposed mower-map x/y path and returns GeoJSON preview data without sending movement commands.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        },
+        "points": {
+          "name": "Points",
+          "description": "List of map-local points, each with x and y."
+        },
+        "area_hash": {
+          "name": "Area hash",
+          "description": "Optional area hash to constrain containment validation."
+        },
+        "speed": {
+          "name": "Speed",
+          "description": "Proposed path speed. Used for validation only."
+        },
+        "blade_mode": {
+          "name": "Blade mode",
+          "description": "Must be off. This preview pass does not support blade movement."
+        }
+      }
+    },
     "svg_add": {
       "name": "Add SVG tile",
       "description": "Send a new SVG tile to the device map. Returns the device-assigned hash.",
