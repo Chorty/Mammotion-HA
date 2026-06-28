@@ -44,6 +44,7 @@ from .const import (
     DOMAIN,
     LOGGER,
 )
+from .pymammotion_compat import apply_pymammotion_compat_patches
 
 
 class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -51,6 +52,7 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         """Initialize the config flow."""
+        apply_pymammotion_compat_patches()
         self._config: dict = {}
         self._discovered_device: BLEDevice | None = None
         self._discovered_devices: dict[str, str] = {}
@@ -256,6 +258,9 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
                 except (ClientError, HTTPException, TimeoutError) as err:
                     LOGGER.error("Unexpected error during login: %s", err)
                     errors["base"] = "cannot_connect"
+                except Exception as err:  # noqa: BLE001 - library/cloud parse errors
+                    LOGGER.exception("Unexpected Mammotion error during login")
+                    errors["base"] = "cannot_connect"
                 finally:
                     await temp_client.stop()
             # BLE-only: blank credentials
@@ -344,6 +349,11 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
                     TimeoutError,
                 ) as err:
                     LOGGER.error("Login failed during reconfigure: %s", err)
+                    errors["base"] = "cannot_connect"
+                except Exception as err:  # noqa: BLE001 - library/cloud parse errors
+                    LOGGER.exception(
+                        "Unexpected Mammotion error during reconfigure"
+                    )
                     errors["base"] = "cannot_connect"
                 finally:
                     await temp_client.stop()
@@ -442,6 +452,9 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
             except (LoginFailedError, ReLoginRequiredError):
                 errors["base"] = "login_failed"
             except (CloudSetupError, HTTPException):
+                errors["base"] = "cannot_connect"
+            except Exception as err:  # noqa: BLE001 - library/cloud parse errors
+                LOGGER.exception("Unexpected Mammotion error during reauth")
                 errors["base"] = "cannot_connect"
             finally:
                 await temp_client.stop()

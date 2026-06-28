@@ -26,6 +26,7 @@ from pymammotion.data.model.pool_state import (
     SpinoWorkMode,
     WallMaterial,
 )
+from pymammotion.proto import MulLanguage
 from pymammotion.utility.device_type import DeviceType
 
 from . import MammotionConfigEntry, MammotionReportUpdateCoordinator
@@ -109,6 +110,18 @@ SPINO_SELECT_ENTITIES: tuple[MammotionSpinoSelectEntityDescription, ...] = (
 
 
 AUDIO_SELECT_ENTITIES: tuple[MammotionAsyncConfigSelectEntityDescription, ...] = (
+    MammotionAsyncConfigSelectEntityDescription(
+        key="voice_language",
+        options=[
+            language.name
+            for language in MulLanguage
+            if language is not MulLanguage.NONE_LAN
+        ],
+        get_fn=lambda coordinator: getattr(
+            coordinator.data.mower_state.audio, "au_language", 0
+        ),
+        set_fn=lambda coordinator, value: coordinator.async_set_voice_language(value),
+    ),
     MammotionAsyncConfigSelectEntityDescription(
         key="voice_gender",
         options=["MAN", "WOMAN"],
@@ -414,10 +427,7 @@ class MammotionAsyncConfigSelectEntity(
 
     async def async_update(self) -> None:
         """Update entity state from coordinator."""
-        if callable(self.entity_description.get_fn):
-            self._attr_current_option = self._attr_options[
-                self.entity_description.get_fn(self.coordinator)
-            ]
+        self._attr_current_option = self._resolve_option()
         self.async_write_ha_state()
 
 

@@ -205,6 +205,27 @@
           "out_of_sync": "Out of sync"
         }
       },
+      "task_count": {
+        "name": "Task count"
+      },
+      "enabled_task_count": {
+        "name": "Enabled task count"
+      },
+      "area_count": {
+        "name": "Area count"
+      },
+      "map_area_name_count": {
+        "name": "Map area name count"
+      },
+      "last_map_sync": {
+        "name": "Last map sync"
+      },
+      "last_task_sync": {
+        "name": "Last task sync"
+      },
+      "last_map_task_error": {
+        "name": "Last map/task error"
+      },
       "mqtt_status": {
         "name": "MQTT status",
         "state": {
@@ -389,6 +410,9 @@
       "relocate_charging_station": {
         "name": "Relocate charging station"
       },
+      "camera_wiper": {
+        "name": "Run camera wiper"
+      },
       "restart_mower": {
         "name": "Restart mower"
       },
@@ -447,6 +471,12 @@
       },
       "voice_on_off": {
         "name": "Voice on/off"
+      },
+      "device_wifi_enabled": {
+        "name": "Device Wi-Fi"
+      },
+      "device_4g_enabled": {
+        "name": "Device 4G"
       },
       "spino_buzzer": {
         "name": "Buzzer"
@@ -553,6 +583,19 @@
           "WOMAN": "Female"
         }
       },
+      "voice_language": {
+        "name": "Voice language",
+        "state": {
+          "ENGLISH": "English",
+          "GERMAN": "German",
+          "FRENCH": "French",
+          "ITALIAN": "Italian",
+          "SPANISH": "Spanish",
+          "PORTUGUESE": "Portuguese",
+          "DUTCH": "Dutch",
+          "SWEDISH": "Swedish"
+        }
+      },
       "spino_work_mode": {
         "name": "Cleaning mode",
         "state": {
@@ -585,6 +628,9 @@
       }
     },
     "number": {
+      "prompt_volume": {
+        "name": "Prompt volume"
+      },
       "voice_volume": {
         "name": "Voice volume"
       },
@@ -827,6 +873,26 @@
         "entity_id": {
           "name": "Entity",
           "description": "Any Mammotion entity belonging to the device."
+        }
+      }
+    },
+    "get_tasks": {
+      "name": "Get tasks",
+      "description": "Returns normalized read-only mower task/schedule data.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        }
+      }
+    },
+    "get_areas": {
+      "name": "Get areas",
+      "description": "Returns normalized read-only mower map area data and task references.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
         }
       }
     },

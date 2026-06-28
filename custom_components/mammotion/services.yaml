@@ -273,6 +273,22 @@ get_map_data:
         entity:
           integration: mammotion
 
+get_tasks:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+
+get_areas:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+
 svg_add:
   fields:
     entity_id:

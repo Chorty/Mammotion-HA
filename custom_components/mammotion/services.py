@@ -27,6 +27,8 @@ SERVICE_GET_GEOJSON = "get_geojson"
 SERVICE_GET_MOW_PATH_GEOJSON = "get_mow_path_geojson"
 SERVICE_GET_MOW_PROGRESS_GEOJSON = "get_mow_progress_geojson"
 SERVICE_GET_MAP_DATA = "get_map_data"
+SERVICE_GET_TASKS = "get_tasks"
+SERVICE_GET_AREAS = "get_areas"
 SERVICE_SVG_ADD = "svg_add"
 SERVICE_SVG_UPDATE = "svg_update"
 SERVICE_SVG_DELETE = "svg_delete"
@@ -245,6 +247,87 @@ def _stringify_large_ints(obj: Any) -> Any:
     ):
         return str(obj)
     return obj
+
+
+def _json_safe_int(value: int) -> int | str:
+    """Return *value* as a JSON-safe int, stringifying values JS cannot preserve."""
+    return str(value) if abs(value) > _JS_MAX_SAFE_INT else value
+
+
+def _plan_area_names(
+    coordinator: MammotionReportUpdateCoordinator, zone_hashs: list[int]
+) -> list[str | None]:
+    """Resolve mower plan zone hashes to area names."""
+    return [coordinator.get_area_entity_name(zone_hash) for zone_hash in zone_hashs]
+
+
+def _normalize_mower_tasks(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> list[dict[str, Any]]:
+    """Return normalized read-only task data for a mower coordinator."""
+    from pymammotion.data.model.device import MowingDevice  # noqa: PLC0415
+
+    device_data = cast(MowingDevice, coordinator.data)
+    tasks: list[dict[str, Any]] = []
+    for plan_id, plan in sorted(device_data.map.plan.items()):
+        zone_hashs = list(getattr(plan, "zone_hashs", []) or [])
+        tasks.append(
+            {
+                "plan_id": plan.plan_id or str(plan_id),
+                "name": plan.task_name,
+                "enabled": plan.is_enabled(),
+                "weeks": list(getattr(plan, "weeks", []) or []),
+                "start_time": plan.start_time,
+                "end_time": plan.end_time,
+                "start_date": plan.start_date,
+                "end_date": plan.end_date,
+                "knife_height": plan.knife_height,
+                "speed": plan.speed,
+                "edge_mode": plan.edge_mode,
+                "route_angle": plan.route_angle,
+                "route_spacing": plan.route_spacing,
+                "zone_hashs": [_json_safe_int(zone_hash) for zone_hash in zone_hashs],
+                "zone_names": _plan_area_names(coordinator, zone_hashs),
+                "raw": _stringify_large_ints(dataclasses.asdict(plan)),
+            }
+        )
+    return tasks
+
+
+def _normalize_mower_areas(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> list[dict[str, Any]]:
+    """Return normalized read-only area data for a mower coordinator."""
+    from pymammotion.data.model.device import MowingDevice  # noqa: PLC0415
+
+    device_data = cast(MowingDevice, coordinator.data)
+    area_names: dict[int, str] = {
+        area_name.hash: area_name.name for area_name in device_data.map.area_name
+    }
+    known_hashes = set(device_data.map.area.keys()) | set(area_names.keys())
+
+    task_refs_by_area: dict[int, list[dict[str, str]]] = {}
+    for plan_id, plan in device_data.map.plan.items():
+        for zone_hash in getattr(plan, "zone_hashs", []) or []:
+            task_refs_by_area.setdefault(zone_hash, []).append(
+                {"plan_id": plan.plan_id or str(plan_id), "name": plan.task_name}
+            )
+
+    areas: list[dict[str, Any]] = []
+    for area_hash in sorted(known_hashes):
+        frame_list = device_data.map.area.get(area_hash)
+        frame_count = len(getattr(frame_list, "data", []) or []) if frame_list else 0
+        areas.append(
+            {
+                "area_hash": _json_safe_int(area_hash),
+                "name": area_names.get(area_hash)
+                or coordinator.get_area_entity_name(area_hash),
+                "has_geometry": frame_count > 0,
+                "frame_count": frame_count,
+                "referenced_by_tasks": task_refs_by_area.get(area_hash, []),
+            }
+        )
+    return areas
 
 
 def _get_mower_by_entity_id(
@@ -621,6 +704,20 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             ),
         )
 
+    async def handle_get_tasks(call: ServiceCall) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        return {"tasks": _normalize_mower_tasks(mower.reporting_coordinator)}
+
+    async def handle_get_areas(call: ServiceCall) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        return {"areas": _normalize_mower_areas(mower.reporting_coordinator)}
+
     async def handle_svg_add(call: ServiceCall) -> dict[str, Any]:
         from pymammotion.data.model.device import MowingDevice  # noqa: PLC0415
         from pymammotion.utility.svg import build_svg_for_area  # noqa: PLC0415
@@ -710,6 +807,20 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         DOMAIN,
         SERVICE_GET_MAP_DATA,
         handle_get_map_data,
+        schema=GEOJSON_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_TASKS,
+        handle_get_tasks,
+        schema=GEOJSON_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_AREAS,
+        handle_get_areas,
         schema=GEOJSON_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )

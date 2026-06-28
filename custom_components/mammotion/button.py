@@ -158,6 +158,11 @@ BUTTON_SENSORS: tuple[MammotionButtonSensorEntityDescription, ...] = (
 
 BUTTON_LUBA_PRO_YUKA: tuple[MammotionButtonSensorEntityDescription, ...] = (
     MammotionButtonSensorEntityDescription(
+        key="camera_wiper",
+        press_fn=lambda coordinator: coordinator.async_run_camera_wiper(),
+        entity_category=EntityCategory.CONFIG,
+    ),
+    MammotionButtonSensorEntityDescription(
         key="restart_mower",
         press_fn=lambda coordinator: coordinator.async_restart_mower(),
         entity_category=EntityCategory.DIAGNOSTIC,

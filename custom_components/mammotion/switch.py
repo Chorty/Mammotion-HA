@@ -45,6 +45,7 @@ class MammotionAsyncSwitchEntityDescription(MammotionSwitchEntityDescription):
     """Describes Mammotion switch entity."""
 
     is_on_func: Callable[[MammotionBaseUpdateCoordinator], bool] | None = None
+    available_fn: Callable[[MammotionBaseUpdateCoordinator], bool] | None = None
     set_fn: Callable[[MammotionBaseUpdateCoordinator, bool], Awaitable[None]]
 
 
@@ -202,6 +203,62 @@ CONNECTIVITY_SWITCH_ENTITIES: tuple[MammotionAsyncSwitchEntityDescription, ...] 
     ),
 )
 
+
+def _reported_wifi_enabled(coordinator: MammotionBaseUpdateCoordinator) -> bool:
+    """Return reported device Wi-Fi state when available."""
+    connect = getattr(getattr(coordinator.data, "report_data", None), "connect", None)
+    if connect is not None:
+        wifi_available = getattr(connect, "wifi_is_available", None)
+        if wifi_available is not None:
+            return bool(wifi_available)
+        wifi_status = getattr(connect, "wifi_con_status", None)
+        if wifi_status is not None:
+            return bool(wifi_status)
+
+    mower_state = getattr(coordinator.data, "mower_state", None)
+    return bool(getattr(mower_state, "wifi_mac", ""))
+
+
+def _reported_4g_enabled(coordinator: MammotionBaseUpdateCoordinator) -> bool:
+    """Return reported device 4G/mobile network state when available."""
+    connect = getattr(getattr(coordinator.data, "report_data", None), "connect", None)
+    if connect is not None:
+        mnet_inet = getattr(connect, "mnet_inet", None)
+        if mnet_inet is not None:
+            return bool(mnet_inet)
+        used_net = getattr(connect, "used_net", None)
+        if used_net is not None:
+            return "MNET" in str(used_net).upper() or "4G" in str(used_net).upper()
+
+    report_data = getattr(coordinator.data, "report_data", None)
+    fpv_info = getattr(report_data, "fpv_info", None)
+    if fpv_info is not None:
+        mobile_available = getattr(fpv_info, "mobile_net_available", None)
+        if mobile_available is not None:
+            return bool(mobile_available)
+
+    return False
+
+
+DEVICE_RADIO_SWITCH_ENTITIES: tuple[MammotionAsyncSwitchEntityDescription, ...] = (
+    MammotionAsyncSwitchEntityDescription(
+        key="device_wifi_enabled",
+        is_on_func=_reported_wifi_enabled,
+        set_fn=lambda coordinator, value: coordinator.async_set_device_wifi_enabled(
+            value
+        ),
+        entity_category=EntityCategory.CONFIG,
+    ),
+    MammotionAsyncSwitchEntityDescription(
+        key="device_4g_enabled",
+        is_on_func=_reported_4g_enabled,
+        set_fn=lambda coordinator, value: coordinator.async_set_device_4g_enabled(
+            value
+        ),
+        entity_category=EntityCategory.CONFIG,
+    ),
+)
+
 CONFIG_SWITCH_ENTITIES: tuple[MammotionConfigSwitchEntityDescription, ...] = (
     MammotionConfigSwitchEntityDescription(
         key="rain_tactics",
@@ -273,6 +330,10 @@ async def async_setup_entry(
                 for d in MINI_AND_X_SERIES_CONFIG_SWITCH_ENTITIES
             )
 
+        if not DeviceType.is_luba1(mower.device.device_name):
+            for entity_description in DEVICE_RADIO_SWITCH_ENTITIES:
+                entity = MammotionSwitchEntity(coordinator, entity_description)
+                entities.append(entity)
         async_add_entities(entities)
 
     for spino in entry.runtime_data.spino:
@@ -302,6 +363,15 @@ class MammotionSwitchEntity(MammotionBaseEntity, SwitchEntity, RestoreEntity):
             self._attr_is_on = entity_description.is_on_func(self.coordinator)
         else:
             self._attr_is_on = False  # Default state
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        if self.entity_description.available_fn is not None:
+            return super().available and self.entity_description.available_fn(
+                self.coordinator
+            )
+        return super().available
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""

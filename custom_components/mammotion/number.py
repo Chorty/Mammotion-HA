@@ -91,6 +91,22 @@ MAP_OFFSET_ENTITIES: tuple[MammotionConfigNumberEntityDescription, ...] = (
 
 AUDIO_NUMBER_ENTITIES: tuple[MammotionConfigNumberEntityDescription, ...] = (
     MammotionConfigNumberEntityDescription(
+        key="prompt_volume",
+        native_min_value=0,
+        native_max_value=100,
+        native_step=1,
+        mode=NumberMode.SLIDER,
+        native_unit_of_measurement=PERCENTAGE,
+        set_async_fn=lambda coordinator, value: coordinator.async_set_prompt_volume(
+            value
+        ),
+        get_fn=lambda coordinator: getattr(
+            coordinator.data.mower_state.audio,
+            "au_switch",
+            getattr(coordinator.data.mower_state.audio, "volume", None),
+        ),
+    ),
+    MammotionConfigNumberEntityDescription(
         key="voice_volume",
         native_min_value=0,
         native_max_value=100,

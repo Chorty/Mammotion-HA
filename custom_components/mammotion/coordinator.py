@@ -62,7 +62,7 @@ from pymammotion.http.model.camera_stream import (
 )
 from pymammotion.http.model.http import ErrorInfo, Response
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
-from pymammotion.proto import MulSex
+from pymammotion.proto import MulLanguage, MulSex
 from pymammotion.state.device_state import DeviceShutdownEvent, DeviceSnapshot
 from pymammotion.transport.base import (
     AuthError,
@@ -116,6 +116,7 @@ MAP_SYNC_STATUSES = ("synced", "syncing", "out_of_sync")
 # device is unreachable ("Device not responding. Please check the network
 # connection").  Treated as a device-offline signal.
 DEVICE_NOT_RESPONDING_CODE = 50504
+STREAM_AUTH_ERROR_CODE = 401
 STREAM_RETRY_DELAYS = (0, 2, 4)
 
 
@@ -171,6 +172,9 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):  # ty
         self.map_offset_lon: float = 0.0
         self._bluetooth_enabled: bool = True
         self._cloud_enabled: bool = True
+        self.last_map_sync: datetime.datetime | None = None
+        self.last_task_sync: datetime.datetime | None = None
+        self.last_map_task_error: str | None = None
 
         mower_device = self.manager.get_device_by_name(self.device_name)
 
@@ -225,6 +229,7 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):  # ty
             return None, None
 
         stream_data: Response[StreamSubscriptionResponse] | None = None
+        stream_auth_refreshed = False
         for delay in STREAM_RETRY_DELAYS:
             if delay:
                 await asyncio.sleep(delay)
@@ -246,6 +251,29 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):  # ty
                 return None, None
             if stream_data is not None and stream_data.data is not None:
                 break
+            if (
+                stream_data is not None
+                and stream_data.code == STREAM_AUTH_ERROR_CODE
+                and not stream_auth_refreshed
+                and self.manager.token_manager is not None
+            ):
+                stream_auth_refreshed = True
+                LOGGER.warning(
+                    "Camera stream token request returned 401; refreshing cloud credentials and retrying"
+                )
+                try:
+                    await self.manager.token_manager.force_refresh(
+                        TransportType.CLOUD_MAMMOTION
+                    )
+                    self.store_cloud_credentials()
+                except (AuthError, ClientError, HomeAssistantError, TimeoutError) as err:
+                    LOGGER.warning(
+                        "Camera stream credential refresh failed: %s",
+                        type(err).__name__,
+                    )
+                    self.clear_stream_data()
+                    return None, None
+                continue
             if stream_data is None or stream_data.code != DEVICE_NOT_RESPONDING_CODE:
                 break
 
@@ -682,22 +710,34 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):  # ty
         """Get map data from the device."""
         try:
             await self.manager.start_map_sync(self.device_name)
+            self.last_map_sync = datetime.datetime.now(datetime.UTC)
+            self.last_map_task_error = None
 
         except EXPIRED_CREDENTIAL_EXCEPTIONS as exc:
             self.update_failures += 1
+            self.last_map_task_error = f"map_sync: {type(exc).__name__}"
             await self.async_refresh_login(exc)
             if self.update_failures < 5:
                 await self.async_sync_maps()
+        except Exception as exc:
+            self.last_map_task_error = f"map_sync: {type(exc).__name__}"
+            raise
 
     async def async_sync_schedule(self) -> None:
         """Sync all scheduled mowing plans from the device via PlanFetchSaga."""
         try:
             await self.manager.start_plan_sync(self.device_name)
+            self.last_task_sync = datetime.datetime.now(datetime.UTC)
+            self.last_map_task_error = None
         except EXPIRED_CREDENTIAL_EXCEPTIONS as exc:
             self.update_failures += 1
+            self.last_map_task_error = f"task_sync: {type(exc).__name__}"
             await self.async_refresh_login(exc)
             if self.update_failures < 5:
                 await self.async_sync_schedule()
+        except Exception as exc:
+            self.last_map_task_error = f"task_sync: {type(exc).__name__}"
+            raise
 
     async def async_fetch_audio_config(self) -> None:
         """Read current audio config (volume, language, gender) from device."""
@@ -705,6 +745,17 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):  # ty
 
     async def async_set_voice_volume(self, volume: float) -> None:
         """Set robot voice volume (0–100)."""
+        await self.async_send_and_wait(
+            "set_car_volume", "set_audio", volume=int(volume)
+        )
+
+    async def async_set_prompt_volume(self, volume: float) -> None:
+        """Set robot spoken-prompt volume (0–100).
+
+        The app/APK exposes this multimedia audio field as ``au_switch`` on
+        readback.  Pymammotion's command builder writes the same oneof field via
+        ``set_car_volume`` / ``MulSetAudio.at_switch``.
+        """
         await self.async_send_and_wait(
             "set_car_volume", "set_audio", volume=int(volume)
         )
@@ -719,6 +770,32 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):  # ty
         """Set robot voice gender (MAN or WOMAN)."""
         await self.async_send_and_wait(
             "set_car_volume_sex", "set_audio", sex=MulSex[sex]
+        )
+
+    async def async_set_voice_language(self, language: str) -> None:
+        """Set robot voice language."""
+        await self.async_send_and_wait(
+            "set_car_voice_language",
+            "set_audio",
+            language_type=MulLanguage[language],
+        )
+
+    async def async_run_camera_wiper(self, rounds: int = 2) -> None:
+        """Run the camera wiper for the requested number of rounds."""
+        await self.async_send_and_wait(
+            "set_car_wiper", "set_wiper_ack", round_num=max(1, int(rounds))
+        )
+
+    async def async_set_device_wifi_enabled(self, enabled: bool) -> None:
+        """Enable or disable the device Wi-Fi radio."""
+        await self.async_send_command(
+            "set_device_wifi_enable_status", new_wifi_status=enabled, prefer_ble=True
+        )
+
+    async def async_set_device_4g_enabled(self, enabled: bool) -> None:
+        """Enable or disable the device 4G/mobile data radio."""
+        await self.async_send_command(
+            "set_device_4g_enable_status", new_4g_status=enabled, prefer_ble=True
         )
 
     async def async_start_stop_blades(
@@ -1284,7 +1361,19 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):  # ty
 
     async def async_refresh_mower_tasks(self) -> None:
         """Re-fetch the mower schedule list via :class:`PlanFetchSaga`."""
-        await self.manager.start_plan_sync(self.device_name)
+        try:
+            await self.manager.start_plan_sync(self.device_name)
+            self.last_task_sync = datetime.datetime.now(datetime.UTC)
+            self.last_map_task_error = None
+        except EXPIRED_CREDENTIAL_EXCEPTIONS as exc:
+            self.update_failures += 1
+            self.last_map_task_error = f"task_sync: {type(exc).__name__}"
+            await self.async_refresh_login(exc)
+            if self.update_failures < 5:
+                await self.async_refresh_mower_tasks()
+        except Exception as exc:
+            self.last_map_task_error = f"task_sync: {type(exc).__name__}"
+            raise
 
     async def async_restart_mower(self) -> None:
         """Restart mower."""

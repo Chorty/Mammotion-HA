@@ -86,6 +86,7 @@ from .models import (
     MammotionRTKData,
     MammotionSpinoData,
 )
+from .pymammotion_compat import apply_pymammotion_compat_patches
 from .services import async_setup_services
 
 PLATFORMS: list[Platform] = [
@@ -291,6 +292,7 @@ def _register_ble_reconnect_callback(
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     """Set up the Mammotion integration."""
+    apply_pymammotion_compat_patches()
     async_setup_services(hass)
     return True
 
@@ -326,6 +328,7 @@ async def _await_device_connection(
 
 async def async_setup_entry(hass: HomeAssistant, entry: MammotionConfigEntry) -> bool:
     """Set up Mammotion from a config entry."""
+    apply_pymammotion_compat_patches()
 
     addresses = entry.data.get(CONF_BLE_DEVICES, {})
     integration = await async_get_integration(hass, DOMAIN)
