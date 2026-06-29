@@ -103,7 +103,8 @@ class MammotionCustomPathCard extends HTMLElement {
   _computeMapTransform() {
     const svgEl = this._q("#path-map");
     if (!svgEl) return null;
-    const W = svgEl.clientWidth || 600;
+    const rect = svgEl.getBoundingClientRect();
+    const W = rect.width || svgEl.clientWidth || 600;
     const H = this._height;
     const allPts = this._getAllPoints();
     if (!allPts.length) {
@@ -174,9 +175,23 @@ class MammotionCustomPathCard extends HTMLElement {
     const svgEl = this._q("#path-map");
     const mt = this._mapT;
     if (!svgEl || !mt) return null;
-    const rect = svgEl.getBoundingClientRect();
-    const sx = event.clientX - rect.left;
-    const sy = event.clientY - rect.top;
+    let sx;
+    let sy;
+    const screenTransform = svgEl.getScreenCTM?.();
+    if (screenTransform && svgEl.createSVGPoint) {
+      const svgPoint = svgEl.createSVGPoint();
+      svgPoint.x = event.clientX;
+      svgPoint.y = event.clientY;
+      const transformed = svgPoint.matrixTransform(screenTransform.inverse());
+      sx = transformed.x;
+      sy = transformed.y;
+    } else {
+      const rect = svgEl.getBoundingClientRect();
+      const scaleX = Number(svgEl.getAttribute("viewBox")?.split(" ")[2] || rect.width) / rect.width;
+      const scaleY = Number(svgEl.getAttribute("viewBox")?.split(" ")[3] || rect.height) / rect.height;
+      sx = (event.clientX - rect.left) * scaleX;
+      sy = (event.clientY - rect.top) * scaleY;
+    }
     return { x: mt.toMX(sx), y: mt.toMY(sy) };
   }
 
