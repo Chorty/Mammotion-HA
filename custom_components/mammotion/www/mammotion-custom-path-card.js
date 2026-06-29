@@ -193,7 +193,7 @@ class MammotionCustomPathCard extends HTMLElement {
         blade_mode: "off",
       };
       if (this._areaHash) {
-        data.area_hash = Number(this._areaHash);
+        data.area_hash = this._areaHash;
       }
       this._validation = await this._callService("preview_custom_path", data);
       this._status = this._validation.valid

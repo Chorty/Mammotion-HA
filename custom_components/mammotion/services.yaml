@@ -324,8 +324,7 @@ validate_custom_path:
     area_hash:
       required: false
       selector:
-        number:
-          mode: box
+        text:
     speed:
       required: false
       default: 0.2
@@ -361,8 +360,7 @@ preview_custom_path:
     area_hash:
       required: false
       selector:
-        number:
-          mode: box
+        text:
     speed:
       required: false
       default: 0.2
@@ -388,10 +386,9 @@ svg_add:
           integration: mammotion
     area_hash:
       required: true
-      example: 123456789
+      example: "123456789"
       selector:
-        number:
-          mode: box
+        text:
     svg_data:
       required: true
       example: "<svg>...</svg>"
@@ -477,10 +474,9 @@ svg_update:
           mode: box
     area_hash:
       required: true
-      example: 123456789
+      example: "123456789"
       selector:
-        number:
-          mode: box
+        text:
     svg_data:
       required: true
       example: "<svg>...</svg>"
@@ -559,10 +555,9 @@ svg_delete:
           mode: box
     area_hash:
       required: true
-      example: 123456789
+      example: "123456789"
       selector:
-        number:
-          mode: box
+        text:
 # === Task / schedule CRUD =================================================
 # Modify ops (rename / set_task_enabled / delete / copy / edit) target an
 # existing task button entity (mower or Spino).  Create and refresh target
