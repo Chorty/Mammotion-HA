@@ -825,6 +825,46 @@ def _blade_state_label(value: Any) -> str | None:
     return _enum_label(value)
 
 
+def _is_zero_pose(x: Any, y: Any) -> bool:
+    """Return true when x/y are both exactly zero-like values."""
+    try:
+        return float(x) == 0.0 and float(y) == 0.0
+    except (TypeError, ValueError):
+        return False
+
+
+def _is_area_out(pos_type: Any, zone_hash: Any) -> bool:
+    """Return true when position metadata indicates outside/no mapped area."""
+    try:
+        pos_type_int = int(pos_type)
+    except (TypeError, ValueError):
+        pos_type_int = None
+    try:
+        zone_hash_int = int(zone_hash)
+    except (TypeError, ValueError):
+        zone_hash_int = None
+    return pos_type_int == 0 and zone_hash_int == 0
+
+
+def _is_stale_zero_area_out_pose(
+    x: Any, y: Any, pos_type: Any, zone_hash: Any
+) -> bool:
+    """Return true for the common stale dock/default pose."""
+    return _is_zero_pose(x, y) and _is_area_out(pos_type, zone_hash)
+
+
+def _is_valid_motion_position(position: dict[str, Any]) -> bool:
+    """Return true when position is usable for real manual motion probing."""
+    return (
+        position.get("source") != "unavailable"
+        and position.get("x") is not None
+        and position.get("y") is not None
+        and not _is_zero_pose(position.get("x"), position.get("y"))
+        and position.get("pos_type_label") == "AREA_INSIDE"
+        and position.get("zone_hash") not in (None, 0, "0")
+    )
+
+
 def _latest_location(data: Any) -> Any:
     """Return the first reported location entry, if present."""
     locations = _safe_attr_path(data, "report_data.locations")
@@ -833,20 +873,79 @@ def _latest_location(data: Any) -> Any:
     return locations[0]
 
 
-def _custom_path_position_snapshot(data: Any) -> dict[str, Any]:
+def _custom_path_position_snapshot(
+    data: Any, coordinator: MammotionReportUpdateCoordinator | None = None
+) -> dict[str, Any]:
     """Return normalized map-local position diagnostics for custom-path dry runs."""
     mowing_state = _safe_attr_path(data, "mowing_state")
     report_location = _latest_location(data)
     rtk = _safe_attr_path(data, "report_data.rtk")
+    location_pos_type = _safe_attr_path(data, "location.position_type")
+    location_zone_hash = _safe_attr_path(data, "location.work_zone")
+    location_toward = _safe_attr_path(data, "location.orientation")
 
     source = "unavailable"
     x = y = toward = None
     pos_level = rtk_status = pos_type = zone_hash = None
 
-    if mowing_state is not None and (
+    if report_location is not None and (
+        _safe_attr_path(report_location, "real_pos_x") is not None
+        or _safe_attr_path(report_location, "real_pos_y") is not None
+    ):
+        candidate_x = _scale_report_position(
+            _safe_attr_path(report_location, "real_pos_x")
+        )
+        candidate_y = _scale_report_position(
+            _safe_attr_path(report_location, "real_pos_y")
+        )
+        candidate_pos_type = _safe_attr_path(report_location, "pos_type")
+        candidate_zone_hash = _safe_attr_path(report_location, "bol_hash")
+        if not _is_stale_zero_area_out_pose(
+            candidate_x, candidate_y, candidate_pos_type, candidate_zone_hash
+        ):
+            source = "report_data.locations[0]"
+            x = candidate_x
+            y = candidate_y
+            toward = _scale_report_position(
+                _safe_attr_path(report_location, "real_toward")
+            )
+            pos_type = candidate_pos_type
+            zone_hash = candidate_zone_hash
+
+    if source == "unavailable" and mowing_state is not None and (
         _safe_attr_path(mowing_state, "pos_x") is not None
         or _safe_attr_path(mowing_state, "pos_y") is not None
     ):
+        candidate_x = _safe_attr_path(mowing_state, "pos_x")
+        candidate_y = _safe_attr_path(mowing_state, "pos_y")
+        candidate_pos_type = _safe_attr_path(mowing_state, "pos_type")
+        candidate_zone_hash = _safe_attr_path(mowing_state, "zone_hash")
+        if not _is_stale_zero_area_out_pose(
+            candidate_x, candidate_y, candidate_pos_type, candidate_zone_hash
+        ):
+            source = "mowing_state"
+            x = candidate_x
+            y = candidate_y
+            toward = _safe_attr_path(mowing_state, "toward")
+            pos_level = _safe_attr_path(mowing_state, "pos_level")
+            rtk_status = _safe_attr_path(mowing_state, "rtk_status")
+            pos_type = candidate_pos_type
+            zone_hash = candidate_zone_hash
+
+    if source == "unavailable" and (
+        location_pos_type is not None or location_zone_hash is not None
+    ):
+        source = "location_metadata"
+        pos_type = location_pos_type
+        zone_hash = location_zone_hash
+        toward = location_toward
+    if source == "unavailable" and mowing_state is not None and (
+        _safe_attr_path(mowing_state, "pos_x") is not None
+        or _safe_attr_path(mowing_state, "pos_y") is not None
+    ):
+        # Keep raw zero-pose diagnostics visible on dry-runs, but overlay
+        # known-good location metadata below so real-pulse gates can reject it
+        # precisely instead of treating AREA_OUT/zone_hash=0 as authoritative.
         source = "mowing_state"
         x = _safe_attr_path(mowing_state, "pos_x")
         y = _safe_attr_path(mowing_state, "pos_y")
@@ -855,22 +954,26 @@ def _custom_path_position_snapshot(data: Any) -> dict[str, Any]:
         rtk_status = _safe_attr_path(mowing_state, "rtk_status")
         pos_type = _safe_attr_path(mowing_state, "pos_type")
         zone_hash = _safe_attr_path(mowing_state, "zone_hash")
-    elif report_location is not None and (
-        _safe_attr_path(report_location, "real_pos_x") is not None
-        or _safe_attr_path(report_location, "real_pos_y") is not None
-    ):
-        source = "report_data.locations[0]"
-        x = _scale_report_position(_safe_attr_path(report_location, "real_pos_x"))
-        y = _scale_report_position(_safe_attr_path(report_location, "real_pos_y"))
-        toward = _scale_report_position(_safe_attr_path(report_location, "real_toward"))
-        pos_type = _safe_attr_path(report_location, "pos_type")
-        zone_hash = _safe_attr_path(report_location, "bol_hash")
 
     pos_level = _first_not_none(pos_level, _safe_attr_path(rtk, "pos_level"))
     rtk_status = _first_not_none(rtk_status, _safe_attr_path(rtk, "status"))
-    pos_type = _first_not_none(pos_type, _safe_attr_path(data, "location.position_type"))
-    zone_hash = _first_not_none(zone_hash, _safe_attr_path(data, "location.work_zone"))
-    toward = _first_not_none(toward, _safe_attr_path(data, "location.orientation"))
+    if _is_area_out(pos_type, zone_hash) and (
+        location_pos_type is not None or location_zone_hash is not None
+    ):
+        pos_type = location_pos_type
+        zone_hash = location_zone_hash
+    else:
+        pos_type = _first_not_none(pos_type, location_pos_type)
+        zone_hash = _first_not_none(zone_hash, location_zone_hash)
+    toward = _first_not_none(toward, location_toward)
+    safe_zone_hash = _json_safe_int(zone_hash) if zone_hash is not None else None
+    area_name = (
+        coordinator.get_area_entity_name(int(zone_hash))
+        if coordinator is not None
+        and hasattr(coordinator, "get_area_entity_name")
+        and zone_hash not in (None, 0, "0")
+        else None
+    )
 
     return {
         "x": x,
@@ -883,7 +986,17 @@ def _custom_path_position_snapshot(data: Any) -> dict[str, Any]:
         "rtk_status_label": _rtk_status_label(rtk_status),
         "pos_type": pos_type,
         "pos_type_label": _pos_type_label(pos_type),
-        "zone_hash": _json_safe_int(zone_hash) if zone_hash is not None else None,
+        "zone_hash": safe_zone_hash,
+        "area_name": area_name,
+        "valid_for_motion": _is_valid_motion_position(
+            {
+                "source": source,
+                "x": x,
+                "y": y,
+                "pos_type_label": _pos_type_label(pos_type),
+                "zone_hash": safe_zone_hash,
+            }
+        ),
     }
 
 
@@ -902,7 +1015,7 @@ def _custom_path_telemetry_snapshot(
         "work_mode_label": device_mode(work_mode) if work_mode is not None else None,
         "charge_state": charge_state,
         "charge_state_label": _charge_state_label(charge_state),
-        "position": _custom_path_position_snapshot(data),
+        "position": _custom_path_position_snapshot(data, coordinator),
         "blade": {
             "reported_state": _enum_value(blade_state),
             "reported_state_label": _blade_state_label(blade_state),
@@ -1061,6 +1174,15 @@ def _position_available(telemetry: dict[str, Any]) -> bool:
     )
 
 
+def _position_has_known_area(telemetry: dict[str, Any]) -> bool:
+    """Return true when telemetry ties the mower to a known mowing area."""
+    position = telemetry.get("position", {})
+    return (
+        position.get("pos_type_label") == "AREA_INSIDE"
+        and position.get("zone_hash") not in (None, 0, "0")
+    )
+
+
 def _blade_reported_safe(telemetry: dict[str, Any]) -> bool:
     """Return true when telemetry reports blades off and cutter RPM zero/unknown."""
     blade = telemetry.get("blade", {})
@@ -1135,9 +1257,28 @@ def _manual_velocity_pulse_gates(
             "detail": "Real pulse requires the mower to be idle/ready, not mowing or charging.",
         },
         {
+            "name": "not_docked_or_charging",
+            "passed": dry_run or before.get("charge_state_label") == "not_charging",
+            "detail": "Real pulse requires the mower to be off the dock and not charging.",
+        },
+        {
             "name": "live_map_position_available",
             "passed": dry_run or _position_available(before),
             "detail": "Real pulse requires live map-local mower position.",
+        },
+        {
+            "name": "position_area_inside",
+            "passed": dry_run or _position_has_known_area(before),
+            "detail": "Real pulse requires AREA_INSIDE and a nonzero known zone hash.",
+        },
+        {
+            "name": "map_position_nonzero",
+            "passed": dry_run
+            or not _is_zero_pose(
+                before.get("position", {}).get("x"),
+                before.get("position", {}).get("y"),
+            ),
+            "detail": "Real pulse requires nonzero map-local x/y coordinates.",
         },
     ]
 

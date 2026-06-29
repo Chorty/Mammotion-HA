@@ -76,6 +76,9 @@ def _pulse_coordinator(
     blade_state: int | None = 0,
     cutter_rpm: int | None = 0,
     work_mode: int = 11,
+    charge_state: int = 0,
+    pos_type: int = 1,
+    zone_hash: int = 123,
     position: tuple[float | None, float | None, float | None] = (1.0, 1.0, 0.0),
 ) -> SimpleNamespace:
     """Build a coordinator fixture for manual velocity pulse tests."""
@@ -94,13 +97,18 @@ def _pulse_coordinator(
                 toward=toward,
                 pos_level=0,
                 rtk_status=4,
-                zone_hash=123,
-                pos_type=1,
+                zone_hash=zone_hash,
+                pos_type=pos_type,
+            ),
+            location=SimpleNamespace(
+                orientation=toward,
+                position_type=pos_type,
+                work_zone=zone_hash,
             ),
             report_data=SimpleNamespace(
                 dev=SimpleNamespace(
                     sys_status=work_mode,
-                    charge_state=2,
+                    charge_state=charge_state,
                     blade_state=blade_state,
                 ),
                 rtk=SimpleNamespace(status=4, pos_level=0),
@@ -111,6 +119,9 @@ def _pulse_coordinator(
                 ),
                 connect=None,
             ),
+        ),
+        get_area_entity_name=lambda area_hash: (
+            "Backyard Right" if area_hash == 123 else f"area {area_hash}"
         ),
     )
 
@@ -726,7 +737,7 @@ async def test_manual_velocity_pulse_test_rejects_active_work_mode() -> None:
 @pytest.mark.asyncio
 async def test_manual_velocity_pulse_test_rejects_unavailable_position() -> None:
     """Real pulse rejects missing live map-local position before movement."""
-    coordinator = _pulse_coordinator(position=(None, None, None))
+    coordinator = _pulse_coordinator(position=(None, None, None), pos_type=0, zone_hash=0)
 
     result = await _manual_velocity_pulse_test(
         coordinator,
@@ -737,7 +748,67 @@ async def test_manual_velocity_pulse_test_rejects_unavailable_position() -> None
     )
 
     assert result["would_send"] is False
-    assert result["blockers"] == ["live_map_position_available"]
+    assert result["blockers"] == [
+        "live_map_position_available",
+        "position_area_inside",
+    ]
+    coordinator.async_move_forward.assert_not_called()
+    coordinator.async_stop_manual_motion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_pulse_test_rejects_charging_state() -> None:
+    """Real pulse rejects docked/charging state before movement."""
+    coordinator = _pulse_coordinator(charge_state=2)
+
+    result = await _manual_velocity_pulse_test(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        followup_samples=0,
+    )
+
+    assert result["would_send"] is False
+    assert result["blockers"] == ["not_docked_or_charging"]
+    coordinator.async_move_forward.assert_not_called()
+    coordinator.async_stop_manual_motion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_pulse_test_rejects_area_out_zero_zone() -> None:
+    """Real pulse rejects AREA_OUT and unknown zone hash before movement."""
+    coordinator = _pulse_coordinator(pos_type=0, zone_hash=0)
+
+    result = await _manual_velocity_pulse_test(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        followup_samples=0,
+    )
+
+    assert result["would_send"] is False
+    assert result["blockers"] == ["position_area_inside"]
+    coordinator.async_move_forward.assert_not_called()
+    coordinator.async_stop_manual_motion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_pulse_test_rejects_zero_map_position() -> None:
+    """Real pulse rejects zero map-local x/y even with known area metadata."""
+    coordinator = _pulse_coordinator(position=(0.0, 0.0, 0.0))
+
+    result = await _manual_velocity_pulse_test(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        followup_samples=0,
+    )
+
+    assert result["would_send"] is False
+    assert result["blockers"] == ["map_position_nonzero"]
     coordinator.async_move_forward.assert_not_called()
     coordinator.async_stop_manual_motion.assert_not_called()
 
@@ -785,15 +856,7 @@ def test_custom_path_telemetry_uses_mowing_state_position() -> None:
             report_data=SimpleNamespace(
                 dev=SimpleNamespace(sys_status=11, charge_state=2, blade_state=0),
                 rtk=SimpleNamespace(status=4, pos_level=2),
-                locations=[
-                    SimpleNamespace(
-                        real_pos_x=999_000,
-                        real_pos_y=999_000,
-                        real_toward=999_000,
-                        pos_type=7,
-                        bol_hash=123,
-                    )
-                ],
+                locations=[],
                 cutter_work_mode_info=SimpleNamespace(
                     current_cutter_mode=0,
                     current_cutter_rpm=0,
@@ -828,10 +891,56 @@ def test_custom_path_telemetry_uses_mowing_state_position() -> None:
         "pos_type": 1,
         "pos_type_label": "AREA_INSIDE",
         "zone_hash": str(LARGE_HASH),
+        "area_name": None,
+        "valid_for_motion": True,
     }
     assert snapshot["blade"]["reported_state"] == 0
     assert snapshot["blade"]["current_cutter_rpm"] == 0
     assert snapshot["transport"]["connection_label"] == "WIFI/BLE"
+
+
+def test_custom_path_telemetry_overlays_location_metadata_on_stale_zero_pose() -> None:
+    """Stale mowing_state zero/AREA_OUT does not hide valid area metadata."""
+    coordinator = SimpleNamespace(
+        is_online=lambda: True,
+        get_area_entity_name=lambda area_hash: (
+            "Backyard Right" if area_hash == 123 else None
+        ),
+        data=SimpleNamespace(
+            mowing_state=SimpleNamespace(
+                pos_x=0.0,
+                pos_y=0.0,
+                toward=0.0,
+                pos_level=0,
+                rtk_status=0,
+                zone_hash=0,
+                pos_type=0,
+            ),
+            location=SimpleNamespace(orientation=45, position_type=1, work_zone=123),
+            report_data=SimpleNamespace(
+                dev=SimpleNamespace(sys_status=11, charge_state=0, blade_state=0),
+                rtk=SimpleNamespace(status=4, pos_level=0),
+                locations=[],
+                cutter_work_mode_info=SimpleNamespace(
+                    current_cutter_mode=0,
+                    current_cutter_rpm=0,
+                ),
+                connect=None,
+            ),
+        ),
+    )
+
+    position = _custom_path_telemetry_snapshot(coordinator)["position"]
+
+    assert position["source"] == "location_metadata"
+    assert position["x"] is None
+    assert position["y"] is None
+    assert position["toward"] == 45
+    assert position["pos_type"] == 1
+    assert position["pos_type_label"] == "AREA_INSIDE"
+    assert position["zone_hash"] == 123
+    assert position["area_name"] == "Backyard Right"
+    assert position["valid_for_motion"] is False
 
 
 def test_custom_path_telemetry_falls_back_to_report_location() -> None:
@@ -874,6 +983,8 @@ def test_custom_path_telemetry_falls_back_to_report_location() -> None:
     assert position["pos_type"] == 5
     assert position["pos_type_label"] == "CHARGE_ON"
     assert position["zone_hash"] == 123
+    assert position["area_name"] is None
+    assert position["valid_for_motion"] is False
 
 
 def test_custom_path_telemetry_reports_unavailable_position_safely() -> None:
