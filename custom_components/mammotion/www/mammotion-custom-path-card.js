@@ -248,6 +248,88 @@ class MammotionCustomPathCard extends HTMLElement {
     this._validateAndPreview();
   }
 
+  _roundedPoint(point) {
+    return {
+      x: Number(point.x.toFixed(3)),
+      y: Number(point.y.toFixed(3)),
+    };
+  }
+
+  _previewPayload() {
+    const payload = {
+      entity_id: this._config.entity,
+      speed: Number(this._config.speed || 0.2),
+      blade_mode: "off",
+      points: this._points.map((point) => this._roundedPoint(point)),
+    };
+    if (this._areaHash) {
+      payload.area_hash = String(this._areaHash);
+    }
+    return payload;
+  }
+
+  _payloadYaml() {
+    const payload = this._previewPayload();
+    const lines = [
+      `entity_id: ${payload.entity_id}`,
+    ];
+    if (payload.area_hash) {
+      lines.push(`area_hash: "${payload.area_hash}"`);
+    }
+    lines.push(`speed: ${payload.speed}`);
+    lines.push(`blade_mode: "${payload.blade_mode}"`);
+    lines.push("points:");
+    for (const point of payload.points) {
+      lines.push(`  - x: ${point.x}`);
+      lines.push(`    y: ${point.y}`);
+    }
+    return `${lines.join("\n")}\n`;
+  }
+
+  _payloadJson() {
+    return `${JSON.stringify(this._previewPayload(), null, 2)}\n`;
+  }
+
+  async _copyText(text, label) {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "readonly");
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        this.shadowRoot.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        textarea.remove();
+      }
+      this._status = `${label} copied. This is a preview payload only; no mower command was sent.`;
+    } catch (err) {
+      this._status = `Copy failed: ${err?.message || err}`;
+    }
+    this._render();
+  }
+
+  _copyYaml() {
+    if (!this._points.length) {
+      this._status = "Draw at least one point before copying YAML.";
+      this._render();
+      return;
+    }
+    this._copyText(this._payloadYaml(), "YAML");
+  }
+
+  _copyJson() {
+    if (!this._points.length) {
+      this._status = "Draw at least one point before copying JSON.";
+      this._render();
+      return;
+    }
+    this._copyText(this._payloadJson(), "JSON");
+  }
+
   _renderMap() {
     const svgEl = this._q("#path-map");
     if (!svgEl) return;
@@ -336,6 +418,9 @@ class MammotionCustomPathCard extends HTMLElement {
         .toolbar { display: flex; gap: 8px; align-items: center; padding: 12px; flex-wrap: wrap; }
         .status { padding: 0 12px 12px; color: var(--secondary-text-color); font-size: 13px; }
         .warnings { padding: 0 12px 12px; color: #f59e0b; font-size: 12px; }
+        details { padding: 0 12px 12px; color: var(--secondary-text-color); font-size: 12px; }
+        summary { cursor: pointer; }
+        pre { overflow: auto; max-height: 220px; padding: 8px; background: rgba(127,127,127,0.12); border-radius: 4px; }
         svg { display: block; width: 100%; height: ${this._height}px; background: #0d1117; touch-action: none; cursor: crosshair; }
         select, button { font: inherit; }
       </style>
@@ -344,6 +429,8 @@ class MammotionCustomPathCard extends HTMLElement {
           <button id="reload" type="button">Reload map</button>
           <button id="undo" type="button" ${undoDisabled}>Undo point</button>
           <button id="clear" type="button">Clear path</button>
+          <button id="copy-yaml" type="button" ${undoDisabled}>Copy YAML</button>
+          <button id="copy-json" type="button" ${undoDisabled}>Copy JSON</button>
           <label>Area
             <select id="area">
               ${areas.map((area) => `<option value="${this._escapeHtml(area.area_hash)}" ${String(area.area_hash) === String(this._areaHash) ? "selected" : ""}>${this._escapeHtml(area.name || area.area_hash)}</option>`).join("")}
@@ -353,11 +440,14 @@ class MammotionCustomPathCard extends HTMLElement {
         <svg id="path-map"></svg>
         <div class="status">${this._escapeHtml(this._status)}</div>
         ${(this._validation?.warnings || []).length ? `<div class="warnings">Warnings: ${this._escapeHtml(this._validation.warnings.join(", "))}</div>` : ""}
+        ${this._points.length ? `<details><summary>Preview service YAML</summary><pre>${this._escapeHtml(this._payloadYaml())}</pre></details>` : ""}
       </ha-card>
     `;
     this._q("#reload")?.addEventListener("click", () => this._loadMap());
     this._q("#undo")?.addEventListener("click", () => this._undoPoint());
     this._q("#clear")?.addEventListener("click", () => this._clearPath());
+    this._q("#copy-yaml")?.addEventListener("click", () => this._copyYaml());
+    this._q("#copy-json")?.addEventListener("click", () => this._copyJson());
     this._q("#area")?.addEventListener("change", (event) => {
       this._areaHash = event.target.value;
       this._validateAndPreview();
