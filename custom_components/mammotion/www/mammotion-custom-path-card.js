@@ -13,6 +13,7 @@ class MammotionCustomPathCard extends HTMLElement {
     this._status = "Load a mower map, then click inside an area to add path points.";
     this._validation = null;
     this._loadingMap = false;
+    this._rendered = false;
   }
 
   setConfig(config) {
@@ -29,7 +30,10 @@ class MammotionCustomPathCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    this._render();
+    if (!this._rendered) {
+      this._render();
+      this._rendered = true;
+    }
     if (!this._mapData && !this._loadingMap) {
       this._loadMap();
     }
