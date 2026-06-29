@@ -75,6 +75,7 @@ def _pulse_coordinator(
     *,
     blade_state: int | None = 0,
     cutter_rpm: int | None = 0,
+    work_mode: int = 11,
     position: tuple[float | None, float | None, float | None] = (1.0, 1.0, 0.0),
 ) -> SimpleNamespace:
     """Build a coordinator fixture for manual velocity pulse tests."""
@@ -97,7 +98,11 @@ def _pulse_coordinator(
                 pos_type=1,
             ),
             report_data=SimpleNamespace(
-                dev=SimpleNamespace(sys_status=11, charge_state=2, blade_state=blade_state),
+                dev=SimpleNamespace(
+                    sys_status=work_mode,
+                    charge_state=2,
+                    blade_state=blade_state,
+                ),
                 rtk=SimpleNamespace(status=4, pos_level=0),
                 locations=[],
                 cutter_work_mode_info=SimpleNamespace(
@@ -695,6 +700,25 @@ async def test_manual_velocity_pulse_test_rejects_unsafe_blade_telemetry() -> No
 
     assert result["would_send"] is False
     assert result["blockers"] == ["mower_reports_blades_off"]
+    coordinator.async_move_forward.assert_not_called()
+    coordinator.async_stop_manual_motion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_pulse_test_rejects_active_work_mode() -> None:
+    """Real pulse rejects active mowing/working mode before movement."""
+    coordinator = _pulse_coordinator(work_mode=13)
+
+    result = await _manual_velocity_pulse_test(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        followup_samples=0,
+    )
+
+    assert result["would_send"] is False
+    assert result["blockers"] == ["mower_ready"]
     coordinator.async_move_forward.assert_not_called()
     coordinator.async_stop_manual_motion.assert_not_called()
 

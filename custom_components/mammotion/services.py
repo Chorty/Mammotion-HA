@@ -1130,6 +1130,11 @@ def _manual_velocity_pulse_gates(
             "detail": "Real pulse requires blade state off and cutter RPM zero/unknown.",
         },
         {
+            "name": "mower_ready",
+            "passed": dry_run or before.get("work_mode_label") == "MODE_READY",
+            "detail": "Real pulse requires the mower to be idle/ready, not mowing or charging.",
+        },
+        {
             "name": "live_map_position_available",
             "passed": dry_run or _position_available(before),
             "detail": "Real pulse requires live map-local mower position.",

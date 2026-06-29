@@ -67,6 +67,7 @@ real-motion probe. It defaults to `dry_run: true`. When explicitly run with
 - `confirm_blades_off: true`;
 - `confirm_clear_area: true`;
 - telemetry reporting blades off and cutter RPM zero/unknown;
+- mower work mode `MODE_READY`;
 - live map-local position;
 - the internal stop primitive `async_stop_manual_motion()`.
 
