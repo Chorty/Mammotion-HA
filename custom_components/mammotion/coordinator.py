@@ -1098,6 +1098,15 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):  # ty
             "move_back", prefer_ble=not use_wifi, linear=speed
         )
 
+    async def async_stop_manual_motion(self, use_wifi: bool = False) -> None:
+        """Stop low-level manual motion by sending zero linear/angular velocity."""
+        if not use_wifi:
+            await self._async_ensure_ble_client()
+        await self.async_send_command(
+            "move_forward", prefer_ble=not use_wifi, linear=0.0
+        )
+        await self.async_send_command("move_left", prefer_ble=not use_wifi, angular=0.0)
+
     async def async_rtk_dock_location(self) -> None:
         """RTK and dock location."""
         await self.async_send_and_wait(

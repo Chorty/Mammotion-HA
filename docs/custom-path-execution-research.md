@@ -2,13 +2,14 @@
 
 This document records the current safety position for custom mower paths.
 
-Status: research only. No custom path execution service has been implemented.
-The current implementation is limited to read-only map export, task export,
-custom path validation, and custom path preview.
+Status: guarded execution envelope only. The integration now includes
+`mammotion.execute_custom_path`, but that service is intentionally non-moving:
+it performs readiness checks and returns a blocked movement plan. It does not
+send mower movement, task, blade, or stop commands.
 
 Current conclusion: as of this pass, Mammotion/pymammotion does not expose a
 proven safe "follow these arbitrary waypoints with blades guaranteed off"
-command path. Do not add an execute button or execution service yet.
+command path. Real movement remains blocked in code.
 
 ## Current foundation
 
@@ -28,6 +29,51 @@ The safe path format is `mower_map_xy`:
 
 This coordinate system matches the Mammotion map-local coordinates already used
 by map geometry and SVG placement. It is intentionally not GPS latitude/longitude.
+
+## Implemented safe stage
+
+`mammotion.execute_custom_path` now exists as a blocked execution envelope. It:
+
+- validates the path;
+- calculates segments, headings, distances, and estimated durations;
+- captures live telemetry;
+- runs a simulated manual velocity controller decision;
+- checks whether blades are reported off;
+- checks whether live map-local position is available;
+- reports whether manual velocity was explicitly requested;
+- always returns `real_execution_allowed: false`;
+- sends no mower movement, task, blade, or stop commands.
+
+The service accepts future-facing safety fields such as `dry_run`,
+`confirm_blades_off`, and `allow_manual_velocity`, but those fields only affect
+the returned readiness report. They do not unlock real movement.
+
+The simulated controller consumes the current telemetry snapshot and path points,
+then returns one next action:
+
+- `forward`;
+- `turn_left`;
+- `turn_right`;
+- `stop`.
+
+It also returns the service call it would have used, such as
+`mammotion.move_forward`, under `command_not_sent`. This is intentionally only a
+decision report; no movement command is called.
+
+`mammotion.manual_velocity_pulse_test` now exists as the first guarded
+real-motion probe. It defaults to `dry_run: true`. When explicitly run with
+`dry_run: false`, it requires:
+
+- `confirm_blades_off: true`;
+- `confirm_clear_area: true`;
+- telemetry reporting blades off and cutter RPM zero/unknown;
+- live map-local position;
+- the internal stop primitive `async_stop_manual_motion()`.
+
+If all gates pass, it sends one tiny low-level movement pulse, then always
+attempts the stop primitive and returns before/after telemetry plus measured
+movement delta. This is for proving telemetry and stop behavior only; it is not
+full path execution.
 
 ## Known command paths
 
@@ -111,7 +157,8 @@ it only supports the current pymammotion/protobuf conclusion.
 
 ## Questions that must be answered before execution
 
-Before adding `mammotion.execute_custom_path`, research must answer:
+Before enabling real movement from `mammotion.execute_custom_path`, research
+must answer:
 
 - Can the mower follow arbitrary waypoints, or only stored plans/areas?
 - Is there a firmware-supported navigation-only mode?
@@ -125,12 +172,17 @@ Before adding `mammotion.execute_custom_path`, research must answer:
   intended path?
 - What stop command is available, and does it work across all selected
   transports?
+- Does `manual_velocity_pulse_test` prove that position and heading update
+  quickly enough while moving?
+- Does the zero-speed stop primitive reliably stop both linear and angular
+  manual motion on the real mower?
 
 ## Current safety assessment
 
-Arbitrary custom path execution is not approved yet.
+Arbitrary custom path execution is not approved for real movement yet.
 
-The current safe answer is: no execute button/service.
+The current safe answer is: expose a blocked readiness service, not an execute
+button that moves the mower.
 
 The safest likely execution path, if firmware support exists, would be:
 
@@ -152,9 +204,12 @@ implementation.
 
 ## Approval gate
 
-Do not implement mower movement, blade control, path upload, or route execution
-until a follow-up research pass identifies a concrete command path and the user
-explicitly approves implementation.
+Do not implement real mower movement, blade control, path upload, or route
+execution until a follow-up research pass identifies a concrete command path and
+the user explicitly approves implementation.
 
-The future execution service, if approved, should default to `dry_run: true` and
-reject real movement unless all safety fields are explicitly set.
+The future real execution path should default to `dry_run: true` and reject real
+movement unless all safety fields are explicitly set.
+
+One-segment and full-path execution remain blocked until the pulse probe has
+been tested on the real mower in a clear area.

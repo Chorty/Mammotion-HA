@@ -829,6 +829,82 @@
         }
       }
     },
+    "execute_custom_path": {
+      "name": "Execute custom path",
+      "description": "Checks readiness for future custom path execution and returns the blocked movement plan. This implementation does not send movement, task, blade, or stop commands.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        },
+        "points": {
+          "name": "Points",
+          "description": "List of map-local points, each with x and y."
+        },
+        "area_hash": {
+          "name": "Area hash",
+          "description": "Optional area hash to constrain containment validation."
+        },
+        "speed": {
+          "name": "Speed",
+          "description": "Proposed movement speed for readiness estimates."
+        },
+        "blade_mode": {
+          "name": "Blade mode",
+          "description": "Must be off."
+        },
+        "dry_run": {
+          "name": "Dry run",
+          "description": "If false, the service records that real execution was requested but still blocks movement until a safe waypoint API is proven."
+        },
+        "confirm_blades_off": {
+          "name": "Confirm blades off",
+          "description": "Operator confirmation that blades should remain off for any future real movement."
+        },
+        "allow_manual_velocity": {
+          "name": "Allow manual velocity",
+          "description": "Operator opt-in for researching the existing low-level manual movement commands. This service still does not send them."
+        }
+      }
+    },
+    "manual_velocity_pulse_test": {
+      "name": "Manual velocity pulse test",
+      "description": "Dry-runs or performs one tiny manual movement pulse, then samples telemetry and attempts a stop. Real pulses require explicit safety confirmations.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        },
+        "action": {
+          "name": "Action",
+          "description": "The low-level manual movement action to test."
+        },
+        "speed": {
+          "name": "Speed",
+          "description": "Pulse speed. Real probes are capped to a conservative maximum."
+        },
+        "duration_ms": {
+          "name": "Duration",
+          "description": "Pulse duration in milliseconds."
+        },
+        "use_wifi": {
+          "name": "Use Wi-Fi",
+          "description": "Use Wi-Fi/local path instead of the default BLE-preferred path."
+        },
+        "dry_run": {
+          "name": "Dry run",
+          "description": "When true, no movement command is sent."
+        },
+        "confirm_blades_off": {
+          "name": "Confirm blades off",
+          "description": "Required for a real pulse."
+        },
+        "confirm_clear_area": {
+          "name": "Confirm clear area",
+          "description": "Required for a real pulse after confirming the mower has room to move safely."
+        }
+      }
+    },
     "svg_add": {
       "name": "Add SVG tile",
       "description": "Send a new SVG tile to the device map. Returns the device-assigned hash.",

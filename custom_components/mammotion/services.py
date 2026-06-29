@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import math
 from typing import TYPE_CHECKING, Any, cast
@@ -14,6 +15,11 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from pymammotion.data.model.hash_list import CommDataCouple, Plan
 from pymammotion.data.model.pool_state import PoolPlan
+from pymammotion.utility.constant.device_constant import (
+    PosType,
+    device_connection,
+    device_mode,
+)
 from pymammotion.utility.device_type import DeviceType
 
 from .const import DOMAIN, LOGGER
@@ -35,6 +41,8 @@ SERVICE_EXPORT_TASKS = "export_tasks"
 SERVICE_VALIDATE_CUSTOM_PATH = "validate_custom_path"
 SERVICE_PREVIEW_CUSTOM_PATH = "preview_custom_path"
 SERVICE_DRY_RUN_CUSTOM_PATH = "dry_run_custom_path"
+SERVICE_EXECUTE_CUSTOM_PATH = "execute_custom_path"
+SERVICE_MANUAL_VELOCITY_PULSE_TEST = "manual_velocity_pulse_test"
 SERVICE_SVG_ADD = "svg_add"
 SERVICE_SVG_UPDATE = "svg_update"
 SERVICE_SVG_DELETE = "svg_delete"
@@ -211,6 +219,44 @@ DRY_RUN_CUSTOM_PATH_SCHEMA = vol.Schema(
         ),
         vol.Optional("blade_mode", default="off"): vol.In(["off"]),
         vol.Optional("dry_run", default=True): vol.All(cv.boolean, vol.Equal(True)),
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
+EXECUTE_CUSTOM_PATH_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+        vol.Required("points"): vol.All(
+            cv.ensure_list, [_CUSTOM_PATH_POINT_SCHEMA]
+        ),
+        vol.Optional("area_hash"): vol.Coerce(int),
+        vol.Optional("speed", default=0.2): vol.All(
+            vol.Coerce(float), vol.Range(min=0.05, max=0.3)
+        ),
+        vol.Optional("blade_mode", default="off"): vol.In(["off"]),
+        vol.Optional("dry_run", default=True): cv.boolean,
+        vol.Optional("confirm_blades_off", default=False): cv.boolean,
+        vol.Optional("allow_manual_velocity", default=False): cv.boolean,
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
+MANUAL_VELOCITY_PULSE_TEST_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+        vol.Optional("action", default="forward"): vol.In(
+            ["forward", "backward", "turn_left", "turn_right"]
+        ),
+        vol.Optional("speed", default=0.1): vol.All(
+            vol.Coerce(float), vol.Range(min=0.05, max=0.2)
+        ),
+        vol.Optional("duration_ms", default=250): vol.All(
+            vol.Coerce(int), vol.Range(min=50, max=750)
+        ),
+        vol.Optional("use_wifi", default=False): cv.boolean,
+        vol.Optional("dry_run", default=True): cv.boolean,
+        vol.Optional("confirm_blades_off", default=False): cv.boolean,
+        vol.Optional("confirm_clear_area", default=False): cv.boolean,
     },
     extra=vol.ALLOW_EXTRA,
 )
@@ -469,7 +515,14 @@ def _path_heading_degrees(
     start: dict[str, float], end: dict[str, float]
 ) -> float:
     """Return a map-local heading in degrees for a segment."""
-    return (math.degrees(math.atan2(end["y"] - start["y"], end["x"] - start["x"])) + 360) % 360
+    return (
+        math.degrees(math.atan2(end["y"] - start["y"], end["x"] - start["x"])) + 360
+    ) % 360
+
+
+def _heading_error_degrees(current: float, target: float) -> float:
+    """Return signed shortest heading error in degrees."""
+    return (target - current + 540) % 360 - 180
 
 
 def _isoformat_or_none(value: Any) -> str | None:
@@ -682,31 +735,177 @@ def _safe_attr_path(obj: Any, path: str) -> Any:
     return current
 
 
+def _first_not_none(*values: Any) -> Any:
+    """Return the first value that is not None, preserving falsey telemetry values."""
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
+def _enum_value(value: Any) -> Any:
+    """Return the primitive value for enum-like values."""
+    return getattr(value, "value", value)
+
+
+def _enum_label(value: Any) -> str | None:
+    """Return a readable label for enum-like values."""
+    if value is None:
+        return None
+    return getattr(value, "name", str(value))
+
+
+def _scale_report_position(value: Any) -> float | None:
+    """Scale raw report map-local integer position fields to mower-map units."""
+    if value is None:
+        return None
+    try:
+        return float(value) / 10_000
+    except (TypeError, ValueError):
+        return None
+
+
+def _position_mode_label(pos_level: Any) -> str | None:
+    """Return a readable position quality label from a pos_level value."""
+    if pos_level is None:
+        return None
+    try:
+        from pymammotion.data.model.enums import PositionMode  # noqa: PLC0415
+
+        return PositionMode.from_value(int(pos_level)).name
+    except (TypeError, ValueError):
+        return "UNKNOWN"
+
+
+def _rtk_status_label(value: Any) -> str | None:
+    """Return a readable RTK status label from enum or numeric values."""
+    if value is None:
+        return None
+    if hasattr(value, "name"):
+        return {
+            "FINE": "Fix",
+            "BAD": "Single",
+            "NONE": "None",
+        }.get(str(value.name), str(value.name).title())
+    try:
+        from pymammotion.data.model.enums import RTKStatus  # noqa: PLC0415
+
+        return str(RTKStatus.from_value(int(value)))
+    except (TypeError, ValueError):
+        return "Unknown"
+
+
+def _pos_type_label(value: Any) -> str | None:
+    """Return a readable position type label."""
+    if value is None:
+        return None
+    try:
+        return PosType(int(value)).name
+    except ValueError:
+        return "UNKNOWN"
+
+
+def _charge_state_label(value: Any) -> str:
+    """Return a readable charge-state label."""
+    try:
+        charge_state = int(value)
+    except (TypeError, ValueError):
+        return "unknown"
+    return {
+        0: "not_charging",
+        1: "charging",
+        2: "docked_or_charging",
+    }.get(charge_state, "unknown")
+
+
+def _blade_state_label(value: Any) -> str | None:
+    """Return a readable blade state label."""
+    if value is None:
+        return None
+    return _enum_label(value)
+
+
+def _latest_location(data: Any) -> Any:
+    """Return the first reported location entry, if present."""
+    locations = _safe_attr_path(data, "report_data.locations")
+    if not locations:
+        return None
+    return locations[0]
+
+
+def _custom_path_position_snapshot(data: Any) -> dict[str, Any]:
+    """Return normalized map-local position diagnostics for custom-path dry runs."""
+    mowing_state = _safe_attr_path(data, "mowing_state")
+    report_location = _latest_location(data)
+    rtk = _safe_attr_path(data, "report_data.rtk")
+
+    source = "unavailable"
+    x = y = toward = None
+    pos_level = rtk_status = pos_type = zone_hash = None
+
+    if mowing_state is not None and (
+        _safe_attr_path(mowing_state, "pos_x") is not None
+        or _safe_attr_path(mowing_state, "pos_y") is not None
+    ):
+        source = "mowing_state"
+        x = _safe_attr_path(mowing_state, "pos_x")
+        y = _safe_attr_path(mowing_state, "pos_y")
+        toward = _safe_attr_path(mowing_state, "toward")
+        pos_level = _safe_attr_path(mowing_state, "pos_level")
+        rtk_status = _safe_attr_path(mowing_state, "rtk_status")
+        pos_type = _safe_attr_path(mowing_state, "pos_type")
+        zone_hash = _safe_attr_path(mowing_state, "zone_hash")
+    elif report_location is not None and (
+        _safe_attr_path(report_location, "real_pos_x") is not None
+        or _safe_attr_path(report_location, "real_pos_y") is not None
+    ):
+        source = "report_data.locations[0]"
+        x = _scale_report_position(_safe_attr_path(report_location, "real_pos_x"))
+        y = _scale_report_position(_safe_attr_path(report_location, "real_pos_y"))
+        toward = _scale_report_position(_safe_attr_path(report_location, "real_toward"))
+        pos_type = _safe_attr_path(report_location, "pos_type")
+        zone_hash = _safe_attr_path(report_location, "bol_hash")
+
+    pos_level = _first_not_none(pos_level, _safe_attr_path(rtk, "pos_level"))
+    rtk_status = _first_not_none(rtk_status, _safe_attr_path(rtk, "status"))
+    pos_type = _first_not_none(pos_type, _safe_attr_path(data, "location.position_type"))
+    zone_hash = _first_not_none(zone_hash, _safe_attr_path(data, "location.work_zone"))
+    toward = _first_not_none(toward, _safe_attr_path(data, "location.orientation"))
+
+    return {
+        "x": x,
+        "y": y,
+        "toward": toward,
+        "source": source,
+        "pos_level": pos_level,
+        "pos_level_label": _position_mode_label(pos_level),
+        "rtk_status": _enum_value(rtk_status),
+        "rtk_status_label": _rtk_status_label(rtk_status),
+        "pos_type": pos_type,
+        "pos_type_label": _pos_type_label(pos_type),
+        "zone_hash": _json_safe_int(zone_hash) if zone_hash is not None else None,
+    }
+
+
 def _custom_path_telemetry_snapshot(
     coordinator: MammotionReportUpdateCoordinator,
 ) -> dict[str, Any]:
     """Return local cached telemetry useful for a custom-path dry run."""
     data = coordinator.data
+    work_mode = _safe_attr_path(data, "report_data.dev.sys_status")
+    charge_state = _safe_attr_path(data, "report_data.dev.charge_state")
+    blade_state = _safe_attr_path(data, "report_data.dev.blade_state")
+    connect = _safe_attr_path(data, "report_data.connect")
     return {
         "online": coordinator.is_online() if hasattr(coordinator, "is_online") else None,
-        "work_mode": _safe_attr_path(data, "report_data.dev.sys_status"),
-        "charge_state": _safe_attr_path(data, "report_data.dev.charge_state"),
-        "position": {
-            "x": _safe_attr_path(data, "mowing_state.x")
-            or _safe_attr_path(data, "rapid_state.pos_x")
-            or _safe_attr_path(data, "report_data.location.x"),
-            "y": _safe_attr_path(data, "mowing_state.y")
-            or _safe_attr_path(data, "rapid_state.pos_y")
-            or _safe_attr_path(data, "report_data.location.y"),
-            "toward": _safe_attr_path(data, "mowing_state.toward")
-            or _safe_attr_path(data, "rapid_state.toward")
-            or _safe_attr_path(data, "report_data.location.real_toward"),
-            "pos_level": _safe_attr_path(data, "mowing_state.pos_level")
-            or _safe_attr_path(data, "rapid_state.pos_level")
-            or _safe_attr_path(data, "report_data.location.pos_level"),
-        },
+        "work_mode": work_mode,
+        "work_mode_label": device_mode(work_mode) if work_mode is not None else None,
+        "charge_state": charge_state,
+        "charge_state_label": _charge_state_label(charge_state),
+        "position": _custom_path_position_snapshot(data),
         "blade": {
-            "reported_state": _safe_attr_path(data, "report_data.dev.blade_state"),
+            "reported_state": _enum_value(blade_state),
+            "reported_state_label": _blade_state_label(blade_state),
             "knife_status": _safe_attr_path(data, "report_data.knife_status.knife_status"),
             "current_cutter_mode": _safe_attr_path(
                 data, "report_data.cutter_work_mode_info.current_cutter_mode"
@@ -724,8 +923,315 @@ def _custom_path_telemetry_snapshot(
             "iot_connect_status": _safe_attr_path(
                 data, "report_data.connect.iot_connect_status"
             ),
+            "connection_label": device_connection(connect) if connect is not None else None,
         },
     }
+
+
+def _manual_velocity_controller_decision(
+    path_points: list[dict[str, float]],
+    telemetry: dict[str, Any],
+    *,
+    speed: float,
+    waypoint_tolerance: float = 0.4,
+    heading_tolerance_degrees: float = 15.0,
+    max_pulse_seconds: float = 0.5,
+) -> dict[str, Any]:
+    """Return the next simulated manual-velocity action without sending it."""
+    position = telemetry.get("position", {})
+    current_x = position.get("x")
+    current_y = position.get("y")
+    current_heading = position.get("toward")
+
+    base_response: dict[str, Any] = {
+        "mode": "simulated",
+        "would_send": False,
+        "coordinate_system": "mower_map_xy",
+        "waypoint_tolerance": waypoint_tolerance,
+        "heading_tolerance_degrees": heading_tolerance_degrees,
+        "max_pulse_seconds": max_pulse_seconds,
+        "speed": speed,
+        "use_wifi": False,
+    }
+
+    if not path_points:
+        return {
+            **base_response,
+            "action": "stop",
+            "reason": "path_has_no_points",
+            "command_not_sent": None,
+        }
+    if current_x is None or current_y is None:
+        return {
+            **base_response,
+            "action": "stop",
+            "reason": "live_position_unavailable",
+            "command_not_sent": None,
+        }
+    if current_heading is None:
+        return {
+            **base_response,
+            "action": "stop",
+            "reason": "live_heading_unavailable",
+            "command_not_sent": None,
+        }
+
+    current = {"x": float(current_x), "y": float(current_y)}
+    target_index = None
+    target = None
+    distance_to_target = None
+    for index, point in enumerate(path_points):
+        distance = _path_distance([current, point])
+        if distance > waypoint_tolerance:
+            target_index = index
+            target = point
+            distance_to_target = distance
+            break
+
+    if target is None or target_index is None or distance_to_target is None:
+        return {
+            **base_response,
+            "action": "stop",
+            "reason": "path_complete",
+            "target_index": None,
+            "distance_to_target": 0.0,
+            "command_not_sent": None,
+        }
+
+    target_heading = _path_heading_degrees(current, target)
+    heading_error = _heading_error_degrees(float(current_heading), target_heading)
+    if abs(heading_error) > heading_tolerance_degrees:
+        action = "turn_left" if heading_error > 0 else "turn_right"
+        service = SERVICE_MOVE_LEFT if heading_error > 0 else SERVICE_MOVE_RIGHT
+        command = {
+            "service": f"{DOMAIN}.{service}",
+            "data": {"speed": speed, "use_wifi": False},
+        }
+        reason = "heading_error_exceeds_tolerance"
+    else:
+        action = "forward"
+        command = {
+            "service": f"{DOMAIN}.{SERVICE_MOVE_FORWARD}",
+            "data": {"speed": speed, "use_wifi": False},
+        }
+        reason = "heading_aligned"
+
+    return {
+        **base_response,
+        "action": action,
+        "reason": reason,
+        "current": current,
+        "current_heading_degrees": float(current_heading),
+        "target_index": target_index,
+        "target": target,
+        "target_heading_degrees": target_heading,
+        "heading_error_degrees": heading_error,
+        "distance_to_target": distance_to_target,
+        "command_not_sent": command,
+    }
+
+
+def _manual_velocity_action_method(action: str) -> str:
+    """Return the coordinator method name for a manual velocity action."""
+    return {
+        "forward": "async_move_forward",
+        "backward": "async_move_back",
+        "turn_left": "async_move_left",
+        "turn_right": "async_move_right",
+    }[action]
+
+
+def _manual_velocity_action_service(action: str) -> str:
+    """Return the HA service name for a manual velocity action."""
+    return {
+        "forward": SERVICE_MOVE_FORWARD,
+        "backward": SERVICE_MOVE_BACKWARD,
+        "turn_left": SERVICE_MOVE_LEFT,
+        "turn_right": SERVICE_MOVE_RIGHT,
+    }[action]
+
+
+def _position_available(telemetry: dict[str, Any]) -> bool:
+    """Return true when telemetry contains a map-local mower position."""
+    position = telemetry.get("position", {})
+    return (
+        position.get("source") != "unavailable"
+        and position.get("x") is not None
+        and position.get("y") is not None
+    )
+
+
+def _blade_reported_safe(telemetry: dict[str, Any]) -> bool:
+    """Return true when telemetry reports blades off and cutter RPM zero/unknown."""
+    blade = telemetry.get("blade", {})
+    return blade.get("reported_state") == 0 and blade.get("current_cutter_rpm") in (
+        None,
+        0,
+    )
+
+
+def _telemetry_position_delta(
+    start: dict[str, Any], end: dict[str, Any]
+) -> dict[str, Any]:
+    """Return measured movement delta between two telemetry samples."""
+    start_position = start.get("position", {})
+    end_position = end.get("position", {})
+    if not _position_available(start) or not _position_available(end):
+        return {
+            "distance": None,
+            "dx": None,
+            "dy": None,
+            "heading_change_degrees": None,
+        }
+    dx = float(end_position["x"]) - float(start_position["x"])
+    dy = float(end_position["y"]) - float(start_position["y"])
+    start_heading = start_position.get("toward")
+    end_heading = end_position.get("toward")
+    return {
+        "distance": math.hypot(dx, dy),
+        "dx": dx,
+        "dy": dy,
+        "heading_change_degrees": (
+            _heading_error_degrees(float(start_heading), float(end_heading))
+            if start_heading is not None and end_heading is not None
+            else None
+        ),
+    }
+
+
+def _manual_velocity_pulse_gates(
+    coordinator: MammotionReportUpdateCoordinator,
+    before: dict[str, Any],
+    *,
+    dry_run: bool,
+    confirm_blades_off: bool,
+    confirm_clear_area: bool,
+) -> list[dict[str, Any]]:
+    """Return safety gates for a manual velocity pulse probe."""
+    return [
+        {
+            "name": "stop_primitive_available",
+            "passed": hasattr(coordinator, "async_stop_manual_motion"),
+            "detail": "Coordinator must expose async_stop_manual_motion().",
+        },
+        {
+            "name": "operator_confirmed_blades_off",
+            "passed": dry_run or confirm_blades_off,
+            "detail": "Real pulse requires confirm_blades_off=true.",
+        },
+        {
+            "name": "operator_confirmed_clear_area",
+            "passed": dry_run or confirm_clear_area,
+            "detail": "Real pulse requires confirm_clear_area=true.",
+        },
+        {
+            "name": "mower_reports_blades_off",
+            "passed": dry_run or _blade_reported_safe(before),
+            "detail": "Real pulse requires blade state off and cutter RPM zero/unknown.",
+        },
+        {
+            "name": "live_map_position_available",
+            "passed": dry_run or _position_available(before),
+            "detail": "Real pulse requires live map-local mower position.",
+        },
+    ]
+
+
+async def _manual_velocity_pulse_test(
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    action: str = "forward",
+    speed: float = 0.1,
+    duration_ms: int = 250,
+    use_wifi: bool = False,
+    dry_run: bool = True,
+    confirm_blades_off: bool = False,
+    confirm_clear_area: bool = False,
+    followup_samples: int = 4,
+    followup_interval_seconds: float = 0.5,
+) -> dict[str, Any]:
+    """Run or simulate one tiny manual-velocity pulse with telemetry sampling."""
+    if hasattr(coordinator, "async_start_report_stream"):
+        await coordinator.async_start_report_stream(duration_ms=10_000)
+
+    before = _custom_path_telemetry_snapshot(coordinator)
+    gates = _manual_velocity_pulse_gates(
+        coordinator,
+        before,
+        dry_run=dry_run,
+        confirm_blades_off=confirm_blades_off,
+        confirm_clear_area=confirm_clear_area,
+    )
+    blockers = [gate["name"] for gate in gates if not gate["passed"]]
+    service = _manual_velocity_action_service(action)
+    command = {
+        "service": f"{DOMAIN}.{service}",
+        "data": {"speed": speed, "use_wifi": use_wifi},
+    }
+    result: dict[str, Any] = {
+        "service": SERVICE_MANUAL_VELOCITY_PULSE_TEST,
+        "mode": "dry_run" if dry_run else "real_probe",
+        "dry_run": dry_run,
+        "action": action,
+        "speed": speed,
+        "duration_ms": duration_ms,
+        "use_wifi": use_wifi,
+        "confirm_blades_off": confirm_blades_off,
+        "confirm_clear_area": confirm_clear_area,
+        "would_send": not dry_run and not blockers,
+        "command": command if not dry_run and not blockers else None,
+        "command_not_sent": command if dry_run or blockers else None,
+        "real_pulse_allowed": not dry_run and not blockers,
+        "blockers": blockers,
+        "safety_gates": gates,
+        "samples": [{"label": "before", "telemetry": before}],
+        "stop_result": {"attempted": False, "ok": None, "error": None},
+        "command_result": {"attempted": False, "ok": None, "error": None},
+        "measured_delta": {
+            "distance": None,
+            "dx": None,
+            "dy": None,
+            "heading_change_degrees": None,
+        },
+    }
+
+    if dry_run or blockers:
+        result["reason"] = "dry_run" if dry_run else "safety_gates_failed"
+        return result
+
+    command_ok = False
+    try:
+        method = getattr(coordinator, _manual_velocity_action_method(action))
+        result["command_result"]["attempted"] = True
+        await method(speed=speed, use_wifi=use_wifi)
+        command_ok = True
+        result["command_result"]["ok"] = True
+        await asyncio.sleep(duration_ms / 1000)
+    except Exception as err:  # noqa: BLE001
+        result["command_result"]["ok"] = False
+        result["command_result"]["error"] = f"{type(err).__name__}: {err}"
+    finally:
+        try:
+            result["stop_result"]["attempted"] = True
+            await coordinator.async_stop_manual_motion(use_wifi=use_wifi)
+            result["stop_result"]["ok"] = True
+        except Exception as err:  # noqa: BLE001
+            result["stop_result"]["ok"] = False
+            result["stop_result"]["error"] = f"{type(err).__name__}: {err}"
+
+    after_stop = _custom_path_telemetry_snapshot(coordinator)
+    result["samples"].append({"label": "after_stop", "telemetry": after_stop})
+    for index in range(followup_samples):
+        await asyncio.sleep(followup_interval_seconds)
+        result["samples"].append(
+            {
+                "label": f"followup_{index + 1}",
+                "telemetry": _custom_path_telemetry_snapshot(coordinator),
+            }
+        )
+    result["measured_delta"] = _telemetry_position_delta(before, after_stop)
+    result["real_pulse_completed"] = command_ok and result["stop_result"]["ok"] is True
+    return result
 
 
 def _dry_run_custom_path(
@@ -787,6 +1293,12 @@ def _dry_run_custom_path(
             "detail": "No proven Mammotion/pymammotion arbitrary waypoint API with guaranteed blades-off behavior has been found.",
         },
     ]
+    telemetry = _custom_path_telemetry_snapshot(coordinator)
+    controller_decision = _manual_velocity_controller_decision(
+        normalized_points,
+        telemetry,
+        speed=speed,
+    )
 
     return {
         **preview,
@@ -798,7 +1310,8 @@ def _dry_run_custom_path(
             preview["distance"] / speed if speed > 0 and preview["distance"] else 0
         ),
         "safety_gates": safety_gates,
-        "telemetry_snapshot": _custom_path_telemetry_snapshot(coordinator),
+        "telemetry_snapshot": telemetry,
+        "manual_velocity_controller": controller_decision,
         "candidate_existing_feature_plan": {
             "strategy": "manual_velocity_controller",
             "would_send": False,
@@ -808,6 +1321,144 @@ def _dry_run_custom_path(
                 "stop/cancel_job safety fallback",
             ],
             "risk": "Existing movement commands are low-level velocity controls, not firmware waypoint following.",
+        },
+    }
+
+
+def _custom_path_execution_readiness(
+    dry_run_plan: dict[str, Any],
+    *,
+    dry_run: bool,
+    confirm_blades_off: bool,
+    allow_manual_velocity: bool,
+) -> dict[str, Any]:
+    """Return safety/readiness gates for a future custom-path executor."""
+    telemetry = dry_run_plan["telemetry_snapshot"]
+    position = telemetry.get("position", {})
+    blade = telemetry.get("blade", {})
+    reported_blade_state = blade.get("reported_state")
+    cutter_rpm = blade.get("current_cutter_rpm")
+    blade_reported_off = reported_blade_state == 0 and cutter_rpm in (None, 0)
+
+    start_distance = None
+    path_points = dry_run_plan.get("points") or []
+    if path_points and position.get("x") is not None and position.get("y") is not None:
+        start_distance = _path_distance(
+            [
+                {"x": float(position["x"]), "y": float(position["y"])},
+                path_points[0],
+            ]
+        )
+
+    gates = [
+        {
+            "name": "path_validation",
+            "passed": bool(dry_run_plan.get("valid")),
+            "detail": "Custom path must pass map containment and blade_mode validation.",
+        },
+        {
+            "name": "blade_mode_off_requested",
+            "passed": dry_run_plan.get("blade_mode") == "off",
+            "detail": "Only blade_mode=off is accepted.",
+        },
+        {
+            "name": "operator_confirmed_blades_off",
+            "passed": bool(confirm_blades_off),
+            "detail": "Future real movement requires an explicit confirm_blades_off=true request.",
+        },
+        {
+            "name": "mower_reports_blades_off",
+            "passed": blade_reported_off,
+            "detail": "Telemetry must report blade state off and cutter RPM zero/unknown.",
+        },
+        {
+            "name": "live_map_position_available",
+            "passed": position.get("source") != "unavailable"
+            and position.get("x") is not None
+            and position.get("y") is not None,
+            "detail": "Manual path following requires a live map-local mower position.",
+        },
+        {
+            "name": "manual_velocity_opt_in",
+            "passed": bool(allow_manual_velocity),
+            "detail": "Existing commands are low-level velocity controls and require explicit opt-in.",
+        },
+        {
+            "name": "firmware_waypoint_api_proven",
+            "passed": False,
+            "detail": "No proven Mammotion/pymammotion arbitrary waypoint API with guaranteed blades-off behavior has been found.",
+        },
+        {
+            "name": "dry_run_guard",
+            "passed": bool(dry_run),
+            "detail": "This implementation never sends mower movement, task, blade, or stop commands.",
+        },
+    ]
+
+    blockers = [gate["name"] for gate in gates if not gate["passed"]]
+    return {
+        "can_execute_now": False,
+        "real_execution_allowed": False,
+        "reason_real_execution_blocked": (
+            "firmware_waypoint_api_with_blades_off_not_proven"
+        ),
+        "requested_real_execution": not dry_run,
+        "confirm_blades_off": confirm_blades_off,
+        "allow_manual_velocity": allow_manual_velocity,
+        "start_distance": start_distance,
+        "blockers": blockers,
+        "gates": gates,
+    }
+
+
+def _execute_custom_path(
+    coordinator: MammotionReportUpdateCoordinator,
+    points: list[dict[str, float]],
+    *,
+    area_hash: int | None = None,
+    speed: float = 0.2,
+    blade_mode: str = "off",
+    dry_run: bool = True,
+    confirm_blades_off: bool = False,
+    allow_manual_velocity: bool = False,
+) -> dict[str, Any]:
+    """Build a guarded custom-path execution response without moving the mower."""
+    dry_run_plan = _dry_run_custom_path(
+        coordinator,
+        points,
+        area_hash=area_hash,
+        speed=speed,
+        blade_mode=blade_mode,
+    )
+    readiness = _custom_path_execution_readiness(
+        dry_run_plan,
+        dry_run=dry_run,
+        confirm_blades_off=confirm_blades_off,
+        allow_manual_velocity=allow_manual_velocity,
+    )
+
+    return {
+        **dry_run_plan,
+        "service": SERVICE_EXECUTE_CUSTOM_PATH,
+        "dry_run": dry_run,
+        "execution_readiness": readiness,
+        "real_execution_allowed": False,
+        "reason_real_execution_blocked": readiness["reason_real_execution_blocked"],
+        "manual_velocity_command_plan": {
+            "would_send": False,
+            "transport_preference": "BLE",
+            "strategy": "closed_loop_manual_velocity_controller",
+            "commands_not_sent": [
+                "start_stop_blades(false)",
+                "move_left/move_right to heading",
+                "move_forward by short timed pulses",
+                "position re-check after each pulse",
+                "cancel_job/stop safety fallback",
+            ],
+            "why_not_sent": (
+                "The integration has manual velocity commands, but no proven "
+                "closed-loop waypoint executor with guaranteed blades-off behavior."
+            ),
         },
     }
 
@@ -1253,6 +1904,40 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             blade_mode=call.data["blade_mode"],
         )
 
+    async def handle_execute_custom_path(call: ServiceCall) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        return _execute_custom_path(
+            mower.reporting_coordinator,
+            cast(list[dict[str, float]], call.data["points"]),
+            area_hash=call.data.get("area_hash"),
+            speed=call.data["speed"],
+            blade_mode=call.data["blade_mode"],
+            dry_run=call.data["dry_run"],
+            confirm_blades_off=call.data["confirm_blades_off"],
+            allow_manual_velocity=call.data["allow_manual_velocity"],
+        )
+
+    async def handle_manual_velocity_pulse_test(
+        call: ServiceCall,
+    ) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        return await _manual_velocity_pulse_test(
+            mower.reporting_coordinator,
+            action=call.data["action"],
+            speed=call.data["speed"],
+            duration_ms=call.data["duration_ms"],
+            use_wifi=call.data["use_wifi"],
+            dry_run=call.data["dry_run"],
+            confirm_blades_off=call.data["confirm_blades_off"],
+            confirm_clear_area=call.data["confirm_clear_area"],
+        )
+
     async def handle_svg_add(call: ServiceCall) -> dict[str, Any]:
         from pymammotion.data.model.device import MowingDevice  # noqa: PLC0415
         from pymammotion.utility.svg import build_svg_for_area  # noqa: PLC0415
@@ -1392,6 +2077,20 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         SERVICE_DRY_RUN_CUSTOM_PATH,
         handle_dry_run_custom_path,
         schema=DRY_RUN_CUSTOM_PATH_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_EXECUTE_CUSTOM_PATH,
+        handle_execute_custom_path,
+        schema=EXECUTE_CUSTOM_PATH_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_MANUAL_VELOCITY_PULSE_TEST,
+        handle_manual_velocity_pulse_test,
+        schema=MANUAL_VELOCITY_PULSE_TEST_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(

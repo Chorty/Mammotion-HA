@@ -9,9 +9,13 @@ from pymammotion.data.model.hash_list import Plan
 from custom_components.mammotion.coordinator import MammotionReportUpdateCoordinator
 from custom_components.mammotion.sensor import WORK_SENSOR_TYPES
 from custom_components.mammotion.services import (
+    _custom_path_telemetry_snapshot,
     _dry_run_custom_path,
+    _execute_custom_path,
     _export_mower_map,
     _export_mower_tasks,
+    _manual_velocity_controller_decision,
+    _manual_velocity_pulse_test,
     _normalize_mower_areas,
     _normalize_mower_tasks,
     _preview_custom_path,
@@ -63,6 +67,45 @@ def _coordinator(plan: Plan | None = None) -> SimpleNamespace:
         last_map_task_error=None,
         get_area_entity_name=lambda area_hash: (
             "Front Main" if area_hash == LARGE_HASH else f"area {area_hash}"
+        ),
+    )
+
+
+def _pulse_coordinator(
+    *,
+    blade_state: int | None = 0,
+    cutter_rpm: int | None = 0,
+    position: tuple[float | None, float | None, float | None] = (1.0, 1.0, 0.0),
+) -> SimpleNamespace:
+    """Build a coordinator fixture for manual velocity pulse tests."""
+    pos_x, pos_y, toward = position
+    return SimpleNamespace(
+        async_move_forward=AsyncMock(),
+        async_move_back=AsyncMock(),
+        async_move_left=AsyncMock(),
+        async_move_right=AsyncMock(),
+        async_stop_manual_motion=AsyncMock(),
+        is_online=lambda: True,
+        data=SimpleNamespace(
+            mowing_state=SimpleNamespace(
+                pos_x=pos_x,
+                pos_y=pos_y,
+                toward=toward,
+                pos_level=0,
+                rtk_status=4,
+                zone_hash=123,
+                pos_type=1,
+            ),
+            report_data=SimpleNamespace(
+                dev=SimpleNamespace(sys_status=11, charge_state=2, blade_state=blade_state),
+                rtk=SimpleNamespace(status=4, pos_level=0),
+                locations=[],
+                cutter_work_mode_info=SimpleNamespace(
+                    current_cutter_mode=0,
+                    current_cutter_rpm=cutter_rpm,
+                ),
+                connect=None,
+            ),
         ),
     )
 
@@ -409,6 +452,437 @@ def test_dry_run_custom_path_builds_segments_without_allowing_execution() -> Non
     assert result["estimated_total_seconds"] == 35.0
     assert result["candidate_existing_feature_plan"]["would_send"] is False
     assert result["safety_gates"][-1]["passed"] is False
+
+
+def test_execute_custom_path_remains_blocked_even_when_requested_real() -> None:
+    """Execution envelope performs readiness checks but still sends nothing."""
+    coordinator = _coordinator()
+    coordinator.is_online = lambda: True
+    coordinator.data.map.area = {
+        123: SimpleNamespace(
+            data=[
+                SimpleNamespace(
+                    current_frame=0,
+                    data_couple=[
+                        SimpleNamespace(x=0.0, y=0.0),
+                        SimpleNamespace(x=10.0, y=0.0),
+                        SimpleNamespace(x=10.0, y=10.0),
+                        SimpleNamespace(x=0.0, y=10.0),
+                    ],
+                )
+            ]
+        )
+    }
+    coordinator.data.mowing_state = SimpleNamespace(
+        pos_x=1.0,
+        pos_y=1.0,
+        toward=0.0,
+        pos_level=0,
+        rtk_status=4,
+        zone_hash=123,
+        pos_type=1,
+    )
+    coordinator.data.report_data = SimpleNamespace(
+        dev=SimpleNamespace(sys_status=11, charge_state=2, blade_state=0),
+        rtk=SimpleNamespace(status=4, pos_level=0),
+        locations=[],
+        cutter_work_mode_info=SimpleNamespace(
+            current_cutter_mode=0,
+            current_cutter_rpm=0,
+        ),
+        connect=None,
+    )
+
+    result = _execute_custom_path(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 4.0, "y": 1.0}],
+        area_hash=123,
+        speed=0.2,
+        dry_run=False,
+        confirm_blades_off=True,
+        allow_manual_velocity=True,
+    )
+
+    readiness = result["execution_readiness"]
+    assert result["dry_run"] is False
+    assert result["real_execution_allowed"] is False
+    assert readiness["requested_real_execution"] is True
+    assert readiness["can_execute_now"] is False
+    assert readiness["start_distance"] == 0.0
+    assert readiness["blockers"] == [
+        "firmware_waypoint_api_proven",
+        "dry_run_guard",
+    ]
+    assert result["manual_velocity_command_plan"]["would_send"] is False
+
+
+def test_execute_custom_path_reports_operator_and_blade_blockers() -> None:
+    """Readiness output shows the missing safety requirements."""
+    coordinator = _coordinator()
+    coordinator.is_online = lambda: True
+    coordinator.data.map.area = {
+        123: SimpleNamespace(
+            data=[
+                SimpleNamespace(
+                    current_frame=0,
+                    data_couple=[
+                        SimpleNamespace(x=0.0, y=0.0),
+                        SimpleNamespace(x=10.0, y=0.0),
+                        SimpleNamespace(x=10.0, y=10.0),
+                        SimpleNamespace(x=0.0, y=10.0),
+                    ],
+                )
+            ]
+        )
+    }
+    coordinator.data.report_data = SimpleNamespace(
+        dev=SimpleNamespace(sys_status=11, charge_state=2, blade_state=1),
+        rtk=SimpleNamespace(status=4, pos_level=0),
+        locations=[],
+        cutter_work_mode_info=SimpleNamespace(
+            current_cutter_mode=0,
+            current_cutter_rpm=1200,
+        ),
+        connect=None,
+    )
+
+    result = _execute_custom_path(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 4.0, "y": 1.0}],
+        area_hash=123,
+        speed=0.2,
+    )
+
+    assert result["real_execution_allowed"] is False
+    assert result["execution_readiness"]["blockers"] == [
+        "operator_confirmed_blades_off",
+        "mower_reports_blades_off",
+        "live_map_position_available",
+        "manual_velocity_opt_in",
+        "firmware_waypoint_api_proven",
+    ]
+
+
+def test_manual_velocity_controller_simulates_forward_when_heading_aligned() -> None:
+    """Controller chooses a forward pulse when heading already faces target."""
+    decision = _manual_velocity_controller_decision(
+        [{"x": 1.0, "y": 1.0}, {"x": 4.0, "y": 1.0}],
+        {
+            "position": {
+                "x": 1.0,
+                "y": 1.0,
+                "toward": 0.0,
+                "source": "mowing_state",
+            }
+        },
+        speed=0.2,
+    )
+
+    assert decision["mode"] == "simulated"
+    assert decision["would_send"] is False
+    assert decision["action"] == "forward"
+    assert decision["reason"] == "heading_aligned"
+    assert decision["target_index"] == 1
+    assert decision["distance_to_target"] == 3.0
+    assert decision["command_not_sent"] == {
+        "service": "mammotion.move_forward",
+        "data": {"speed": 0.2, "use_wifi": False},
+    }
+
+
+def test_manual_velocity_controller_simulates_turn_left_or_right() -> None:
+    """Controller turns toward the next waypoint before moving forward."""
+    points = [{"x": 1.0, "y": 1.0}, {"x": 4.0, "y": 1.0}]
+
+    left = _manual_velocity_controller_decision(
+        points,
+        {
+            "position": {
+                "x": 1.0,
+                "y": 1.0,
+                "toward": 270.0,
+                "source": "mowing_state",
+            }
+        },
+        speed=0.2,
+    )
+    right = _manual_velocity_controller_decision(
+        points,
+        {
+            "position": {
+                "x": 1.0,
+                "y": 1.0,
+                "toward": 90.0,
+                "source": "mowing_state",
+            }
+        },
+        speed=0.2,
+    )
+
+    assert left["action"] == "turn_left"
+    assert left["heading_error_degrees"] == 90.0
+    assert left["command_not_sent"]["service"] == "mammotion.move_left"
+    assert right["action"] == "turn_right"
+    assert right["heading_error_degrees"] == -90.0
+    assert right["command_not_sent"]["service"] == "mammotion.move_right"
+
+
+def test_manual_velocity_controller_stops_without_live_position() -> None:
+    """Controller refuses to plan movement without live map-local position."""
+    decision = _manual_velocity_controller_decision(
+        [{"x": 1.0, "y": 1.0}, {"x": 4.0, "y": 1.0}],
+        {"position": {"x": None, "y": None, "toward": None, "source": "unavailable"}},
+        speed=0.2,
+    )
+
+    assert decision["action"] == "stop"
+    assert decision["reason"] == "live_position_unavailable"
+    assert decision["command_not_sent"] is None
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_pulse_test_defaults_to_dry_run() -> None:
+    """Pulse test default sends no command and reports the command not sent."""
+    coordinator = _pulse_coordinator()
+
+    result = await _manual_velocity_pulse_test(coordinator, followup_samples=0)
+
+    assert result["dry_run"] is True
+    assert result["would_send"] is False
+    assert result["real_pulse_allowed"] is False
+    assert result["reason"] == "dry_run"
+    assert result["command_not_sent"] == {
+        "service": "mammotion.move_forward",
+        "data": {"speed": 0.1, "use_wifi": False},
+    }
+    coordinator.async_move_forward.assert_not_called()
+    coordinator.async_stop_manual_motion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_pulse_test_rejects_missing_confirmations() -> None:
+    """Real pulse rejects missing operator confirmations before movement."""
+    coordinator = _pulse_coordinator()
+
+    result = await _manual_velocity_pulse_test(
+        coordinator,
+        dry_run=False,
+        followup_samples=0,
+    )
+
+    assert result["would_send"] is False
+    assert result["reason"] == "safety_gates_failed"
+    assert result["blockers"] == [
+        "operator_confirmed_blades_off",
+        "operator_confirmed_clear_area",
+    ]
+    coordinator.async_move_forward.assert_not_called()
+    coordinator.async_stop_manual_motion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_pulse_test_rejects_unsafe_blade_telemetry() -> None:
+    """Real pulse rejects nonzero blade/RPM telemetry before movement."""
+    coordinator = _pulse_coordinator(blade_state=1, cutter_rpm=1200)
+
+    result = await _manual_velocity_pulse_test(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        followup_samples=0,
+    )
+
+    assert result["would_send"] is False
+    assert result["blockers"] == ["mower_reports_blades_off"]
+    coordinator.async_move_forward.assert_not_called()
+    coordinator.async_stop_manual_motion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_pulse_test_rejects_unavailable_position() -> None:
+    """Real pulse rejects missing live map-local position before movement."""
+    coordinator = _pulse_coordinator(position=(None, None, None))
+
+    result = await _manual_velocity_pulse_test(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        followup_samples=0,
+    )
+
+    assert result["would_send"] is False
+    assert result["blockers"] == ["live_map_position_available"]
+    coordinator.async_move_forward.assert_not_called()
+    coordinator.async_stop_manual_motion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_pulse_test_real_probe_calls_move_then_stop() -> None:
+    """Allowed real probe sends one tiny pulse and then the stop primitive."""
+    coordinator = _pulse_coordinator()
+
+    result = await _manual_velocity_pulse_test(
+        coordinator,
+        action="turn_left",
+        speed=0.1,
+        duration_ms=50,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        followup_samples=0,
+    )
+
+    assert result["would_send"] is True
+    assert result["real_pulse_allowed"] is True
+    assert result["command_result"] == {"attempted": True, "ok": True, "error": None}
+    assert result["stop_result"] == {"attempted": True, "ok": True, "error": None}
+    assert result["real_pulse_completed"] is True
+    coordinator.async_move_left.assert_awaited_once_with(speed=0.1, use_wifi=False)
+    coordinator.async_stop_manual_motion.assert_awaited_once_with(use_wifi=False)
+
+
+def test_custom_path_telemetry_uses_mowing_state_position() -> None:
+    """Telemetry prefers live mowing_state map-local position values."""
+    coordinator = SimpleNamespace(
+        is_online=lambda: True,
+        data=SimpleNamespace(
+            mowing_state=SimpleNamespace(
+                pos_x=1.25,
+                pos_y=-2.5,
+                toward=91.5,
+                pos_level=0,
+                rtk_status=SimpleNamespace(value=4, name="FINE"),
+                zone_hash=LARGE_HASH,
+                pos_type=1,
+            ),
+            location=SimpleNamespace(orientation=45, position_type=7, work_zone=123),
+            report_data=SimpleNamespace(
+                dev=SimpleNamespace(sys_status=11, charge_state=2, blade_state=0),
+                rtk=SimpleNamespace(status=4, pos_level=2),
+                locations=[
+                    SimpleNamespace(
+                        real_pos_x=999_000,
+                        real_pos_y=999_000,
+                        real_toward=999_000,
+                        pos_type=7,
+                        bol_hash=123,
+                    )
+                ],
+                cutter_work_mode_info=SimpleNamespace(
+                    current_cutter_mode=0,
+                    current_cutter_rpm=0,
+                ),
+                connect=SimpleNamespace(
+                    ble_rssi=-70,
+                    wifi_rssi=-69,
+                    connect_type=0,
+                    used_net="",
+                    wifi_connect_status=None,
+                    iot_connect_status=None,
+                ),
+            ),
+        ),
+    )
+
+    snapshot = _custom_path_telemetry_snapshot(coordinator)
+
+    assert snapshot["work_mode"] == 11
+    assert snapshot["work_mode_label"] == "MODE_READY"
+    assert snapshot["charge_state"] == 2
+    assert snapshot["charge_state_label"] == "docked_or_charging"
+    assert snapshot["position"] == {
+        "x": 1.25,
+        "y": -2.5,
+        "toward": 91.5,
+        "source": "mowing_state",
+        "pos_level": 0,
+        "pos_level_label": "FIX",
+        "rtk_status": 4,
+        "rtk_status_label": "Fix",
+        "pos_type": 1,
+        "pos_type_label": "AREA_INSIDE",
+        "zone_hash": str(LARGE_HASH),
+    }
+    assert snapshot["blade"]["reported_state"] == 0
+    assert snapshot["blade"]["current_cutter_rpm"] == 0
+    assert snapshot["transport"]["connection_label"] == "WIFI/BLE"
+
+
+def test_custom_path_telemetry_falls_back_to_report_location() -> None:
+    """Telemetry falls back to report_data.locations[0] and scales raw fields."""
+    coordinator = SimpleNamespace(
+        is_online=lambda: True,
+        data=SimpleNamespace(
+            location=SimpleNamespace(orientation=45, position_type=7, work_zone=123),
+            report_data=SimpleNamespace(
+                dev=SimpleNamespace(sys_status=11, charge_state=2, blade_state=0),
+                rtk=SimpleNamespace(status=4, pos_level=0),
+                locations=[
+                    SimpleNamespace(
+                        real_pos_x=12_345,
+                        real_pos_y=-67_890,
+                        real_toward=900_000,
+                        pos_type=5,
+                        bol_hash=123,
+                    )
+                ],
+                cutter_work_mode_info=SimpleNamespace(
+                    current_cutter_mode=0,
+                    current_cutter_rpm=0,
+                ),
+                connect=None,
+            ),
+        ),
+    )
+
+    position = _custom_path_telemetry_snapshot(coordinator)["position"]
+
+    assert position["source"] == "report_data.locations[0]"
+    assert position["x"] == 1.2345
+    assert position["y"] == -6.789
+    assert position["toward"] == 90.0
+    assert position["pos_level"] == 0
+    assert position["pos_level_label"] == "FIX"
+    assert position["rtk_status"] == 4
+    assert position["rtk_status_label"] == "Fix"
+    assert position["pos_type"] == 5
+    assert position["pos_type_label"] == "CHARGE_ON"
+    assert position["zone_hash"] == 123
+
+
+def test_custom_path_telemetry_reports_unavailable_position_safely() -> None:
+    """Missing position data returns an unavailable source without raising."""
+    coordinator = SimpleNamespace(
+        is_online=lambda: False,
+        data=SimpleNamespace(
+            report_data=SimpleNamespace(
+                dev=SimpleNamespace(sys_status=99, charge_state=99, blade_state=None),
+                rtk=SimpleNamespace(status=99, pos_level=99),
+                locations=[],
+                cutter_work_mode_info=SimpleNamespace(
+                    current_cutter_mode=0,
+                    current_cutter_rpm=0,
+                ),
+                connect=None,
+            ),
+        ),
+    )
+
+    snapshot = _custom_path_telemetry_snapshot(coordinator)
+
+    assert snapshot["online"] is False
+    assert snapshot["work_mode_label"] == "Invalid mode"
+    assert snapshot["charge_state_label"] == "unknown"
+    assert snapshot["position"]["source"] == "unavailable"
+    assert snapshot["position"]["x"] is None
+    assert snapshot["position"]["y"] is None
+    assert snapshot["position"]["toward"] is None
+    assert snapshot["position"]["pos_level"] == 99
+    assert snapshot["position"]["pos_level_label"] == "UNKNOWN"
+    assert snapshot["position"]["rtk_status"] == 99
+    assert snapshot["position"]["rtk_status_label"] == "Unknown"
 
 
 def test_diagnostic_sensor_values_match_map_and_task_data() -> None:

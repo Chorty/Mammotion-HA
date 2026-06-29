@@ -418,6 +418,112 @@ dry_run_custom_path:
       selector:
         boolean:
 
+execute_custom_path:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+    points:
+      required: true
+      example:
+        - x: 0.0
+          y: 0.0
+        - x: 1.0
+          y: 1.0
+      selector:
+        object:
+    area_hash:
+      required: false
+      selector:
+        text:
+    speed:
+      required: false
+      default: 0.2
+      selector:
+        number:
+          min: 0.05
+          max: 0.3
+          step: 0.05
+    blade_mode:
+      required: false
+      default: "off"
+      selector:
+        select:
+          options:
+            - "off"
+    dry_run:
+      required: false
+      default: true
+      selector:
+        boolean:
+    confirm_blades_off:
+      required: false
+      default: false
+      selector:
+        boolean:
+    allow_manual_velocity:
+      required: false
+      default: false
+      selector:
+        boolean:
+
+manual_velocity_pulse_test:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+    action:
+      required: false
+      default: "forward"
+      selector:
+        select:
+          options:
+            - "forward"
+            - "backward"
+            - "turn_left"
+            - "turn_right"
+    speed:
+      required: false
+      default: 0.1
+      selector:
+        number:
+          min: 0.05
+          max: 0.2
+          step: 0.05
+    duration_ms:
+      required: false
+      default: 250
+      selector:
+        number:
+          min: 50
+          max: 750
+          step: 50
+          unit_of_measurement: ms
+    use_wifi:
+      required: false
+      default: false
+      selector:
+        boolean:
+    dry_run:
+      required: false
+      default: true
+      selector:
+        boolean:
+    confirm_blades_off:
+      required: false
+      default: false
+      selector:
+        boolean:
+    confirm_clear_area:
+      required: false
+      default: false
+      selector:
+        boolean:
+
 svg_add:
   fields:
     entity_id:
