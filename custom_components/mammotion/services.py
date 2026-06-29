@@ -34,6 +34,7 @@ SERVICE_EXPORT_MAP = "export_map"
 SERVICE_EXPORT_TASKS = "export_tasks"
 SERVICE_VALIDATE_CUSTOM_PATH = "validate_custom_path"
 SERVICE_PREVIEW_CUSTOM_PATH = "preview_custom_path"
+SERVICE_DRY_RUN_CUSTOM_PATH = "dry_run_custom_path"
 SERVICE_SVG_ADD = "svg_add"
 SERVICE_SVG_UPDATE = "svg_update"
 SERVICE_SVG_DELETE = "svg_delete"
@@ -194,6 +195,22 @@ VALIDATE_CUSTOM_PATH_SCHEMA = vol.Schema(
             vol.Coerce(float), vol.Range(min=0.05, max=0.6)
         ),
         vol.Optional("blade_mode", default="off"): vol.In(["off"]),
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
+DRY_RUN_CUSTOM_PATH_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+        vol.Required("points"): vol.All(
+            cv.ensure_list, [_CUSTOM_PATH_POINT_SCHEMA]
+        ),
+        vol.Optional("area_hash"): vol.Coerce(int),
+        vol.Optional("speed", default=0.2): vol.All(
+            vol.Coerce(float), vol.Range(min=0.05, max=0.6)
+        ),
+        vol.Optional("blade_mode", default="off"): vol.In(["off"]),
+        vol.Optional("dry_run", default=True): vol.All(cv.boolean, vol.Equal(True)),
     },
     extra=vol.ALLOW_EXTRA,
 )
@@ -387,9 +404,11 @@ def _area_polygons(
             getattr(frame_list, "data", []) or [],
             key=lambda f: getattr(f, "current_frame", 0),
         ):
-            for point in getattr(frame, "data_couple", []) or []:
-                if hasattr(point, "x") and hasattr(point, "y"):
-                    points.append({"x": float(point.x), "y": float(point.y)})
+            points.extend(
+                {"x": float(point.x), "y": float(point.y)}
+                for point in getattr(frame, "data_couple", []) or []
+                if hasattr(point, "x") and hasattr(point, "y")
+            )
         polygons[current_hash] = points
     return polygons
 
@@ -446,6 +465,13 @@ def _path_distance(points: list[dict[str, float]]) -> float:
     )
 
 
+def _path_heading_degrees(
+    start: dict[str, float], end: dict[str, float]
+) -> float:
+    """Return a map-local heading in degrees for a segment."""
+    return (math.degrees(math.atan2(end["y"] - start["y"], end["x"] - start["x"])) + 360) % 360
+
+
 def _isoformat_or_none(value: Any) -> str | None:
     """Return datetime-like values as ISO strings for HA service responses."""
     if value is None:
@@ -496,7 +522,7 @@ def _export_mower_tasks(
     }
 
 
-def _validate_custom_path(
+def _validate_custom_path(  # noqa: C901
     coordinator: MammotionReportUpdateCoordinator,
     points: list[dict[str, float]],
     *,
@@ -642,6 +668,146 @@ def _preview_custom_path(
             "coordinate_system": validation["coordinate_system"],
             "points": validation["points"],
             "distance": validation["distance"],
+        },
+    }
+
+
+def _safe_attr_path(obj: Any, path: str) -> Any:
+    """Return a nested attribute value or None when any hop is missing."""
+    current = obj
+    for part in path.split("."):
+        current = getattr(current, part, None)
+        if current is None:
+            return None
+    return current
+
+
+def _custom_path_telemetry_snapshot(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> dict[str, Any]:
+    """Return local cached telemetry useful for a custom-path dry run."""
+    data = coordinator.data
+    return {
+        "online": coordinator.is_online() if hasattr(coordinator, "is_online") else None,
+        "work_mode": _safe_attr_path(data, "report_data.dev.sys_status"),
+        "charge_state": _safe_attr_path(data, "report_data.dev.charge_state"),
+        "position": {
+            "x": _safe_attr_path(data, "mowing_state.x")
+            or _safe_attr_path(data, "rapid_state.pos_x")
+            or _safe_attr_path(data, "report_data.location.x"),
+            "y": _safe_attr_path(data, "mowing_state.y")
+            or _safe_attr_path(data, "rapid_state.pos_y")
+            or _safe_attr_path(data, "report_data.location.y"),
+            "toward": _safe_attr_path(data, "mowing_state.toward")
+            or _safe_attr_path(data, "rapid_state.toward")
+            or _safe_attr_path(data, "report_data.location.real_toward"),
+            "pos_level": _safe_attr_path(data, "mowing_state.pos_level")
+            or _safe_attr_path(data, "rapid_state.pos_level")
+            or _safe_attr_path(data, "report_data.location.pos_level"),
+        },
+        "blade": {
+            "reported_state": _safe_attr_path(data, "report_data.dev.blade_state"),
+            "knife_status": _safe_attr_path(data, "report_data.knife_status.knife_status"),
+            "current_cutter_mode": _safe_attr_path(
+                data, "report_data.cutter_work_mode_info.current_cutter_mode"
+            ),
+            "current_cutter_rpm": _safe_attr_path(
+                data, "report_data.cutter_work_mode_info.current_cutter_rpm"
+            ),
+        },
+        "transport": {
+            "ble_rssi": _safe_attr_path(data, "report_data.connect.ble_rssi"),
+            "wifi_rssi": _safe_attr_path(data, "report_data.connect.wifi_rssi"),
+            "wifi_connect_status": _safe_attr_path(
+                data, "report_data.connect.wifi_connect_status"
+            ),
+            "iot_connect_status": _safe_attr_path(
+                data, "report_data.connect.iot_connect_status"
+            ),
+        },
+    }
+
+
+def _dry_run_custom_path(
+    coordinator: MammotionReportUpdateCoordinator,
+    points: list[dict[str, float]],
+    *,
+    area_hash: int | None = None,
+    speed: float = 0.2,
+    blade_mode: str = "off",
+) -> dict[str, Any]:
+    """Plan a non-moving custom-path dry run.
+
+    This intentionally does not call any coordinator method that can move the
+    mower, start a task, or change blade state.
+    """
+    preview = _preview_custom_path(
+        coordinator,
+        points,
+        area_hash=area_hash,
+        speed=speed,
+        blade_mode=blade_mode,
+    )
+    normalized_points = preview["points"]
+    segments: list[dict[str, Any]] = []
+    for index, (start, end) in enumerate(
+        zip(normalized_points, normalized_points[1:], strict=False), start=1
+    ):
+        distance = _path_distance([start, end])
+        segments.append(
+            {
+                "index": index,
+                "start": start,
+                "end": end,
+                "distance": distance,
+                "heading_degrees": _path_heading_degrees(start, end),
+                "estimated_seconds": distance / speed if speed > 0 else None,
+            }
+        )
+
+    safety_gates = [
+        {
+            "name": "dry_run_only",
+            "passed": True,
+            "detail": "This service never sends mower movement, task, or blade commands.",
+        },
+        {
+            "name": "path_validation",
+            "passed": bool(preview["valid"]),
+            "detail": "Path must pass preview/containment validation before any future execution research.",
+        },
+        {
+            "name": "blade_mode_off_requested",
+            "passed": blade_mode == "off",
+            "detail": "Only blade_mode=off is accepted.",
+        },
+        {
+            "name": "firmware_waypoint_api_proven",
+            "passed": False,
+            "detail": "No proven Mammotion/pymammotion arbitrary waypoint API with guaranteed blades-off behavior has been found.",
+        },
+    ]
+
+    return {
+        **preview,
+        "dry_run": True,
+        "real_execution_allowed": False,
+        "reason_real_execution_blocked": "firmware_waypoint_api_with_blades_off_not_proven",
+        "segments": segments,
+        "estimated_total_seconds": (
+            preview["distance"] / speed if speed > 0 and preview["distance"] else 0
+        ),
+        "safety_gates": safety_gates,
+        "telemetry_snapshot": _custom_path_telemetry_snapshot(coordinator),
+        "candidate_existing_feature_plan": {
+            "strategy": "manual_velocity_controller",
+            "would_send": False,
+            "commands_not_sent": [
+                "start_stop_blades(false)",
+                "move_forward/move_left/move_right/move_backward",
+                "stop/cancel_job safety fallback",
+            ],
+            "risk": "Existing movement commands are low-level velocity controls, not firmware waypoint following.",
         },
     }
 
@@ -1074,6 +1240,19 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             blade_mode=call.data["blade_mode"],
         )
 
+    async def handle_dry_run_custom_path(call: ServiceCall) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        return _dry_run_custom_path(
+            mower.reporting_coordinator,
+            cast(list[dict[str, float]], call.data["points"]),
+            area_hash=call.data.get("area_hash"),
+            speed=call.data["speed"],
+            blade_mode=call.data["blade_mode"],
+        )
+
     async def handle_svg_add(call: ServiceCall) -> dict[str, Any]:
         from pymammotion.data.model.device import MowingDevice  # noqa: PLC0415
         from pymammotion.utility.svg import build_svg_for_area  # noqa: PLC0415
@@ -1206,6 +1385,13 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         SERVICE_PREVIEW_CUSTOM_PATH,
         handle_preview_custom_path,
         schema=VALIDATE_CUSTOM_PATH_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_DRY_RUN_CUSTOM_PATH,
+        handle_dry_run_custom_path,
+        schema=DRY_RUN_CUSTOM_PATH_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(

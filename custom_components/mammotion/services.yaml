@@ -377,6 +377,47 @@ preview_custom_path:
           options:
             - "off"
 
+dry_run_custom_path:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+    points:
+      required: true
+      example:
+        - x: 0.0
+          y: 0.0
+        - x: 1.0
+          y: 1.0
+      selector:
+        object:
+    area_hash:
+      required: false
+      selector:
+        text:
+    speed:
+      required: false
+      default: 0.2
+      selector:
+        number:
+          min: 0.05
+          max: 0.6
+          step: 0.05
+    blade_mode:
+      required: false
+      default: "off"
+      selector:
+        select:
+          options:
+            - "off"
+    dry_run:
+      required: false
+      default: true
+      selector:
+        boolean:
+
 svg_add:
   fields:
     entity_id:

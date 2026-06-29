@@ -9,6 +9,7 @@ from pymammotion.data.model.hash_list import Plan
 from custom_components.mammotion.coordinator import MammotionReportUpdateCoordinator
 from custom_components.mammotion.sensor import WORK_SENSOR_TYPES
 from custom_components.mammotion.services import (
+    _dry_run_custom_path,
     _export_mower_map,
     _export_mower_tasks,
     _normalize_mower_areas,
@@ -16,7 +17,6 @@ from custom_components.mammotion.services import (
     _preview_custom_path,
     _validate_custom_path,
 )
-
 
 LARGE_HASH = 9_223_372_036_854_775_000
 
@@ -353,6 +353,62 @@ def test_preview_custom_path_includes_errors_for_invalid_path() -> None:
     assert result["valid"] is False
     assert "path_requires_at_least_two_points" in result["errors"]
     assert result["geojson"]["features"][0]["properties"]["marker"] == "start"
+
+
+def test_dry_run_custom_path_builds_segments_without_allowing_execution() -> None:
+    """Dry-run describes a possible controller plan but never allows movement."""
+    coordinator = _coordinator()
+    coordinator.is_online = lambda: True
+    coordinator.data.map.area = {
+        123: SimpleNamespace(
+            data=[
+                SimpleNamespace(
+                    current_frame=0,
+                    data_couple=[
+                        SimpleNamespace(x=0.0, y=0.0),
+                        SimpleNamespace(x=10.0, y=0.0),
+                        SimpleNamespace(x=10.0, y=10.0),
+                        SimpleNamespace(x=0.0, y=10.0),
+                    ],
+                )
+            ]
+        )
+    }
+
+    result = _dry_run_custom_path(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 4.0, "y": 1.0}, {"x": 4.0, "y": 5.0}],
+        area_hash=123,
+        speed=0.2,
+    )
+
+    assert result["valid"] is True
+    assert result["dry_run"] is True
+    assert result["real_execution_allowed"] is False
+    assert result["reason_real_execution_blocked"] == (
+        "firmware_waypoint_api_with_blades_off_not_proven"
+    )
+    assert result["segments"] == [
+        {
+            "index": 1,
+            "start": {"x": 1.0, "y": 1.0},
+            "end": {"x": 4.0, "y": 1.0},
+            "distance": 3.0,
+            "heading_degrees": 0.0,
+            "estimated_seconds": 15.0,
+        },
+        {
+            "index": 2,
+            "start": {"x": 4.0, "y": 1.0},
+            "end": {"x": 4.0, "y": 5.0},
+            "distance": 4.0,
+            "heading_degrees": 90.0,
+            "estimated_seconds": 20.0,
+        },
+    ]
+    assert result["estimated_total_seconds"] == 35.0
+    assert result["candidate_existing_feature_plan"]["would_send"] is False
+    assert result["safety_gates"][-1]["passed"] is False
 
 
 def test_diagnostic_sensor_values_match_map_and_task_data() -> None:

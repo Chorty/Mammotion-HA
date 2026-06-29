@@ -12,6 +12,7 @@ class MammotionCustomPathCard extends HTMLElement {
     this._height = 520;
     this._status = "Load a mower map, then click inside an area to add path points.";
     this._validation = null;
+    this._dryRun = null;
     this._loadingMap = false;
     this._rendered = false;
   }
@@ -230,6 +231,7 @@ class MammotionCustomPathCard extends HTMLElement {
     const point = this._svgPointFromEvent(event);
     if (!point) return;
     this._points = [...this._points, point];
+    this._dryRun = null;
     this._validateAndPreview();
   }
 
@@ -246,6 +248,7 @@ class MammotionCustomPathCard extends HTMLElement {
     this._points = this._points.map((existing, index) =>
       index === this._dragIndex ? point : existing,
     );
+    this._dryRun = null;
     this._renderMap();
   }
 
@@ -258,12 +261,14 @@ class MammotionCustomPathCard extends HTMLElement {
   _clearPath() {
     this._points = [];
     this._validation = null;
+    this._dryRun = null;
     this._status = "Path cleared.";
     this._render();
   }
 
   _undoPoint() {
     this._points = this._points.slice(0, -1);
+    this._dryRun = null;
     this._validateAndPreview();
   }
 
@@ -287,8 +292,23 @@ class MammotionCustomPathCard extends HTMLElement {
     return payload;
   }
 
+  _dryRunPayload() {
+    return {
+      ...this._previewPayload(),
+      dry_run: true,
+    };
+  }
+
   _payloadYaml() {
     const payload = this._previewPayload();
+    return this._yamlForPayload(payload);
+  }
+
+  _dryRunYaml() {
+    return this._yamlForPayload(this._dryRunPayload());
+  }
+
+  _yamlForPayload(payload) {
     const lines = [
       `entity_id: ${payload.entity_id}`,
     ];
@@ -297,6 +317,9 @@ class MammotionCustomPathCard extends HTMLElement {
     }
     lines.push(`speed: ${payload.speed}`);
     lines.push(`blade_mode: "${payload.blade_mode}"`);
+    if (payload.dry_run != null) {
+      lines.push(`dry_run: ${payload.dry_run ? "true" : "false"}`);
+    }
     lines.push("points:");
     for (const point of payload.points) {
       lines.push(`  - x: ${point.x}`);
@@ -307,6 +330,10 @@ class MammotionCustomPathCard extends HTMLElement {
 
   _payloadJson() {
     return `${JSON.stringify(this._previewPayload(), null, 2)}\n`;
+  }
+
+  _dryRunJson() {
+    return `${JSON.stringify(this._dryRunPayload(), null, 2)}\n`;
   }
 
   async _copyText(text, label) {
@@ -347,6 +374,35 @@ class MammotionCustomPathCard extends HTMLElement {
       return;
     }
     this._copyText(this._payloadJson(), "JSON");
+  }
+
+  _copyDryRunYaml() {
+    if (!this._points.length) {
+      this._status = "Draw at least one point before copying dry-run YAML.";
+      this._render();
+      return;
+    }
+    this._copyText(this._dryRunYaml(), "Dry-run YAML");
+  }
+
+  async _runDryRun() {
+    if (this._points.length < 2) {
+      this._status = "Draw at least two points before running the dry-run planner.";
+      this._render();
+      return;
+    }
+    this._status = "Running dry-run planner…";
+    this._render();
+    try {
+      this._dryRun = await this._callService("dry_run_custom_path", this._dryRunPayload());
+      const segmentCount = this._dryRun?.segments?.length || 0;
+      const seconds = Number(this._dryRun?.estimated_total_seconds || 0).toFixed(1);
+      this._status = `Dry-run complete: ${segmentCount} segments, estimated ${seconds}s. No mower command was sent.`;
+      this._render();
+    } catch (err) {
+      this._status = `Dry-run failed: ${err?.message || err}`;
+      this._render();
+    }
   }
 
   _renderMap() {
@@ -450,6 +506,8 @@ class MammotionCustomPathCard extends HTMLElement {
           <button id="clear" type="button">Clear path</button>
           <button id="copy-yaml" type="button" ${undoDisabled}>Copy YAML</button>
           <button id="copy-json" type="button" ${undoDisabled}>Copy JSON</button>
+          <button id="copy-dry-run-yaml" type="button" ${undoDisabled}>Copy dry-run YAML</button>
+          <button id="dry-run" type="button" ${this._points.length >= 2 ? "" : "disabled"}>Run dry-run</button>
           <label>Area
             <select id="area">
               ${areas.map((area) => `<option value="${this._escapeHtml(area.area_hash)}" ${String(area.area_hash) === String(this._areaHash) ? "selected" : ""}>${this._escapeHtml(area.name || area.area_hash)}</option>`).join("")}
@@ -460,6 +518,8 @@ class MammotionCustomPathCard extends HTMLElement {
         <div class="status">${this._escapeHtml(this._status)}</div>
         ${(this._validation?.warnings || []).length ? `<div class="warnings">Warnings: ${this._escapeHtml(this._validation.warnings.join(", "))}</div>` : ""}
         ${this._points.length ? `<details><summary>Preview service YAML</summary><pre>${this._escapeHtml(this._payloadYaml())}</pre></details>` : ""}
+        ${this._points.length ? `<details><summary>Dry-run service YAML</summary><pre>${this._escapeHtml(this._dryRunYaml())}</pre></details>` : ""}
+        ${this._dryRun ? `<details><summary>Last dry-run result</summary><pre>${this._escapeHtml(JSON.stringify(this._dryRun, null, 2))}</pre></details>` : ""}
       </ha-card>
     `;
     this._q("#reload")?.addEventListener("click", () => this._loadMap());
@@ -467,6 +527,8 @@ class MammotionCustomPathCard extends HTMLElement {
     this._q("#clear")?.addEventListener("click", () => this._clearPath());
     this._q("#copy-yaml")?.addEventListener("click", () => this._copyYaml());
     this._q("#copy-json")?.addEventListener("click", () => this._copyJson());
+    this._q("#copy-dry-run-yaml")?.addEventListener("click", () => this._copyDryRunYaml());
+    this._q("#dry-run")?.addEventListener("click", () => this._runDryRun());
     this._q("#area")?.addEventListener("change", (event) => {
       this._areaHash = event.target.value;
       this._validateAndPreview();

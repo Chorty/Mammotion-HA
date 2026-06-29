@@ -968,6 +968,36 @@
         }
       }
     },
+    "dry_run_custom_path": {
+      "name": "Dry-run custom path",
+      "description": "Builds a non-moving custom path execution plan with safety gates, telemetry snapshot, segment headings, and estimated duration. Does not send movement, task, or blade commands.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        },
+        "points": {
+          "name": "Points",
+          "description": "List of map-local points, each with x and y."
+        },
+        "area_hash": {
+          "name": "Area hash",
+          "description": "Optional area hash to constrain containment validation."
+        },
+        "speed": {
+          "name": "Speed",
+          "description": "Proposed path speed. Used for dry-run estimates only."
+        },
+        "blade_mode": {
+          "name": "Blade mode",
+          "description": "Must be off. This dry-run pass does not support blade movement."
+        },
+        "dry_run": {
+          "name": "Dry run",
+          "description": "Must be true. Real mower movement is not supported by this service."
+        }
+      }
+    },
     "svg_add": {
       "name": "Add SVG tile",
       "description": "Send a new SVG tile to the device map. Returns the device-assigned hash.",
