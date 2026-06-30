@@ -43,6 +43,7 @@ SERVICE_PREVIEW_CUSTOM_PATH = "preview_custom_path"
 SERVICE_DRY_RUN_CUSTOM_PATH = "dry_run_custom_path"
 SERVICE_EXECUTE_CUSTOM_PATH = "execute_custom_path"
 SERVICE_MANUAL_VELOCITY_PULSE_TEST = "manual_velocity_pulse_test"
+SERVICE_MANUAL_VELOCITY_SEGMENT_TEST = "manual_velocity_segment_test"
 SERVICE_SVG_ADD = "svg_add"
 SERVICE_SVG_UPDATE = "svg_update"
 SERVICE_SVG_DELETE = "svg_delete"
@@ -254,6 +255,33 @@ MANUAL_VELOCITY_PULSE_TEST_SCHEMA = vol.Schema(
             vol.Coerce(int), vol.Range(min=50, max=750)
         ),
         vol.Optional("use_wifi", default=False): cv.boolean,
+        vol.Optional("dry_run", default=True): cv.boolean,
+        vol.Optional("confirm_blades_off", default=False): cv.boolean,
+        vol.Optional("confirm_clear_area", default=False): cv.boolean,
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
+MANUAL_VELOCITY_SEGMENT_TEST_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+        vol.Required("points"): vol.All(
+            cv.ensure_list, [_CUSTOM_PATH_POINT_SCHEMA]
+        ),
+        vol.Optional("area_hash"): vol.Coerce(int),
+        vol.Optional("speed", default=0.4): vol.All(
+            vol.Coerce(float), vol.Range(min=0.05, max=0.4)
+        ),
+        vol.Optional("pulse_duration_ms", default=750): vol.All(
+            vol.Coerce(int), vol.Range(min=50, max=750)
+        ),
+        vol.Optional("max_pulses", default=3): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=5)
+        ),
+        vol.Optional("waypoint_tolerance", default=0.1): vol.All(
+            vol.Coerce(float), vol.Range(min=0.02, max=0.5)
+        ),
+        vol.Optional("use_wifi", default=True): cv.boolean,
         vol.Optional("dry_run", default=True): cv.boolean,
         vol.Optional("confirm_blades_off", default=False): cv.boolean,
         vol.Optional("confirm_clear_area", default=False): cv.boolean,
@@ -1380,6 +1408,198 @@ async def _manual_velocity_pulse_test(
     return result
 
 
+async def _manual_velocity_segment_test(  # noqa: C901
+    coordinator: MammotionReportUpdateCoordinator,
+    points: list[dict[str, float]],
+    *,
+    area_hash: int | None = None,
+    speed: float = 0.4,
+    pulse_duration_ms: int = 750,
+    max_pulses: int = 3,
+    waypoint_tolerance: float = 0.1,
+    use_wifi: bool = True,
+    dry_run: bool = True,
+    confirm_blades_off: bool = False,
+    confirm_clear_area: bool = False,
+    sample_interval_seconds: float = 0.5,
+) -> dict[str, Any]:
+    """Run or simulate a guarded one-segment closed-loop movement probe.
+
+    This intentionally remains a probe, not full path execution.  Real mode
+    only sends repeated capped manual-velocity pulses and stops after each one.
+    """
+    if hasattr(coordinator, "async_start_report_stream"):
+        await coordinator.async_start_report_stream(
+            duration_ms=max(10_000, (pulse_duration_ms + 750) * max_pulses)
+        )
+
+    preview = _preview_custom_path(
+        coordinator,
+        points,
+        area_hash=area_hash,
+        speed=speed,
+        blade_mode="off",
+    )
+    normalized_points = preview["points"]
+    telemetry = _custom_path_telemetry_snapshot(coordinator)
+    initial_decision = _manual_velocity_controller_decision(
+        normalized_points,
+        telemetry,
+        speed=speed,
+        waypoint_tolerance=waypoint_tolerance,
+        max_pulse_seconds=pulse_duration_ms / 1000,
+    )
+    gates = _manual_velocity_pulse_gates(
+        coordinator,
+        telemetry,
+        dry_run=dry_run,
+        confirm_blades_off=confirm_blades_off,
+        confirm_clear_area=confirm_clear_area,
+    )
+    if not preview["valid"]:
+        gates.append(
+            {
+                "name": "path_validation",
+                "passed": False,
+                "detail": "Path must pass preview validation before real motion.",
+            }
+        )
+    blockers = [gate["name"] for gate in gates if not gate["passed"]]
+
+    result: dict[str, Any] = {
+        **preview,
+        "service": SERVICE_MANUAL_VELOCITY_SEGMENT_TEST,
+        "mode": "dry_run" if dry_run else "real_segment_probe",
+        "dry_run": dry_run,
+        "speed": speed,
+        "pulse_duration_ms": pulse_duration_ms,
+        "max_pulses": max_pulses,
+        "waypoint_tolerance": waypoint_tolerance,
+        "use_wifi": use_wifi,
+        "confirm_blades_off": confirm_blades_off,
+        "confirm_clear_area": confirm_clear_area,
+        "would_send": not dry_run and not blockers,
+        "real_segment_allowed": not dry_run and not blockers,
+        "blockers": blockers,
+        "safety_gates": gates,
+        "initial_telemetry": telemetry,
+        "initial_controller_decision": initial_decision,
+        "iterations": [],
+        "final_telemetry": telemetry,
+        "stop_reason": "dry_run" if dry_run else None,
+        "real_execution_scope": "one_segment_probe_only",
+        "full_path_execution_allowed": False,
+    }
+    if dry_run or blockers:
+        result["stop_reason"] = "dry_run" if dry_run else "safety_gates_failed"
+        result["command_not_sent"] = initial_decision.get("command_not_sent")
+        return result
+
+    for index in range(1, max_pulses + 1):
+        before = _custom_path_telemetry_snapshot(coordinator)
+        gates = _manual_velocity_pulse_gates(
+            coordinator,
+            before,
+            dry_run=False,
+            confirm_blades_off=confirm_blades_off,
+            confirm_clear_area=confirm_clear_area,
+        )
+        blockers = [gate["name"] for gate in gates if not gate["passed"]]
+        if blockers:
+            result["stop_reason"] = "safety_gates_failed"
+            result["blockers"] = blockers
+            result["iterations"].append(
+                {
+                    "index": index,
+                    "before": before,
+                    "safety_gates": gates,
+                    "blockers": blockers,
+                    "command_result": {"attempted": False, "ok": None, "error": None},
+                    "stop_result": {"attempted": False, "ok": None, "error": None},
+                    "measured_delta": _telemetry_position_delta(before, before),
+                }
+            )
+            break
+
+        decision = _manual_velocity_controller_decision(
+            normalized_points,
+            before,
+            speed=speed,
+            waypoint_tolerance=waypoint_tolerance,
+            max_pulse_seconds=pulse_duration_ms / 1000,
+        )
+        action = decision["action"]
+        if action == "stop":
+            result["stop_reason"] = decision["reason"]
+            result["iterations"].append(
+                {
+                    "index": index,
+                    "before": before,
+                    "controller_decision": decision,
+                    "command_result": {"attempted": False, "ok": None, "error": None},
+                    "stop_result": {"attempted": False, "ok": None, "error": None},
+                    "measured_delta": _telemetry_position_delta(before, before),
+                }
+            )
+            break
+
+        command_result = {"attempted": False, "ok": None, "error": None}
+        stop_result = {"attempted": False, "ok": None, "error": None}
+        try:
+            method = getattr(coordinator, _manual_velocity_action_method(action))
+            command_result["attempted"] = True
+            await method(speed=speed, use_wifi=use_wifi)
+            command_result["ok"] = True
+            await asyncio.sleep(pulse_duration_ms / 1000)
+        except Exception as err:  # noqa: BLE001
+            command_result["ok"] = False
+            command_result["error"] = f"{type(err).__name__}: {err}"
+        finally:
+            try:
+                stop_result["attempted"] = True
+                await coordinator.async_stop_manual_motion(use_wifi=use_wifi)
+                stop_result["ok"] = True
+            except Exception as err:  # noqa: BLE001
+                stop_result["ok"] = False
+                stop_result["error"] = f"{type(err).__name__}: {err}"
+
+        await asyncio.sleep(sample_interval_seconds)
+        after = _custom_path_telemetry_snapshot(coordinator)
+        measured_delta = _telemetry_position_delta(before, after)
+        result["iterations"].append(
+            {
+                "index": index,
+                "before": before,
+                "after": after,
+                "controller_decision": decision,
+                "command": {
+                    "service": f"{DOMAIN}.{_manual_velocity_action_service(action)}",
+                    "data": {"speed": speed, "use_wifi": use_wifi},
+                },
+                "command_result": command_result,
+                "stop_result": stop_result,
+                "measured_delta": measured_delta,
+            }
+        )
+        result["final_telemetry"] = after
+
+        if command_result["ok"] is not True:
+            result["stop_reason"] = "command_failed"
+            break
+        if stop_result["ok"] is not True:
+            result["stop_reason"] = "stop_failed"
+            break
+
+    if result["stop_reason"] is None:
+        result["stop_reason"] = "max_pulses_reached"
+    result["pulses_sent"] = sum(
+        1
+        for iteration in result["iterations"]
+        if iteration.get("command_result", {}).get("attempted")
+    )
+    return result
+
+
 def _dry_run_custom_path(
     coordinator: MammotionReportUpdateCoordinator,
     points: list[dict[str, float]],
@@ -2084,6 +2304,27 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             confirm_clear_area=call.data["confirm_clear_area"],
         )
 
+    async def handle_manual_velocity_segment_test(
+        call: ServiceCall,
+    ) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        return await _manual_velocity_segment_test(
+            mower.reporting_coordinator,
+            cast(list[dict[str, float]], call.data["points"]),
+            area_hash=call.data.get("area_hash"),
+            speed=call.data["speed"],
+            pulse_duration_ms=call.data["pulse_duration_ms"],
+            max_pulses=call.data["max_pulses"],
+            waypoint_tolerance=call.data["waypoint_tolerance"],
+            use_wifi=call.data["use_wifi"],
+            dry_run=call.data["dry_run"],
+            confirm_blades_off=call.data["confirm_blades_off"],
+            confirm_clear_area=call.data["confirm_clear_area"],
+        )
+
     async def handle_svg_add(call: ServiceCall) -> dict[str, Any]:
         from pymammotion.data.model.device import MowingDevice  # noqa: PLC0415
         from pymammotion.utility.svg import build_svg_for_area  # noqa: PLC0415
@@ -2237,6 +2478,13 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         SERVICE_MANUAL_VELOCITY_PULSE_TEST,
         handle_manual_velocity_pulse_test,
         schema=MANUAL_VELOCITY_PULSE_TEST_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_MANUAL_VELOCITY_SEGMENT_TEST,
+        handle_manual_velocity_segment_test,
+        schema=MANUAL_VELOCITY_SEGMENT_TEST_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(

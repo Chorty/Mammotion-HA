@@ -905,6 +905,56 @@
         }
       }
     },
+    "manual_velocity_segment_test": {
+      "name": "Manual velocity segment test",
+      "description": "Dry-runs or performs a guarded one-segment movement probe using repeated capped manual pulses with a stop after each pulse. Full path execution remains disabled.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        },
+        "points": {
+          "name": "Points",
+          "description": "List of map-local points. The probe moves only toward the next unfinished waypoint."
+        },
+        "area_hash": {
+          "name": "Area hash",
+          "description": "Optional area hash to constrain containment validation."
+        },
+        "speed": {
+          "name": "Speed",
+          "description": "Pulse speed, capped to the existing emergency nudge speed."
+        },
+        "pulse_duration_ms": {
+          "name": "Pulse duration",
+          "description": "Duration of each capped pulse in milliseconds."
+        },
+        "max_pulses": {
+          "name": "Max pulses",
+          "description": "Maximum number of stop-and-recheck pulse iterations."
+        },
+        "waypoint_tolerance": {
+          "name": "Waypoint tolerance",
+          "description": "Distance from a waypoint that counts as reached."
+        },
+        "use_wifi": {
+          "name": "Use Wi-Fi",
+          "description": "Use Wi-Fi/local path instead of the default BLE-preferred path."
+        },
+        "dry_run": {
+          "name": "Dry run",
+          "description": "When true, no movement command is sent."
+        },
+        "confirm_blades_off": {
+          "name": "Confirm blades off",
+          "description": "Required for a real segment probe."
+        },
+        "confirm_clear_area": {
+          "name": "Confirm clear area",
+          "description": "Required for a real segment probe after confirming the mower has room to move safely."
+        }
+      }
+    },
     "svg_add": {
       "name": "Add SVG tile",
       "description": "Send a new SVG tile to the device map. Returns the device-assigned hash.",

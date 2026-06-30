@@ -10,6 +10,7 @@ from custom_components.mammotion.coordinator import MammotionReportUpdateCoordin
 from custom_components.mammotion.sensor import WORK_SENSOR_TYPES
 from custom_components.mammotion.services import (
     MANUAL_VELOCITY_PULSE_TEST_SCHEMA,
+    MANUAL_VELOCITY_SEGMENT_TEST_SCHEMA,
     _custom_path_telemetry_snapshot,
     _dry_run_custom_path,
     _execute_custom_path,
@@ -17,6 +18,7 @@ from custom_components.mammotion.services import (
     _export_mower_tasks,
     _manual_velocity_controller_decision,
     _manual_velocity_pulse_test,
+    _manual_velocity_segment_test,
     _normalize_mower_areas,
     _normalize_mower_tasks,
     _preview_custom_path,
@@ -92,6 +94,25 @@ def _pulse_coordinator(
         async_stop_manual_motion=AsyncMock(),
         is_online=lambda: True,
         data=SimpleNamespace(
+            map=SimpleNamespace(
+                plan={},
+                area={
+                    123: SimpleNamespace(
+                        data=[
+                            SimpleNamespace(
+                                current_frame=0,
+                                data_couple=[
+                                    SimpleNamespace(x=-10, y=-10),
+                                    SimpleNamespace(x=10, y=-10),
+                                    SimpleNamespace(x=10, y=10),
+                                    SimpleNamespace(x=-10, y=10),
+                                ],
+                            )
+                        ]
+                    )
+                },
+                area_name=[SimpleNamespace(hash=123, name="Backyard Right")],
+            ),
             mowing_state=SimpleNamespace(
                 pos_x=pos_x,
                 pos_y=pos_y,
@@ -859,6 +880,142 @@ async def test_manual_velocity_pulse_test_real_probe_calls_move_then_stop() -> N
     assert result["real_pulse_completed"] is True
     coordinator.async_move_left.assert_awaited_once_with(speed=0.1, use_wifi=False)
     coordinator.async_stop_manual_motion.assert_awaited_once_with(use_wifi=False)
+
+
+def test_manual_velocity_segment_schema_caps_probe_values() -> None:
+    """Segment probe allows proven pulse caps and rejects larger values."""
+    parsed = MANUAL_VELOCITY_SEGMENT_TEST_SCHEMA(
+        {
+            "entity_id": "lawn_mower.test",
+            "points": [{"x": 1, "y": 1}, {"x": 1, "y": 2}],
+            "speed": 0.4,
+            "pulse_duration_ms": 750,
+            "max_pulses": 5,
+        }
+    )
+
+    assert parsed["speed"] == 0.4
+    assert parsed["pulse_duration_ms"] == 750
+    assert parsed["max_pulses"] == 5
+    with pytest.raises(Exception):  # noqa: B017
+        MANUAL_VELOCITY_SEGMENT_TEST_SCHEMA(
+            {
+                "entity_id": "lawn_mower.test",
+                "points": [{"x": 1, "y": 1}, {"x": 1, "y": 2}],
+                "speed": 0.45,
+            }
+        )
+    with pytest.raises(Exception):  # noqa: B017
+        MANUAL_VELOCITY_SEGMENT_TEST_SCHEMA(
+            {
+                "entity_id": "lawn_mower.test",
+                "points": [{"x": 1, "y": 1}, {"x": 1, "y": 2}],
+                "pulse_duration_ms": 800,
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_segment_test_defaults_to_dry_run() -> None:
+    """Segment probe default plans the next command but sends nothing."""
+    coordinator = _pulse_coordinator()
+
+    result = await _manual_velocity_segment_test(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 2.0, "y": 1.0}],
+    )
+
+    assert result["service"] == "manual_velocity_segment_test"
+    assert result["dry_run"] is True
+    assert result["would_send"] is False
+    assert result["real_segment_allowed"] is False
+    assert result["stop_reason"] == "dry_run"
+    assert result["initial_controller_decision"]["action"] == "forward"
+    assert result["command_not_sent"] == {
+        "service": "mammotion.move_forward",
+        "data": {"speed": 0.4, "use_wifi": False},
+    }
+    coordinator.async_move_forward.assert_not_called()
+    coordinator.async_stop_manual_motion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_segment_test_rejects_charging_state() -> None:
+    """Real segment probe blocks before movement when pulse gates fail."""
+    coordinator = _pulse_coordinator(charge_state=2)
+
+    result = await _manual_velocity_segment_test(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 2.0, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+    )
+
+    assert result["would_send"] is False
+    assert result["stop_reason"] == "safety_gates_failed"
+    assert result["blockers"] == ["not_docked_or_charging"]
+    coordinator.async_move_forward.assert_not_called()
+    coordinator.async_stop_manual_motion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_segment_test_real_probe_calls_move_then_stop() -> None:
+    """Allowed segment probe sends one capped pulse and then stops."""
+    coordinator = _pulse_coordinator()
+
+    result = await _manual_velocity_segment_test(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 2.0, "y": 1.0}],
+        speed=0.4,
+        pulse_duration_ms=50,
+        max_pulses=1,
+        use_wifi=True,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        sample_interval_seconds=0,
+    )
+
+    assert result["would_send"] is True
+    assert result["real_segment_allowed"] is True
+    assert result["stop_reason"] == "max_pulses_reached"
+    assert result["pulses_sent"] == 1
+    assert result["iterations"][0]["controller_decision"]["action"] == "forward"
+    assert result["iterations"][0]["command_result"] == {
+        "attempted": True,
+        "ok": True,
+        "error": None,
+    }
+    assert result["iterations"][0]["stop_result"] == {
+        "attempted": True,
+        "ok": True,
+        "error": None,
+    }
+    coordinator.async_move_forward.assert_awaited_once_with(speed=0.4, use_wifi=True)
+    coordinator.async_stop_manual_motion.assert_awaited_once_with(use_wifi=True)
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_segment_test_stops_when_path_complete() -> None:
+    """Segment probe sends nothing when current position is already at target."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _manual_velocity_segment_test(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.01, "y": 1.01}],
+        waypoint_tolerance=0.1,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        sample_interval_seconds=0,
+    )
+
+    assert result["would_send"] is True
+    assert result["stop_reason"] == "path_complete"
+    assert result["pulses_sent"] == 0
+    coordinator.async_move_forward.assert_not_called()
+    coordinator.async_stop_manual_motion.assert_not_called()
 
 
 def test_custom_path_telemetry_uses_mowing_state_position() -> None:
