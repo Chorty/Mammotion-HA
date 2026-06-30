@@ -9,6 +9,7 @@ from pymammotion.data.model.hash_list import Plan
 from custom_components.mammotion.coordinator import MammotionReportUpdateCoordinator
 from custom_components.mammotion.sensor import WORK_SENSOR_TYPES
 from custom_components.mammotion.services import (
+    MANUAL_VELOCITY_PULSE_TEST_SCHEMA,
     _custom_path_telemetry_snapshot,
     _dry_run_custom_path,
     _execute_custom_path,
@@ -654,6 +655,28 @@ def test_manual_velocity_controller_stops_without_live_position() -> None:
     assert decision["action"] == "stop"
     assert decision["reason"] == "live_position_unavailable"
     assert decision["command_not_sent"] is None
+
+
+def test_manual_velocity_pulse_schema_allows_emergency_nudge_speed() -> None:
+    """Pulse probe allows the existing emergency nudge speed but no higher."""
+    assert (
+        MANUAL_VELOCITY_PULSE_TEST_SCHEMA(
+            {
+                "entity_id": "lawn_mower.test",
+                "action": "forward",
+                "speed": 0.4,
+            }
+        )["speed"]
+        == 0.4
+    )
+    with pytest.raises(Exception):  # noqa: B017
+        MANUAL_VELOCITY_PULSE_TEST_SCHEMA(
+            {
+                "entity_id": "lawn_mower.test",
+                "action": "forward",
+                "speed": 0.45,
+            }
+        )
 
 
 @pytest.mark.asyncio

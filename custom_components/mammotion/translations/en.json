@@ -1050,7 +1050,7 @@
         },
         "speed": {
           "name": "Speed",
-          "description": "Pulse speed. Real probes are capped to a conservative maximum."
+          "description": "Pulse speed. Real probes are capped to the existing emergency nudge speed."
         },
         "duration_ms": {
           "name": "Duration",

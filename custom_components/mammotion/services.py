@@ -248,7 +248,7 @@ MANUAL_VELOCITY_PULSE_TEST_SCHEMA = vol.Schema(
             ["forward", "backward", "turn_left", "turn_right"]
         ),
         vol.Optional("speed", default=0.1): vol.All(
-            vol.Coerce(float), vol.Range(min=0.05, max=0.2)
+            vol.Coerce(float), vol.Range(min=0.05, max=0.4)
         ),
         vol.Optional("duration_ms", default=250): vol.All(
             vol.Coerce(int), vol.Range(min=50, max=750)
