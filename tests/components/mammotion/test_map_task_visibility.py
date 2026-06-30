@@ -693,6 +693,27 @@ def test_manual_velocity_controller_applies_heading_offset() -> None:
     assert decision["reason"] == "heading_aligned"
 
 
+def test_manual_velocity_controller_skips_stale_start_waypoint() -> None:
+    """Controller does not turn back to an obsolete drawn start point."""
+    decision = _manual_velocity_controller_decision(
+        [{"x": 0.0, "y": 0.0}, {"x": 0.0, "y": 0.08}],
+        {
+            "position": {
+                "x": 0.0,
+                "y": 0.04,
+                "toward": 90.0,
+                "source": "mowing_state",
+            }
+        },
+        speed=0.2,
+        waypoint_tolerance=0.03,
+    )
+
+    assert decision["target_index"] == 1
+    assert decision["action"] == "forward"
+    assert decision["reason"] == "heading_aligned"
+
+
 def test_manual_velocity_controller_stops_without_live_position() -> None:
     """Controller refuses to plan movement without live map-local position."""
     decision = _manual_velocity_controller_decision(

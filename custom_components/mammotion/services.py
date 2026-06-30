@@ -643,6 +643,45 @@ def _heading_error_degrees(current: float, target: float) -> float:
     return (target - current + 540) % 360 - 180
 
 
+def _manual_velocity_next_waypoint(
+    path_points: list[dict[str, float]],
+    current: dict[str, float],
+    *,
+    waypoint_tolerance: float,
+) -> tuple[int | None, dict[str, float] | None, float | None, list[dict[str, Any]]]:
+    """Return the next useful waypoint for closed-loop manual velocity control."""
+    distances = [
+        {"index": index, "distance": _path_distance([current, point])}
+        for index, point in enumerate(path_points)
+    ]
+    if not distances:
+        return None, None, None, distances
+
+    active = next(
+        (
+            item
+            for item in distances
+            if item["distance"] > waypoint_tolerance
+        ),
+        None,
+    )
+    if active is None:
+        return None, None, None, distances
+
+    # A drawn path usually includes the mower's start point as point 0.  During
+    # live testing the mower can drift past that point, making point 0 a stale
+    # target behind the mower.  If the next waypoint is no farther away, prefer
+    # it so the controller continues down the path instead of turning back to
+    # the original start marker.
+    if active["index"] == 0 and len(distances) > 1:
+        next_distance = distances[1]["distance"]
+        if next_distance <= active["distance"] + waypoint_tolerance:
+            active = distances[1]
+
+    index = int(active["index"])
+    return index, path_points[index], float(active["distance"]), distances
+
+
 def _isoformat_or_none(value: Any) -> str | None:
     """Return datetime-like values as ISO strings for HA service responses."""
     if value is None:
@@ -1210,16 +1249,13 @@ def _manual_velocity_controller_decision(
         }
 
     current = {"x": float(current_x), "y": float(current_y)}
-    target_index = None
-    target = None
-    distance_to_target = None
-    for index, point in enumerate(path_points):
-        distance = _path_distance([current, point])
-        if distance > waypoint_tolerance:
-            target_index = index
-            target = point
-            distance_to_target = distance
-            break
+    target_index, target, distance_to_target, waypoint_distances = (
+        _manual_velocity_next_waypoint(
+            path_points,
+            current,
+            waypoint_tolerance=waypoint_tolerance,
+        )
+    )
 
     if target is None or target_index is None or distance_to_target is None:
         return {
@@ -1228,6 +1264,7 @@ def _manual_velocity_controller_decision(
             "reason": "path_complete",
             "target_index": None,
             "distance_to_target": 0.0,
+            "waypoint_distances": waypoint_distances,
             "command_not_sent": None,
         }
 
@@ -1260,6 +1297,7 @@ def _manual_velocity_controller_decision(
         "corrected_heading_degrees": corrected_heading,
         "target_index": target_index,
         "target": target,
+        "waypoint_distances": waypoint_distances,
         "target_heading_degrees": target_heading,
         "heading_error_degrees": heading_error,
         "distance_to_target": distance_to_target,
