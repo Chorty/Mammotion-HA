@@ -223,6 +223,9 @@ DRY_RUN_CUSTOM_PATH_SCHEMA = vol.Schema(
             vol.Coerce(float), vol.Range(min=0.05, max=0.6)
         ),
         vol.Optional("blade_mode", default="off"): vol.In(["off"]),
+        vol.Optional("heading_offset_degrees", default=0.0): vol.All(
+            vol.Coerce(float), vol.Range(min=-180.0, max=180.0)
+        ),
         vol.Optional("dry_run", default=True): vol.All(cv.boolean, vol.Equal(True)),
     },
     extra=vol.ALLOW_EXTRA,
@@ -288,6 +291,9 @@ MANUAL_VELOCITY_SEGMENT_TEST_SCHEMA = vol.Schema(
         vol.Optional("force_action", default="auto"): vol.In(
             ["auto", "forward", "backward", "turn_left", "turn_right"]
         ),
+        vol.Optional("heading_offset_degrees", default=0.0): vol.All(
+            vol.Coerce(float), vol.Range(min=-180.0, max=180.0)
+        ),
         vol.Optional("min_progress_distance", default=0.003): vol.All(
             vol.Coerce(float), vol.Range(min=0.0, max=0.5)
         ),
@@ -326,6 +332,9 @@ MANUAL_VELOCITY_MULTI_PULSE_TEST_SCHEMA = vol.Schema(
         ),
         vol.Optional("force_action", default="auto"): vol.In(
             ["auto", "forward", "backward", "turn_left", "turn_right"]
+        ),
+        vol.Optional("heading_offset_degrees", default=0.0): vol.All(
+            vol.Coerce(float), vol.Range(min=-180.0, max=180.0)
         ),
         vol.Optional("min_progress_distance", default=0.003): vol.All(
             vol.Coerce(float), vol.Range(min=0.0, max=0.5)
@@ -1157,6 +1166,7 @@ def _manual_velocity_controller_decision(
     speed: float,
     waypoint_tolerance: float = 0.4,
     heading_tolerance_degrees: float = 15.0,
+    heading_offset_degrees: float = 0.0,
     max_pulse_seconds: float = 0.5,
 ) -> dict[str, Any]:
     """Return the next simulated manual-velocity action without sending it."""
@@ -1171,6 +1181,7 @@ def _manual_velocity_controller_decision(
         "coordinate_system": "mower_map_xy",
         "waypoint_tolerance": waypoint_tolerance,
         "heading_tolerance_degrees": heading_tolerance_degrees,
+        "heading_offset_degrees": heading_offset_degrees,
         "max_pulse_seconds": max_pulse_seconds,
         "speed": speed,
         "use_wifi": False,
@@ -1220,8 +1231,10 @@ def _manual_velocity_controller_decision(
             "command_not_sent": None,
         }
 
+    reported_heading = float(current_heading)
+    corrected_heading = (reported_heading + heading_offset_degrees) % 360
     target_heading = _path_heading_degrees(current, target)
-    heading_error = _heading_error_degrees(float(current_heading), target_heading)
+    heading_error = _heading_error_degrees(corrected_heading, target_heading)
     if abs(heading_error) > heading_tolerance_degrees:
         action = "turn_left" if heading_error > 0 else "turn_right"
         service = SERVICE_MOVE_LEFT if heading_error > 0 else SERVICE_MOVE_RIGHT
@@ -1243,7 +1256,8 @@ def _manual_velocity_controller_decision(
         "action": action,
         "reason": reason,
         "current": current,
-        "current_heading_degrees": float(current_heading),
+        "current_heading_degrees": reported_heading,
+        "corrected_heading_degrees": corrected_heading,
         "target_index": target_index,
         "target": target,
         "target_heading_degrees": target_heading,
@@ -1723,6 +1737,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
     max_pulses: int = 3,
     waypoint_tolerance: float = 0.1,
     force_action: str = "auto",
+    heading_offset_degrees: float = 0.0,
     min_progress_distance: float = 0.003,
     no_progress_limit: int = 2,
     min_heading_change_degrees: float = 1.0,
@@ -1757,6 +1772,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
         telemetry,
         speed=speed,
         waypoint_tolerance=waypoint_tolerance,
+        heading_offset_degrees=heading_offset_degrees,
         max_pulse_seconds=pulse_duration_ms / 1000,
     )
     initial_decision = _manual_velocity_forced_decision(
@@ -1794,6 +1810,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
         "max_pulses": max_pulses,
         "waypoint_tolerance": waypoint_tolerance,
         "force_action": force_action,
+        "heading_offset_degrees": heading_offset_degrees,
         "min_progress_distance": min_progress_distance,
         "no_progress_limit": no_progress_limit,
         "min_heading_change_degrees": min_heading_change_degrees,
@@ -1879,6 +1896,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
             before,
             speed=speed,
             waypoint_tolerance=waypoint_tolerance,
+            heading_offset_degrees=heading_offset_degrees,
             max_pulse_seconds=pulse_duration_ms / 1000,
         )
         decision = _manual_velocity_forced_decision(
@@ -2018,6 +2036,7 @@ def _dry_run_custom_path(
     area_hash: int | None = None,
     speed: float = 0.2,
     blade_mode: str = "off",
+    heading_offset_degrees: float = 0.0,
 ) -> dict[str, Any]:
     """Plan a non-moving custom-path dry run.
 
@@ -2075,6 +2094,7 @@ def _dry_run_custom_path(
         normalized_points,
         telemetry,
         speed=speed,
+        heading_offset_degrees=heading_offset_degrees,
     )
 
     return {
@@ -2680,6 +2700,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             area_hash=call.data.get("area_hash"),
             speed=call.data["speed"],
             blade_mode=call.data["blade_mode"],
+            heading_offset_degrees=call.data["heading_offset_degrees"],
         )
 
     async def handle_execute_custom_path(call: ServiceCall) -> dict[str, Any]:
@@ -2732,6 +2753,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             max_pulses=call.data["max_pulses"],
             waypoint_tolerance=call.data["waypoint_tolerance"],
             force_action=call.data["force_action"],
+            heading_offset_degrees=call.data["heading_offset_degrees"],
             min_progress_distance=call.data["min_progress_distance"],
             no_progress_limit=call.data["no_progress_limit"],
             min_heading_change_degrees=call.data["min_heading_change_degrees"],
@@ -2757,6 +2779,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             max_pulses=call.data["max_pulses"],
             waypoint_tolerance=call.data["waypoint_tolerance"],
             force_action=call.data["force_action"],
+            heading_offset_degrees=call.data["heading_offset_degrees"],
             min_progress_distance=call.data["min_progress_distance"],
             no_progress_limit=call.data["no_progress_limit"],
             min_heading_change_degrees=call.data["min_heading_change_degrees"],

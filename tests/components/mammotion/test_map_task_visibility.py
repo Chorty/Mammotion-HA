@@ -670,6 +670,29 @@ def test_manual_velocity_controller_simulates_turn_left_or_right() -> None:
     assert right["command_not_sent"]["service"] == "mammotion.move_right"
 
 
+def test_manual_velocity_controller_applies_heading_offset() -> None:
+    """Heading offset corrects reported heading before choosing an action."""
+    decision = _manual_velocity_controller_decision(
+        [{"x": 1.0, "y": 1.0}, {"x": 4.0, "y": 1.0}],
+        {
+            "position": {
+                "x": 1.0,
+                "y": 1.0,
+                "toward": 250.0,
+                "source": "mowing_state",
+            }
+        },
+        speed=0.2,
+        heading_offset_degrees=110.0,
+    )
+
+    assert decision["current_heading_degrees"] == 250.0
+    assert decision["corrected_heading_degrees"] == 0.0
+    assert decision["heading_offset_degrees"] == 110.0
+    assert decision["action"] == "forward"
+    assert decision["reason"] == "heading_aligned"
+
+
 def test_manual_velocity_controller_stops_without_live_position() -> None:
     """Controller refuses to plan movement without live map-local position."""
     decision = _manual_velocity_controller_decision(
@@ -897,6 +920,7 @@ def test_manual_velocity_segment_schema_caps_probe_values() -> None:
             "pulse_duration_ms": 750,
             "max_pulses": 5,
             "force_action": "forward",
+            "heading_offset_degrees": 110,
         }
     )
 
@@ -904,6 +928,7 @@ def test_manual_velocity_segment_schema_caps_probe_values() -> None:
     assert parsed["pulse_duration_ms"] == 750
     assert parsed["max_pulses"] == 5
     assert parsed["force_action"] == "forward"
+    assert parsed["heading_offset_degrees"] == 110
     assert parsed["min_progress_distance"] == 0.003
     assert parsed["no_progress_limit"] == 2
     with pytest.raises(Exception):  # noqa: B017

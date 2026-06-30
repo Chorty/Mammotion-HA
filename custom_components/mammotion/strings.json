@@ -823,6 +823,10 @@
           "name": "Blade mode",
           "description": "Must be off. This dry-run pass does not support blade movement."
         },
+        "heading_offset_degrees": {
+          "name": "Heading offset",
+          "description": "Optional correction added to reported mower heading before the simulated controller compares it with the target heading."
+        },
         "dry_run": {
           "name": "Dry run",
           "description": "Must be true. Real mower movement is not supported by this service."
@@ -941,6 +945,10 @@
           "name": "Force action",
           "description": "Optional diagnostic override for the next low-level action. Auto uses the controller decision."
         },
+        "heading_offset_degrees": {
+          "name": "Heading offset",
+          "description": "Optional correction added to reported mower heading before the controller compares it with the target heading."
+        },
         "min_progress_distance": {
           "name": "Minimum progress distance",
           "description": "Distance threshold used to classify telemetry-confirmed movement."
@@ -1006,6 +1014,10 @@
         "force_action": {
           "name": "Force action",
           "description": "Optional diagnostic override for the next low-level action. Auto uses the controller decision."
+        },
+        "heading_offset_degrees": {
+          "name": "Heading offset",
+          "description": "Optional correction added to reported mower heading before the controller compares it with the target heading."
         },
         "min_progress_distance": {
           "name": "Minimum progress distance",

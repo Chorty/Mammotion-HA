@@ -412,6 +412,14 @@ dry_run_custom_path:
         select:
           options:
             - "off"
+    heading_offset_degrees:
+      required: false
+      default: 0.0
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: 1
     dry_run:
       required: false
       default: true
@@ -588,6 +596,14 @@ manual_velocity_segment_test:
             - "backward"
             - "turn_left"
             - "turn_right"
+    heading_offset_degrees:
+      required: false
+      default: 0.0
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: 1
     min_progress_distance:
       required: false
       default: 0.003
@@ -601,7 +617,7 @@ manual_velocity_segment_test:
       default: 2
       selector:
         number:
-          min: 2
+          min: 1
           max: 5
           step: 1
     min_heading_change_degrees:
@@ -675,7 +691,7 @@ manual_velocity_multi_pulse_test:
       default: 3
       selector:
         number:
-          min: 1
+          min: 2
           max: 5
           step: 1
     waypoint_tolerance:
@@ -697,6 +713,14 @@ manual_velocity_multi_pulse_test:
             - "backward"
             - "turn_left"
             - "turn_right"
+    heading_offset_degrees:
+      required: false
+      default: 0.0
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: 1
     min_progress_distance:
       required: false
       default: 0.003
