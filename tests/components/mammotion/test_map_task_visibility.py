@@ -20,6 +20,7 @@ from custom_components.mammotion.services import (
     _export_mower_tasks,
     _manual_velocity_controller_decision,
     _manual_velocity_heading_calibration,
+    _manual_velocity_path_progress_diagnostic,
     _manual_velocity_pulse_test,
     _manual_velocity_segment_test,
     _normalize_mower_areas,
@@ -781,6 +782,56 @@ def test_manual_velocity_controller_keeps_target_after_start_progress() -> None:
     assert decision["target_index"] == 1
     assert decision["action"] == "forward"
     assert abs(decision["heading_error_degrees"]) < 15
+
+
+def test_manual_velocity_path_progress_requires_target_direction() -> None:
+    """Forward progress must project toward the active target."""
+    before = {
+        "position": {
+            "x": 0.0,
+            "y": 0.0,
+            "toward": 0.0,
+            "source": "mowing_state",
+        }
+    }
+    decision = {
+        "action": "forward",
+        "target": {"x": 1.0, "y": 0.0},
+    }
+
+    toward = _manual_velocity_path_progress_diagnostic(
+        before,
+        {
+            "position": {
+                "x": 0.1,
+                "y": 0.0,
+                "toward": 0.0,
+                "source": "mowing_state",
+            }
+        },
+        decision,
+        min_progress_distance=0.02,
+        min_heading_change_degrees=1.0,
+    )
+    away = _manual_velocity_path_progress_diagnostic(
+        before,
+        {
+            "position": {
+                "x": -0.1,
+                "y": 0.0,
+                "toward": 0.0,
+                "source": "mowing_state",
+            }
+        },
+        decision,
+        min_progress_distance=0.02,
+        min_heading_change_degrees=1.0,
+    )
+
+    assert toward["passed"] is True
+    assert toward["status"] == "path_progress"
+    assert away["passed"] is False
+    assert away["status"] == "no_path_progress"
 
 
 def test_manual_velocity_controller_stops_without_live_position() -> None:

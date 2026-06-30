@@ -1504,6 +1504,101 @@ def _manual_velocity_motion_diagnostic(
     }
 
 
+def _manual_velocity_path_progress_diagnostic(
+    before: dict[str, Any],
+    after: dict[str, Any],
+    decision: dict[str, Any],
+    *,
+    min_progress_distance: float,
+    min_heading_change_degrees: float,
+) -> dict[str, Any]:
+    """Classify whether telemetry moved in the direction the controller intended."""
+    action = decision.get("action")
+    delta = _telemetry_position_delta(before, after)
+    heading_change = delta.get("heading_change_degrees")
+    heading_progress = (
+        heading_change is not None
+        and abs(float(heading_change)) >= min_heading_change_degrees
+    )
+    if action in {"turn_left", "turn_right"}:
+        return {
+            "status": (
+                "heading_progress"
+                if heading_progress
+                else "heading_progress_not_detected"
+            ),
+            "passed": heading_progress,
+            "action": action,
+            "path_progress_distance": None,
+            "expected_target_heading_degrees": None,
+            "movement_vector_heading_degrees": None,
+            "heading_progress": heading_progress,
+            "min_progress_distance": min_progress_distance,
+            "min_heading_change_degrees": min_heading_change_degrees,
+        }
+
+    target = decision.get("target")
+    current = before.get("position", {})
+    if (
+        action != "forward"
+        or not isinstance(target, dict)
+        or current.get("x") is None
+        or current.get("y") is None
+        or delta.get("dx") is None
+        or delta.get("dy") is None
+    ):
+        return {
+            "status": "path_progress_unavailable",
+            "passed": False,
+            "action": action,
+            "path_progress_distance": None,
+            "expected_target_heading_degrees": None,
+            "movement_vector_heading_degrees": None,
+            "heading_progress": heading_progress,
+            "min_progress_distance": min_progress_distance,
+            "min_heading_change_degrees": min_heading_change_degrees,
+        }
+
+    target_dx = float(target["x"]) - float(current["x"])
+    target_dy = float(target["y"]) - float(current["y"])
+    target_distance = math.hypot(target_dx, target_dy)
+    if target_distance <= 0:
+        path_progress_distance = 0.0
+        target_heading = None
+    else:
+        unit_x = target_dx / target_distance
+        unit_y = target_dy / target_distance
+        path_progress_distance = float(delta["dx"]) * unit_x + float(delta["dy"]) * unit_y
+        target_heading = (
+            math.degrees(math.atan2(target_dy, target_dx)) + 360
+        ) % 360
+
+    movement_vector_heading = None
+    if delta.get("distance") is not None and float(delta["distance"]) > 0:
+        movement_vector_heading = (
+            math.degrees(math.atan2(float(delta["dy"]), float(delta["dx"]))) + 360
+        ) % 360
+
+    passed = path_progress_distance >= min_progress_distance
+    if passed:
+        status = "path_progress"
+    elif path_progress_distance > 0:
+        status = "path_progress_below_threshold"
+    else:
+        status = "no_path_progress"
+    return {
+        "status": status,
+        "passed": passed,
+        "action": action,
+        "path_progress_distance": path_progress_distance,
+        "expected_target_heading_degrees": target_heading,
+        "movement_vector_heading_degrees": movement_vector_heading,
+        "heading_progress": heading_progress,
+        "min_progress_distance": min_progress_distance,
+        "min_heading_change_degrees": min_heading_change_degrees,
+    }
+
+
 def _quality_rank(value: Any) -> int | None:
     """Return a coarse quality rank where larger means better."""
     if value is None:
@@ -2071,7 +2166,14 @@ async def _manual_velocity_segment_test(  # noqa: C901
             min_progress_distance=min_progress_distance,
             min_heading_change_degrees=min_heading_change_degrees,
         )
-        if movement_diagnostic["telemetry_motion_detected"]:
+        path_progress_diagnostic = _manual_velocity_path_progress_diagnostic(
+            before,
+            after,
+            decision,
+            min_progress_distance=min_progress_distance,
+            min_heading_change_degrees=min_heading_change_degrees,
+        )
+        if path_progress_diagnostic["passed"]:
             no_progress_count = 0
         else:
             no_progress_count += 1
@@ -2098,6 +2200,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
                 "immediate_delta": immediate_delta,
                 "measured_delta": measured_delta,
                 "movement_diagnostic": movement_diagnostic,
+                "path_progress_diagnostic": path_progress_diagnostic,
                 "quality_degradation": quality_degradation,
                 "no_progress_count": no_progress_count,
                 "cumulative_distance": cumulative_distance,
