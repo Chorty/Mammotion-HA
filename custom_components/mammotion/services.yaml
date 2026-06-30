@@ -590,12 +590,129 @@ manual_velocity_segment_test:
             - "turn_right"
     min_progress_distance:
       required: false
-      default: 0.02
+      default: 0.003
       selector:
         number:
           min: 0
           max: 0.5
+          step: 0.001
+    no_progress_limit:
+      required: false
+      default: 2
+      selector:
+        number:
+          min: 1
+          max: 5
+          step: 1
+    min_heading_change_degrees:
+      required: false
+      default: 1.0
+      selector:
+        number:
+          min: 0
+          max: 45
+          step: 0.5
+    use_wifi:
+      required: false
+      default: true
+      selector:
+        boolean:
+    dry_run:
+      required: false
+      default: true
+      selector:
+        boolean:
+    confirm_blades_off:
+      required: false
+      default: false
+      selector:
+        boolean:
+    confirm_clear_area:
+      required: false
+      default: false
+      selector:
+        boolean:
+
+manual_velocity_multi_pulse_test:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+    points:
+      required: true
+      example:
+        - x: 4.51
+          y: -0.54
+        - x: 4.54
+          y: -0.90
+      selector:
+        object:
+    area_hash:
+      required: false
+      selector:
+        text:
+    speed:
+      required: false
+      default: 0.4
+      selector:
+        number:
+          min: 0.05
+          max: 0.4
+          step: 0.05
+    pulse_duration_ms:
+      required: false
+      default: 750
+      selector:
+        number:
+          min: 50
+          max: 750
+          step: 50
+          unit_of_measurement: ms
+    max_pulses:
+      required: false
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 5
+          step: 1
+    waypoint_tolerance:
+      required: false
+      default: 0.1
+      selector:
+        number:
+          min: 0.02
+          max: 0.5
           step: 0.01
+    force_action:
+      required: false
+      default: "auto"
+      selector:
+        select:
+          options:
+            - "auto"
+            - "forward"
+            - "backward"
+            - "turn_left"
+            - "turn_right"
+    min_progress_distance:
+      required: false
+      default: 0.003
+      selector:
+        number:
+          min: 0
+          max: 0.5
+          step: 0.001
+    no_progress_limit:
+      required: false
+      default: 2
+      selector:
+        number:
+          min: 1
+          max: 5
+          step: 1
     min_heading_change_degrees:
       required: false
       default: 1.0

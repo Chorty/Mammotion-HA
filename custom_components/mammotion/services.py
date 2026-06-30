@@ -44,6 +44,7 @@ SERVICE_DRY_RUN_CUSTOM_PATH = "dry_run_custom_path"
 SERVICE_EXECUTE_CUSTOM_PATH = "execute_custom_path"
 SERVICE_MANUAL_VELOCITY_PULSE_TEST = "manual_velocity_pulse_test"
 SERVICE_MANUAL_VELOCITY_SEGMENT_TEST = "manual_velocity_segment_test"
+SERVICE_MANUAL_VELOCITY_MULTI_PULSE_TEST = "manual_velocity_multi_pulse_test"
 SERVICE_SVG_ADD = "svg_add"
 SERVICE_SVG_UPDATE = "svg_update"
 SERVICE_SVG_DELETE = "svg_delete"
@@ -284,8 +285,11 @@ MANUAL_VELOCITY_SEGMENT_TEST_SCHEMA = vol.Schema(
         vol.Optional("force_action", default="auto"): vol.In(
             ["auto", "forward", "backward", "turn_left", "turn_right"]
         ),
-        vol.Optional("min_progress_distance", default=0.02): vol.All(
+        vol.Optional("min_progress_distance", default=0.003): vol.All(
             vol.Coerce(float), vol.Range(min=0.0, max=0.5)
+        ),
+        vol.Optional("no_progress_limit", default=2): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=5)
         ),
         vol.Optional("min_heading_change_degrees", default=1.0): vol.All(
             vol.Coerce(float), vol.Range(min=0.0, max=45.0)
@@ -1481,13 +1485,15 @@ async def _manual_velocity_segment_test(  # noqa: C901
     max_pulses: int = 3,
     waypoint_tolerance: float = 0.1,
     force_action: str = "auto",
-    min_progress_distance: float = 0.02,
+    min_progress_distance: float = 0.003,
+    no_progress_limit: int = 2,
     min_heading_change_degrees: float = 1.0,
     use_wifi: bool = True,
     dry_run: bool = True,
     confirm_blades_off: bool = False,
     confirm_clear_area: bool = False,
     post_stop_sample_delays: tuple[float, ...] = (0.5, 1.0, 2.0, 3.0),
+    service_name: str = SERVICE_MANUAL_VELOCITY_SEGMENT_TEST,
 ) -> dict[str, Any]:
     """Run or simulate a guarded one-segment closed-loop movement probe.
 
@@ -1536,10 +1542,13 @@ async def _manual_velocity_segment_test(  # noqa: C901
             }
         )
     blockers = [gate["name"] for gate in gates if not gate["passed"]]
+    no_progress_count = 0
+    cumulative_distance = 0.0
+    cumulative_heading_change = 0.0
 
     result: dict[str, Any] = {
         **preview,
-        "service": SERVICE_MANUAL_VELOCITY_SEGMENT_TEST,
+        "service": service_name,
         "mode": "dry_run" if dry_run else "real_segment_probe",
         "dry_run": dry_run,
         "speed": speed,
@@ -1548,6 +1557,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
         "waypoint_tolerance": waypoint_tolerance,
         "force_action": force_action,
         "min_progress_distance": min_progress_distance,
+        "no_progress_limit": no_progress_limit,
         "min_heading_change_degrees": min_heading_change_degrees,
         "post_stop_sample_delays": list(post_stop_sample_delays),
         "use_wifi": use_wifi,
@@ -1562,7 +1572,18 @@ async def _manual_velocity_segment_test(  # noqa: C901
         "iterations": [],
         "final_telemetry": telemetry,
         "stop_reason": "dry_run" if dry_run else None,
-        "real_execution_scope": "one_segment_probe_only",
+        "real_execution_scope": "manual_velocity_probe_only",
+        "progress_policy": {
+            "min_progress_distance": min_progress_distance,
+            "min_heading_change_degrees": min_heading_change_degrees,
+            "no_progress_limit": no_progress_limit,
+            "decision_sample": "last_post_stop_sample",
+        },
+        "progress_summary": {
+            "no_progress_count": no_progress_count,
+            "cumulative_distance": cumulative_distance,
+            "cumulative_heading_change_degrees": cumulative_heading_change,
+        },
         "full_path_execution_allowed": False,
     }
     if dry_run or blockers:
@@ -1660,6 +1681,22 @@ async def _manual_velocity_segment_test(  # noqa: C901
         after = post_stop_samples[-1]["telemetry"]
         measured_delta = _telemetry_position_delta(before, after)
         immediate_delta = _telemetry_position_delta(before, immediate_after_stop)
+        movement_diagnostic = _manual_velocity_motion_diagnostic(
+            measured_delta,
+            command_ok=command_result["ok"] is True,
+            min_progress_distance=min_progress_distance,
+            min_heading_change_degrees=min_heading_change_degrees,
+        )
+        if movement_diagnostic["telemetry_motion_detected"]:
+            no_progress_count = 0
+        else:
+            no_progress_count += 1
+        if measured_delta["distance"] is not None:
+            cumulative_distance += float(measured_delta["distance"])
+        if measured_delta["heading_change_degrees"] is not None:
+            cumulative_heading_change += abs(
+                float(measured_delta["heading_change_degrees"])
+            )
         result["iterations"].append(
             {
                 "index": index,
@@ -1676,21 +1713,27 @@ async def _manual_velocity_segment_test(  # noqa: C901
                 "stop_result": stop_result,
                 "immediate_delta": immediate_delta,
                 "measured_delta": measured_delta,
-                "movement_diagnostic": _manual_velocity_motion_diagnostic(
-                    measured_delta,
-                    command_ok=command_result["ok"] is True,
-                    min_progress_distance=min_progress_distance,
-                    min_heading_change_degrees=min_heading_change_degrees,
-                ),
+                "movement_diagnostic": movement_diagnostic,
+                "no_progress_count": no_progress_count,
+                "cumulative_distance": cumulative_distance,
+                "cumulative_heading_change_degrees": cumulative_heading_change,
             }
         )
         result["final_telemetry"] = after
+        result["progress_summary"] = {
+            "no_progress_count": no_progress_count,
+            "cumulative_distance": cumulative_distance,
+            "cumulative_heading_change_degrees": cumulative_heading_change,
+        }
 
         if command_result["ok"] is not True:
             result["stop_reason"] = "command_failed"
             break
         if stop_result["ok"] is not True:
             result["stop_reason"] = "stop_failed"
+            break
+        if no_progress_count >= no_progress_limit:
+            result["stop_reason"] = "no_progress_limit_reached"
             break
 
     if result["stop_reason"] is None:
@@ -2424,11 +2467,38 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             waypoint_tolerance=call.data["waypoint_tolerance"],
             force_action=call.data["force_action"],
             min_progress_distance=call.data["min_progress_distance"],
+            no_progress_limit=call.data["no_progress_limit"],
             min_heading_change_degrees=call.data["min_heading_change_degrees"],
             use_wifi=call.data["use_wifi"],
             dry_run=call.data["dry_run"],
             confirm_blades_off=call.data["confirm_blades_off"],
             confirm_clear_area=call.data["confirm_clear_area"],
+        )
+
+    async def handle_manual_velocity_multi_pulse_test(
+        call: ServiceCall,
+    ) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        return await _manual_velocity_segment_test(
+            mower.reporting_coordinator,
+            cast(list[dict[str, float]], call.data["points"]),
+            area_hash=call.data.get("area_hash"),
+            speed=call.data["speed"],
+            pulse_duration_ms=call.data["pulse_duration_ms"],
+            max_pulses=call.data["max_pulses"],
+            waypoint_tolerance=call.data["waypoint_tolerance"],
+            force_action=call.data["force_action"],
+            min_progress_distance=call.data["min_progress_distance"],
+            no_progress_limit=call.data["no_progress_limit"],
+            min_heading_change_degrees=call.data["min_heading_change_degrees"],
+            use_wifi=call.data["use_wifi"],
+            dry_run=call.data["dry_run"],
+            confirm_blades_off=call.data["confirm_blades_off"],
+            confirm_clear_area=call.data["confirm_clear_area"],
+            service_name=SERVICE_MANUAL_VELOCITY_MULTI_PULSE_TEST,
         )
 
     async def handle_svg_add(call: ServiceCall) -> dict[str, Any]:
@@ -2590,6 +2660,13 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         DOMAIN,
         SERVICE_MANUAL_VELOCITY_SEGMENT_TEST,
         handle_manual_velocity_segment_test,
+        schema=MANUAL_VELOCITY_SEGMENT_TEST_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_MANUAL_VELOCITY_MULTI_PULSE_TEST,
+        handle_manual_velocity_multi_pulse_test,
         schema=MANUAL_VELOCITY_SEGMENT_TEST_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )

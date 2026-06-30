@@ -899,6 +899,8 @@ def test_manual_velocity_segment_schema_caps_probe_values() -> None:
     assert parsed["pulse_duration_ms"] == 750
     assert parsed["max_pulses"] == 5
     assert parsed["force_action"] == "forward"
+    assert parsed["min_progress_distance"] == 0.003
+    assert parsed["no_progress_limit"] == 2
     with pytest.raises(Exception):  # noqa: B017
         MANUAL_VELOCITY_SEGMENT_TEST_SCHEMA(
             {
@@ -997,6 +999,7 @@ async def test_manual_velocity_segment_test_real_probe_calls_move_then_stop() ->
     assert result["iterations"][0]["movement_diagnostic"]["status"] == (
         "visual_motion_possible_but_telemetry_unchanged"
     )
+    assert result["progress_summary"]["no_progress_count"] == 1
     coordinator.async_move_forward.assert_awaited_once_with(speed=0.4, use_wifi=True)
     coordinator.async_stop_manual_motion.assert_awaited_once_with(use_wifi=True)
 
@@ -1025,6 +1028,47 @@ async def test_manual_velocity_segment_test_force_action_overrides_controller() 
     assert decision["original_action"] == "turn_left"
     coordinator.async_move_forward.assert_awaited_once_with(speed=0.4, use_wifi=True)
     coordinator.async_move_left.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_segment_test_stops_after_no_progress_limit() -> None:
+    """Multi-pulse probes stop after consecutive low-progress telemetry samples."""
+    coordinator = _pulse_coordinator()
+
+    result = await _manual_velocity_segment_test(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 2.0, "y": 1.0}],
+        speed=0.4,
+        pulse_duration_ms=50,
+        max_pulses=5,
+        no_progress_limit=2,
+        use_wifi=True,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        post_stop_sample_delays=(0,),
+    )
+
+    assert result["stop_reason"] == "no_progress_limit_reached"
+    assert result["pulses_sent"] == 2
+    assert result["progress_summary"]["no_progress_count"] == 2
+    assert coordinator.async_move_forward.await_count == 2
+    assert coordinator.async_stop_manual_motion.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_segment_test_can_report_multi_pulse_service_name() -> None:
+    """The same guarded engine can back the explicit multi-pulse service."""
+    coordinator = _pulse_coordinator()
+
+    result = await _manual_velocity_segment_test(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 2.0, "y": 1.0}],
+        service_name="manual_velocity_multi_pulse_test",
+    )
+
+    assert result["service"] == "manual_velocity_multi_pulse_test"
+    coordinator.async_move_forward.assert_not_called()
 
 
 @pytest.mark.asyncio
