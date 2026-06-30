@@ -2064,6 +2064,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
     dry_run: bool = True,
     confirm_blades_off: bool = False,
     confirm_clear_area: bool = False,
+    pre_command_sample_delays: tuple[float, ...] = (0.0,),
     post_stop_sample_delays: tuple[float, ...] = (0.5, 1.0, 2.0, 3.0, 10.0, 20.0),
     service_name: str = SERVICE_MANUAL_VELOCITY_SEGMENT_TEST,
 ) -> dict[str, Any]:
@@ -2137,6 +2138,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
         "use_wifi": use_wifi,
         "confirm_blades_off": confirm_blades_off,
         "confirm_clear_area": confirm_clear_area,
+        "pre_command_sample_delays": list(pre_command_sample_delays),
         "would_send": not dry_run and not blockers,
         "real_segment_allowed": not dry_run and not blockers,
         "blockers": blockers,
@@ -2167,7 +2169,22 @@ async def _manual_velocity_segment_test(  # noqa: C901
 
     baseline_quality_telemetry = telemetry
     for index in range(1, max_pulses + 1):
-        before = _custom_path_telemetry_snapshot(coordinator)
+        pre_command_samples = []
+        previous_delay = 0.0
+        for delay in pre_command_sample_delays:
+            await asyncio.sleep(max(0.0, delay - previous_delay))
+            previous_delay = delay
+            pre_command_samples.append(
+                {
+                    "delay_seconds": delay,
+                    "telemetry": _custom_path_telemetry_snapshot(coordinator),
+                }
+            )
+        before = (
+            pre_command_samples[-1]["telemetry"]
+            if pre_command_samples
+            else _custom_path_telemetry_snapshot(coordinator)
+        )
         gates = _manual_velocity_pulse_gates(
             coordinator,
             before,
@@ -2182,6 +2199,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
             result["iterations"].append(
                 {
                     "index": index,
+                    "pre_command_samples": pre_command_samples,
                     "before": before,
                     "safety_gates": gates,
                     "blockers": blockers,
@@ -2201,6 +2219,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
             result["iterations"].append(
                 {
                     "index": index,
+                    "pre_command_samples": pre_command_samples,
                     "before": before,
                     "quality_degradation": quality_degradation,
                     "command_result": {"attempted": False, "ok": None, "error": None},
@@ -2229,6 +2248,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
             result["iterations"].append(
                 {
                     "index": index,
+                    "pre_command_samples": pre_command_samples,
                     "before": before,
                     "controller_decision": decision,
                     "command_result": {"attempted": False, "ok": None, "error": None},
@@ -2304,6 +2324,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
         result["iterations"].append(
             {
                 "index": index,
+                "pre_command_samples": pre_command_samples,
                 "before": before,
                 "after": after,
                 "immediate_after_stop": immediate_after_stop,
@@ -3062,6 +3083,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             dry_run=call.data["dry_run"],
             confirm_blades_off=call.data["confirm_blades_off"],
             confirm_clear_area=call.data["confirm_clear_area"],
+            pre_command_sample_delays=(0.0, 10.0, 20.0),
         )
 
     async def handle_manual_velocity_segment_test(
@@ -3114,6 +3136,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             dry_run=call.data["dry_run"],
             confirm_blades_off=call.data["confirm_blades_off"],
             confirm_clear_area=call.data["confirm_clear_area"],
+            pre_command_sample_delays=(0.0, 10.0, 20.0),
             service_name=SERVICE_MANUAL_VELOCITY_MULTI_PULSE_TEST,
         )
 
