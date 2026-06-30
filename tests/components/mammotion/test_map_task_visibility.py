@@ -891,12 +891,14 @@ def test_manual_velocity_segment_schema_caps_probe_values() -> None:
             "speed": 0.4,
             "pulse_duration_ms": 750,
             "max_pulses": 5,
+            "force_action": "forward",
         }
     )
 
     assert parsed["speed"] == 0.4
     assert parsed["pulse_duration_ms"] == 750
     assert parsed["max_pulses"] == 5
+    assert parsed["force_action"] == "forward"
     with pytest.raises(Exception):  # noqa: B017
         MANUAL_VELOCITY_SEGMENT_TEST_SCHEMA(
             {
@@ -974,7 +976,7 @@ async def test_manual_velocity_segment_test_real_probe_calls_move_then_stop() ->
         dry_run=False,
         confirm_blades_off=True,
         confirm_clear_area=True,
-        sample_interval_seconds=0,
+        post_stop_sample_delays=(0,),
     )
 
     assert result["would_send"] is True
@@ -992,8 +994,37 @@ async def test_manual_velocity_segment_test_real_probe_calls_move_then_stop() ->
         "ok": True,
         "error": None,
     }
+    assert result["iterations"][0]["movement_diagnostic"]["status"] == (
+        "visual_motion_possible_but_telemetry_unchanged"
+    )
     coordinator.async_move_forward.assert_awaited_once_with(speed=0.4, use_wifi=True)
     coordinator.async_stop_manual_motion.assert_awaited_once_with(use_wifi=True)
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_segment_test_force_action_overrides_controller() -> None:
+    """Force action lets diagnostics test a specific low-level movement command."""
+    coordinator = _pulse_coordinator()
+
+    result = await _manual_velocity_segment_test(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.0, "y": 2.0}],
+        speed=0.4,
+        pulse_duration_ms=50,
+        max_pulses=1,
+        force_action="forward",
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        post_stop_sample_delays=(0,),
+    )
+
+    decision = result["iterations"][0]["controller_decision"]
+    assert decision["action"] == "forward"
+    assert decision["forced"] is True
+    assert decision["original_action"] == "turn_left"
+    coordinator.async_move_forward.assert_awaited_once_with(speed=0.4, use_wifi=True)
+    coordinator.async_move_left.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1008,7 +1039,7 @@ async def test_manual_velocity_segment_test_stops_when_path_complete() -> None:
         dry_run=False,
         confirm_blades_off=True,
         confirm_clear_area=True,
-        sample_interval_seconds=0,
+        post_stop_sample_delays=(0,),
     )
 
     assert result["would_send"] is True

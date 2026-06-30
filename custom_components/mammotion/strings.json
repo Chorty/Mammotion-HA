@@ -937,6 +937,18 @@
           "name": "Waypoint tolerance",
           "description": "Distance from a waypoint that counts as reached."
         },
+        "force_action": {
+          "name": "Force action",
+          "description": "Optional diagnostic override for the next low-level action. Auto uses the controller decision."
+        },
+        "min_progress_distance": {
+          "name": "Minimum progress distance",
+          "description": "Distance threshold used to classify telemetry-confirmed movement."
+        },
+        "min_heading_change_degrees": {
+          "name": "Minimum heading change",
+          "description": "Heading-change threshold used to classify telemetry-confirmed rotation."
+        },
         "use_wifi": {
           "name": "Use Wi-Fi",
           "description": "Use Wi-Fi/local path instead of the default BLE-preferred path."

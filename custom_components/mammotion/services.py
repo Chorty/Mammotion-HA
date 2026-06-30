@@ -281,6 +281,15 @@ MANUAL_VELOCITY_SEGMENT_TEST_SCHEMA = vol.Schema(
         vol.Optional("waypoint_tolerance", default=0.1): vol.All(
             vol.Coerce(float), vol.Range(min=0.02, max=0.5)
         ),
+        vol.Optional("force_action", default="auto"): vol.In(
+            ["auto", "forward", "backward", "turn_left", "turn_right"]
+        ),
+        vol.Optional("min_progress_distance", default=0.02): vol.All(
+            vol.Coerce(float), vol.Range(min=0.0, max=0.5)
+        ),
+        vol.Optional("min_heading_change_degrees", default=1.0): vol.All(
+            vol.Coerce(float), vol.Range(min=0.0, max=45.0)
+        ),
         vol.Optional("use_wifi", default=True): cv.boolean,
         vol.Optional("dry_run", default=True): cv.boolean,
         vol.Optional("confirm_blades_off", default=False): cv.boolean,
@@ -1249,6 +1258,60 @@ def _telemetry_position_delta(
     }
 
 
+def _manual_velocity_forced_decision(
+    decision: dict[str, Any], *, force_action: str, speed: float
+) -> dict[str, Any]:
+    """Return a controller decision with an explicit test action if requested."""
+    if force_action == "auto":
+        return decision
+    return {
+        **decision,
+        "action": force_action,
+        "reason": "force_action_requested",
+        "forced": True,
+        "original_action": decision.get("action"),
+        "original_reason": decision.get("reason"),
+        "command_not_sent": {
+            "service": f"{DOMAIN}.{_manual_velocity_action_service(force_action)}",
+            "data": {"speed": speed, "use_wifi": False},
+        },
+    }
+
+
+def _manual_velocity_motion_diagnostic(
+    delta: dict[str, Any],
+    *,
+    command_ok: bool,
+    min_progress_distance: float,
+    min_heading_change_degrees: float,
+) -> dict[str, Any]:
+    """Classify whether telemetry confirms movement after a pulse."""
+    distance = delta.get("distance")
+    heading_change = delta.get("heading_change_degrees")
+    distance_detected = (
+        distance is not None and abs(float(distance)) >= min_progress_distance
+    )
+    heading_detected = (
+        heading_change is not None
+        and abs(float(heading_change)) >= min_heading_change_degrees
+    )
+    detected = distance_detected or heading_detected
+    if detected:
+        status = "telemetry_motion_detected"
+    elif command_ok:
+        status = "visual_motion_possible_but_telemetry_unchanged"
+    else:
+        status = "command_not_confirmed"
+    return {
+        "status": status,
+        "telemetry_motion_detected": detected,
+        "distance_detected": distance_detected,
+        "heading_detected": heading_detected,
+        "min_progress_distance": min_progress_distance,
+        "min_heading_change_degrees": min_heading_change_degrees,
+    }
+
+
 def _manual_velocity_pulse_gates(
     coordinator: MammotionReportUpdateCoordinator,
     before: dict[str, Any],
@@ -1417,11 +1480,14 @@ async def _manual_velocity_segment_test(  # noqa: C901
     pulse_duration_ms: int = 750,
     max_pulses: int = 3,
     waypoint_tolerance: float = 0.1,
+    force_action: str = "auto",
+    min_progress_distance: float = 0.02,
+    min_heading_change_degrees: float = 1.0,
     use_wifi: bool = True,
     dry_run: bool = True,
     confirm_blades_off: bool = False,
     confirm_clear_area: bool = False,
-    sample_interval_seconds: float = 0.5,
+    post_stop_sample_delays: tuple[float, ...] = (0.5, 1.0, 2.0, 3.0),
 ) -> dict[str, Any]:
     """Run or simulate a guarded one-segment closed-loop movement probe.
 
@@ -1449,6 +1515,11 @@ async def _manual_velocity_segment_test(  # noqa: C901
         waypoint_tolerance=waypoint_tolerance,
         max_pulse_seconds=pulse_duration_ms / 1000,
     )
+    initial_decision = _manual_velocity_forced_decision(
+        initial_decision,
+        force_action=force_action,
+        speed=speed,
+    )
     gates = _manual_velocity_pulse_gates(
         coordinator,
         telemetry,
@@ -1475,6 +1546,10 @@ async def _manual_velocity_segment_test(  # noqa: C901
         "pulse_duration_ms": pulse_duration_ms,
         "max_pulses": max_pulses,
         "waypoint_tolerance": waypoint_tolerance,
+        "force_action": force_action,
+        "min_progress_distance": min_progress_distance,
+        "min_heading_change_degrees": min_heading_change_degrees,
+        "post_stop_sample_delays": list(post_stop_sample_delays),
         "use_wifi": use_wifi,
         "confirm_blades_off": confirm_blades_off,
         "confirm_clear_area": confirm_clear_area,
@@ -1528,6 +1603,11 @@ async def _manual_velocity_segment_test(  # noqa: C901
             waypoint_tolerance=waypoint_tolerance,
             max_pulse_seconds=pulse_duration_ms / 1000,
         )
+        decision = _manual_velocity_forced_decision(
+            decision,
+            force_action=force_action,
+            speed=speed,
+        )
         action = decision["action"]
         if action == "stop":
             result["stop_reason"] = decision["reason"]
@@ -1563,14 +1643,30 @@ async def _manual_velocity_segment_test(  # noqa: C901
                 stop_result["ok"] = False
                 stop_result["error"] = f"{type(err).__name__}: {err}"
 
-        await asyncio.sleep(sample_interval_seconds)
-        after = _custom_path_telemetry_snapshot(coordinator)
+        immediate_after_stop = _custom_path_telemetry_snapshot(coordinator)
+        post_stop_samples = [
+            {"delay_seconds": 0.0, "telemetry": immediate_after_stop}
+        ]
+        previous_delay = 0.0
+        for delay in post_stop_sample_delays:
+            await asyncio.sleep(max(0.0, delay - previous_delay))
+            previous_delay = delay
+            post_stop_samples.append(
+                {
+                    "delay_seconds": delay,
+                    "telemetry": _custom_path_telemetry_snapshot(coordinator),
+                }
+            )
+        after = post_stop_samples[-1]["telemetry"]
         measured_delta = _telemetry_position_delta(before, after)
+        immediate_delta = _telemetry_position_delta(before, immediate_after_stop)
         result["iterations"].append(
             {
                 "index": index,
                 "before": before,
                 "after": after,
+                "immediate_after_stop": immediate_after_stop,
+                "post_stop_samples": post_stop_samples,
                 "controller_decision": decision,
                 "command": {
                     "service": f"{DOMAIN}.{_manual_velocity_action_service(action)}",
@@ -1578,7 +1674,14 @@ async def _manual_velocity_segment_test(  # noqa: C901
                 },
                 "command_result": command_result,
                 "stop_result": stop_result,
+                "immediate_delta": immediate_delta,
                 "measured_delta": measured_delta,
+                "movement_diagnostic": _manual_velocity_motion_diagnostic(
+                    measured_delta,
+                    command_ok=command_result["ok"] is True,
+                    min_progress_distance=min_progress_distance,
+                    min_heading_change_degrees=min_heading_change_degrees,
+                ),
             }
         )
         result["final_telemetry"] = after
@@ -2319,6 +2422,9 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             pulse_duration_ms=call.data["pulse_duration_ms"],
             max_pulses=call.data["max_pulses"],
             waypoint_tolerance=call.data["waypoint_tolerance"],
+            force_action=call.data["force_action"],
+            min_progress_distance=call.data["min_progress_distance"],
+            min_heading_change_degrees=call.data["min_heading_change_degrees"],
             use_wifi=call.data["use_wifi"],
             dry_run=call.data["dry_run"],
             confirm_blades_off=call.data["confirm_blades_off"],
