@@ -1148,6 +1148,68 @@
         }
       }
     },
+    "experimental_execute_segment": {
+      "name": "Experimental execute segment",
+      "description": "Performs one guarded two-point movement segment using capped manual pulses. This is experimental, requires explicit real-execution confirmations, stops after each pulse, and stops immediately when target-directed progress is lost.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        },
+        "points": {
+          "name": "Points",
+          "description": "Exactly two map-local points: current/near-current start and one target point."
+        },
+        "area_hash": {
+          "name": "Area hash",
+          "description": "Optional area hash to constrain containment validation."
+        },
+        "speed": {
+          "name": "Speed",
+          "description": "Pulse speed, capped to the existing emergency nudge speed."
+        },
+        "pulse_duration_ms": {
+          "name": "Pulse duration",
+          "description": "Duration of each capped pulse in milliseconds."
+        },
+        "max_pulses": {
+          "name": "Max pulses",
+          "description": "Maximum number of stop-and-recheck pulse iterations. Experimental execution is capped at three."
+        },
+        "waypoint_tolerance": {
+          "name": "Waypoint tolerance",
+          "description": "Distance from the target that counts as reached."
+        },
+        "heading_offset_degrees": {
+          "name": "Heading offset",
+          "description": "Optional correction added to reported mower heading before the controller compares it with the target heading."
+        },
+        "min_progress_distance": {
+          "name": "Minimum progress distance",
+          "description": "Minimum target-directed movement required after each pulse."
+        },
+        "min_heading_change_degrees": {
+          "name": "Minimum heading change",
+          "description": "Heading-change threshold used to classify telemetry-confirmed rotation."
+        },
+        "use_wifi": {
+          "name": "Use Wi-Fi",
+          "description": "Use Wi-Fi/local path instead of the default BLE-preferred path."
+        },
+        "dry_run": {
+          "name": "Dry run",
+          "description": "Must be false. Use manual_velocity_segment_test for dry-run planning."
+        },
+        "confirm_blades_off": {
+          "name": "Confirm blades off",
+          "description": "Required and must be true for experimental execution."
+        },
+        "confirm_clear_area": {
+          "name": "Confirm clear area",
+          "description": "Required and must be true after confirming the mower has room to move safely."
+        }
+      }
+    },
     "manual_velocity_multi_pulse_test": {
       "name": "Manual velocity multi-pulse test",
       "description": "Dry-runs or performs a guarded multi-pulse movement probe. Each capped pulse is followed by stop, delayed telemetry sampling, a no-progress safety gate, and telemetry-quality degradation checks. Full path execution remains disabled.",

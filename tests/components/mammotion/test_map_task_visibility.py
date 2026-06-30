@@ -9,6 +9,7 @@ from pymammotion.data.model.hash_list import Plan
 from custom_components.mammotion.coordinator import MammotionReportUpdateCoordinator
 from custom_components.mammotion.sensor import WORK_SENSOR_TYPES
 from custom_components.mammotion.services import (
+    EXPERIMENTAL_EXECUTE_SEGMENT_SCHEMA,
     MANUAL_VELOCITY_HEADING_CALIBRATION_TEST_SCHEMA,
     MANUAL_VELOCITY_MULTI_PULSE_TEST_SCHEMA,
     MANUAL_VELOCITY_PULSE_TEST_SCHEMA,
@@ -1109,6 +1110,67 @@ def test_manual_velocity_multi_pulse_schema_requires_at_least_two_pulses() -> No
                 "max_pulses": 1,
             }
         )
+
+
+def test_experimental_execute_segment_schema_is_real_two_point_only() -> None:
+    """Experimental segment execution requires explicit real two-point execution."""
+    parsed = EXPERIMENTAL_EXECUTE_SEGMENT_SCHEMA(
+        {
+            "entity_id": "lawn_mower.test",
+            "points": [{"x": 1, "y": 1}, {"x": 2, "y": 1}],
+            "dry_run": False,
+            "confirm_blades_off": True,
+            "confirm_clear_area": True,
+            "max_pulses": 3,
+        }
+    )
+
+    assert parsed["dry_run"] is False
+    assert parsed["confirm_blades_off"] is True
+    assert parsed["confirm_clear_area"] is True
+    assert parsed["max_pulses"] == 3
+
+    invalid_cases = [
+        {
+            "entity_id": "lawn_mower.test",
+            "points": [{"x": 1, "y": 1}],
+            "dry_run": False,
+            "confirm_blades_off": True,
+            "confirm_clear_area": True,
+        },
+        {
+            "entity_id": "lawn_mower.test",
+            "points": [{"x": 1, "y": 1}, {"x": 2, "y": 1}, {"x": 3, "y": 1}],
+            "dry_run": False,
+            "confirm_blades_off": True,
+            "confirm_clear_area": True,
+        },
+        {
+            "entity_id": "lawn_mower.test",
+            "points": [{"x": 1, "y": 1}, {"x": 2, "y": 1}],
+            "dry_run": True,
+            "confirm_blades_off": True,
+            "confirm_clear_area": True,
+        },
+        {
+            "entity_id": "lawn_mower.test",
+            "points": [{"x": 1, "y": 1}, {"x": 2, "y": 1}],
+            "dry_run": False,
+            "confirm_blades_off": False,
+            "confirm_clear_area": True,
+        },
+        {
+            "entity_id": "lawn_mower.test",
+            "points": [{"x": 1, "y": 1}, {"x": 2, "y": 1}],
+            "dry_run": False,
+            "confirm_blades_off": True,
+            "confirm_clear_area": True,
+            "max_pulses": 4,
+        },
+    ]
+    for invalid in invalid_cases:
+        with pytest.raises(Exception):  # noqa: B017
+            EXPERIMENTAL_EXECUTE_SEGMENT_SCHEMA(invalid)
 
 
 def test_manual_velocity_heading_calibration_schema_defaults() -> None:

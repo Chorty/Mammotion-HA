@@ -48,6 +48,7 @@ SERVICE_MANUAL_VELOCITY_MULTI_PULSE_TEST = "manual_velocity_multi_pulse_test"
 SERVICE_MANUAL_VELOCITY_HEADING_CALIBRATION_TEST = (
     "manual_velocity_heading_calibration_test"
 )
+SERVICE_EXPERIMENTAL_EXECUTE_SEGMENT = "experimental_execute_segment"
 SERVICE_SVG_ADD = "svg_add"
 SERVICE_SVG_UPDATE = "svg_update"
 SERVICE_SVG_DELETE = "svg_delete"
@@ -375,6 +376,44 @@ MANUAL_VELOCITY_HEADING_CALIBRATION_TEST_SCHEMA = vol.Schema(
         vol.Optional("min_heading_change_degrees", default=1.0): vol.All(
             vol.Coerce(float), vol.Range(min=0.0, max=45.0)
         ),
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
+EXPERIMENTAL_EXECUTE_SEGMENT_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+        vol.Required("points"): vol.All(
+            cv.ensure_list,
+            vol.Length(min=2, max=2),
+            [_CUSTOM_PATH_POINT_SCHEMA],
+        ),
+        vol.Optional("area_hash"): vol.Coerce(int),
+        vol.Optional("speed", default=0.4): vol.All(
+            vol.Coerce(float), vol.Range(min=0.05, max=0.4)
+        ),
+        vol.Optional("pulse_duration_ms", default=750): vol.All(
+            vol.Coerce(int), vol.Range(min=50, max=750)
+        ),
+        vol.Optional("max_pulses", default=1): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=3)
+        ),
+        vol.Optional("waypoint_tolerance", default=0.1): vol.All(
+            vol.Coerce(float), vol.Range(min=0.02, max=0.5)
+        ),
+        vol.Optional("heading_offset_degrees", default=0.0): vol.All(
+            vol.Coerce(float), vol.Range(min=-180.0, max=180.0)
+        ),
+        vol.Optional("min_progress_distance", default=0.003): vol.All(
+            vol.Coerce(float), vol.Range(min=0.0, max=0.5)
+        ),
+        vol.Optional("min_heading_change_degrees", default=1.0): vol.All(
+            vol.Coerce(float), vol.Range(min=0.0, max=45.0)
+        ),
+        vol.Optional("use_wifi", default=True): cv.boolean,
+        vol.Required("dry_run"): vol.All(cv.boolean, vol.Equal(False)),
+        vol.Required("confirm_blades_off"): vol.All(cv.boolean, vol.Equal(True)),
+        vol.Required("confirm_clear_area"): vol.All(cv.boolean, vol.Equal(True)),
     },
     extra=vol.ALLOW_EXTRA,
 )
@@ -3174,6 +3213,35 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             confirm_clear_area=call.data["confirm_clear_area"],
         )
 
+    async def handle_experimental_execute_segment(
+        call: ServiceCall,
+    ) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        return await _manual_velocity_segment_test(
+            mower.reporting_coordinator,
+            cast(list[dict[str, float]], call.data["points"]),
+            area_hash=call.data.get("area_hash"),
+            speed=call.data["speed"],
+            pulse_duration_ms=call.data["pulse_duration_ms"],
+            max_pulses=call.data["max_pulses"],
+            waypoint_tolerance=call.data["waypoint_tolerance"],
+            force_action="auto",
+            heading_offset_degrees=call.data["heading_offset_degrees"],
+            min_progress_distance=call.data["min_progress_distance"],
+            no_progress_limit=1,
+            min_heading_change_degrees=call.data["min_heading_change_degrees"],
+            use_wifi=call.data["use_wifi"],
+            dry_run=False,
+            confirm_blades_off=True,
+            confirm_clear_area=True,
+            pre_command_sample_delays=(0.0, 10.0, 20.0),
+            require_progress_each_pulse=True,
+            service_name=SERVICE_EXPERIMENTAL_EXECUTE_SEGMENT,
+        )
+
     async def handle_manual_velocity_multi_pulse_test(
         call: ServiceCall,
     ) -> dict[str, Any]:
@@ -3390,6 +3458,13 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         SERVICE_MANUAL_VELOCITY_MULTI_PULSE_TEST,
         handle_manual_velocity_multi_pulse_test,
         schema=MANUAL_VELOCITY_MULTI_PULSE_TEST_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_EXPERIMENTAL_EXECUTE_SEGMENT,
+        handle_experimental_execute_segment,
+        schema=EXPERIMENTAL_EXECUTE_SEGMENT_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
