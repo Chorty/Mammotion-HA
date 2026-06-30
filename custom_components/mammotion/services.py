@@ -2253,12 +2253,13 @@ def _get_mower_by_entity_id(
 
     entries: list[MammotionConfigEntry] = hass.config_entries.async_entries(DOMAIN)
     for entry in entries:
-        if not entry.runtime_data:
+        runtime_data = getattr(entry, "runtime_data", None)
+        if not runtime_data:
             continue
         mower = next(
             (
                 m
-                for m in entry.runtime_data.mowers
+                for m in runtime_data.mowers
                 if entity_entry.unique_id.startswith(
                     m.reporting_coordinator.unique_name
                 )
