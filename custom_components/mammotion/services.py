@@ -1225,6 +1225,123 @@ def _custom_path_position_snapshot(
     }
 
 
+def _custom_path_position_candidates(
+    data: Any, coordinator: MammotionReportUpdateCoordinator | None = None
+) -> list[dict[str, Any]]:
+    """Return all known candidate map-position sources for diagnostics."""
+
+    def build_candidate(
+        source: str,
+        *,
+        x: Any = None,
+        y: Any = None,
+        toward: Any = None,
+        pos_level: Any = None,
+        rtk_status: Any = None,
+        pos_type: Any = None,
+        zone_hash: Any = None,
+    ) -> dict[str, Any]:
+        safe_zone_hash = _json_safe_int(zone_hash) if zone_hash is not None else None
+        area_name = (
+            coordinator.get_area_entity_name(int(zone_hash))
+            if coordinator is not None
+            and hasattr(coordinator, "get_area_entity_name")
+            and zone_hash not in (None, 0, "0")
+            else None
+        )
+        return {
+            "source": source,
+            "x": x,
+            "y": y,
+            "toward": toward,
+            "pos_level": pos_level,
+            "pos_level_label": _position_mode_label(pos_level),
+            "rtk_status": _enum_value(rtk_status),
+            "rtk_status_label": _rtk_status_label(rtk_status),
+            "pos_type": pos_type,
+            "pos_type_label": _pos_type_label(pos_type),
+            "zone_hash": safe_zone_hash,
+            "area_name": area_name,
+            "stale_zero_area_out": _is_stale_zero_area_out_pose(
+                x, y, pos_type, zone_hash
+            ),
+            "valid_for_motion": _is_valid_motion_position(
+                {
+                    "source": source,
+                    "x": x,
+                    "y": y,
+                    "pos_type_label": _pos_type_label(pos_type),
+                    "zone_hash": safe_zone_hash,
+                }
+            ),
+        }
+
+    candidates: list[dict[str, Any]] = []
+    mowing_state = _safe_attr_path(data, "mowing_state")
+    if mowing_state is not None and (
+        _safe_attr_path(mowing_state, "pos_x") is not None
+        or _safe_attr_path(mowing_state, "pos_y") is not None
+    ):
+        candidates.append(
+            build_candidate(
+                "mowing_state",
+                x=_safe_attr_path(mowing_state, "pos_x"),
+                y=_safe_attr_path(mowing_state, "pos_y"),
+                toward=_safe_attr_path(mowing_state, "toward"),
+                pos_level=_safe_attr_path(mowing_state, "pos_level"),
+                rtk_status=_safe_attr_path(mowing_state, "rtk_status"),
+                pos_type=_safe_attr_path(mowing_state, "pos_type"),
+                zone_hash=_safe_attr_path(mowing_state, "zone_hash"),
+            )
+        )
+
+    report_location = _latest_location(data)
+    if report_location is not None and (
+        _safe_attr_path(report_location, "real_pos_x") is not None
+        or _safe_attr_path(report_location, "real_pos_y") is not None
+    ):
+        candidates.append(
+            build_candidate(
+                "report_data.locations[0]",
+                x=_scale_report_position(
+                    _safe_attr_path(report_location, "real_pos_x")
+                ),
+                y=_scale_report_position(
+                    _safe_attr_path(report_location, "real_pos_y")
+                ),
+                toward=_scale_report_position(
+                    _safe_attr_path(report_location, "real_toward")
+                ),
+                pos_type=_safe_attr_path(report_location, "pos_type"),
+                zone_hash=_safe_attr_path(report_location, "bol_hash"),
+            )
+        )
+
+    location_pos_type = _safe_attr_path(data, "location.position_type")
+    location_zone_hash = _safe_attr_path(data, "location.work_zone")
+    location_toward = _safe_attr_path(data, "location.orientation")
+    if location_pos_type is not None or location_zone_hash is not None:
+        candidates.append(
+            build_candidate(
+                "location_metadata",
+                toward=location_toward,
+                pos_type=location_pos_type,
+                zone_hash=location_zone_hash,
+            )
+        )
+
+    rtk = _safe_attr_path(data, "report_data.rtk")
+    if rtk is not None:
+        candidates.append(
+            build_candidate(
+                "report_data.rtk",
+                pos_level=_safe_attr_path(rtk, "pos_level"),
+                rtk_status=_safe_attr_path(rtk, "status"),
+            )
+        )
+    return candidates
+
+
 def _custom_path_telemetry_snapshot(
     coordinator: MammotionReportUpdateCoordinator,
 ) -> dict[str, Any]:
@@ -1241,6 +1358,7 @@ def _custom_path_telemetry_snapshot(
         "charge_state": charge_state,
         "charge_state_label": _charge_state_label(charge_state),
         "position": _custom_path_position_snapshot(data, coordinator),
+        "position_candidates": _custom_path_position_candidates(data, coordinator),
         "blade": {
             "reported_state": _enum_value(blade_state),
             "reported_state_label": _blade_state_label(blade_state),

@@ -1511,6 +1511,53 @@ def test_custom_path_telemetry_falls_back_to_report_location() -> None:
     assert position["valid_for_motion"] is False
 
 
+def test_custom_path_telemetry_reports_position_candidates() -> None:
+    """Telemetry exposes all candidate position sources for diagnostics."""
+    coordinator = SimpleNamespace(
+        is_online=lambda: True,
+        data=SimpleNamespace(
+            mowing_state=SimpleNamespace(
+                pos_x=1.0,
+                pos_y=2.0,
+                toward=30.0,
+                pos_level=0,
+                rtk_status=4,
+                zone_hash=456,
+                pos_type=1,
+            ),
+            location=SimpleNamespace(orientation=45, position_type=1, work_zone=456),
+            report_data=SimpleNamespace(
+                dev=SimpleNamespace(sys_status=11, charge_state=0, blade_state=0),
+                rtk=SimpleNamespace(status=4, pos_level=0),
+                locations=[
+                    SimpleNamespace(
+                        real_pos_x=30_000,
+                        real_pos_y=40_000,
+                        real_toward=500_000,
+                        pos_type=1,
+                        bol_hash=456,
+                    )
+                ],
+                cutter_work_mode_info=SimpleNamespace(
+                    current_cutter_mode=0,
+                    current_cutter_rpm=0,
+                ),
+                connect=None,
+            ),
+        ),
+    )
+
+    candidates = _custom_path_telemetry_snapshot(coordinator)["position_candidates"]
+    sources = {candidate["source"]: candidate for candidate in candidates}
+
+    assert sources["mowing_state"]["x"] == 1.0
+    assert sources["mowing_state"]["valid_for_motion"] is True
+    assert sources["report_data.locations[0]"]["x"] == 3.0
+    assert sources["report_data.locations[0]"]["toward"] == 50.0
+    assert sources["location_metadata"]["pos_type_label"] == "AREA_INSIDE"
+    assert sources["report_data.rtk"]["rtk_status_label"] == "Fix"
+
+
 def test_custom_path_telemetry_reports_unavailable_position_safely() -> None:
     """Missing position data returns an unavailable source without raising."""
     coordinator = SimpleNamespace(
