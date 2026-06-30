@@ -714,6 +714,26 @@ def test_manual_velocity_controller_skips_stale_start_waypoint() -> None:
     assert decision["reason"] == "heading_aligned"
 
 
+def test_manual_velocity_controller_skips_start_after_segment_progress() -> None:
+    """Controller skips start once mower has positive projection on first segment."""
+    decision = _manual_velocity_controller_decision(
+        [{"x": 0.0, "y": 0.0}, {"x": 0.0, "y": -0.16}],
+        {
+            "position": {
+                "x": 0.002,
+                "y": -0.053,
+                "toward": 270.0,
+                "source": "mowing_state",
+            }
+        },
+        speed=0.2,
+        waypoint_tolerance=0.03,
+    )
+
+    assert decision["target_index"] == 1
+    assert decision["action"] == "forward"
+
+
 def test_manual_velocity_controller_stops_without_live_position() -> None:
     """Controller refuses to plan movement without live map-local position."""
     decision = _manual_velocity_controller_decision(

@@ -674,8 +674,22 @@ def _manual_velocity_next_waypoint(
     # it so the controller continues down the path instead of turning back to
     # the original start marker.
     if active["index"] == 0 and len(distances) > 1:
+        start = path_points[0]
+        next_point = path_points[1]
+        segment_dx = next_point["x"] - start["x"]
+        segment_dy = next_point["y"] - start["y"]
+        segment_len_sq = segment_dx**2 + segment_dy**2
+        progress_along_first_segment = None
+        if segment_len_sq > 0:
+            progress_along_first_segment = (
+                (current["x"] - start["x"]) * segment_dx
+                + (current["y"] - start["y"]) * segment_dy
+            ) / segment_len_sq
         next_distance = distances[1]["distance"]
-        if next_distance <= active["distance"] + waypoint_tolerance:
+        if (
+            progress_along_first_segment is not None
+            and progress_along_first_segment > 0
+        ) or next_distance <= active["distance"] + waypoint_tolerance:
             active = distances[1]
 
     index = int(active["index"])
