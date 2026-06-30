@@ -734,6 +734,55 @@ def test_manual_velocity_controller_skips_start_after_segment_progress() -> None
     assert decision["action"] == "forward"
 
 
+def test_manual_velocity_controller_uses_later_segment_projection() -> None:
+    """Controller targets the next point on the closest later path segment."""
+    decision = _manual_velocity_controller_decision(
+        [
+            {"x": 0.0, "y": 0.0},
+            {"x": 1.0, "y": 0.0},
+            {"x": 1.0, "y": 1.0},
+        ],
+        {
+            "position": {
+                "x": 1.02,
+                "y": 0.45,
+                "toward": 90.0,
+                "source": "mowing_state",
+            }
+        },
+        speed=0.2,
+        waypoint_tolerance=0.03,
+    )
+
+    assert decision["target_index"] == 2
+    assert decision["action"] == "forward"
+
+
+def test_manual_velocity_controller_keeps_target_after_start_progress() -> None:
+    """Controller keeps targeting endpoint after forward progress along segment."""
+    decision = _manual_velocity_controller_decision(
+        [
+            {"x": 4.5424, "y": -0.9319},
+            {"x": 4.587795864039179, "y": -1.0853249508005016},
+        ],
+        {
+            "position": {
+                "x": 4.5447,
+                "y": -0.9849,
+                "toward": 176.4826,
+                "source": "mowing_state",
+            }
+        },
+        speed=0.4,
+        waypoint_tolerance=0.03,
+        heading_offset_degrees=110.0,
+    )
+
+    assert decision["target_index"] == 1
+    assert decision["action"] == "forward"
+    assert abs(decision["heading_error_degrees"]) < 15
+
+
 def test_manual_velocity_controller_stops_without_live_position() -> None:
     """Controller refuses to plan movement without live map-local position."""
     decision = _manual_velocity_controller_decision(

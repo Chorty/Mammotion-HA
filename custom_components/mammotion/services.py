@@ -643,7 +643,7 @@ def _heading_error_degrees(current: float, target: float) -> float:
     return (target - current + 540) % 360 - 180
 
 
-def _manual_velocity_next_waypoint(
+def _manual_velocity_next_waypoint(  # noqa: C901
     path_points: list[dict[str, float]],
     current: dict[str, float],
     *,
@@ -656,6 +656,60 @@ def _manual_velocity_next_waypoint(
     ]
     if not distances:
         return None, None, None, distances
+
+    if len(path_points) > 1:
+        segment_projections: list[dict[str, Any]] = []
+        for index, (start, end) in enumerate(
+            zip(path_points, path_points[1:], strict=False)
+        ):
+            segment_dx = end["x"] - start["x"]
+            segment_dy = end["y"] - start["y"]
+            segment_len_sq = segment_dx**2 + segment_dy**2
+            if segment_len_sq <= 0:
+                continue
+            progress = (
+                (current["x"] - start["x"]) * segment_dx
+                + (current["y"] - start["y"]) * segment_dy
+            ) / segment_len_sq
+            clamped_progress = min(1.0, max(0.0, progress))
+            closest = {
+                "x": start["x"] + segment_dx * clamped_progress,
+                "y": start["y"] + segment_dy * clamped_progress,
+            }
+            segment_projections.append(
+                {
+                    "segment_index": index,
+                    "target_index": index + 1,
+                    "progress": progress,
+                    "clamped_progress": clamped_progress,
+                    "distance_to_segment": _path_distance([current, closest]),
+                }
+            )
+        if segment_projections:
+            closest_segment = min(
+                segment_projections,
+                key=lambda item: item["distance_to_segment"],
+            )
+            for item in distances:
+                item["segment_projections"] = segment_projections
+            if closest_segment["distance_to_segment"] <= max(
+                waypoint_tolerance * 2, 0.02
+            ):
+                target_index = int(closest_segment["target_index"])
+                if (
+                    closest_segment["clamped_progress"] >= 1.0
+                    and target_index + 1 < len(path_points)
+                    and distances[target_index]["distance"] <= waypoint_tolerance
+                ):
+                    target_index += 1
+                distance_to_target = distances[target_index]["distance"]
+                if distance_to_target > waypoint_tolerance:
+                    return (
+                        target_index,
+                        path_points[target_index],
+                        float(distance_to_target),
+                        distances,
+                    )
 
     active = next(
         (
