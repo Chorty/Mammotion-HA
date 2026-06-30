@@ -1623,6 +1623,50 @@ async def _manual_velocity_stop_attempt(
     return result
 
 
+def _manual_velocity_delayed_progress_diagnostics(
+    before: dict[str, Any],
+    samples: list[dict[str, Any]],
+    decision: dict[str, Any],
+    *,
+    min_progress_distance: float,
+    min_heading_change_degrees: float,
+) -> dict[str, Any]:
+    """Return progress diagnostics across delayed post-stop telemetry samples."""
+    sample_diagnostics = []
+    telemetry_latency_seconds = None
+    for sample in samples:
+        telemetry = sample["telemetry"]
+        path_progress = _manual_velocity_path_progress_diagnostic(
+            before,
+            telemetry,
+            decision,
+            min_progress_distance=min_progress_distance,
+            min_heading_change_degrees=min_heading_change_degrees,
+        )
+        measured_delta = _telemetry_position_delta(before, telemetry)
+        sample_diagnostics.append(
+            {
+                "delay_seconds": sample["delay_seconds"],
+                "path_progress_diagnostic": path_progress,
+                "measured_delta": measured_delta,
+            }
+        )
+        if telemetry_latency_seconds is None and path_progress["passed"]:
+            telemetry_latency_seconds = sample["delay_seconds"]
+
+    final_sample = sample_diagnostics[-1] if sample_diagnostics else None
+    return {
+        "late_telemetry_check": True,
+        "late_progress_detected": telemetry_latency_seconds is not None,
+        "telemetry_latency_seconds": telemetry_latency_seconds,
+        "late_path_progress_diagnostic": (
+            final_sample["path_progress_diagnostic"] if final_sample else None
+        ),
+        "late_measured_delta": final_sample["measured_delta"] if final_sample else None,
+        "post_stop_sample_diagnostics": sample_diagnostics,
+    }
+
+
 def _position_available(telemetry: dict[str, Any]) -> bool:
     """Return true when telemetry contains a map-local mower position."""
     position = telemetry.get("position", {})
@@ -2204,7 +2248,17 @@ async def _manual_velocity_segment_test(  # noqa: C901
     confirm_blades_off: bool = False,
     confirm_clear_area: bool = False,
     pre_command_sample_delays: tuple[float, ...] = (0.0,),
-    post_stop_sample_delays: tuple[float, ...] = (0.5, 1.0, 2.0, 3.0, 10.0, 20.0),
+    post_stop_sample_delays: tuple[float, ...] = (
+        0.5,
+        1.0,
+        2.0,
+        3.0,
+        10.0,
+        20.0,
+        30.0,
+        45.0,
+        60.0,
+    ),
     require_progress_each_pulse: bool = True,
     service_name: str = SERVICE_MANUAL_VELOCITY_SEGMENT_TEST,
 ) -> dict[str, Any]:
@@ -2214,8 +2268,18 @@ async def _manual_velocity_segment_test(  # noqa: C901
     only sends repeated capped manual-velocity pulses and stops after each one.
     """
     if hasattr(coordinator, "async_start_report_stream"):
+        stream_duration_ms = int(
+            (
+                max(pre_command_sample_delays, default=0.0)
+                + (pulse_duration_ms / 1000)
+                + max(post_stop_sample_delays, default=0.0)
+                + 5.0
+            )
+            * max_pulses
+            * 1000
+        )
         await coordinator.async_start_report_stream(
-            duration_ms=max(10_000, (pulse_duration_ms + 750) * max_pulses)
+            duration_ms=max(10_000, stream_duration_ms)
         )
 
     preview = _preview_custom_path(
@@ -2428,6 +2492,13 @@ async def _manual_velocity_segment_test(  # noqa: C901
                 }
             )
         after = post_stop_samples[-1]["telemetry"]
+        late_progress = _manual_velocity_delayed_progress_diagnostics(
+            before,
+            post_stop_samples,
+            decision,
+            min_progress_distance=min_progress_distance,
+            min_heading_change_degrees=min_heading_change_degrees,
+        )
         measured_delta = _telemetry_position_delta(before, after)
         immediate_delta = _telemetry_position_delta(before, immediate_after_stop)
         quality_degradation = _manual_velocity_quality_degradation(
@@ -2480,6 +2551,18 @@ async def _manual_velocity_segment_test(  # noqa: C901
                 "measured_delta": measured_delta,
                 "movement_diagnostic": movement_diagnostic,
                 "path_progress_diagnostic": path_progress_diagnostic,
+                "late_telemetry_check": late_progress["late_telemetry_check"],
+                "late_progress_detected": late_progress["late_progress_detected"],
+                "late_path_progress_diagnostic": late_progress[
+                    "late_path_progress_diagnostic"
+                ],
+                "late_measured_delta": late_progress["late_measured_delta"],
+                "telemetry_latency_seconds": late_progress[
+                    "telemetry_latency_seconds"
+                ],
+                "post_stop_sample_diagnostics": late_progress[
+                    "post_stop_sample_diagnostics"
+                ],
                 "quality_degradation": quality_degradation,
                 "no_progress_count": no_progress_count,
                 "cumulative_distance": cumulative_distance,

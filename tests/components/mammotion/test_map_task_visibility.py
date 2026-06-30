@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 from pymammotion.data.model.hash_list import Plan
 
+from custom_components.mammotion import services as mammotion_services
 from custom_components.mammotion.coordinator import MammotionReportUpdateCoordinator
 from custom_components.mammotion.sensor import WORK_SENSOR_TYPES
 from custom_components.mammotion.services import (
@@ -1391,6 +1392,87 @@ async def test_manual_velocity_segment_test_reports_partial_progress_timeout() -
     assert result["completion_status"]["complete"] is False
     assert result["progress_summary"]["cumulative_path_progress"] == pytest.approx(0.2)
     assert result["iterations"][0]["path_progress_diagnostic"]["passed"] is True
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_segment_test_accepts_delayed_progress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Delayed target-directed telemetry prevents premature path_progress_lost."""
+    coordinator = _pulse_coordinator()
+    original_snapshot = mammotion_services._custom_path_telemetry_snapshot  # noqa: SLF001
+    snapshot_count = 0
+
+    def delayed_snapshot(coordinator_arg: object) -> dict[str, object]:
+        nonlocal snapshot_count
+        snapshot_count += 1
+        if snapshot_count >= 5:
+            coordinator.data.mowing_state.pos_x = 1.2
+        return original_snapshot(coordinator_arg)
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services, "_custom_path_telemetry_snapshot", delayed_snapshot)
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _manual_velocity_segment_test(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 2.0, "y": 1.0}],
+        speed=0.4,
+        pulse_duration_ms=50,
+        max_pulses=1,
+        no_progress_limit=1,
+        use_wifi=True,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        post_stop_sample_delays=(30.0, 45.0, 60.0),
+    )
+
+    iteration = result["iterations"][0]
+    assert result["stop_reason"] == "partial_progress_timeout"
+    assert iteration["late_telemetry_check"] is True
+    assert iteration["late_progress_detected"] is True
+    assert iteration["telemetry_latency_seconds"] == 45.0
+    assert iteration["late_path_progress_diagnostic"]["passed"] is True
+    assert iteration["path_progress_diagnostic"]["passed"] is True
+    assert result["progress_summary"]["cumulative_path_progress"] == pytest.approx(0.2)
+    coordinator.async_move_forward.assert_awaited_once_with(speed=0.4, use_wifi=True)
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_segment_test_reports_lost_after_late_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No delayed telemetry progress through the late window remains progress lost."""
+    coordinator = _pulse_coordinator()
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _manual_velocity_segment_test(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 2.0, "y": 1.0}],
+        speed=0.4,
+        pulse_duration_ms=50,
+        max_pulses=1,
+        no_progress_limit=1,
+        use_wifi=True,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        post_stop_sample_delays=(30.0, 45.0, 60.0),
+    )
+
+    iteration = result["iterations"][0]
+    assert result["stop_reason"] == "path_progress_lost"
+    assert iteration["late_telemetry_check"] is True
+    assert iteration["late_progress_detected"] is False
+    assert iteration["telemetry_latency_seconds"] is None
+    assert iteration["late_path_progress_diagnostic"]["passed"] is False
 
 
 @pytest.mark.asyncio
