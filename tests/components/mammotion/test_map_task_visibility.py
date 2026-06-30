@@ -1045,11 +1045,44 @@ async def test_manual_velocity_pulse_test_real_probe_calls_move_then_stop() -> N
 
     assert result["would_send"] is True
     assert result["real_pulse_allowed"] is True
-    assert result["command_result"] == {"attempted": True, "ok": True, "error": None}
-    assert result["stop_result"] == {"attempted": True, "ok": True, "error": None}
+    assert result["command_result"]["attempted"] is True
+    assert result["command_result"]["ok"] is True
+    assert result["command_result"]["error"] is None
+    assert result["command_result"]["action"] == "turn_left"
+    assert result["command_result"]["coordinator_method"] == "async_move_left"
+    assert result["command_result"]["transport_preference"] == "ble_preferred"
+    assert result["command_result"]["duration_ms"] >= 0
+    assert result["stop_result"]["attempted"] is True
+    assert result["stop_result"]["ok"] is True
+    assert result["stop_result"]["error"] is None
+    assert result["stop_result"]["coordinator_method"] == "async_stop_manual_motion"
     assert result["real_pulse_completed"] is True
     coordinator.async_move_left.assert_awaited_once_with(speed=0.1, use_wifi=False)
     coordinator.async_stop_manual_motion.assert_awaited_once_with(use_wifi=False)
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_pulse_test_reports_false_command_ack() -> None:
+    """A false coordinator command return is reported as an unsuccessful attempt."""
+    coordinator = _pulse_coordinator()
+    coordinator.async_move_forward.return_value = False
+
+    result = await _manual_velocity_pulse_test(
+        coordinator,
+        action="forward",
+        speed=0.1,
+        duration_ms=50,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        followup_samples=0,
+    )
+
+    assert result["command_result"]["attempted"] is True
+    assert result["command_result"]["ok"] is False
+    assert result["command_result"]["ack"] is False
+    assert result["real_pulse_completed"] is False
+    assert result["stop_result"]["ok"] is True
 
 
 def test_manual_velocity_segment_schema_caps_probe_values() -> None:
@@ -1252,16 +1285,23 @@ async def test_manual_velocity_segment_test_real_probe_calls_move_then_stop() ->
     assert result["stop_reason"] == "path_progress_lost"
     assert result["pulses_sent"] == 1
     assert result["iterations"][0]["controller_decision"]["action"] == "forward"
-    assert result["iterations"][0]["command_result"] == {
-        "attempted": True,
-        "ok": True,
-        "error": None,
-    }
-    assert result["iterations"][0]["stop_result"] == {
-        "attempted": True,
-        "ok": True,
-        "error": None,
-    }
+    assert result["iterations"][0]["command_result"]["attempted"] is True
+    assert result["iterations"][0]["command_result"]["ok"] is True
+    assert result["iterations"][0]["command_result"]["error"] is None
+    assert result["iterations"][0]["command_result"]["action"] == "forward"
+    assert (
+        result["iterations"][0]["command_result"]["coordinator_method"]
+        == "async_move_forward"
+    )
+    assert result["iterations"][0]["command_result"]["transport_preference"] == "wifi"
+    assert result["iterations"][0]["command_result"]["duration_ms"] >= 0
+    assert result["iterations"][0]["stop_result"]["attempted"] is True
+    assert result["iterations"][0]["stop_result"]["ok"] is True
+    assert result["iterations"][0]["stop_result"]["error"] is None
+    assert (
+        result["iterations"][0]["stop_result"]["coordinator_method"]
+        == "async_stop_manual_motion"
+    )
     assert result["iterations"][0]["movement_diagnostic"]["status"] == (
         "visual_motion_possible_but_telemetry_unchanged"
     )

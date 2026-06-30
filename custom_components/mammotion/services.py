@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import math
+import time
 from typing import TYPE_CHECKING, Any, cast
 
 import voluptuous as vol
@@ -1552,6 +1553,76 @@ def _manual_velocity_action_service(action: str) -> str:
     }[action]
 
 
+async def _manual_velocity_command_attempt(
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    action: str,
+    speed: float,
+    use_wifi: bool,
+) -> dict[str, Any]:
+    """Run one low-level manual motion command and return command diagnostics."""
+    method_name = _manual_velocity_action_method(action)
+    method = getattr(coordinator, method_name)
+    transport_preference = "wifi" if use_wifi else "ble_preferred"
+    started = time.monotonic()
+    result: dict[str, Any] = {
+        "attempted": True,
+        "ok": None,
+        "error": None,
+        "action": action,
+        "coordinator_method": method_name,
+        "service": f"{DOMAIN}.{_manual_velocity_action_service(action)}",
+        "speed": speed,
+        "use_wifi": use_wifi,
+        "transport_preference": transport_preference,
+        "ack": None,
+        "duration_ms": None,
+    }
+    try:
+        ack = await method(speed=speed, use_wifi=use_wifi)
+        result["ack"] = ack
+        result["ok"] = ack is not False
+    except Exception as err:  # noqa: BLE001
+        result["ok"] = False
+        result["error"] = f"{type(err).__name__}: {err}"
+    finally:
+        result["duration_ms"] = round((time.monotonic() - started) * 1000, 3)
+    return result
+
+
+async def _manual_velocity_stop_attempt(
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    use_wifi: bool,
+) -> dict[str, Any]:
+    """Run the manual-motion stop primitive and return command diagnostics."""
+    transport_preference = "wifi" if use_wifi else "ble_preferred"
+    started = time.monotonic()
+    result: dict[str, Any] = {
+        "attempted": True,
+        "ok": None,
+        "error": None,
+        "coordinator_method": "async_stop_manual_motion",
+        "use_wifi": use_wifi,
+        "transport_preference": transport_preference,
+        "ack": None,
+        "duration_ms": None,
+    }
+    try:
+        ack = await coordinator.async_stop_manual_motion(use_wifi=use_wifi)
+        result["ack"] = ack
+        if isinstance(ack, dict):
+            result["ok"] = all(value is not False for value in ack.values())
+        else:
+            result["ok"] = ack is not False
+    except Exception as err:  # noqa: BLE001
+        result["ok"] = False
+        result["error"] = f"{type(err).__name__}: {err}"
+    finally:
+        result["duration_ms"] = round((time.monotonic() - started) * 1000, 3)
+    return result
+
+
 def _position_available(telemetry: dict[str, Any]) -> bool:
     """Return true when telemetry contains a map-local mower position."""
     position = telemetry.get("position", {})
@@ -2031,25 +2102,18 @@ async def _manual_velocity_pulse_test(
         result["reason"] = "dry_run" if dry_run else "safety_gates_failed"
         return result
 
-    command_ok = False
-    try:
-        method = getattr(coordinator, _manual_velocity_action_method(action))
-        result["command_result"]["attempted"] = True
-        await method(speed=speed, use_wifi=use_wifi)
-        command_ok = True
-        result["command_result"]["ok"] = True
-        await asyncio.sleep(duration_ms / 1000)
-    except Exception as err:  # noqa: BLE001
-        result["command_result"]["ok"] = False
-        result["command_result"]["error"] = f"{type(err).__name__}: {err}"
-    finally:
-        try:
-            result["stop_result"]["attempted"] = True
-            await coordinator.async_stop_manual_motion(use_wifi=use_wifi)
-            result["stop_result"]["ok"] = True
-        except Exception as err:  # noqa: BLE001
-            result["stop_result"]["ok"] = False
-            result["stop_result"]["error"] = f"{type(err).__name__}: {err}"
+    result["command_result"] = await _manual_velocity_command_attempt(
+        coordinator,
+        action=action,
+        speed=speed,
+        use_wifi=use_wifi,
+    )
+    command_ok = result["command_result"]["ok"] is True
+    await asyncio.sleep(duration_ms / 1000)
+    result["stop_result"] = await _manual_velocity_stop_attempt(
+        coordinator,
+        use_wifi=use_wifi,
+    )
 
     after_stop = _custom_path_telemetry_snapshot(coordinator)
     result["samples"].append({"label": "after_stop", "telemetry": after_stop})
@@ -2337,25 +2401,17 @@ async def _manual_velocity_segment_test(  # noqa: C901
             )
             break
 
-        command_result = {"attempted": False, "ok": None, "error": None}
-        stop_result = {"attempted": False, "ok": None, "error": None}
-        try:
-            method = getattr(coordinator, _manual_velocity_action_method(action))
-            command_result["attempted"] = True
-            await method(speed=speed, use_wifi=use_wifi)
-            command_result["ok"] = True
-            await asyncio.sleep(pulse_duration_ms / 1000)
-        except Exception as err:  # noqa: BLE001
-            command_result["ok"] = False
-            command_result["error"] = f"{type(err).__name__}: {err}"
-        finally:
-            try:
-                stop_result["attempted"] = True
-                await coordinator.async_stop_manual_motion(use_wifi=use_wifi)
-                stop_result["ok"] = True
-            except Exception as err:  # noqa: BLE001
-                stop_result["ok"] = False
-                stop_result["error"] = f"{type(err).__name__}: {err}"
+        command_result = await _manual_velocity_command_attempt(
+            coordinator,
+            action=action,
+            speed=speed,
+            use_wifi=use_wifi,
+        )
+        await asyncio.sleep(pulse_duration_ms / 1000)
+        stop_result = await _manual_velocity_stop_attempt(
+            coordinator,
+            use_wifi=use_wifi,
+        )
 
         immediate_after_stop = _custom_path_telemetry_snapshot(coordinator)
         post_stop_samples = [
