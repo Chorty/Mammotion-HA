@@ -2064,7 +2064,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
     dry_run: bool = True,
     confirm_blades_off: bool = False,
     confirm_clear_area: bool = False,
-    post_stop_sample_delays: tuple[float, ...] = (0.5, 1.0, 2.0, 3.0),
+    post_stop_sample_delays: tuple[float, ...] = (0.5, 1.0, 2.0, 3.0, 10.0, 20.0),
     service_name: str = SERVICE_MANUAL_VELOCITY_SEGMENT_TEST,
 ) -> dict[str, Any]:
     """Run or simulate a guarded one-segment closed-loop movement probe.
