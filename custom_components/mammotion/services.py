@@ -45,6 +45,9 @@ SERVICE_EXECUTE_CUSTOM_PATH = "execute_custom_path"
 SERVICE_MANUAL_VELOCITY_PULSE_TEST = "manual_velocity_pulse_test"
 SERVICE_MANUAL_VELOCITY_SEGMENT_TEST = "manual_velocity_segment_test"
 SERVICE_MANUAL_VELOCITY_MULTI_PULSE_TEST = "manual_velocity_multi_pulse_test"
+SERVICE_MANUAL_VELOCITY_HEADING_CALIBRATION_TEST = (
+    "manual_velocity_heading_calibration_test"
+)
 SERVICE_SVG_ADD = "svg_add"
 SERVICE_SVG_UPDATE = "svg_update"
 SERVICE_SVG_DELETE = "svg_delete"
@@ -298,6 +301,71 @@ MANUAL_VELOCITY_SEGMENT_TEST_SCHEMA = vol.Schema(
         vol.Optional("dry_run", default=True): cv.boolean,
         vol.Optional("confirm_blades_off", default=False): cv.boolean,
         vol.Optional("confirm_clear_area", default=False): cv.boolean,
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
+MANUAL_VELOCITY_MULTI_PULSE_TEST_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+        vol.Required("points"): vol.All(
+            cv.ensure_list, [_CUSTOM_PATH_POINT_SCHEMA]
+        ),
+        vol.Optional("area_hash"): vol.Coerce(int),
+        vol.Optional("speed", default=0.4): vol.All(
+            vol.Coerce(float), vol.Range(min=0.05, max=0.4)
+        ),
+        vol.Optional("pulse_duration_ms", default=750): vol.All(
+            vol.Coerce(int), vol.Range(min=50, max=750)
+        ),
+        vol.Optional("max_pulses", default=3): vol.All(
+            vol.Coerce(int), vol.Range(min=2, max=5)
+        ),
+        vol.Optional("waypoint_tolerance", default=0.1): vol.All(
+            vol.Coerce(float), vol.Range(min=0.02, max=0.5)
+        ),
+        vol.Optional("force_action", default="auto"): vol.In(
+            ["auto", "forward", "backward", "turn_left", "turn_right"]
+        ),
+        vol.Optional("min_progress_distance", default=0.003): vol.All(
+            vol.Coerce(float), vol.Range(min=0.0, max=0.5)
+        ),
+        vol.Optional("no_progress_limit", default=2): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=5)
+        ),
+        vol.Optional("min_heading_change_degrees", default=1.0): vol.All(
+            vol.Coerce(float), vol.Range(min=0.0, max=45.0)
+        ),
+        vol.Optional("use_wifi", default=True): cv.boolean,
+        vol.Optional("dry_run", default=True): cv.boolean,
+        vol.Optional("confirm_blades_off", default=False): cv.boolean,
+        vol.Optional("confirm_clear_area", default=False): cv.boolean,
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
+MANUAL_VELOCITY_HEADING_CALIBRATION_TEST_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+        vol.Optional("action", default="forward"): vol.In(
+            ["forward", "turn_left", "turn_right"]
+        ),
+        vol.Optional("speed", default=0.4): vol.All(
+            vol.Coerce(float), vol.Range(min=0.05, max=0.4)
+        ),
+        vol.Optional("duration_ms", default=750): vol.All(
+            vol.Coerce(int), vol.Range(min=50, max=750)
+        ),
+        vol.Optional("use_wifi", default=True): cv.boolean,
+        vol.Optional("dry_run", default=True): cv.boolean,
+        vol.Optional("confirm_blades_off", default=False): cv.boolean,
+        vol.Optional("confirm_clear_area", default=False): cv.boolean,
+        vol.Optional("min_progress_distance", default=0.003): vol.All(
+            vol.Coerce(float), vol.Range(min=0.0, max=0.5)
+        ),
+        vol.Optional("min_heading_change_degrees", default=1.0): vol.All(
+            vol.Coerce(float), vol.Range(min=0.0, max=45.0)
+        ),
     },
     extra=vol.ALLOW_EXTRA,
 )
@@ -1316,6 +1384,121 @@ def _manual_velocity_motion_diagnostic(
     }
 
 
+def _quality_rank(value: Any) -> int | None:
+    """Return a coarse quality rank where larger means better."""
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _manual_velocity_quality_degradation(
+    baseline: dict[str, Any], current: dict[str, Any]
+) -> dict[str, Any]:
+    """Return explicit telemetry-quality degradation between samples."""
+    baseline_position = baseline.get("position", {})
+    current_position = current.get("position", {})
+    reasons: list[str] = []
+
+    if not _position_available(current):
+        reasons.append("position_unavailable")
+    if current_position.get("toward") is None:
+        reasons.append("heading_unavailable")
+    if current_position.get("pos_type_label") != "AREA_INSIDE":
+        reasons.append("pos_type_not_area_inside")
+    if current_position.get("zone_hash") in (None, 0, "0"):
+        reasons.append("zone_hash_unavailable")
+    elif (
+        baseline_position.get("zone_hash") not in (None, 0, "0")
+        and current_position.get("zone_hash") != baseline_position.get("zone_hash")
+    ):
+        reasons.append("zone_hash_changed")
+
+    baseline_pos_level = _quality_rank(baseline_position.get("pos_level"))
+    current_pos_level = _quality_rank(current_position.get("pos_level"))
+    if (
+        baseline_pos_level is not None
+        and current_pos_level is not None
+        and current_pos_level > baseline_pos_level
+    ):
+        reasons.append("pos_level_degraded")
+
+    baseline_rtk = _quality_rank(baseline_position.get("rtk_status"))
+    current_rtk = _quality_rank(current_position.get("rtk_status"))
+    if baseline_rtk is not None and current_rtk is not None and current_rtk < baseline_rtk:
+        reasons.append("rtk_status_degraded")
+
+    return {
+        "degraded": bool(reasons),
+        "reasons": reasons,
+        "baseline": {
+            "source": baseline_position.get("source"),
+            "pos_level": baseline_position.get("pos_level"),
+            "rtk_status": baseline_position.get("rtk_status"),
+            "pos_type_label": baseline_position.get("pos_type_label"),
+            "zone_hash": baseline_position.get("zone_hash"),
+            "toward": baseline_position.get("toward"),
+        },
+        "current": {
+            "source": current_position.get("source"),
+            "pos_level": current_position.get("pos_level"),
+            "rtk_status": current_position.get("rtk_status"),
+            "pos_type_label": current_position.get("pos_type_label"),
+            "zone_hash": current_position.get("zone_hash"),
+            "toward": current_position.get("toward"),
+        },
+    }
+
+
+def _manual_velocity_heading_calibration(
+    *,
+    action: str,
+    before: dict[str, Any],
+    after: dict[str, Any],
+    min_progress_distance: float,
+    min_heading_change_degrees: float,
+) -> dict[str, Any]:
+    """Return heading calibration data from a before/after telemetry pair."""
+    delta = _telemetry_position_delta(before, after)
+    movement_vector_heading = None
+    if delta["dx"] is not None and delta["dy"] is not None:
+        distance = delta.get("distance")
+        if distance is not None and float(distance) >= min_progress_distance:
+            movement_vector_heading = (
+                math.degrees(math.atan2(float(delta["dy"]), float(delta["dx"]))) + 360
+            ) % 360
+
+    reported_heading = before.get("position", {}).get("toward")
+    heading_delta = delta.get("heading_change_degrees")
+    heading_error = (
+        _heading_error_degrees(float(reported_heading), movement_vector_heading)
+        if reported_heading is not None and movement_vector_heading is not None
+        else None
+    )
+    return {
+        "action": action,
+        "reported_heading": reported_heading,
+        "movement_vector_heading": movement_vector_heading,
+        "heading_delta_degrees": heading_delta,
+        "heading_error_degrees": heading_error,
+        "recommended_heading_offset_degrees": heading_error,
+        "movement_delta": delta,
+        "movement_diagnostic": _manual_velocity_motion_diagnostic(
+            delta,
+            command_ok=True,
+            min_progress_distance=min_progress_distance,
+            min_heading_change_degrees=min_heading_change_degrees,
+        ),
+        "interpretation": (
+            "movement_vector_available"
+            if movement_vector_heading is not None
+            else "insufficient_translation_for_heading_calibration"
+        ),
+    }
+
+
 def _manual_velocity_pulse_gates(
     coordinator: MammotionReportUpdateCoordinator,
     before: dict[str, Any],
@@ -1475,6 +1658,61 @@ async def _manual_velocity_pulse_test(
     return result
 
 
+async def _manual_velocity_heading_calibration_test(
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    action: str = "forward",
+    speed: float = 0.4,
+    duration_ms: int = 750,
+    use_wifi: bool = True,
+    dry_run: bool = True,
+    confirm_blades_off: bool = False,
+    confirm_clear_area: bool = False,
+    min_progress_distance: float = 0.003,
+    min_heading_change_degrees: float = 1.0,
+) -> dict[str, Any]:
+    """Run or simulate a tiny movement pulse and report heading calibration data."""
+    pulse_result = await _manual_velocity_pulse_test(
+        coordinator,
+        action=action,
+        speed=speed,
+        duration_ms=duration_ms,
+        use_wifi=use_wifi,
+        dry_run=dry_run,
+        confirm_blades_off=confirm_blades_off,
+        confirm_clear_area=confirm_clear_area,
+        followup_samples=6,
+        followup_interval_seconds=0.5,
+    )
+    samples = pulse_result.get("samples", [])
+    before = samples[0]["telemetry"] if samples else _custom_path_telemetry_snapshot(coordinator)
+    after = samples[-1]["telemetry"] if samples else before
+    command_ok = pulse_result.get("command_result", {}).get("ok") is True
+    calibration = _manual_velocity_heading_calibration(
+        action=action,
+        before=before,
+        after=after,
+        min_progress_distance=min_progress_distance,
+        min_heading_change_degrees=min_heading_change_degrees,
+    )
+    if not command_ok and not dry_run:
+        calibration["interpretation"] = "command_not_confirmed"
+    return {
+        "service": SERVICE_MANUAL_VELOCITY_HEADING_CALIBRATION_TEST,
+        "mode": "dry_run" if dry_run else "real_heading_calibration_probe",
+        "dry_run": dry_run,
+        "action": action,
+        "speed": speed,
+        "duration_ms": duration_ms,
+        "use_wifi": use_wifi,
+        "min_progress_distance": min_progress_distance,
+        "min_heading_change_degrees": min_heading_change_degrees,
+        "pulse_result": pulse_result,
+        "calibration": calibration,
+        "full_path_execution_allowed": False,
+    }
+
+
 async def _manual_velocity_segment_test(  # noqa: C901
     coordinator: MammotionReportUpdateCoordinator,
     points: list[dict[str, float]],
@@ -1591,6 +1829,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
         result["command_not_sent"] = initial_decision.get("command_not_sent")
         return result
 
+    baseline_quality_telemetry = telemetry
     for index in range(1, max_pulses + 1):
         before = _custom_path_telemetry_snapshot(coordinator)
         gates = _manual_velocity_pulse_gates(
@@ -1610,6 +1849,24 @@ async def _manual_velocity_segment_test(  # noqa: C901
                     "before": before,
                     "safety_gates": gates,
                     "blockers": blockers,
+                    "command_result": {"attempted": False, "ok": None, "error": None},
+                    "stop_result": {"attempted": False, "ok": None, "error": None},
+                    "measured_delta": _telemetry_position_delta(before, before),
+                }
+            )
+            break
+
+        quality_degradation = _manual_velocity_quality_degradation(
+            baseline_quality_telemetry, before
+        )
+        if quality_degradation["degraded"]:
+            result["stop_reason"] = "telemetry_quality_degraded"
+            result["blockers"] = quality_degradation["reasons"]
+            result["iterations"].append(
+                {
+                    "index": index,
+                    "before": before,
+                    "quality_degradation": quality_degradation,
                     "command_result": {"attempted": False, "ok": None, "error": None},
                     "stop_result": {"attempted": False, "ok": None, "error": None},
                     "measured_delta": _telemetry_position_delta(before, before),
@@ -1681,6 +1938,9 @@ async def _manual_velocity_segment_test(  # noqa: C901
         after = post_stop_samples[-1]["telemetry"]
         measured_delta = _telemetry_position_delta(before, after)
         immediate_delta = _telemetry_position_delta(before, immediate_after_stop)
+        quality_degradation = _manual_velocity_quality_degradation(
+            baseline_quality_telemetry, after
+        )
         movement_diagnostic = _manual_velocity_motion_diagnostic(
             measured_delta,
             command_ok=command_result["ok"] is True,
@@ -1714,6 +1974,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
                 "immediate_delta": immediate_delta,
                 "measured_delta": measured_delta,
                 "movement_diagnostic": movement_diagnostic,
+                "quality_degradation": quality_degradation,
                 "no_progress_count": no_progress_count,
                 "cumulative_distance": cumulative_distance,
                 "cumulative_heading_change_degrees": cumulative_heading_change,
@@ -1731,6 +1992,10 @@ async def _manual_velocity_segment_test(  # noqa: C901
             break
         if stop_result["ok"] is not True:
             result["stop_reason"] = "stop_failed"
+            break
+        if quality_degradation["degraded"]:
+            result["stop_reason"] = "telemetry_quality_degraded"
+            result["blockers"] = quality_degradation["reasons"]
             break
         if no_progress_count >= no_progress_limit:
             result["stop_reason"] = "no_progress_limit_reached"
@@ -2501,6 +2766,26 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             service_name=SERVICE_MANUAL_VELOCITY_MULTI_PULSE_TEST,
         )
 
+    async def handle_manual_velocity_heading_calibration_test(
+        call: ServiceCall,
+    ) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        return await _manual_velocity_heading_calibration_test(
+            mower.reporting_coordinator,
+            action=call.data["action"],
+            speed=call.data["speed"],
+            duration_ms=call.data["duration_ms"],
+            use_wifi=call.data["use_wifi"],
+            dry_run=call.data["dry_run"],
+            confirm_blades_off=call.data["confirm_blades_off"],
+            confirm_clear_area=call.data["confirm_clear_area"],
+            min_progress_distance=call.data["min_progress_distance"],
+            min_heading_change_degrees=call.data["min_heading_change_degrees"],
+        )
+
     async def handle_svg_add(call: ServiceCall) -> dict[str, Any]:
         from pymammotion.data.model.device import MowingDevice  # noqa: PLC0415
         from pymammotion.utility.svg import build_svg_for_area  # noqa: PLC0415
@@ -2667,7 +2952,14 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         DOMAIN,
         SERVICE_MANUAL_VELOCITY_MULTI_PULSE_TEST,
         handle_manual_velocity_multi_pulse_test,
-        schema=MANUAL_VELOCITY_SEGMENT_TEST_SCHEMA,
+        schema=MANUAL_VELOCITY_MULTI_PULSE_TEST_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_MANUAL_VELOCITY_HEADING_CALIBRATION_TEST,
+        handle_manual_velocity_heading_calibration_test,
+        schema=MANUAL_VELOCITY_HEADING_CALIBRATION_TEST_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(

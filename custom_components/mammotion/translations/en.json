@@ -1142,7 +1142,7 @@
     },
     "manual_velocity_multi_pulse_test": {
       "name": "Manual velocity multi-pulse test",
-      "description": "Dry-runs or performs a guarded multi-pulse movement probe. Each capped pulse is followed by stop, delayed telemetry sampling, and a no-progress safety gate. Full path execution remains disabled.",
+      "description": "Dry-runs or performs a guarded multi-pulse movement probe. Each capped pulse is followed by stop, delayed telemetry sampling, a no-progress safety gate, and telemetry-quality degradation checks. Full path execution remains disabled.",
       "fields": {
         "entity_id": {
           "name": "Entity",
@@ -1203,6 +1203,52 @@
         "confirm_clear_area": {
           "name": "Confirm clear area",
           "description": "Required for a real multi-pulse probe after confirming the mower has room to move safely."
+        }
+      }
+    },
+    "manual_velocity_heading_calibration_test": {
+      "name": "Manual velocity heading calibration test",
+      "description": "Dry-runs or performs one guarded movement pulse and compares reported heading with the measured movement vector. Full path execution remains disabled.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        },
+        "action": {
+          "name": "Action",
+          "description": "The low-level movement action to use for calibration."
+        },
+        "speed": {
+          "name": "Speed",
+          "description": "Pulse speed, capped to the existing emergency nudge speed."
+        },
+        "duration_ms": {
+          "name": "Duration",
+          "description": "Pulse duration in milliseconds."
+        },
+        "use_wifi": {
+          "name": "Use Wi-Fi",
+          "description": "Use Wi-Fi/local path instead of the default BLE-preferred path."
+        },
+        "dry_run": {
+          "name": "Dry run",
+          "description": "When true, no movement command is sent."
+        },
+        "confirm_blades_off": {
+          "name": "Confirm blades off",
+          "description": "Required for a real heading calibration pulse."
+        },
+        "confirm_clear_area": {
+          "name": "Confirm clear area",
+          "description": "Required for a real heading calibration pulse after confirming the mower has room to move safely."
+        },
+        "min_progress_distance": {
+          "name": "Minimum progress distance",
+          "description": "Translation threshold required to infer movement-vector heading."
+        },
+        "min_heading_change_degrees": {
+          "name": "Minimum heading change",
+          "description": "Heading-change threshold used to classify telemetry-confirmed rotation."
         }
       }
     },

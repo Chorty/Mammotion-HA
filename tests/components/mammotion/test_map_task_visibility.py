@@ -9,6 +9,8 @@ from pymammotion.data.model.hash_list import Plan
 from custom_components.mammotion.coordinator import MammotionReportUpdateCoordinator
 from custom_components.mammotion.sensor import WORK_SENSOR_TYPES
 from custom_components.mammotion.services import (
+    MANUAL_VELOCITY_HEADING_CALIBRATION_TEST_SCHEMA,
+    MANUAL_VELOCITY_MULTI_PULSE_TEST_SCHEMA,
     MANUAL_VELOCITY_PULSE_TEST_SCHEMA,
     MANUAL_VELOCITY_SEGMENT_TEST_SCHEMA,
     _custom_path_telemetry_snapshot,
@@ -17,6 +19,7 @@ from custom_components.mammotion.services import (
     _export_mower_map,
     _export_mower_tasks,
     _manual_velocity_controller_decision,
+    _manual_velocity_heading_calibration,
     _manual_velocity_pulse_test,
     _manual_velocity_segment_test,
     _normalize_mower_areas,
@@ -82,6 +85,8 @@ def _pulse_coordinator(
     charge_state: int = 0,
     pos_type: int = 1,
     zone_hash: int = 123,
+    pos_level: int = 0,
+    rtk_status: int = 4,
     position: tuple[float | None, float | None, float | None] = (1.0, 1.0, 0.0),
 ) -> SimpleNamespace:
     """Build a coordinator fixture for manual velocity pulse tests."""
@@ -117,8 +122,8 @@ def _pulse_coordinator(
                 pos_x=pos_x,
                 pos_y=pos_y,
                 toward=toward,
-                pos_level=0,
-                rtk_status=4,
+                pos_level=pos_level,
+                rtk_status=rtk_status,
                 zone_hash=zone_hash,
                 pos_type=pos_type,
             ),
@@ -133,7 +138,7 @@ def _pulse_coordinator(
                     charge_state=charge_state,
                     blade_state=blade_state,
                 ),
-                rtk=SimpleNamespace(status=4, pos_level=0),
+                rtk=SimpleNamespace(status=rtk_status, pos_level=pos_level),
                 locations=[],
                 cutter_work_mode_info=SimpleNamespace(
                     current_cutter_mode=0,
@@ -919,6 +924,39 @@ def test_manual_velocity_segment_schema_caps_probe_values() -> None:
         )
 
 
+def test_manual_velocity_multi_pulse_schema_requires_at_least_two_pulses() -> None:
+    """Explicit multi-pulse service requires a multi-pulse cap range."""
+    parsed = MANUAL_VELOCITY_MULTI_PULSE_TEST_SCHEMA(
+        {
+            "entity_id": "lawn_mower.test",
+            "points": [{"x": 1, "y": 1}, {"x": 1, "y": 2}],
+            "max_pulses": 2,
+        }
+    )
+
+    assert parsed["max_pulses"] == 2
+    with pytest.raises(Exception):  # noqa: B017
+        MANUAL_VELOCITY_MULTI_PULSE_TEST_SCHEMA(
+            {
+                "entity_id": "lawn_mower.test",
+                "points": [{"x": 1, "y": 1}, {"x": 1, "y": 2}],
+                "max_pulses": 1,
+            }
+        )
+
+
+def test_manual_velocity_heading_calibration_schema_defaults() -> None:
+    """Heading calibration schema defaults to a dry-run forward pulse."""
+    parsed = MANUAL_VELOCITY_HEADING_CALIBRATION_TEST_SCHEMA(
+        {"entity_id": "lawn_mower.test"}
+    )
+
+    assert parsed["action"] == "forward"
+    assert parsed["dry_run"] is True
+    assert parsed["speed"] == 0.4
+    assert parsed["duration_ms"] == 750
+
+
 @pytest.mark.asyncio
 async def test_manual_velocity_segment_test_defaults_to_dry_run() -> None:
     """Segment probe default plans the next command but sends nothing."""
@@ -1057,6 +1095,38 @@ async def test_manual_velocity_segment_test_stops_after_no_progress_limit() -> N
 
 
 @pytest.mark.asyncio
+async def test_manual_velocity_segment_test_stops_when_quality_degrades() -> None:
+    """Multi-pulse probes stop when telemetry quality degrades after a pulse."""
+    coordinator = _pulse_coordinator()
+
+    async def degrade_position_quality(*_: object, **__: object) -> None:
+        coordinator.data.mowing_state.pos_level = 2
+        coordinator.data.report_data.rtk.pos_level = 2
+
+    coordinator.async_stop_manual_motion.side_effect = degrade_position_quality
+
+    result = await _manual_velocity_segment_test(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 2.0, "y": 1.0}],
+        speed=0.4,
+        pulse_duration_ms=50,
+        max_pulses=5,
+        no_progress_limit=5,
+        use_wifi=True,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        post_stop_sample_delays=(0,),
+        service_name="manual_velocity_multi_pulse_test",
+    )
+
+    assert result["stop_reason"] == "telemetry_quality_degraded"
+    assert result["blockers"] == ["pos_level_degraded"]
+    assert result["pulses_sent"] == 1
+    assert result["iterations"][0]["quality_degradation"]["degraded"] is True
+
+
+@pytest.mark.asyncio
 async def test_manual_velocity_segment_test_can_report_multi_pulse_service_name() -> None:
     """The same guarded engine can back the explicit multi-pulse service."""
     coordinator = _pulse_coordinator()
@@ -1091,6 +1161,39 @@ async def test_manual_velocity_segment_test_stops_when_path_complete() -> None:
     assert result["pulses_sent"] == 0
     coordinator.async_move_forward.assert_not_called()
     coordinator.async_stop_manual_motion.assert_not_called()
+
+
+def test_manual_velocity_heading_calibration_reports_vector_offset() -> None:
+    """Heading calibration compares reported heading to movement vector heading."""
+    before = {
+        "position": {
+            "x": 1.0,
+            "y": 1.0,
+            "toward": 0.0,
+            "source": "report_data.locations[0]",
+        }
+    }
+    after = {
+        "position": {
+            "x": 1.0,
+            "y": 2.0,
+            "toward": 0.0,
+            "source": "report_data.locations[0]",
+        }
+    }
+
+    result = _manual_velocity_heading_calibration(
+        action="forward",
+        before=before,
+        after=after,
+        min_progress_distance=0.003,
+        min_heading_change_degrees=1.0,
+    )
+
+    assert result["movement_vector_heading"] == 90.0
+    assert result["heading_error_degrees"] == 90.0
+    assert result["recommended_heading_offset_degrees"] == 90.0
+    assert result["interpretation"] == "movement_vector_available"
 
 
 def test_custom_path_telemetry_uses_mowing_state_position() -> None:
