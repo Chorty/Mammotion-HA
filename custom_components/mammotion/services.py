@@ -656,6 +656,8 @@ def _manual_velocity_next_waypoint(  # noqa: C901
     ]
     if not distances:
         return None, None, None, distances
+    if distances[-1]["distance"] <= waypoint_tolerance:
+        return None, None, None, distances
 
     if len(path_points) > 1:
         segment_projections: list[dict[str, Any]] = []
@@ -1717,6 +1719,40 @@ def _manual_velocity_path_progress_diagnostic(
     }
 
 
+def _manual_velocity_completion_status(
+    path_points: list[dict[str, float]],
+    telemetry: dict[str, Any],
+    *,
+    waypoint_tolerance: float,
+) -> dict[str, Any]:
+    """Return whether the path target is currently complete."""
+    position = telemetry.get("position", {})
+    current_x = position.get("x")
+    current_y = position.get("y")
+    if current_x is None or current_y is None:
+        return {
+            "complete": False,
+            "target_index": None,
+            "distance_to_target": None,
+            "reason": "live_position_unavailable",
+        }
+    current = {"x": float(current_x), "y": float(current_y)}
+    target_index, _target, distance_to_target, waypoint_distances = (
+        _manual_velocity_next_waypoint(
+            path_points,
+            current,
+            waypoint_tolerance=waypoint_tolerance,
+        )
+    )
+    return {
+        "complete": target_index is None,
+        "target_index": target_index,
+        "distance_to_target": distance_to_target,
+        "waypoint_distances": waypoint_distances,
+        "reason": "path_complete" if target_index is None else "target_remaining",
+    }
+
+
 def _quality_rank(value: Any) -> int | None:
     """Return a coarse quality rank where larger means better."""
     if value is None:
@@ -2066,6 +2102,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
     confirm_clear_area: bool = False,
     pre_command_sample_delays: tuple[float, ...] = (0.0,),
     post_stop_sample_delays: tuple[float, ...] = (0.5, 1.0, 2.0, 3.0, 10.0, 20.0),
+    require_progress_each_pulse: bool = True,
     service_name: str = SERVICE_MANUAL_VELOCITY_SEGMENT_TEST,
 ) -> dict[str, Any]:
     """Run or simulate a guarded one-segment closed-loop movement probe.
@@ -2119,6 +2156,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
     no_progress_count = 0
     cumulative_distance = 0.0
     cumulative_heading_change = 0.0
+    cumulative_path_progress = 0.0
 
     result: dict[str, Any] = {
         **preview,
@@ -2139,6 +2177,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
         "confirm_blades_off": confirm_blades_off,
         "confirm_clear_area": confirm_clear_area,
         "pre_command_sample_delays": list(pre_command_sample_delays),
+        "require_progress_each_pulse": require_progress_each_pulse,
         "would_send": not dry_run and not blockers,
         "real_segment_allowed": not dry_run and not blockers,
         "blockers": blockers,
@@ -2158,6 +2197,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
         "progress_summary": {
             "no_progress_count": no_progress_count,
             "cumulative_distance": cumulative_distance,
+            "cumulative_path_progress": cumulative_path_progress,
             "cumulative_heading_change_degrees": cumulative_heading_change,
         },
         "full_path_execution_allowed": False,
@@ -2317,6 +2357,11 @@ async def _manual_velocity_segment_test(  # noqa: C901
             no_progress_count += 1
         if measured_delta["distance"] is not None:
             cumulative_distance += float(measured_delta["distance"])
+        path_progress_distance = path_progress_diagnostic.get(
+            "path_progress_distance"
+        )
+        if path_progress_distance is not None and path_progress_distance > 0:
+            cumulative_path_progress += float(path_progress_distance)
         if measured_delta["heading_change_degrees"] is not None:
             cumulative_heading_change += abs(
                 float(measured_delta["heading_change_degrees"])
@@ -2343,6 +2388,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
                 "quality_degradation": quality_degradation,
                 "no_progress_count": no_progress_count,
                 "cumulative_distance": cumulative_distance,
+                "cumulative_path_progress": cumulative_path_progress,
                 "cumulative_heading_change_degrees": cumulative_heading_change,
             }
         )
@@ -2350,6 +2396,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
         result["progress_summary"] = {
             "no_progress_count": no_progress_count,
             "cumulative_distance": cumulative_distance,
+            "cumulative_path_progress": cumulative_path_progress,
             "cumulative_heading_change_degrees": cumulative_heading_change,
         }
 
@@ -2363,12 +2410,26 @@ async def _manual_velocity_segment_test(  # noqa: C901
             result["stop_reason"] = "telemetry_quality_degraded"
             result["blockers"] = quality_degradation["reasons"]
             break
+        if require_progress_each_pulse and not path_progress_diagnostic["passed"]:
+            result["stop_reason"] = "path_progress_lost"
+            break
         if no_progress_count >= no_progress_limit:
             result["stop_reason"] = "no_progress_limit_reached"
             break
 
     if result["stop_reason"] is None:
-        result["stop_reason"] = "max_pulses_reached"
+        completion_status = _manual_velocity_completion_status(
+            normalized_points,
+            result["final_telemetry"],
+            waypoint_tolerance=waypoint_tolerance,
+        )
+        result["completion_status"] = completion_status
+        if completion_status["complete"]:
+            result["stop_reason"] = "path_complete"
+        elif cumulative_path_progress > 0:
+            result["stop_reason"] = "partial_progress_timeout"
+        else:
+            result["stop_reason"] = "no_progress_timeout"
     result["pulses_sent"] = sum(
         1
         for iteration in result["iterations"]
@@ -3084,6 +3145,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             confirm_blades_off=call.data["confirm_blades_off"],
             confirm_clear_area=call.data["confirm_clear_area"],
             pre_command_sample_delays=(0.0, 10.0, 20.0),
+            require_progress_each_pulse=True,
         )
 
     async def handle_manual_velocity_segment_test(
@@ -3137,6 +3199,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             confirm_blades_off=call.data["confirm_blades_off"],
             confirm_clear_area=call.data["confirm_clear_area"],
             pre_command_sample_delays=(0.0, 10.0, 20.0),
+            require_progress_each_pulse=False,
             service_name=SERVICE_MANUAL_VELOCITY_MULTI_PULSE_TEST,
         )
 

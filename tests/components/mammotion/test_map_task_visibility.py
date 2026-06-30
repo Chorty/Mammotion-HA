@@ -1187,7 +1187,7 @@ async def test_manual_velocity_segment_test_real_probe_calls_move_then_stop() ->
 
     assert result["would_send"] is True
     assert result["real_segment_allowed"] is True
-    assert result["stop_reason"] == "max_pulses_reached"
+    assert result["stop_reason"] == "path_progress_lost"
     assert result["pulses_sent"] == 1
     assert result["iterations"][0]["controller_decision"]["action"] == "forward"
     assert result["iterations"][0]["command_result"] == {
@@ -1251,6 +1251,7 @@ async def test_manual_velocity_segment_test_stops_after_no_progress_limit() -> N
         confirm_blades_off=True,
         confirm_clear_area=True,
         post_stop_sample_delays=(0,),
+        require_progress_each_pulse=False,
     )
 
     assert result["stop_reason"] == "no_progress_limit_reached"
@@ -1258,6 +1259,65 @@ async def test_manual_velocity_segment_test_stops_after_no_progress_limit() -> N
     assert result["progress_summary"]["no_progress_count"] == 2
     assert coordinator.async_move_forward.await_count == 2
     assert coordinator.async_stop_manual_motion.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_segment_test_reports_partial_progress_timeout() -> None:
+    """Max pulses after target-directed progress is a partial-progress timeout."""
+    coordinator = _pulse_coordinator()
+
+    async def move_forward_progress(*_: object, **__: object) -> None:
+        coordinator.data.mowing_state.pos_x = 1.2
+
+    coordinator.async_stop_manual_motion.side_effect = move_forward_progress
+
+    result = await _manual_velocity_segment_test(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 2.0, "y": 1.0}],
+        speed=0.4,
+        pulse_duration_ms=50,
+        max_pulses=1,
+        no_progress_limit=2,
+        use_wifi=True,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        post_stop_sample_delays=(0,),
+    )
+
+    assert result["stop_reason"] == "partial_progress_timeout"
+    assert result["completion_status"]["complete"] is False
+    assert result["progress_summary"]["cumulative_path_progress"] == pytest.approx(0.2)
+    assert result["iterations"][0]["path_progress_diagnostic"]["passed"] is True
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_segment_test_reports_path_complete_at_max_pulses() -> None:
+    """Max pulses at target reports path_complete, not a timeout."""
+    coordinator = _pulse_coordinator()
+
+    async def move_to_target(*_: object, **__: object) -> None:
+        coordinator.data.mowing_state.pos_x = 2.0
+
+    coordinator.async_stop_manual_motion.side_effect = move_to_target
+
+    result = await _manual_velocity_segment_test(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 2.0, "y": 1.0}],
+        speed=0.4,
+        pulse_duration_ms=50,
+        max_pulses=1,
+        waypoint_tolerance=0.1,
+        use_wifi=True,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        post_stop_sample_delays=(0,),
+    )
+
+    assert result["stop_reason"] == "path_complete"
+    assert result["completion_status"]["complete"] is True
+    assert result["iterations"][0]["path_progress_diagnostic"]["passed"] is True
 
 
 @pytest.mark.asyncio
