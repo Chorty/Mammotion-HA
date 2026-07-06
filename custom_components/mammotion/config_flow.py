@@ -47,6 +47,14 @@ from .const import (
 from .pymammotion_compat import apply_pymammotion_compat_patches
 
 
+def _integration_ha_version(integration: Any) -> str:
+    """Return HA version string expected by MammotionClient."""
+    version = integration.version
+    if version is None:
+        return "0"
+    return version.split("-")[0]
+
+
 class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Mammotion."""
 
@@ -140,16 +148,22 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
         if entry := await self.check_and_update_bluetooth_device(
             self._discovered_device
         ):
+            discovered_name = self._discovered_device.name or format_mac(
+                self._discovered_device.address
+            )
             merged = {
-                self._discovered_device.name: format_mac(
+                discovered_name: format_mac(
                     self._discovered_device.address
                 ),
                 **entry.data.get(CONF_BLE_DEVICES, {}),
             }
             self._abort_if_unique_id_configured(updates={CONF_BLE_DEVICES: merged})
 
+        discovered_name = self._discovered_device.name or format_mac(
+            self._discovered_device.address
+        )
         ble_devices: dict[str, str] = {
-            self._discovered_device.name: format_mac(self._discovered_device.address)
+            discovered_name: format_mac(self._discovered_device.address)
         }
         self._config = {
             CONF_BLE_DEVICES: ble_devices,
@@ -158,10 +172,13 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             return await self.async_step_wifi(user_input)
 
+        discovered_name = self._discovered_device.name or format_mac(
+            self._discovered_device.address
+        )
         return self.async_show_form(
             step_id="bluetooth_confirm",
             last_step=False,
-            description_placeholders={"name": self._discovered_device.name},
+            description_placeholders={"name": discovered_name},
             data_schema=vol.Schema({}),
         )
 
@@ -186,7 +203,7 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
             ):
                 continue
 
-            self._discovered_devices[address] = discovery_info.name
+            self._discovered_devices[address] = name
 
         if not self._discovered_devices:
             return await self.async_step_wifi(user_input)
@@ -212,9 +229,7 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
 
             if account and password:
                 integration = await async_get_integration(self.hass, DOMAIN)
-                temp_client = MammotionClient(
-                    ha_version=integration.version.split("-")[0]
-                )
+                temp_client = MammotionClient(ha_version=_integration_ha_version(integration))
                 try:
                     session = aiohttp_client.async_get_clientsession(self.hass)
                     await temp_client.login_and_initiate_cloud(
@@ -276,6 +291,8 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
                     if self._discovered_device
                     else next(iter(self._config[CONF_BLE_DEVICES]))
                 )
+                if title is None:
+                    title = next(iter(self._config[CONF_BLE_DEVICES]))
                 return self.async_create_entry(
                     title=title,
                     data={
@@ -320,9 +337,7 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
 
             if account and password:
                 integration = await async_get_integration(self.hass, DOMAIN)
-                temp_client = MammotionClient(
-                    ha_version=integration.version.split("-")[0]
-                )
+                temp_client = MammotionClient(ha_version=_integration_ha_version(integration))
                 try:
                     session = aiohttp_client.async_get_clientsession(self.hass)
                     await temp_client.login_and_initiate_cloud(
@@ -411,7 +426,7 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
             account = user_input[CONF_ACCOUNTNAME].strip()
             password = user_input[CONF_PASSWORD].strip()
             integration = await async_get_integration(self.hass, DOMAIN)
-            temp_client = MammotionClient(ha_version=integration.version.split("-")[0])
+            temp_client = MammotionClient(ha_version=_integration_ha_version(integration))
             try:
                 await temp_client.login_and_initiate_cloud(
                     account,
