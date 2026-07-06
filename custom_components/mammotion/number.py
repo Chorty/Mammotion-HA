@@ -2,7 +2,7 @@
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
 from homeassistant.components.number import (
     NumberDeviceClass,
@@ -32,7 +32,7 @@ from .entity import MammotionBaseEntity, MammotionBaseSpinoEntity
 
 
 @dataclass(frozen=True, kw_only=True)
-class MammotionConfigNumberEntityDescription(NumberEntityDescription):  # type: ignore[misc]
+class MammotionConfigNumberEntityDescription(NumberEntityDescription):
     """Describes Mammotion number entity."""
 
     set_fn: Callable[[MammotionBaseUpdateCoordinator[Any], float], None] | None = None
@@ -43,7 +43,7 @@ class MammotionConfigNumberEntityDescription(NumberEntityDescription):  # type: 
 
 
 @dataclass(frozen=True, kw_only=True)
-class MammotionSpinoNumberEntityDescription(NumberEntityDescription):  # type: ignore[misc]
+class MammotionSpinoNumberEntityDescription(NumberEntityDescription):
     """Describes a Mammotion Spino pool cleaner number entity."""
 
     value_fn: Callable[[PoolCleanerDevice], float]
@@ -286,7 +286,7 @@ async def async_setup_entry(
         )
 
 
-class MammotionConfigNumberEntity(MammotionBaseEntity, RestoreNumber):  # type: ignore[misc]
+class MammotionConfigNumberEntity(MammotionBaseEntity, RestoreNumber):
     """Mammotion config number entity."""
 
     entity_description: MammotionConfigNumberEntityDescription
@@ -347,7 +347,7 @@ class MammotionConfigNumberEntity(MammotionBaseEntity, RestoreNumber):  # type: 
             self._attr_native_value = last_number_data.native_value
             if self.entity_description.set_fn is not None:
                 self.entity_description.set_fn(
-                    self.coordinator, cast(float, self._attr_native_value)
+                    self.coordinator, self._attr_native_value
                 )
 
 
@@ -384,12 +384,18 @@ class MammotionWorkingNumberEntity(MammotionConfigNumberEntity):
     @property
     def native_min_value(self) -> float:
         """Return the minimum value."""
-        return cast(float, self._attr_native_min_value)
+        min_value = self._attr_native_min_value
+        if min_value is None:
+            raise ValueError("native min value is unavailable")
+        return min_value
 
     @property
     def native_max_value(self) -> float:
         """Return the maximum value."""
-        return cast(float, self._attr_native_max_value)
+        max_value = self._attr_native_max_value
+        if max_value is None:
+            raise ValueError("native max value is unavailable")
+        return max_value
 
     async def async_set_native_value(self, value: float) -> None:
         """Set native value for number and call update_fn if defined."""
@@ -403,7 +409,7 @@ class MammotionWorkingNumberEntity(MammotionConfigNumberEntity):
         self.async_write_ha_state()
 
 
-class MammotionSpinoNumberEntity(MammotionBaseSpinoEntity, NumberEntity):  # type: ignore[misc]
+class MammotionSpinoNumberEntity(MammotionBaseSpinoEntity, NumberEntity):
     """Mammotion Spino pool cleaner number entity."""
 
     entity_description: MammotionSpinoNumberEntityDescription
