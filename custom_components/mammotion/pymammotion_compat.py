@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from pymammotion.aliyun.model.dev_by_account_response import ShareNoticeListResponse
 
@@ -42,11 +42,21 @@ def apply_pymammotion_compat_patches() -> None:
     if getattr(ShareNoticeListResponse, _PATCHED_ATTR, False):
         return
 
-    original_from_dict = ShareNoticeListResponse.from_dict
+    original_from_dict = cast(Any, ShareNoticeListResponse.from_dict)
 
-    @classmethod
-    def from_dict_with_share_notice_defaults(cls, data: Any) -> ShareNoticeListResponse:
-        return original_from_dict(_normalize_share_notice_response(data))
+    def from_dict_with_share_notice_defaults(
+        cls: type[ShareNoticeListResponse],
+        data: Any,
+        **kwargs: Any,
+    ) -> ShareNoticeListResponse:
+        return cast(
+            ShareNoticeListResponse,
+            original_from_dict(_normalize_share_notice_response(data), **kwargs),
+        )
 
-    ShareNoticeListResponse.from_dict = from_dict_with_share_notice_defaults
+    setattr(
+        cast(Any, ShareNoticeListResponse),
+        "from_dict",
+        classmethod(from_dict_with_share_notice_defaults),
+    )
     setattr(ShareNoticeListResponse, _PATCHED_ATTR, True)
