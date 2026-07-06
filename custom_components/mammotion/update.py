@@ -44,20 +44,23 @@ async def async_setup_entry(
 ) -> None:
     """Set up update entities for Netgear component."""
     mammotion_devices = entry.runtime_data.mowers
-    entities = []
+    entities: list[UpdateEntity] = []
     for mower in mammotion_devices:
-        entity = MammotionUpdateEntity(mower.version_coordinator, MammotionUpdate)
-        entities.append(entity)
+        entities.append(
+            MammotionUpdateEntity(mower.version_coordinator, MammotionUpdate)
+        )
 
     mammotion_rtks = entry.runtime_data.RTK
     for rtk in mammotion_rtks:
-        entity = MammotionRTKUpdateEntity(rtk.coordinator, MammotionUpdate)
-        entities.append(entity)
+        entities.append(
+            MammotionRTKUpdateEntity(rtk.coordinator, MammotionUpdate)
+        )
 
     mammotion_spinos = entry.runtime_data.spino
     for spino in mammotion_spinos:
-        entity = MammotionSpinoUpdateEntity(spino.coordinator, MammotionUpdate)
-        entities.append(entity)
+        entities.append(
+            MammotionSpinoUpdateEntity(spino.coordinator, MammotionUpdate)
+        )
 
     async_add_entities(entities)
 
@@ -124,7 +127,7 @@ class MammotionUpdateEntity(MammotionBaseEntity, UpdateEntity):
     @property
     def in_progress(self) -> bool:
         """Update installation in progress."""
-        return self.coordinator.data.update_check.isupgrading
+        return bool(self.coordinator.data.update_check.isupgrading)
 
     @property
     def update_percentage(self) -> int | float | None:
@@ -209,7 +212,7 @@ class MammotionRTKUpdateEntity(MammotionBaseRTKEntity, UpdateEntity):
     @property
     def in_progress(self) -> bool:
         """Update installation in progress."""
-        return self.coordinator.data.update_check.isupgrading
+        return bool(self.coordinator.data.update_check.isupgrading)
 
     @property
     def update_percentage(self) -> int | float | None:
@@ -294,7 +297,7 @@ class MammotionSpinoUpdateEntity(MammotionBaseSpinoEntity, UpdateEntity):
     @property
     def in_progress(self) -> bool:
         """Update installation in progress."""
-        return self.coordinator.data.update_check.isupgrading
+        return bool(self.coordinator.data.update_check.isupgrading)
 
     @property
     def update_percentage(self) -> int | float | None:

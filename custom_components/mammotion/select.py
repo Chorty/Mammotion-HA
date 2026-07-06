@@ -41,11 +41,13 @@ class MammotionConfigSelectEntityDescription(SelectEntityDescription):
     key: str
     options: list[str]
     set_fn: Callable[[MammotionBaseUpdateCoordinator, str], None]
-    async_set_fn: Callable[[MammotionBaseUpdateCoordinator], Awaitable[None]] = None
+    async_set_fn: (
+        Callable[[MammotionBaseUpdateCoordinator], Awaitable[None]] | None
+    ) = None
 
 
 @dataclass(frozen=True, kw_only=True)
-class MammotionAsyncConfigSelectEntityDescription(MammotionBaseEntity, SelectEntity):
+class MammotionAsyncConfigSelectEntityDescription(SelectEntityDescription):
     """Describes Mammotion select entity with async functionality."""
 
     key: str
@@ -256,27 +258,27 @@ async def async_setup_entry(
     mammotion_devices = entry.runtime_data.mowers
 
     for mower in mammotion_devices:
-        entities = []
+        entities: list[SelectEntity] = []
 
-        for entity_description in SELECT_ENTITIES:
+        for config_select_desc in SELECT_ENTITIES:
             entities.append(
                 MammotionConfigSelectEntity(
-                    mower.reporting_coordinator, entity_description
+                    mower.reporting_coordinator, config_select_desc
                 )
             )
 
         if DeviceType.is_luba_pro(mower.device.device_name):
-            for entity_description in AUDIO_SELECT_ENTITIES:
+            for audio_select_desc in AUDIO_SELECT_ENTITIES:
                 entities.append(
                     MammotionAsyncConfigSelectEntity(
-                        mower.reporting_coordinator, entity_description
+                        mower.reporting_coordinator, audio_select_desc
                     )
                 )
 
-        for entity_description in ASYNC_SELECT_ENTITIES:
+        for async_select_desc in ASYNC_SELECT_ENTITIES:
             entities.append(
                 MammotionAsyncConfigSelectEntity(
-                    mower.reporting_coordinator, entity_description
+                    mower.reporting_coordinator, async_select_desc
                 )
             )
 
@@ -301,25 +303,25 @@ async def async_setup_entry(
         )
 
         if DeviceType.is_luba1(mower.device.device_name):
-            for entity_description in LUBA1_SELECT_ENTITIES:
+            for luba1_select_desc in LUBA1_SELECT_ENTITIES:
                 entities.append(
                     MammotionConfigSelectEntity(
-                        mower.reporting_coordinator, entity_description
+                        mower.reporting_coordinator, luba1_select_desc
                     )
                 )
         else:
-            for entity_description in LUBA_PRO_SELECT_ENTITIES:
+            for luba_pro_select_desc in LUBA_PRO_SELECT_ENTITIES:
                 entities.append(
                     MammotionConfigSelectEntity(
-                        mower.reporting_coordinator, entity_description
+                        mower.reporting_coordinator, luba_pro_select_desc
                     )
                 )
 
         if DeviceType.is_mini_or_x_series(mower.device.device_name):
-            for entity_description in MINI_AND_X_SERIES_CONFIG_SELECT_ENTITIES:
+            for mini_series_select_desc in MINI_AND_X_SERIES_CONFIG_SELECT_ENTITIES:
                 entities.append(
                     MammotionAsyncConfigSelectEntity(
-                        mower.reporting_coordinator, entity_description
+                        mower.reporting_coordinator, mini_series_select_desc
                     )
                 )
 
@@ -402,7 +404,7 @@ class MammotionAsyncConfigSelectEntity(
         """Return the current option, falling back to the first if the index is out of range."""
         if callable(self.entity_description.get_fn):
             idx = self.entity_description.get_fn(self.coordinator)
-            if 0 <= idx < len(self._attr_options):
+            if idx is not None and 0 <= idx < len(self._attr_options):
                 return self._attr_options[idx]
         return self._attr_options[0]
 

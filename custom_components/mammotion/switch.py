@@ -439,8 +439,8 @@ class MammotionUpdateSwitchEntity(MammotionBaseEntity, SwitchEntity, RestoreEnti
     def is_on(self) -> bool:
         """Return if settings is on or off."""
         if self.entity_description.is_on_func is not None:
-            return self.entity_description.is_on_func(self.coordinator)
-        return self._attr_is_on
+            return bool(self.entity_description.is_on_func(self.coordinator))
+        return bool(self._attr_is_on)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
@@ -665,7 +665,7 @@ def async_add_area_entities(
                 del area_entities_by_name[n]
 
     def set_area_entity(
-        coord: MammotionReportUpdateCoordinator, bool_val: bool, value: int
+        coord: MammotionBaseUpdateCoordinator, bool_val: bool, value: int
     ) -> None:
         if bool_val:
             if value not in coord.operation_settings.areas:
