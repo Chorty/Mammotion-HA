@@ -220,6 +220,9 @@ class AgoraWebSocketHandler:
 
         # Parse offer SDP for capabilities parse_offer_to_ortc
         stored_sdp_info = self._parse_offer_sdp(offer_sdp)
+        if stored_sdp_info is None:
+            _LOGGER.error("Failed to parse offer SDP details")
+            return None
         ortc_info = parse_offer_to_ortc(offer_sdp)
         if not ortc_info:
             _LOGGER.error("Failed to parse offer SDP")
@@ -319,7 +322,7 @@ class AgoraWebSocketHandler:
         websocket: ClientConnection,
         session_id: str,
         sdp_info: SdpInfo,
-        agora_response: AgoraResponse = None,
+        agora_response: AgoraResponse | None = None,
     ) -> str | None:
         """Wait for join success response and return answer SDP.
 
@@ -379,7 +382,7 @@ class AgoraWebSocketHandler:
         websocket: ClientConnection,
         session_id: str,
         sdp_info: SdpInfo,
-        agora_response: AgoraResponse = None,
+        agora_response: AgoraResponse | None = None,
     ) -> None:
         """Background message loop — stays running after join.
 
@@ -478,7 +481,12 @@ class AgoraWebSocketHandler:
         )
         try:
             while True:
-                should_continue = await self._keepalive()
+                keepalive_cb = self._keepalive
+                if keepalive_cb is None:
+                    _LOGGER.debug("FPV keep-alive callback missing — stopping loop")
+                    return
+
+                should_continue = await keepalive_cb()
                 if not should_continue:
                     _LOGGER.debug("FPV keep-alive not required — stopping loop")
                     return
@@ -534,7 +542,7 @@ class AgoraWebSocketHandler:
         self,
         response: dict[str, Any],
         sdp_info: SdpInfo,
-        agora_response: AgoraResponse = None,
+        agora_response: AgoraResponse | None = None,
     ) -> str | None:
         """Handle successful join response and generate answer SDP."""
         message = response.get("_message", {})
@@ -1815,6 +1823,8 @@ class AgoraWebSocketHandler:
                         edges_services = buffer.get("edges_services", [])
                         if edges_services:
                             es = next(iter(edges_services), None)
+                            if es is None:
+                                continue
                             return ResponseInfo(
                                 code=buffer["code"],
                                 addresses=[
