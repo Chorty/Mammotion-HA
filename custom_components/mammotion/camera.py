@@ -33,6 +33,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pymammotion.http.model.camera_stream import (
     StreamSubscriptionResponse,
 )
+from pymammotion.http.model.http import Response
 from pymammotion.utility.device_type import DeviceType
 from webrtc_models import RTCIceCandidateInit, RTCIceServer
 
@@ -53,7 +54,9 @@ class MammotionCameraEntityDescription(CameraEntityDescription):
     """Describes Mammotion camera entity."""
 
     key: str
-    stream_fn: Callable[[MammotionBaseUpdateCoordinator], StreamSubscriptionResponse]
+    stream_fn: Callable[
+        [MammotionBaseUpdateCoordinator], Response[StreamSubscriptionResponse] | None
+    ]
 
 
 CAMERAS: tuple[MammotionCameraEntityDescription, ...] = (
@@ -289,6 +292,8 @@ async def async_setup_platform_services(
 
     def _get_mower_by_entity_id(entity_id: str) -> MammotionMowerData | None:
         state = hass.states.get(entity_id)
+        if state is None:
+            return None
         name = state.attributes.get("model_name")
         return next(
             (
@@ -301,7 +306,7 @@ async def async_setup_platform_services(
 
     async def handle_refresh_stream(call: ServiceCall) -> None:
         entity_id = call.data["entity_id"]
-        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
+        mower = _get_mower_by_entity_id(entity_id)
         if mower:
             stream_data = await mower.api.get_stream_subscription(
                 mower.device.device_name, mower.device.iot_id
@@ -313,19 +318,19 @@ async def async_setup_platform_services(
 
     async def handle_start_video(call) -> None:
         entity_id = call.data["entity_id"]
-        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
+        mower = _get_mower_by_entity_id(entity_id)
         if mower:
             await mower.reporting_coordinator.join_webrtc_channel()
 
     async def handle_stop_video(call) -> None:
         entity_id = call.data["entity_id"]
-        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
+        mower = _get_mower_by_entity_id(entity_id)
         if mower:
             await mower.reporting_coordinator.leave_webrtc_channel()
 
     async def handle_get_tokens(call: ServiceCall) -> ServiceResponse:
         entity_id = call.data["entity_id"]
-        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
+        mower = _get_mower_by_entity_id(entity_id)
         if mower is not None:
             stream_data = mower.reporting_coordinator.get_stream_data()
 
@@ -360,7 +365,7 @@ async def async_setup_platform_services(
                     raw_speed,
                 )
 
-        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
+        mower = _get_mower_by_entity_id(entity_id)
         if mower:
             await mower.reporting_coordinator.async_move_forward(
                 speed=speed, use_wifi=use_wifi
@@ -391,7 +396,7 @@ async def async_setup_platform_services(
                     raw_speed,
                 )
 
-        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
+        mower = _get_mower_by_entity_id(entity_id)
         if mower:
             await mower.reporting_coordinator.async_move_left(
                 speed=speed, use_wifi=use_wifi
@@ -422,7 +427,7 @@ async def async_setup_platform_services(
                     raw_speed,
                 )
 
-        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
+        mower = _get_mower_by_entity_id(entity_id)
         if mower:
             await mower.reporting_coordinator.async_move_right(
                 speed=speed, use_wifi=use_wifi
@@ -453,7 +458,7 @@ async def async_setup_platform_services(
                     raw_speed,
                 )
 
-        mower: MammotionMowerData = _get_mower_by_entity_id(entity_id)
+        mower = _get_mower_by_entity_id(entity_id)
         if mower:
             await mower.reporting_coordinator.async_move_back(
                 speed=speed, use_wifi=use_wifi

@@ -5,6 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import time
 from functools import partial
+from typing import Any, cast
 
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.components.sensor import (
@@ -111,42 +112,52 @@ class MowerDataFormatter:
 class MammotionSensorEntityDescription(SensorEntityDescription):
     """Describes Mammotion sensor entity."""
 
-    value_fn: Callable[[MowingDevice], StateType]
+    value_fn: Callable[[MowingDevice], Any]
 
 
 @dataclass(frozen=True, kw_only=True)
 class MammotionRTKSensorEntityDescription(SensorEntityDescription):
     """Describes Mammotion RTK sensor entity."""
 
-    value_fn: Callable[[RTKBaseStationDevice], StateType]
+    value_fn: Callable[[RTKBaseStationDevice], Any]
 
 
 @dataclass(frozen=True, kw_only=True)
 class MammotionSpinoSensorEntityDescription(SensorEntityDescription):
     """Describes Mammotion Spino pool cleaner sensor entity."""
 
-    value_fn: Callable[[PoolCleanerDevice], StateType]
+    value_fn: Callable[[PoolCleanerDevice], Any]
 
 
 @dataclass(frozen=True, kw_only=True)
 class MammotionWorkSensorEntityDescription(SensorEntityDescription):
     """Describes Mammotion sensor entity."""
 
-    value_fn: Callable[[MammotionReportUpdateCoordinator, MowingDevice], StateType]
+    value_fn: Callable[[MammotionReportUpdateCoordinator, MowingDevice], Any]
 
 
 @dataclass(frozen=True, kw_only=True)
 class MammotionErrorSensorEntityDescription(SensorEntityDescription):
     """Describes Mammotion sensor entity."""
 
-    value_fn: Callable[[MammotionDeviceErrorUpdateCoordinator, MowingDevice], StateType]
+    value_fn: Callable[[MammotionDeviceErrorUpdateCoordinator, MowingDevice], Any]
 
 
 @dataclass(frozen=True, kw_only=True)
 class MammotionSpinoErrorSensorEntityDescription(SensorEntityDescription):
     """Describes a Spino error-log sensor entity."""
 
-    value_fn: Callable[[MammotionSpinoCoordinator], StateType]
+    value_fn: Callable[[MammotionSpinoCoordinator], Any]
+
+
+def _task_area_value_fn(area_hash: int) -> Callable[[MowingDevice], str | None]:
+    """Build a typed value callback for a dynamic task-area status sensor."""
+
+    def _value(mower_data: MowingDevice) -> str | None:
+        area = mower_data.events.work_tasks_event.hash_area_map.get(area_hash)
+        return getattr(area, "name", None)
+
+    return _value
 
 
 LUBA_SENSOR_ONLY_TYPES: tuple[MammotionSensorEntityDescription, ...] = (
@@ -410,13 +421,12 @@ SENSOR_TYPES: tuple[MammotionSensorEntityDescription, ...] = (
     #     native_unit_of_measurement=None,
     #     value_fn=lambda mower_data: f"{mower_data.location.device.latitude}, {mower_data.location.device.longitude}"
     # )
-    # ToDo: We still need to add the following.
-    # - RTK Status - None, Single, Fix, Float, Unknown (RTKStatusFragment.java)
-    # - Signal quality (Robot)
-    # - Signal quality (Ref. Station)
-    # - LoRa number
-    # - WiFi status
-    # 'real_pos_x': -142511, 'real_pos_y': -20548, 'real_toward': 50915, (robot position)
+    # Future diagnostics candidates observed in the APK/UI model but intentionally
+    # deferred from the current release scope:
+    # - richer RTK status presentation (None/Single/Fix/Float/Unknown)
+    # - robot/reference-station signal quality
+    # - LoRa number and Wi-Fi status
+    # - raw robot pose fields such as real_pos_x/real_pos_y/real_toward
 )
 
 SENSOR_ERROR_TYPES: tuple[MammotionErrorSensorEntityDescription, ...] = (
@@ -588,6 +598,62 @@ WORK_SENSOR_TYPES: tuple[MammotionWorkSensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     MammotionWorkSensorEntityDescription(
+        key="active_transport",
+        state_class=None,
+        device_class=SensorDeviceClass.ENUM,
+        options=[
+            "ble",
+            "cloud_aliyun",
+            "cloud_mammotion",
+            "none",
+            "unknown",
+        ],
+        native_unit_of_measurement=None,
+        value_fn=lambda coordinator, mower_data: coordinator.active_transport_state,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionWorkSensorEntityDescription(
+        key="ble_only_fallback_mode",
+        state_class=None,
+        device_class=SensorDeviceClass.ENUM,
+        options=["normal", "fallback_active"],
+        native_unit_of_measurement=None,
+        value_fn=lambda coordinator, mower_data: (
+            "fallback_active" if coordinator.ble_only_fallback_mode else "normal"
+        ),
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionWorkSensorEntityDescription(
+        key="last_cloud_login_success",
+        state_class=None,
+        device_class=SensorDeviceClass.TIMESTAMP,
+        native_unit_of_measurement=None,
+        value_fn=lambda coordinator, mower_data: coordinator.last_cloud_login_success,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionWorkSensorEntityDescription(
+        key="last_token_refresh",
+        state_class=None,
+        device_class=SensorDeviceClass.TIMESTAMP,
+        native_unit_of_measurement=None,
+        value_fn=lambda coordinator, mower_data: coordinator.last_token_refresh,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionWorkSensorEntityDescription(
+        key="last_command_failure_reason",
+        state_class=None,
+        native_unit_of_measurement=None,
+        value_fn=lambda coordinator, mower_data: coordinator.last_command_failure_reason,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionWorkSensorEntityDescription(
+        key="last_camera_stream_failure_code",
+        state_class=None,
+        native_unit_of_measurement=None,
+        value_fn=lambda coordinator, mower_data: coordinator.last_camera_stream_failure_code,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionWorkSensorEntityDescription(
         key="mqtt_status",
         state_class=None,
         device_class=SensorDeviceClass.ENUM,
@@ -720,7 +786,7 @@ async def async_setup_entry(
     """Set up sensor platform."""
     mammotion_mowers = entry.runtime_data.mowers
 
-    entities = []
+    entities: list[SensorEntity] = []
     for mower in mammotion_mowers:
         if not DeviceType.is_yuka(mower.device.device_name):
             entities.extend(
@@ -908,7 +974,8 @@ class MammotionErrorSensorEntity(MammotionBaseEntity, SensorEntity):
     @property
     def native_value(self) -> StateType:
         """Return the state of the sensor."""
-        return self.entity_description.value_fn(self.coordinator, self.coordinator.data)
+        coordinator = cast(MammotionDeviceErrorUpdateCoordinator, self.coordinator)
+        return self.entity_description.value_fn(coordinator, coordinator.data)
 
 
 class MammotionWorkSensorEntity(MammotionBaseEntity, SensorEntity):
@@ -930,7 +997,8 @@ class MammotionWorkSensorEntity(MammotionBaseEntity, SensorEntity):
     @property
     def native_value(self) -> StateType:
         """Return the state of the sensor."""
-        return self.entity_description.value_fn(self.coordinator, self.coordinator.data)
+        coordinator = cast(MammotionReportUpdateCoordinator, self.coordinator)
+        return self.entity_description.value_fn(coordinator, coordinator.data)
 
 
 class MammotionTaskAreaSensorEntity(MammotionBaseEntity, SensorEntity):
@@ -1016,9 +1084,7 @@ def async_add_task_area_entities(
             state_class=None,
             options=_TASK_AREA_OPTIONS,
             entity_category=EntityCategory.DIAGNOSTIC,
-            value_fn=lambda mower_data, h=area_hash: getattr(
-                mower_data.events.work_tasks_event.hash_area_map.get(h), "name", None
-            ),
+            value_fn=_task_area_value_fn(area_hash),
         )
         entity = MammotionTaskAreaSensorEntity(coordinator, description)
         sensor_entities.append(entity)

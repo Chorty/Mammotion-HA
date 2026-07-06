@@ -4,6 +4,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from dataclasses import replace as dataclass_replace
 from functools import partial
+from typing import Any
 
 from homeassistant.components.button import DOMAIN as BUTTON_DOMAIN
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
@@ -30,7 +31,7 @@ from .entity import MammotionBaseEntity, MammotionBaseSpinoEntity
 class MammotionButtonSensorEntityDescription(ButtonEntityDescription):
     """Describes Mammotion button sensor entity."""
 
-    press_fn: Callable[[MammotionBaseUpdateCoordinator], Awaitable[None]]
+    press_fn: Callable[[MammotionBaseUpdateCoordinator], Awaitable[Any]]
     available_fn: Callable[[MammotionBaseUpdateCoordinator], bool] | None = None
 
 
@@ -39,14 +40,14 @@ class MammotionTaskButtonSensorEntityDescription(ButtonEntityDescription):
     """Describes Mammotion button sensor entity."""
 
     plan_id: str
-    press_fn: Callable[[MammotionBaseUpdateCoordinator, str], Awaitable[None]]
+    press_fn: Callable[[MammotionBaseUpdateCoordinator, str], Awaitable[Any]]
 
 
 @dataclass(frozen=True, kw_only=True)
 class MammotionSpinoButtonEntityDescription(ButtonEntityDescription):
     """Describes a Mammotion Spino pool cleaner button entity."""
 
-    press_fn: Callable[[MammotionSpinoCoordinator], Awaitable[None]]
+    press_fn: Callable[[MammotionSpinoCoordinator], Awaitable[Any]]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -60,7 +61,16 @@ class MammotionSpinoTaskButtonEntityDescription(ButtonEntityDescription):
     """
 
     jobid: int
-    press_fn: Callable[[MammotionSpinoCoordinator, int], Awaitable[None]]
+    press_fn: Callable[[MammotionSpinoCoordinator, int], Awaitable[Any]]
+
+
+def _movement_use_wifi_option(coordinator: MammotionBaseUpdateCoordinator) -> bool:
+    """Return movement Wi-Fi option, tolerating absent config entry."""
+    config_entry = coordinator.config_entry
+    return bool(
+        config_entry is not None
+        and config_entry.options.get(CONF_MOVEMENT_USE_WIFI, False)
+    )
 
 
 SPINO_BUTTON_SENSORS: tuple[MammotionSpinoButtonEntityDescription, ...] = (
@@ -84,7 +94,7 @@ SPINO_BUTTON_SENSORS: tuple[MammotionSpinoButtonEntityDescription, ...] = (
 
 def _nudge_available(coordinator: MammotionBaseUpdateCoordinator) -> bool:
     """Return True when movement via BLE or Wi-Fi is possible."""
-    if coordinator.config_entry.options.get(CONF_MOVEMENT_USE_WIFI, False):
+    if _movement_use_wifi_option(coordinator):
         return True
     handle = coordinator.manager.mower(coordinator.device_name)
     if handle is None:
@@ -117,7 +127,7 @@ BUTTON_SENSORS: tuple[MammotionButtonSensorEntityDescription, ...] = (
         key="emergency_nudge_forward",
         press_fn=lambda coordinator: coordinator.async_move_forward(
             0.4,
-            coordinator.config_entry.options.get(CONF_MOVEMENT_USE_WIFI, False),
+            _movement_use_wifi_option(coordinator),
         ),
         available_fn=_nudge_available,
     ),
@@ -125,7 +135,7 @@ BUTTON_SENSORS: tuple[MammotionButtonSensorEntityDescription, ...] = (
         key="emergency_nudge_left",
         press_fn=lambda coordinator: coordinator.async_move_left(
             0.4,
-            coordinator.config_entry.options.get(CONF_MOVEMENT_USE_WIFI, False),
+            _movement_use_wifi_option(coordinator),
         ),
         available_fn=_nudge_available,
     ),
@@ -133,7 +143,7 @@ BUTTON_SENSORS: tuple[MammotionButtonSensorEntityDescription, ...] = (
         key="emergency_nudge_right",
         press_fn=lambda coordinator: coordinator.async_move_right(
             0.4,
-            coordinator.config_entry.options.get(CONF_MOVEMENT_USE_WIFI, False),
+            _movement_use_wifi_option(coordinator),
         ),
         available_fn=_nudge_available,
     ),
@@ -141,7 +151,7 @@ BUTTON_SENSORS: tuple[MammotionButtonSensorEntityDescription, ...] = (
         key="emergency_nudge_back",
         press_fn=lambda coordinator: coordinator.async_move_back(
             0.4,
-            coordinator.config_entry.options.get(CONF_MOVEMENT_USE_WIFI, False),
+            _movement_use_wifi_option(coordinator),
         ),
         available_fn=_nudge_available,
     ),
@@ -161,6 +171,16 @@ BUTTON_LUBA_PRO_YUKA: tuple[MammotionButtonSensorEntityDescription, ...] = (
         key="camera_wiper",
         press_fn=lambda coordinator: coordinator.async_run_camera_wiper(),
         entity_category=EntityCategory.CONFIG,
+    ),
+    MammotionButtonSensorEntityDescription(
+        key="refresh_camera_stream",
+        press_fn=lambda coordinator: coordinator.async_refresh_camera_stream(),
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionButtonSensorEntityDescription(
+        key="refresh_cloud_session",
+        press_fn=lambda coordinator: coordinator.async_refresh_cloud_session(),
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     MammotionButtonSensorEntityDescription(
         key="restart_mower",
