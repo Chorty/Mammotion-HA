@@ -246,7 +246,7 @@ async def _attach_ble_to_rtk(
     """Attach a BLE transport to an RTK base station and register a persistent update callback."""
     rtk_device = mammotion.get_device_by_name(rtk.device_name)
     if rtk_device is not None:
-        rtk_device.ble_mac = ble_address
+        setattr(rtk_device, "ble_mac", ble_address)
 
     ble_device = bluetooth.async_ble_device_from_address(
         hass, ble_address.upper(), True
@@ -332,7 +332,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: MammotionConfigEntry) ->
 
     addresses = entry.data.get(CONF_BLE_DEVICES, {})
     integration = await async_get_integration(hass, DOMAIN)
-    mammotion = MammotionClient(ha_version=integration.version.split("-")[0])
+    integration_version = integration.version or "0"
+    mammotion = MammotionClient(ha_version=integration_version.split("-")[0])
 
     async def shutdown_mammotion(_: Event | None = None) -> None:
         await mammotion.stop()
@@ -795,7 +796,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: MammotionConfigEntry) -
 async def async_remove_entry(hass: HomeAssistant, entry: MammotionConfigEntry) -> None:
     """Remove stored data when the integration is deleted."""
     if not hass.config_entries.async_entries(DOMAIN):
-        store = Store(hass, version=1, minor_version=2, key=DOMAIN)
+        store: Store[dict[str, Any]] = Store(
+            hass,
+            version=1,
+            minor_version=2,
+            key=DOMAIN,
+        )
         await store.async_remove()
         hass.data.pop(DOMAIN, None)
 
