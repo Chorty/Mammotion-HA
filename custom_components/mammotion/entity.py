@@ -25,7 +25,7 @@ from .coordinator import (
 )
 
 
-class MammotionBaseEntity(CoordinatorEntity[MammotionBaseUpdateCoordinator[Any]]):  # type: ignore[misc]
+class MammotionBaseEntity(CoordinatorEntity[MammotionBaseUpdateCoordinator[Any]]):
     """Representation of a Mammotion Lawn Mower."""
 
     _attr_has_entity_name = True
@@ -94,7 +94,7 @@ class MammotionBaseEntity(CoordinatorEntity[MammotionBaseUpdateCoordinator[Any]]
         await super().async_added_to_hass()
         self._cleanup_stale_connections()
 
-    @callback  # type: ignore[misc]
+    @callback
     def _cleanup_stale_connections(self) -> None:
         """Replace device registry connections with only the valid mower state values."""
         mower = self.coordinator.manager.get_device_by_name(
@@ -126,7 +126,7 @@ class MammotionBaseEntity(CoordinatorEntity[MammotionBaseUpdateCoordinator[Any]]
             update_kwargs["name_by_user"] = nick_name
         device_registry.async_update_device(device.id, **update_kwargs)
 
-    @callback  # type: ignore[misc]
+    @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         # self._update_attr()
@@ -144,7 +144,7 @@ class MammotionBaseEntity(CoordinatorEntity[MammotionBaseUpdateCoordinator[Any]]
         return self.coordinator.data is not None and self.coordinator.is_online()
 
 
-class MammotionBaseRTKEntity(CoordinatorEntity[MammotionRTKCoordinator]):  # type: ignore[misc]
+class MammotionBaseRTKEntity(CoordinatorEntity[MammotionRTKCoordinator]):
     """Representation of a Mammotion RTK entity."""
 
     _attr_has_entity_name = True
@@ -179,7 +179,7 @@ class MammotionBaseRTKEntity(CoordinatorEntity[MammotionRTKCoordinator]):  # typ
         """Return True when the RTK base station reports itself online."""
         return bool(self.coordinator.data.online)
 
-    @callback  # type: ignore[misc]
+    @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         super()._handle_coordinator_update()
@@ -189,7 +189,7 @@ class MammotionBaseRTKEntity(CoordinatorEntity[MammotionRTKCoordinator]):  # typ
         await super().async_added_to_hass()
         self._cleanup_stale_connections()
 
-    @callback  # type: ignore[misc]
+    @callback
     def _cleanup_stale_connections(self) -> None:
         """Replace device registry connections with only the valid mower state values."""
         rtk_data = self.coordinator.data
@@ -214,7 +214,7 @@ class MammotionBaseRTKEntity(CoordinatorEntity[MammotionRTKCoordinator]):  # typ
         device_registry.async_update_device(device.id, **update_kwargs)
 
 
-class MammotionBaseSpinoEntity(CoordinatorEntity[MammotionSpinoCoordinator]):  # type: ignore[misc]
+class MammotionBaseSpinoEntity(CoordinatorEntity[MammotionSpinoCoordinator]):
     """Representation of a Mammotion Spino pool cleaner entity."""
 
     _attr_has_entity_name = True
@@ -245,13 +245,13 @@ class MammotionBaseSpinoEntity(CoordinatorEntity[MammotionSpinoCoordinator]):  #
         """Return True when the pool cleaner reports itself online."""
         return bool(self.coordinator.data.online)
 
-    @callback  # type: ignore[misc]
+    @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         super()._handle_coordinator_update()
 
 
-class MammotionCameraBaseEntity(Camera, ABC):  # type: ignore[misc]
+class MammotionCameraBaseEntity(Camera, ABC):
     """Devices that support cameras."""
 
     _attr_has_entity_name = True

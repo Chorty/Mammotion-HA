@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Any, cast
+from typing import Any
 
 from homeassistant.components.device_tracker import SourceType, TrackerEntity
 from homeassistant.core import HomeAssistant
@@ -31,7 +31,7 @@ async def async_setup_entry(
         async_add_entities([MammotionTracker(mower.reporting_coordinator)])
 
 
-class MammotionTracker(MammotionBaseEntity, TrackerEntity, RestoreEntity):  # type: ignore[misc]
+class MammotionTracker(MammotionBaseEntity, TrackerEntity, RestoreEntity):
     """Mammotion device tracker."""
 
     _attr_force_update = False
@@ -65,7 +65,7 @@ class MammotionTracker(MammotionBaseEntity, TrackerEntity, RestoreEntity):  # ty
         lat = device.location.device.latitude
         if lat is None:
             return None
-        return cast(float, lat) + self.coordinator.map_offset_lat / 111_111.0
+        return lat + self.coordinator.map_offset_lat / 111_111.0
 
     @property
     def longitude(self) -> float | None:
@@ -83,12 +83,12 @@ class MammotionTracker(MammotionBaseEntity, TrackerEntity, RestoreEntity):  # ty
             return None
         cos_lat = math.cos(math.radians(lat))
         if cos_lat == 0:
-            return cast(float, lon)
-        return cast(float, lon) + self.coordinator.map_offset_lon / (
+            return lon
+        return lon + self.coordinator.map_offset_lon / (
             111_111.0 * cos_lat
         )
 
     @property
     def battery_level(self) -> int | None:
         """Return the battery level of the device."""
-        return cast(int | None, self.coordinator.data.report_data.dev.battery_val)
+        return self.coordinator.data.report_data.dev.battery_val

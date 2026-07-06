@@ -12,8 +12,8 @@ class SDPParser:
     @staticmethod
     def parse(sdp: str) -> dict[str, Any]:
         """Parse an SDP string into a structured dictionary."""
-        parsed = {"media": []}
-        current_media = None
+        parsed: dict[str, Any] = {"media": []}
+        current_media: dict[str, Any] | None = None
 
         for line in sdp.splitlines():
             line = line.strip()
@@ -67,7 +67,11 @@ class SDPParser:
                 elif attr == "ice-pwd":
                     target["icePwd"] = val
                 elif attr == "fingerprint":
+                    if val is None:
+                        continue
                     fparts = val.split()
+                    if len(fparts) < 2:
+                        continue
                     fp_obj = {"hash": fparts[0], "fingerprint": fparts[1]}
                     target["fingerprints"] = target.get("fingerprints", [])
                     target["fingerprints"].append(fp_obj)
@@ -83,7 +87,11 @@ class SDPParser:
                 elif attr == "ice-options":
                     target["iceOptions"] = val
                 elif attr == "rtpmap":
+                    if val is None:
+                        continue
                     rparts = val.split(None, 1)
+                    if len(rparts) < 2:
+                        continue
                     pt = int(rparts[0])
                     rmap = rparts[1].split("/")
                     target["rtp"].append(
@@ -95,12 +103,20 @@ class SDPParser:
                         }
                     )
                 elif attr == "fmtp":
+                    if val is None:
+                        continue
                     fparts = val.split(None, 1)
+                    if len(fparts) < 2:
+                        continue
                     target["fmtp"].append(
                         {"payload": int(fparts[0]), "config": fparts[1]}
                     )
                 elif attr == "rtcp-fb":
+                    if val is None:
+                        continue
                     fbparts = val.split()
+                    if len(fbparts) < 2:
+                        continue
                     target["rtcpFb"].append(
                         {
                             "payload": int(fbparts[0]),
@@ -111,7 +127,11 @@ class SDPParser:
                         }
                     )
                 elif attr == "extmap":
+                    if val is None:
+                        continue
                     eparts = val.split()
+                    if len(eparts) < 2:
+                        continue
                     # RFC 5285: value may carry an optional /direction suffix (e.g. "2/recvonly")
                     ext_id = int(eparts[0].split("/")[0])
                     ext_dir = eparts[0].split("/")[1] if "/" in eparts[0] else None
@@ -120,16 +140,25 @@ class SDPParser:
                         entry["direction"] = ext_dir
                     target["ext"].append(entry)
                 elif attr == "group":
+                    if val is None:
+                        continue
                     if "groups" not in parsed:
                         parsed["groups"] = []
                     gparts = val.split()
+                    if not gparts:
+                        continue
                     parsed["groups"].append(
                         {"type": gparts[0], "mids": " ".join(gparts[1:])}
                     )
                 elif attr == "msid-semantic":
+                    if val is None:
+                        continue
+                    val_parts = val.split()
+                    if not val_parts:
+                        continue
                     parsed["msidSemantic"] = {
-                        "semantic": val.split()[0],
-                        "token": val.split()[1] if len(val.split()) > 1 else "",
+                        "semantic": val_parts[0],
+                        "token": val_parts[1] if len(val_parts) > 1 else "",
                     }
         return parsed
 
@@ -246,7 +275,7 @@ def parse_offer_to_ortc(offer_sdp: str) -> dict[str, Any]:
         }
 
     # Iterate media sections to extract params and build caps
-    caps = {
+    caps: dict[str, dict[str, list[dict[str, Any]]]] = {
         "send": {
             "audioCodecs": [],
             "audioExtensions": [],

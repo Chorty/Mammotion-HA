@@ -134,7 +134,7 @@ async def async_setup_entry(
         DOMAIN,
         SERVICE_START_MOWING,
         entity_domain=LAWN_MOWER_DOMAIN,
-        schema=START_MOW_SCHEMA,
+        schema=vol.Schema(START_MOW_SCHEMA),
         func="async_start_mowing",
     )
     service.async_register_platform_entity_service(
@@ -150,7 +150,7 @@ async def async_setup_entry(
         DOMAIN,
         SERVICE_START_STOP_BLADES,
         entity_domain=LAWN_MOWER_DOMAIN,
-        schema=START_STOP_BLADES_SCHEMA,
+        schema=vol.Schema(START_STOP_BLADES_SCHEMA),
         func="async_start_stop_blades",
     )
     service.async_register_platform_entity_service(
@@ -158,7 +158,7 @@ async def async_setup_entry(
         DOMAIN,
         SERVICE_SET_NON_WORK_HOURS,
         entity_domain=LAWN_MOWER_DOMAIN,
-        schema=SET_NON_WORK_HOURS_SCHEMA,
+        schema=vol.Schema(SET_NON_WORK_HOURS_SCHEMA),
         func="async_set_non_work_hours",
     )
     service.async_register_platform_entity_service(
@@ -174,12 +174,12 @@ async def async_setup_entry(
         DOMAIN,
         SERVICE_SET_BLADE_WARNING_TIME,
         entity_domain=LAWN_MOWER_DOMAIN,
-        schema=SET_BLADE_WARNING_TIME_SCHEMA,
+        schema=vol.Schema(SET_BLADE_WARNING_TIME_SCHEMA),
         func="async_set_blade_warning_time",
     )
 
 
-class MammotionLawnMowerEntity(MammotionBaseEntity, LawnMowerEntity):  # type: ignore[misc]
+class MammotionLawnMowerEntity(MammotionBaseEntity, LawnMowerEntity):
     """Representation of a Mammotion Lawn Mower."""
 
     _attr_supported_features = (
@@ -235,13 +235,19 @@ class MammotionLawnMowerEntity(MammotionBaseEntity, LawnMowerEntity):  # type: i
 
         if kwargs:
             entity_ids = kwargs.pop("areas", [])
-            attributes = [
-                # TODO this should not need to be cast.
-                int(entity_hash)
-                for entity_id in entity_ids
-                if (entity_hash := get_entity_attribute(self.hass, entity_id, "hash"))
-                is not None
-            ]
+            attributes: list[int] = []
+            for entity_id in entity_ids:
+                entity_hash = get_entity_attribute(self.hass, entity_id, "hash")
+                if entity_hash is None:
+                    continue
+                try:
+                    attributes.append(int(entity_hash))
+                except (TypeError, ValueError):
+                    LOGGER.debug(
+                        "Skipping area %s with non-numeric hash %r",
+                        entity_id,
+                        entity_hash,
+                    )
             modify_plan = kwargs.pop("modify", False)
             plan_only = kwargs.pop("plan_only", False)
 
