@@ -10,6 +10,7 @@
       "not_supported": "Device not supported",
       "reconfigure_successful": "Re-configure successful",
       "api_limit_exceeded": "API rate limit has been exceeded. Please try again later.",
+      "account_in_use": "Your Mammotion account is already in use in another session. Sign out of the Mammotion app and try again.",
       "reauth_entry_missing": "The configuration entry no longer exists.",
       "reauth_successful": "Reauthentication successful."
     },
@@ -1084,6 +1085,9 @@
     },
     "api_limit_exceeded": {
       "message": "API rate limit has been exceeded."
+    },
+    "account_in_use": {
+      "message": "Your Mammotion account is already active in another session. Sign out of the Mammotion app and try again."
     },
     "cloud_setup_failed": {
       "message": "Unable to connect to the Mammotion cloud. Check your network and try reloading the integration."
