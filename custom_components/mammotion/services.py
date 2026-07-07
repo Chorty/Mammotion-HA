@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import math
 import time
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Mapping, Sequence, TypedDict, cast
+from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 import voluptuous as vol
 from homeassistant.const import ATTR_ENTITY_ID
@@ -1989,10 +1991,7 @@ def _pos_type_label(value: Any) -> str | None:
     """Return a readable position type label."""
     if value is None:
         return None
-    try:
-        return PosType(int(value)).name
-    except ValueError:
-        return "UNKNOWN"
+    return _enum_label(value)
 
 
 def _charge_state_label(value: Any) -> str:
@@ -2324,7 +2323,7 @@ def _custom_path_telemetry_snapshot(
     return {
         "online": coordinator.is_online() if hasattr(coordinator, "is_online") else None,
         "work_mode": work_mode,
-        "work_mode_label": device_mode(work_mode) if work_mode is not None else None,
+        "work_mode_label": _enum_label(work_mode),
         "charge_state": charge_state,
         "charge_state_label": _charge_state_label(charge_state),
         "position": _custom_path_position_snapshot(data, coordinator),
@@ -2349,7 +2348,7 @@ def _custom_path_telemetry_snapshot(
             "iot_connect_status": _safe_attr_path(
                 data, "report_data.connect.iot_connect_status"
             ),
-            "connection_label": device_connection(connect) if connect is not None else None,
+            "connection_label": _enum_label(connect),
         },
     }
 
