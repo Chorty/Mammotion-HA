@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any
 
 from aiohttp import ClientConnectorError
-from homeassistant.components.http import StaticPathConfig
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import (
     BluetoothCallbackMatcher,
@@ -17,6 +16,7 @@ from homeassistant.components.bluetooth import (
     BluetoothScanningMode,
     BluetoothServiceInfoBleak,
 )
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import Event, HassJob, HomeAssistant
@@ -55,13 +55,8 @@ from .const import (
     CONF_BLE_DEVICES,
     CONF_CONNECT_DATA,
     CONF_DEVICE_DATA,
-    CONF_DEVICE_NAME,
     CONF_HAS_CLOUD_ACCOUNT,
     CONF_MAMMOTION_DATA,
-    CONF_MAMMOTION_DEVICE_LIST,
-    CONF_MAMMOTION_DEVICE_RECORDS,
-    CONF_MAMMOTION_JWT_INFO,
-    CONF_MAMMOTION_MQTT,
     CONF_MOW_PATH_FETCH_ENABLED,
     CONF_PREFER_BLE,
     CONF_REGION_DATA,
@@ -139,9 +134,8 @@ async def _async_attempt_login(
             )
         else:
             await mammotion.login_and_initiate_cloud(account, password, session)
-        return True
     except ClientConnectorError as err:
-        raise ConfigEntryNotReady(err)
+        raise ConfigEntryNotReady(err) from err
     except LoginFailedError as err:
         if ble_fallback:
             LOGGER.warning(
@@ -176,7 +170,6 @@ async def _async_attempt_login(
             await mammotion.login_and_initiate_cloud(
                 account, password, aiohttp_client.async_get_clientsession(hass)
             )
-            return True
         except (LoginFailedError, ReLoginRequiredError) as retry_err:
             if ble_fallback:
                 LOGGER.warning(
@@ -188,6 +181,8 @@ async def _async_attempt_login(
                 )
                 return False
             raise ConfigEntryAuthFailed(retry_err) from retry_err
+        else:
+            return True
     except AccountInUseError as err:
         if ble_fallback:
             LOGGER.warning(
@@ -211,12 +206,14 @@ async def _async_attempt_login(
                 "Unretryable login error; continuing in BLE-only mode: %s", err
             )
             return False
-        raise ConfigEntryError(err)
+        raise ConfigEntryError(err) from err
     except Exception as err:  # noqa: BLE001 - preserve BLE fallback for library errors
         LOGGER.exception("Unexpected Mammotion cloud login failure")
         if ble_fallback:
             return False
         raise ConfigEntryError("Unexpected Mammotion cloud login failure") from err
+    else:
+        return True
 
 
 async def _attach_ble_to_mower(
@@ -336,7 +333,9 @@ async def _await_device_connection(
     try:
         await handle.wait_until_connected(timeout=60, mqtt_stable_for=10)
     except CancelledError:
-        raise HomeAssistantError("Setup cancelled, transport connection timed out")
+        raise HomeAssistantError(
+            "Setup cancelled, transport connection timed out"
+        ) from None
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: MammotionConfigEntry) -> bool:
@@ -425,7 +424,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: MammotionConfigEntry) ->
                 transport_type.value,
             )
             await mammotion.stop()
-            raise ConfigEntryAuthFailed()
+            raise ConfigEntryAuthFailed
 
         mammotion.on_unrecoverable_auth_error = _on_unrecoverable_auth_error
 

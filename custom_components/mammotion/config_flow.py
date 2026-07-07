@@ -273,7 +273,7 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
                 except (ClientError, HTTPException, TimeoutError) as err:
                     LOGGER.error("Unexpected error during login: %s", err)
                     errors["base"] = "cannot_connect"
-                except Exception as err:  # noqa: BLE001 - library/cloud parse errors
+                except Exception:  # noqa: BLE001 - library/cloud parse errors
                     LOGGER.exception("Unexpected Mammotion error during login")
                     errors["base"] = "cannot_connect"
                 finally:
@@ -365,7 +365,7 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
                 ) as err:
                     LOGGER.error("Login failed during reconfigure: %s", err)
                     errors["base"] = "cannot_connect"
-                except Exception as err:  # noqa: BLE001 - library/cloud parse errors
+                except Exception:  # noqa: BLE001 - library/cloud parse errors
                     LOGGER.exception(
                         "Unexpected Mammotion error during reconfigure"
                     )
@@ -468,7 +468,7 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "login_failed"
             except (CloudSetupError, HTTPException):
                 errors["base"] = "cannot_connect"
-            except Exception as err:  # noqa: BLE001 - library/cloud parse errors
+            except Exception:  # noqa: BLE001 - library/cloud parse errors
                 LOGGER.exception("Unexpected Mammotion error during reauth")
                 errors["base"] = "cannot_connect"
             finally:

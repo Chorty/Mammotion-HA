@@ -258,7 +258,10 @@ class MammotionWebRTCCamera(MammotionCameraBaseEntity):
             answer_sdp = await self._agora_handler.connect_and_join(
                 agora_data, offer_sdp, session_id, agora_response
             )
-
+        except (OSError, ValueError, TypeError) as ex:
+            _LOGGER.error("WebRTC negotiation failed: %s", ex)
+            return None
+        else:
             if answer_sdp:
                 _LOGGER.info("Successfully negotiated WebRTC through Agora")
                 return answer_sdp
@@ -267,10 +270,6 @@ class MammotionWebRTCCamera(MammotionCameraBaseEntity):
                 "Failed to get answer SDP from Agora negotiation, using handler fallback"
             )
             # Use the handler's fallback SDP generation as last resort
-            return None
-
-        except (OSError, ValueError, TypeError) as ex:
-            _LOGGER.error("WebRTC negotiation failed: %s", ex)
             return None
 
     def get_ice_servers(self) -> list[RTCIceServer]:

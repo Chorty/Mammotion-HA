@@ -1,9 +1,10 @@
 """Tests for Mammotion pymammotion compatibility patches."""
 
+from pymammotion.aliyun.model.dev_by_account_response import ShareNoticeListResponse
+
 from custom_components.mammotion.pymammotion_compat import (
     apply_pymammotion_compat_patches,
 )
-from pymammotion.aliyun.model.dev_by_account_response import ShareNoticeListResponse
 
 
 def test_share_notice_parser_accepts_missing_initiator_alias() -> None:

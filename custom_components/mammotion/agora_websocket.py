@@ -10,7 +10,9 @@ import secrets
 import ssl
 import time
 import uuid
+from collections import defaultdict
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 
@@ -296,19 +298,15 @@ class AgoraWebSocketHandler:
             except TimeoutError:
                 _LOGGER.warning("Agora edge connection timed out; trying next")
                 if self._websocket:
-                    try:
+                    with suppress(Exception):
                         await self._websocket.close()
-                    except Exception:
-                        pass
                     self._websocket = None
                 continue
             except (WebSocketException, json.JSONDecodeError):
                 _LOGGER.warning("Agora WebSocket connection failed; trying next")
                 if self._websocket:
-                    try:
+                    with suppress(Exception):
                         await self._websocket.close()
-                    except Exception:
-                        pass
                     self._websocket = None
                 continue
 
@@ -1334,9 +1332,6 @@ class AgoraWebSocketHandler:
     ) -> str | None:
         """Generate SDP answer from ORTC parameters."""
         try:
-            import secrets
-            from collections import defaultdict
-
             ice_params = ortc.get("iceParameters", {})
             dtls_params = ortc.get("dtlsParameters", {})
             # Server may return caps under 'sendrecv', 'recv', or 'send' keys
@@ -1501,8 +1496,7 @@ class AgoraWebSocketHandler:
                 sdp_lines.append(f"a=mid:{mid}")
 
                 # Add candidates from Agora response
-                for cl in candidates_by_mid.get("*", []):
-                    sdp_lines.append(cl)
+                sdp_lines.extend(candidates_by_mid.get("*", []))
 
                 # Add RTP extensions - MUST use offer's extension IDs
                 # Build mapping from offer's extension URIs to their IDs
@@ -1577,8 +1571,7 @@ class AgoraWebSocketHandler:
                 specific = candidates_by_mid.get(mid, []) + candidates_by_mid.get(
                     str(idx), []
                 )
-                for cl in specific:
-                    sdp_lines.append(cl)
+                sdp_lines.extend(specific)
 
                 if specific:
                     _LOGGER.debug(
@@ -1592,13 +1585,13 @@ class AgoraWebSocketHandler:
             # _LOGGER.info("Generated SDP lines count: %s", len(sdp_lines))
             # _LOGGER.debug("Generated SDP content: %s", generated_sdp)
 
+        except (KeyError, ValueError, AttributeError) as ex:
+            _LOGGER.error("Failed to generate answer SDP: %s", ex)
+            return None
+        else:
             if self._validate_sdp(generated_sdp):
                 return generated_sdp
             _LOGGER.error("Generated SDP failed validation")
-            return None
-
-        except (KeyError, ValueError, AttributeError) as ex:
-            _LOGGER.error("Failed to generate answer SDP: %s", ex)
             return None
 
     def _validate_sdp(self, sdp: str) -> bool:
@@ -1876,10 +1869,8 @@ class AgoraWebSocketHandler:
             self._ping_task = None
 
         if self._websocket:
-            try:
+            with suppress(Exception):
                 await self._websocket.close()
-            except Exception:  # noqa: BLE001
-                pass
             self._websocket = None
 
         self._connection_state = "DISCONNECTED"
@@ -1964,7 +1955,6 @@ class AgoraWebSocketHandler:
         try:
             # Attempt to create an IPv4Address object
             ipaddress.IPv4Address(ip_string)
-            return True
         except ipaddress.AddressValueError:
             # If it's not a valid IPv4 address, an exception will be raised
             return False
@@ -1973,3 +1963,5 @@ class AgoraWebSocketHandler:
             # and ensure it's specifically an IPv4Address error.
             # This is a more robust way to handle potential edge cases.
             return False
+        else:
+            return True

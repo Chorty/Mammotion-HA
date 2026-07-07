@@ -401,7 +401,6 @@ def generate_answer_from_ortc(
     dtls = ortc_params.get("dtlsParameters", {})
     ice = ortc_params.get("iceParameters", {})
     rtp_caps = ortc_params.get("rtpCapabilities", {})
-    cname = ortc_params.get("cname", "")
     offer_parsed = offer_sdp
 
     # setup logic from yx(): server -> passive, client -> active, auto -> actpass
