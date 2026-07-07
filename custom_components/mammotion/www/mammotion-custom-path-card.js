@@ -5,15 +5,20 @@ class MammotionCustomPathCard extends HTMLElement {
     this._hass = null;
     this._config = {};
     this._mapData = null;
-    this._points = [];
+    this._targetPoint = null;
+    this._runtimeState = null;
     this._areaHash = "";
     this._mapT = null;
-    this._dragIndex = null;
+    this._draggingTarget = false;
     this._height = 520;
-    this._status = "Load a mower map, then click inside an area to add path points.";
+    this._status = "Load map/runtime, then click a target point. Movement requires explicit Real Go confirmation.";
     this._validation = null;
     this._dryRun = null;
+    this._realRun = null;
     this._loadingMap = false;
+    this._loadingRuntime = false;
+    this._confirmBladesOff = false;
+    this._confirmClearArea = false;
     this._rendered = false;
   }
 
@@ -24,6 +29,10 @@ class MammotionCustomPathCard extends HTMLElement {
     this._config = {
       speed: 0.2,
       blade_mode: "off",
+      prefer_ble: true,
+      max_turn_commands: 1,
+      max_linear_commands: 1,
+      sample_delays: [0, 5, 10],
       ...config,
     };
     this._height = Number(this._config.card_height || 520);
@@ -37,6 +46,9 @@ class MammotionCustomPathCard extends HTMLElement {
     }
     if (!this._mapData && !this._loadingMap) {
       this._loadMap();
+    }
+    if (!this._runtimeState && !this._loadingRuntime) {
+      this._loadRuntimeState();
     }
   }
 
@@ -79,7 +91,7 @@ class MammotionCustomPathCard extends HTMLElement {
       const areaHashes = Object.keys(this._mapData?.area_polygons || {});
       this._areaHash = this._areaHash || areaHashes[0] || "";
       this._status = areaHashes.length
-        ? "Click inside an area to add points. Drag points to edit."
+        ? "Map loaded. Click target point, then run dry-run or Real Go."
         : "Map loaded, but no area geometry is available.";
       this._render();
       await this._validateAndPreview();
@@ -88,6 +100,22 @@ class MammotionCustomPathCard extends HTMLElement {
       this._render();
     } finally {
       this._loadingMap = false;
+    }
+  }
+
+  async _loadRuntimeState() {
+    if (!this._hass || !this._config.entity) return;
+    if (this._loadingRuntime) return;
+    this._loadingRuntime = true;
+    try {
+      this._runtimeState = await this._callService("export_runtime_state", {});
+      this._render();
+      await this._validateAndPreview();
+    } catch (err) {
+      this._status = `Runtime load failed: ${err?.message || err}`;
+      this._render();
+    } finally {
+      this._loadingRuntime = false;
     }
   }
 
@@ -102,7 +130,81 @@ class MammotionCustomPathCard extends HTMLElement {
 
   _getAllPoints() {
     const polygons = this._mapData?.area_polygons || {};
-    return Object.values(polygons).flat();
+    const points = Object.values(polygons).flat();
+    const start = this._currentPositionPoint();
+    if (start) points.push(start);
+    if (this._targetPoint) points.push(this._targetPoint);
+    return points;
+  }
+
+  _currentPositionPoint() {
+    const pos = this._runtimeState?.position || {};
+    if (pos.x == null || pos.y == null) {
+      return null;
+    }
+    return {
+      x: Number(pos.x),
+      y: Number(pos.y),
+    };
+  }
+
+  _segmentPoints() {
+    const start = this._currentPositionPoint();
+    if (!start || !this._targetPoint) {
+      return null;
+    }
+    return [start, this._targetPoint].map((point) => this._roundedPoint(point));
+  }
+
+  _preflight() {
+    const blockers = [];
+    const runtime = this._runtimeState || {};
+    const safety = runtime.safety || {};
+    const start = this._currentPositionPoint();
+    if (!start) {
+      blockers.push("position_unavailable");
+    }
+    if (!this._targetPoint) {
+      blockers.push("target_unset");
+    }
+    if (safety.allowed_for_manual_motion === false) {
+      if (Array.isArray(safety.blockers) && safety.blockers.length) {
+        blockers.push(...safety.blockers);
+      } else {
+        blockers.push("runtime_safety_blocked");
+      }
+    }
+    if (!this._validation?.valid) {
+      blockers.push("path_validation_failed");
+    }
+    return {
+      safe: blockers.length === 0,
+      blockers,
+      runtime,
+    };
+  }
+
+  _runtimePreflightDetails() {
+    const runtime = this._runtimeState || {};
+    const safety = runtime.safety || {};
+    const routeStatus = safety.active_route_status || {};
+    const activeTransport = runtime.active_transport ?? "unknown";
+    const bladeSafe = safety.blade_safe_for_motion === true;
+    const activeMowing = safety.active_mowing_detected === true;
+    const chargingNow = String(runtime.charge_state_label || runtime.charge_state || "").toLowerCase().includes("charging");
+    const routeBlocks = routeStatus.blocks_motion === true;
+    return {
+      activeTransport,
+      bladeSafeLabel: bladeSafe ? "safe" : "unsafe",
+      mowingReadinessLabel: activeMowing ? "blocked (active mowing detected)" : "ready",
+      chargingReadinessLabel: chargingNow ? "charging now" : "not charging",
+      routeBlockingLabel: routeBlocks
+        ? `blocking (${routeStatus.reason || "unknown_reason"})`
+        : `clear (${routeStatus.reason || "no_route"})`,
+      haState: runtime.ha_state ?? "unknown",
+      workMode: runtime.work_mode_label ?? runtime.work_mode ?? "unknown",
+      chargeState: runtime.charge_state_label ?? runtime.charge_state ?? "unknown",
+    };
   }
 
   _computeMapTransform() {
@@ -201,14 +303,20 @@ class MammotionCustomPathCard extends HTMLElement {
   }
 
   async _validateAndPreview() {
-    if (!this._hass || this._points.length < 1) {
+    if (!this._hass) {
+      this._validation = null;
+      this._renderMap();
+      return;
+    }
+    const points = this._segmentPoints();
+    if (!points) {
       this._validation = null;
       this._renderMap();
       return;
     }
     try {
       const data = {
-        points: this._points,
+        points,
         speed: Number(this._config.speed || 0.2),
         blade_mode: "off",
       };
@@ -217,7 +325,7 @@ class MammotionCustomPathCard extends HTMLElement {
       }
       this._validation = await this._callService("preview_custom_path", data);
       this._status = this._validation.valid
-        ? `Valid path: ${this._validation.point_count} points, distance ${Number(this._validation.distance || 0).toFixed(2)}`
+        ? `Preview valid: ${this._validation.point_count} points, distance ${Number(this._validation.distance || 0).toFixed(2)}.`
         : `Invalid path: ${(this._validation.errors || []).join(", ")}`;
       this._render();
     } catch (err) {
@@ -230,45 +338,48 @@ class MammotionCustomPathCard extends HTMLElement {
     if (event.target?.dataset?.pointIndex != null || !this._mapT) return;
     const point = this._svgPointFromEvent(event);
     if (!point) return;
-    this._points = [...this._points, point];
+    this._targetPoint = point;
     this._dryRun = null;
+    this._realRun = null;
     this._validateAndPreview();
   }
 
   _onPointDown(event) {
     event.stopPropagation();
-    this._dragIndex = Number(event.target.dataset.pointIndex);
+    if (event.target?.dataset?.pointIndex !== "0") return;
+    this._draggingTarget = true;
     event.target.setPointerCapture(event.pointerId);
   }
 
   _onPointerMove(event) {
-    if (this._dragIndex == null) return;
+    if (!this._draggingTarget) return;
     const point = this._svgPointFromEvent(event);
     if (!point) return;
-    this._points = this._points.map((existing, index) =>
-      index === this._dragIndex ? point : existing,
-    );
+    this._targetPoint = point;
     this._dryRun = null;
+    this._realRun = null;
     this._renderMap();
   }
 
   _onPointerUp() {
-    if (this._dragIndex == null) return;
-    this._dragIndex = null;
+    if (!this._draggingTarget) return;
+    this._draggingTarget = false;
     this._validateAndPreview();
   }
 
-  _clearPath() {
-    this._points = [];
+  _clearTarget() {
+    this._targetPoint = null;
     this._validation = null;
     this._dryRun = null;
-    this._status = "Path cleared.";
+    this._realRun = null;
+    this._status = "Target cleared.";
     this._render();
   }
 
-  _undoPoint() {
-    this._points = this._points.slice(0, -1);
+  _undoTarget() {
+    this._targetPoint = null;
     this._dryRun = null;
+    this._realRun = null;
     this._validateAndPreview();
   }
 
@@ -280,11 +391,13 @@ class MammotionCustomPathCard extends HTMLElement {
   }
 
   _previewPayload() {
+    const points = this._segmentPoints();
+    if (!points) return null;
     const payload = {
       entity_id: this._config.entity,
       speed: Number(this._config.speed || 0.2),
       blade_mode: "off",
-      points: this._points.map((point) => this._roundedPoint(point)),
+      points,
     };
     if (this._areaHash) {
       payload.area_hash = String(this._areaHash);
@@ -293,19 +406,46 @@ class MammotionCustomPathCard extends HTMLElement {
   }
 
   _dryRunPayload() {
+    const payload = this._previewPayload();
+    if (!payload) return null;
     return {
-      ...this._previewPayload(),
+      ...payload,
       dry_run: true,
     };
   }
 
+  _vectorPayload(dryRun) {
+    const points = this._segmentPoints();
+    if (!points) return null;
+    const payload = {
+      entity_id: this._config.entity,
+      points,
+      dry_run: dryRun,
+      confirm_blades_off: dryRun ? false : this._confirmBladesOff,
+      confirm_clear_area: dryRun ? false : this._confirmClearArea,
+      prefer_ble: Boolean(this._config.prefer_ble ?? true),
+      max_turn_commands: Number(this._config.max_turn_commands || 1),
+      max_linear_commands: Number(this._config.max_linear_commands || 1),
+      sample_delays: Array.isArray(this._config.sample_delays)
+        ? this._config.sample_delays
+        : [0, 5, 10],
+    };
+    if (this._areaHash) {
+      payload.area_hash = String(this._areaHash);
+    }
+    return payload;
+  }
+
   _payloadYaml() {
     const payload = this._previewPayload();
+    if (!payload) return "";
     return this._yamlForPayload(payload);
   }
 
   _dryRunYaml() {
-    return this._yamlForPayload(this._dryRunPayload());
+    const payload = this._dryRunPayload();
+    if (!payload) return "";
+    return this._yamlForPayload(payload);
   }
 
   _yamlForPayload(payload) {
@@ -329,11 +469,15 @@ class MammotionCustomPathCard extends HTMLElement {
   }
 
   _payloadJson() {
-    return `${JSON.stringify(this._previewPayload(), null, 2)}\n`;
+    const payload = this._previewPayload();
+    if (!payload) return "";
+    return `${JSON.stringify(payload, null, 2)}\n`;
   }
 
   _dryRunJson() {
-    return `${JSON.stringify(this._dryRunPayload(), null, 2)}\n`;
+    const payload = this._dryRunPayload();
+    if (!payload) return "";
+    return `${JSON.stringify(payload, null, 2)}\n`;
   }
 
   async _copyText(text, label) {
@@ -359,8 +503,8 @@ class MammotionCustomPathCard extends HTMLElement {
   }
 
   _copyYaml() {
-    if (!this._points.length) {
-      this._status = "Draw at least one point before copying YAML.";
+    if (!this._targetPoint) {
+      this._status = "Set a target point before copying YAML.";
       this._render();
       return;
     }
@@ -368,8 +512,8 @@ class MammotionCustomPathCard extends HTMLElement {
   }
 
   _copyJson() {
-    if (!this._points.length) {
-      this._status = "Draw at least one point before copying JSON.";
+    if (!this._targetPoint) {
+      this._status = "Set a target point before copying JSON.";
       this._render();
       return;
     }
@@ -377,8 +521,8 @@ class MammotionCustomPathCard extends HTMLElement {
   }
 
   _copyDryRunYaml() {
-    if (!this._points.length) {
-      this._status = "Draw at least one point before copying dry-run YAML.";
+    if (!this._targetPoint) {
+      this._status = "Set a target point before copying dry-run YAML.";
       this._render();
       return;
     }
@@ -386,21 +530,91 @@ class MammotionCustomPathCard extends HTMLElement {
   }
 
   async _runDryRun() {
-    if (this._points.length < 2) {
-      this._status = "Draw at least two points before running the dry-run planner.";
+    const payload = this._vectorPayload(true);
+    if (!payload) {
+      this._status = "Set a target point and ensure live mower position is available before dry-run.";
       this._render();
       return;
     }
-    this._status = "Running dry-run planner…";
+    this._status = "Running guarded one-segment dry-run…";
     this._render();
     try {
-      this._dryRun = await this._callService("dry_run_custom_path", this._dryRunPayload());
-      const segmentCount = this._dryRun?.segments?.length || 0;
-      const seconds = Number(this._dryRun?.estimated_total_seconds || 0).toFixed(1);
-      this._status = `Dry-run complete: ${segmentCount} segments, estimated ${seconds}s. No mower command was sent.`;
+      this._dryRun = await this._callService(
+        "raw_pymammotion_execute_vector_segment",
+        payload,
+      );
+      const stopReason = this._dryRun?.stop_reason || "unknown";
+      this._status = `Dry-run complete. stop_reason=${stopReason}. No mower command was sent.`;
       this._render();
     } catch (err) {
       this._status = `Dry-run failed: ${err?.message || err}`;
+      this._render();
+    }
+  }
+
+  async _runRealGo() {
+    const preflight = this._preflight();
+    const payload = this._vectorPayload(false);
+    if (!payload) {
+      this._status = "Set a target point and ensure live mower position is available before Real Go.";
+      this._render();
+      return;
+    }
+    if (!this._confirmBladesOff || !this._confirmClearArea) {
+      this._status = "Real Go blocked: enable both confirmations first.";
+      this._render();
+      return;
+    }
+    if (!preflight.safe) {
+      this._status = `Real Go blocked by preflight: ${preflight.blockers.join(", ")}`;
+      this._render();
+      return;
+    }
+    this._status = "Running guarded Real Go (one segment)…";
+    this._render();
+    try {
+      this._realRun = await this._callService(
+        "raw_pymammotion_execute_vector_segment",
+        payload,
+      );
+      const stopReason = this._realRun?.stop_reason || "unknown";
+      const blockers = this._realRun?.blockers || [];
+      this._status = blockers.length
+        ? `Real Go complete: stop_reason=${stopReason}, blockers=${blockers.join(", ")}`
+        : `Real Go complete: stop_reason=${stopReason}`;
+      await this._loadRuntimeState();
+      this._render();
+    } catch (err) {
+      this._status = `Real Go failed: ${err?.message || err}`;
+      this._render();
+    }
+  }
+
+  async _abortMotion() {
+    if (!this._confirmBladesOff || !this._confirmClearArea) {
+      this._status = "Abort requires both confirmations enabled.";
+      this._render();
+      return;
+    }
+    this._status = "Sending zero-motion stop nudge…";
+    this._render();
+    try {
+      const abortResult = await this._callService("raw_pymammotion_motion_probe", {
+        command: "send_movement",
+        linear_speed: 0,
+        angular_speed: 0,
+        prefer_ble: Boolean(this._config.prefer_ble ?? true),
+        dry_run: false,
+        confirm_blades_off: true,
+        confirm_clear_area: true,
+        sample_delays: [0],
+      });
+      const status = abortResult?.command_result?.ok === true ? "ok" : "failed";
+      this._status = `Abort result: ${status}`;
+      await this._loadRuntimeState();
+      this._render();
+    } catch (err) {
+      this._status = `Abort failed: ${err?.message || err}`;
       this._render();
     }
   }
@@ -454,9 +668,10 @@ class MammotionCustomPathCard extends HTMLElement {
       svgEl.appendChild(label);
     }
 
-    if (this._points.length >= 2) {
+    const start = this._currentPositionPoint();
+    if (start && this._targetPoint) {
       const path = el("polyline", {
-        points: this._points
+        points: [start, this._targetPoint]
           .map((point) => `${mt.toSX(point.x).toFixed(1)},${mt.toSY(point.y).toFixed(1)}`)
           .join(" "),
         fill: "none",
@@ -468,12 +683,26 @@ class MammotionCustomPathCard extends HTMLElement {
       svgEl.appendChild(path);
     }
 
-    this._points.forEach((point, index) => {
+    if (start) {
+      const startCircle = el("circle", {
+        cx: mt.toSX(start.x).toFixed(1),
+        cy: mt.toSY(start.y).toFixed(1),
+        r: 7,
+        fill: "#22c55e",
+        stroke: "#111827",
+        "stroke-width": "2",
+      });
+      svgEl.appendChild(startCircle);
+    }
+
+    if (this._targetPoint) {
+      const point = this._targetPoint;
+      const index = 0;
       const circle = el("circle", {
         cx: mt.toSX(point.x).toFixed(1),
         cy: mt.toSY(point.y).toFixed(1),
-        r: index === 0 || index === this._points.length - 1 ? 7 : 5,
-        fill: index === 0 ? "#22c55e" : index === this._points.length - 1 ? "#f97316" : "#eab308",
+        r: 7,
+        fill: "#f97316",
         stroke: "#111827",
         "stroke-width": "2",
         "data-point-index": index,
@@ -481,33 +710,53 @@ class MammotionCustomPathCard extends HTMLElement {
       });
       circle.addEventListener("pointerdown", (event) => this._onPointDown(event));
       svgEl.appendChild(circle);
-    });
+    }
   }
 
   _render() {
     const areas = this._mapData?.areas || [];
-    const undoDisabled = this._points.length ? "" : "disabled";
+    const targetSet = Boolean(this._targetPoint);
+    const undoDisabled = targetSet ? "" : "disabled";
+    const preflight = this._preflight();
+    const preflightText = preflight.safe
+      ? "Preflight: safe"
+      : `Preflight blockers: ${preflight.blockers.join(", ")}`;
+    const runtimePanel = this._runtimePreflightDetails();
+    const realGoDisabled =
+      !targetSet ||
+      !this._confirmBladesOff ||
+      !this._confirmClearArea ||
+      !preflight.safe;
     this.shadowRoot.innerHTML = `
       <style>
         ha-card { overflow: hidden; }
         .toolbar { display: flex; gap: 8px; align-items: center; padding: 12px; flex-wrap: wrap; }
         .status { padding: 0 12px 12px; color: var(--secondary-text-color); font-size: 13px; }
         .warnings { padding: 0 12px 12px; color: #f59e0b; font-size: 12px; }
+        .preflight-panel { margin: 0 12px 12px; padding: 8px 10px; border: 1px solid rgba(127,127,127,0.35); border-radius: 6px; font-size: 12px; color: var(--secondary-text-color); }
+        .preflight-panel .title { font-weight: 600; margin-bottom: 6px; color: var(--primary-text-color); }
+        .preflight-row { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
+        .preflight-row .label { opacity: 0.85; }
+        .preflight-row .value { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; text-align: right; }
         details { padding: 0 12px 12px; color: var(--secondary-text-color); font-size: 12px; }
         summary { cursor: pointer; }
         pre { overflow: auto; max-height: 220px; padding: 8px; background: rgba(127,127,127,0.12); border-radius: 4px; }
         svg { display: block; width: 100%; height: ${this._height}px; background: #0d1117; touch-action: none; cursor: crosshair; }
         select, button { font: inherit; }
       </style>
-      <ha-card header="Mammotion custom path preview">
+      <ha-card header="Mammotion click/go (guarded one segment)">
         <div class="toolbar">
-          <button id="reload" type="button">Reload map</button>
-          <button id="undo" type="button" ${undoDisabled}>Undo point</button>
-          <button id="clear" type="button">Clear path</button>
+          <button id="reload" type="button">Reload map/runtime</button>
+          <button id="undo" type="button" ${undoDisabled}>Clear target</button>
+          <button id="clear" type="button">Reset</button>
           <button id="copy-yaml" type="button" ${undoDisabled}>Copy YAML</button>
           <button id="copy-json" type="button" ${undoDisabled}>Copy JSON</button>
           <button id="copy-dry-run-yaml" type="button" ${undoDisabled}>Copy dry-run YAML</button>
-          <button id="dry-run" type="button" ${this._points.length >= 2 ? "" : "disabled"}>Run dry-run</button>
+          <button id="dry-run" type="button" ${targetSet ? "" : "disabled"}>Run dry-run</button>
+          <button id="real-go" type="button" ${realGoDisabled ? "disabled" : ""}>Real Go</button>
+          <button id="abort" type="button">Abort/Stop Nudge</button>
+          <label><input id="confirm-blades-off" type="checkbox" ${this._confirmBladesOff ? "checked" : ""}/> confirm blades off</label>
+          <label><input id="confirm-clear-area" type="checkbox" ${this._confirmClearArea ? "checked" : ""}/> confirm clear area</label>
           <label>Area
             <select id="area">
               ${areas.map((area) => `<option value="${this._escapeHtml(area.area_hash)}" ${String(area.area_hash) === String(this._areaHash) ? "selected" : ""}>${this._escapeHtml(area.name || area.area_hash)}</option>`).join("")}
@@ -516,19 +765,45 @@ class MammotionCustomPathCard extends HTMLElement {
         </div>
         <svg id="path-map"></svg>
         <div class="status">${this._escapeHtml(this._status)}</div>
+        <div class="status">${this._escapeHtml(preflightText)}</div>
+        <div class="preflight-panel">
+          <div class="title">Runtime preflight details</div>
+          <div class="preflight-row"><span class="label">active_transport</span><span class="value">${this._escapeHtml(runtimePanel.activeTransport)}</span></div>
+          <div class="preflight-row"><span class="label">blade-safe status</span><span class="value">${this._escapeHtml(runtimePanel.bladeSafeLabel)}</span></div>
+          <div class="preflight-row"><span class="label">mowing readiness</span><span class="value">${this._escapeHtml(runtimePanel.mowingReadinessLabel)}</span></div>
+          <div class="preflight-row"><span class="label">charging readiness</span><span class="value">${this._escapeHtml(runtimePanel.chargingReadinessLabel)}</span></div>
+          <div class="preflight-row"><span class="label">route-blocking status</span><span class="value">${this._escapeHtml(runtimePanel.routeBlockingLabel)}</span></div>
+          <div class="preflight-row"><span class="label">ha_state</span><span class="value">${this._escapeHtml(runtimePanel.haState)}</span></div>
+          <div class="preflight-row"><span class="label">work_mode</span><span class="value">${this._escapeHtml(runtimePanel.workMode)}</span></div>
+          <div class="preflight-row"><span class="label">charge_state</span><span class="value">${this._escapeHtml(runtimePanel.chargeState)}</span></div>
+        </div>
         ${(this._validation?.warnings || []).length ? `<div class="warnings">Warnings: ${this._escapeHtml(this._validation.warnings.join(", "))}</div>` : ""}
-        ${this._points.length ? `<details><summary>Preview service YAML</summary><pre>${this._escapeHtml(this._payloadYaml())}</pre></details>` : ""}
-        ${this._points.length ? `<details><summary>Dry-run service YAML</summary><pre>${this._escapeHtml(this._dryRunYaml())}</pre></details>` : ""}
+        ${targetSet ? `<details><summary>Preview service YAML</summary><pre>${this._escapeHtml(this._payloadYaml())}</pre></details>` : ""}
+        ${targetSet ? `<details><summary>Dry-run service YAML</summary><pre>${this._escapeHtml(this._dryRunYaml())}</pre></details>` : ""}
         ${this._dryRun ? `<details><summary>Last dry-run result</summary><pre>${this._escapeHtml(JSON.stringify(this._dryRun, null, 2))}</pre></details>` : ""}
+        ${this._realRun ? `<details><summary>Last Real Go result</summary><pre>${this._escapeHtml(JSON.stringify(this._realRun, null, 2))}</pre></details>` : ""}
       </ha-card>
     `;
-    this._q("#reload")?.addEventListener("click", () => this._loadMap());
-    this._q("#undo")?.addEventListener("click", () => this._undoPoint());
-    this._q("#clear")?.addEventListener("click", () => this._clearPath());
+    this._q("#reload")?.addEventListener("click", async () => {
+      await this._loadMap();
+      await this._loadRuntimeState();
+    });
+    this._q("#undo")?.addEventListener("click", () => this._undoTarget());
+    this._q("#clear")?.addEventListener("click", () => this._clearTarget());
     this._q("#copy-yaml")?.addEventListener("click", () => this._copyYaml());
     this._q("#copy-json")?.addEventListener("click", () => this._copyJson());
     this._q("#copy-dry-run-yaml")?.addEventListener("click", () => this._copyDryRunYaml());
     this._q("#dry-run")?.addEventListener("click", () => this._runDryRun());
+    this._q("#real-go")?.addEventListener("click", () => this._runRealGo());
+    this._q("#abort")?.addEventListener("click", () => this._abortMotion());
+    this._q("#confirm-blades-off")?.addEventListener("change", (event) => {
+      this._confirmBladesOff = Boolean(event.target.checked);
+      this._render();
+    });
+    this._q("#confirm-clear-area")?.addEventListener("change", (event) => {
+      this._confirmClearArea = Boolean(event.target.checked);
+      this._render();
+    });
     this._q("#area")?.addEventListener("change", (event) => {
       this._areaHash = event.target.value;
       this._validateAndPreview();
@@ -547,6 +822,6 @@ customElements.define("mammotion-custom-path-card", MammotionCustomPathCard);
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: "mammotion-custom-path-card",
-  name: "Mammotion Custom Path Preview",
-  description: "Draw and validate Mammotion mower-map paths without movement.",
+  name: "Mammotion Click/Go (Guarded)",
+  description: "Select one target point and run guarded one-segment dry-run or Real Go.",
 });

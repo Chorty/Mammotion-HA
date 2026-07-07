@@ -363,6 +363,35 @@
       },
       "last_map_task_error": {
         "name": "Last map/task error"
+      },
+      "active_transport": {
+        "name": "Aktivni prenos",
+        "state": {
+          "ble": "BLE",
+          "cloud_aliyun": "Cloud (Aliyun)",
+          "cloud_mammotion": "Cloud (Mammotion)",
+          "none": "Brez",
+          "unknown": "Neznano"
+        }
+      },
+      "ble_only_fallback_mode": {
+        "name": "Način zasilnega delovanja samo BLE",
+        "state": {
+          "normal": "Običajno",
+          "fallback_active": "Zasilni način aktiven"
+        }
+      },
+      "last_cloud_login_success": {
+        "name": "Zadnja uspešna prijava v oblak"
+      },
+      "last_token_refresh": {
+        "name": "Zadnja osvežitev žetona"
+      },
+      "last_command_failure_reason": {
+        "name": "Zadnji razlog za napako ukaza"
+      },
+      "last_camera_stream_failure_code": {
+        "name": "Zadnja koda napake toka kamere"
       }
     },
     "button": {
@@ -407,6 +436,12 @@
       },
       "camera_wiper": {
         "name": "Run camera wiper"
+      },
+      "refresh_camera_stream": {
+        "name": "Osveži tok kamere"
+      },
+      "refresh_cloud_session": {
+        "name": "Osveži sejo v oblaku"
       }
     },
     "switch": {

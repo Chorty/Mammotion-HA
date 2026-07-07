@@ -273,6 +273,30 @@ get_map_data:
         entity:
           integration: mammotion
 
+get_geojson:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+
+get_mow_path_geojson:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+
+get_mow_progress_geojson:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+
 get_tasks:
   fields:
     entity_id:
@@ -298,6 +322,23 @@ export_map:
           integration: mammotion
 
 export_tasks:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+
+export_runtime_state:
+  description: Read-only runtime telemetry and manual-motion safety blockers used for click/go preflight. Sends no movement commands.
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+
+export_active_route:
   fields:
     entity_id:
       required: true
@@ -342,6 +383,7 @@ validate_custom_path:
             - "off"
 
 preview_custom_path:
+  description: Read-only validation and preview for a proposed click/go segment. Sends no movement commands.
   fields:
     entity_id:
       required: true
@@ -427,6 +469,7 @@ dry_run_custom_path:
         boolean:
 
 execute_custom_path:
+  description: Readiness-only custom path planning endpoint. Real movement remains blocked in this implementation.
   fields:
     entity_id:
       required: true
@@ -511,6 +554,34 @@ manual_velocity_pulse_test:
           max: 750
           step: 50
           unit_of_measurement: ms
+    stop_mode:
+      required: false
+      default: "immediate"
+      selector:
+        select:
+          options:
+            - "immediate"
+            - "delayed"
+            - "firmware"
+    stop_delay_ms:
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 5000
+          step: 250
+          unit_of_measurement: ms
+    post_command_sample_delays:
+      required: false
+      default:
+        - 0
+        - 2
+        - 10
+        - 30
+        - 60
+      selector:
+        object:
     use_wifi:
       required: false
       default: false
@@ -649,6 +720,1008 @@ manual_velocity_segment_test:
       selector:
         boolean:
 
+raw_pymammotion_motion_probe:
+  description: Low-level movement diagnostic endpoint. Used for guarded stop-nudge/telemetry probes with explicit confirmations for real commands.
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+    command:
+      required: false
+      default: "send_movement"
+      selector:
+        select:
+          options:
+            - "send_movement"
+            - "move_forward"
+            - "move_back"
+            - "move_left"
+            - "move_right"
+    linear_speed:
+      required: false
+      default: 400
+      selector:
+        number:
+          min: -1000
+          max: 1000
+          step: 50
+    angular_speed:
+      required: false
+      default: 0
+      selector:
+        number:
+          min: -1000
+          max: 1000
+          step: 50
+    speed:
+      required: false
+      default: 0.4
+      selector:
+        number:
+          min: 0.05
+          max: 0.4
+          step: 0.05
+    prefer_ble:
+      required: false
+      default: true
+      selector:
+        boolean:
+    sample_delays:
+      required: false
+      default:
+        - 0
+        - 5
+        - 10
+        - 20
+        - 30
+        - 45
+        - 60
+      selector:
+        object:
+    dry_run:
+      required: false
+      default: true
+      selector:
+        boolean:
+    confirm_blades_off:
+      required: false
+      default: false
+      selector:
+        boolean:
+    confirm_clear_area:
+      required: false
+      default: false
+      selector:
+        boolean:
+
+forward_two_pulse_latency_test:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+    linear_speed:
+      required: false
+      default: 200
+      selector:
+        number:
+          min: 1
+          max: 1000
+          step: 50
+    pulse_count:
+      required: false
+      default: 2
+      selector:
+        number:
+          min: 2
+          max: 5
+          step: 1
+    pulse_gap_seconds:
+      required: false
+      default: 5
+      selector:
+        number:
+          min: 0.5
+          max: 30
+          step: 0.5
+          unit_of_measurement: s
+    telemetry_timeout_seconds:
+      required: false
+      default: 60
+      selector:
+        number:
+          min: 5
+          max: 300
+          step: 5
+          unit_of_measurement: s
+    telemetry_sample_interval_seconds:
+      required: false
+      default: 1
+      selector:
+        number:
+          min: 0.5
+          max: 10
+          step: 0.5
+          unit_of_measurement: s
+    min_position_change_distance:
+      required: false
+      default: 0.003
+      selector:
+        number:
+          min: 0
+          max: 0.5
+          step: 0.001
+          unit_of_measurement: m
+    prefer_ble:
+      required: false
+      default: true
+      selector:
+        boolean:
+    dry_run:
+      required: false
+      default: true
+      selector:
+        boolean:
+    confirm_blades_off:
+      required: false
+      default: false
+      selector:
+        boolean:
+    confirm_clear_area:
+      required: false
+      default: false
+      selector:
+        boolean:
+
+position_feedback_diagnostic:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+    linear_speed:
+      required: false
+      default: 200
+      selector:
+        number:
+          min: 1
+          max: 1000
+          step: 50
+    pulse_count:
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 5
+          step: 1
+    pulse_gap_seconds:
+      required: false
+      default: 5
+      selector:
+        number:
+          min: 0.5
+          max: 30
+          step: 0.5
+          unit_of_measurement: s
+    refresh_wait_seconds:
+      required: false
+      default: 2
+      selector:
+        number:
+          min: 0
+          max: 30
+          step: 0.5
+          unit_of_measurement: s
+    prefer_ble:
+      required: false
+      default: true
+      selector:
+        boolean:
+    dry_run:
+      required: false
+      default: true
+      selector:
+        boolean:
+    confirm_blades_off:
+      required: false
+      default: false
+      selector:
+        boolean:
+    confirm_clear_area:
+      required: false
+      default: false
+      selector:
+        boolean:
+
+raw_pymammotion_execute_segment:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+    points:
+      required: true
+      selector:
+        object:
+    area_hash:
+      required: false
+      selector:
+        text:
+    dry_run:
+      required: false
+      default: true
+      selector:
+        boolean:
+    confirm_blades_off:
+      required: false
+      default: false
+      selector:
+        boolean:
+    confirm_clear_area:
+      required: false
+      default: false
+      selector:
+        boolean:
+    prefer_ble:
+      required: false
+      default: true
+      selector:
+        boolean:
+    linear_speed_fast:
+      required: false
+      default: 400
+      selector:
+        number:
+          min: 1
+          max: 1000
+          step: 50
+    linear_speed_slow:
+      required: false
+      default: 200
+      selector:
+        number:
+          min: 1
+          max: 1000
+          step: 50
+    max_commands:
+      required: false
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 3
+          step: 1
+    waypoint_tolerance:
+      required: false
+      default: 0.08
+      selector:
+        number:
+          min: 0.02
+          max: 0.5
+          step: 0.01
+          unit_of_measurement: m
+    min_progress_distance:
+      required: false
+      default: 0.01
+      selector:
+        number:
+          min: 0
+          max: 0.5
+          step: 0.005
+          unit_of_measurement: m
+    sample_delays:
+      required: false
+      default:
+        - 0
+        - 5
+        - 10
+        - 20
+        - 30
+        - 45
+        - 60
+      selector:
+        object:
+
+raw_pymammotion_angular_calibration:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+    direction:
+      required: false
+      default: "positive_heading"
+      selector:
+        select:
+          options:
+            - "positive_heading"
+            - "negative_heading"
+    angular_speed:
+      required: false
+      default: 180
+      selector:
+        number:
+          min: 1
+          max: 1000
+          step: 10
+    target_heading_delta_degrees:
+      required: false
+      default: 10
+      selector:
+        number:
+          min: 1
+          max: 90
+          step: 1
+          unit_of_measurement: °
+    max_commands:
+      required: false
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 5
+          step: 1
+    min_heading_change_degrees:
+      required: false
+      default: 1
+      selector:
+        number:
+          min: 0.1
+          max: 45
+          step: 0.1
+          unit_of_measurement: °
+    max_translation_distance:
+      required: false
+      default: 0.25
+      selector:
+        number:
+          min: 0
+          max: 2
+          step: 0.01
+          unit_of_measurement: m
+    prefer_ble:
+      required: false
+      default: true
+      selector:
+        boolean:
+    sample_delays:
+      required: false
+      default:
+        - 0
+        - 5
+        - 10
+        - 20
+        - 30
+        - 45
+        - 60
+      selector:
+        object:
+    dry_run:
+      required: false
+      default: true
+      selector:
+        boolean:
+    confirm_blades_off:
+      required: false
+      default: false
+      selector:
+        boolean:
+    confirm_clear_area:
+      required: false
+      default: false
+      selector:
+        boolean:
+
+raw_pymammotion_turn_to_heading:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+    target_heading_degrees:
+      required: true
+      selector:
+        number:
+          min: -360
+          max: 360
+          step: 1
+          unit_of_measurement: °
+    heading_tolerance_degrees:
+      required: false
+      default: 3
+      selector:
+        number:
+          min: 0.5
+          max: 30
+          step: 0.5
+          unit_of_measurement: °
+    angular_speed_fast:
+      required: false
+      default: 180
+      selector:
+        number:
+          min: 1
+          max: 1000
+          step: 10
+    angular_speed_slow:
+      required: false
+      default: 90
+      selector:
+        number:
+          min: 1
+          max: 1000
+          step: 10
+    slow_turn_threshold_degrees:
+      required: false
+      default: 8
+      selector:
+        number:
+          min: 1
+          max: 45
+          step: 1
+          unit_of_measurement: °
+    max_commands:
+      required: false
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 5
+          step: 1
+    min_heading_change_degrees:
+      required: false
+      default: 0.5
+      selector:
+        number:
+          min: 0.1
+          max: 45
+          step: 0.1
+          unit_of_measurement: °
+    max_translation_distance:
+      required: false
+      default: 0.25
+      selector:
+        number:
+          min: 0
+          max: 2
+          step: 0.01
+          unit_of_measurement: m
+    prefer_ble:
+      required: false
+      default: true
+      selector:
+        boolean:
+    sample_delays:
+      required: false
+      default:
+        - 0
+        - 5
+        - 10
+        - 20
+        - 30
+        - 45
+        - 60
+      selector:
+        object:
+    dry_run:
+      required: false
+      default: true
+      selector:
+        boolean:
+    confirm_blades_off:
+      required: false
+      default: false
+      selector:
+        boolean:
+    confirm_clear_area:
+      required: false
+      default: false
+      selector:
+        boolean:
+
+raw_motion_readiness_test:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+    dry_run:
+      required: false
+      default: true
+      selector:
+        boolean:
+    confirm_blades_off:
+      required: false
+      default: false
+      selector:
+        boolean:
+    confirm_clear_area:
+      required: false
+      default: false
+      selector:
+        boolean:
+    prefer_ble:
+      required: false
+      default: true
+      selector:
+        boolean:
+    max_real_steps:
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 4
+          step: 1
+    sample_delays:
+      required: false
+      default:
+        - 0
+        - 5
+        - 10
+        - 20
+        - 30
+        - 45
+        - 60
+      selector:
+        object:
+
+raw_vector_readiness_test:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+    dry_run:
+      required: false
+      default: true
+      selector:
+        boolean:
+    confirm_blades_off:
+      required: false
+      default: false
+      selector:
+        boolean:
+    confirm_clear_area:
+      required: false
+      default: false
+      selector:
+        boolean:
+    prefer_ble:
+      required: false
+      default: true
+      selector:
+        boolean:
+    max_real_steps:
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 3
+          step: 1
+    target_distance:
+      required: false
+      default: 0.1
+      selector:
+        number:
+          min: 0.05
+          max: 0.3
+          step: 0.01
+          unit_of_measurement: m
+    turn_delta_degrees:
+      required: false
+      default: 10
+      selector:
+        number:
+          min: 3
+          max: 45
+          step: 1
+          unit_of_measurement: °
+    calibrated_forward_heading_offset_degrees:
+      required: false
+      default: 116.5
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: 0.1
+          unit_of_measurement: °
+    max_turn_commands:
+      required: false
+      default: 4
+      selector:
+        number:
+          min: 1
+          max: 5
+          step: 1
+    max_linear_commands:
+      required: false
+      default: 2
+      selector:
+        number:
+          min: 1
+          max: 3
+          step: 1
+    sample_delays:
+      required: false
+      default:
+        - 0
+        - 5
+        - 10
+        - 20
+        - 30
+        - 45
+        - 60
+      selector:
+        object:
+
+raw_pymammotion_execute_vector_segment:
+  description: Guarded one-segment movement endpoint used by click/go dry-run and Real Go flows.
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+    points:
+      required: true
+      example:
+        - x: 4.33
+          y: 1.16
+        - x: 4.43
+          y: 1.06
+      selector:
+        object:
+    area_hash:
+      required: false
+      selector:
+        text:
+    dry_run:
+      required: false
+      default: true
+      selector:
+        boolean:
+    confirm_blades_off:
+      required: false
+      default: false
+      selector:
+        boolean:
+    confirm_clear_area:
+      required: false
+      default: false
+      selector:
+        boolean:
+    prefer_ble:
+      required: false
+      default: true
+      selector:
+        boolean:
+    linear_speed_fast:
+      required: false
+      default: 400
+      selector:
+        number:
+          min: 1
+          max: 1000
+          step: 50
+    linear_speed_slow:
+      required: false
+      default: 200
+      selector:
+        number:
+          min: 1
+          max: 1000
+          step: 50
+    slow_linear_threshold:
+      required: false
+      default: 0.15
+      selector:
+        number:
+          min: 0.02
+          max: 1
+          step: 0.01
+          unit_of_measurement: m
+    max_turn_commands:
+      required: false
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 5
+          step: 1
+    max_linear_commands:
+      required: false
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 3
+          step: 1
+    heading_tolerance_degrees:
+      required: false
+      default: 3
+      selector:
+        number:
+          min: 0.5
+          max: 30
+          step: 0.5
+          unit_of_measurement: °
+    angular_speed_fast:
+      required: false
+      default: 180
+      selector:
+        number:
+          min: 1
+          max: 1000
+          step: 10
+    angular_speed_slow:
+      required: false
+      default: 180
+      selector:
+        number:
+          min: 1
+          max: 1000
+          step: 10
+    slow_turn_threshold_degrees:
+      required: false
+      default: 8
+      selector:
+        number:
+          min: 1
+          max: 45
+          step: 1
+          unit_of_measurement: °
+    waypoint_tolerance:
+      required: false
+      default: 0.08
+      selector:
+        number:
+          min: 0.02
+          max: 0.5
+          step: 0.01
+          unit_of_measurement: m
+    min_progress_distance:
+      required: false
+      default: 0.01
+      selector:
+        number:
+          min: 0
+          max: 0.5
+          step: 0.005
+          unit_of_measurement: m
+    min_heading_change_degrees:
+      required: false
+      default: 0.5
+      selector:
+        number:
+          min: 0.1
+          max: 45
+          step: 0.1
+          unit_of_measurement: °
+    max_turn_translation_distance:
+      required: false
+      default: 0.25
+      selector:
+        number:
+          min: 0
+          max: 2
+          step: 0.01
+          unit_of_measurement: m
+    calibrated_forward_heading_offset_degrees:
+      required: false
+      default: 116.5
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: 0.1
+          unit_of_measurement: °
+    sample_delays:
+      required: false
+      default:
+        - 0
+        - 5
+        - 10
+        - 20
+        - 30
+        - 45
+        - 60
+      selector:
+        object:
+
+raw_pymammotion_execute_multi_segment:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+    points:
+      required: true
+      example:
+        - x: 4.33
+          y: 1.16
+        - x: 4.43
+          y: 1.06
+        - x: 4.53
+          y: 1.12
+      selector:
+        object:
+    area_hash:
+      required: false
+      selector:
+        text:
+    dry_run:
+      required: false
+      default: true
+      selector:
+        boolean:
+    confirm_blades_off:
+      required: false
+      default: false
+      selector:
+        boolean:
+    confirm_clear_area:
+      required: false
+      default: false
+      selector:
+        boolean:
+    prefer_ble:
+      required: false
+      default: true
+      selector:
+        boolean:
+    max_real_segments:
+      required: false
+      default: 1
+      selector:
+        number:
+          min: 0
+          max: 3
+          step: 1
+    linear_speed_fast:
+      required: false
+      default: 400
+      selector:
+        number:
+          min: 1
+          max: 1000
+          step: 50
+    linear_speed_slow:
+      required: false
+      default: 200
+      selector:
+        number:
+          min: 1
+          max: 1000
+          step: 50
+    slow_linear_threshold:
+      required: false
+      default: 0.15
+      selector:
+        number:
+          min: 0.02
+          max: 1
+          step: 0.01
+          unit_of_measurement: m
+    max_turn_commands:
+      required: false
+      default: 4
+      selector:
+        number:
+          min: 1
+          max: 5
+          step: 1
+    max_linear_commands:
+      required: false
+      default: 2
+      selector:
+        number:
+          min: 1
+          max: 3
+          step: 1
+    heading_tolerance_degrees:
+      required: false
+      default: 3
+      selector:
+        number:
+          min: 0.5
+          max: 30
+          step: 0.5
+          unit_of_measurement: °
+    angular_speed_fast:
+      required: false
+      default: 180
+      selector:
+        number:
+          min: 1
+          max: 1000
+          step: 10
+    angular_speed_slow:
+      required: false
+      default: 180
+      selector:
+        number:
+          min: 1
+          max: 1000
+          step: 10
+    slow_turn_threshold_degrees:
+      required: false
+      default: 8
+      selector:
+        number:
+          min: 1
+          max: 45
+          step: 1
+          unit_of_measurement: °
+    waypoint_tolerance:
+      required: false
+      default: 0.08
+      selector:
+        number:
+          min: 0.02
+          max: 0.5
+          step: 0.01
+          unit_of_measurement: m
+    min_progress_distance:
+      required: false
+      default: 0.01
+      selector:
+        number:
+          min: 0
+          max: 0.5
+          step: 0.005
+          unit_of_measurement: m
+    min_heading_change_degrees:
+      required: false
+      default: 0.5
+      selector:
+        number:
+          min: 0.1
+          max: 45
+          step: 0.1
+          unit_of_measurement: °
+    max_turn_translation_distance:
+      required: false
+      default: 0.25
+      selector:
+        number:
+          min: 0
+          max: 2
+          step: 0.01
+          unit_of_measurement: m
+    calibrated_forward_heading_offset_degrees:
+      required: false
+      default: 116.5
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: 0.1
+          unit_of_measurement: °
+    sample_delays:
+      required: false
+      default:
+        - 0
+        - 5
+        - 10
+        - 20
+        - 30
+        - 45
+        - 60
+      selector:
+        object:
 experimental_execute_segment:
   fields:
     entity_id:
@@ -747,6 +1820,182 @@ experimental_execute_segment:
       selector:
         boolean:
 
+experimental_execute_segment_burst:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+    points:
+      required: true
+      example:
+        - x: 4.51
+          y: -0.54
+        - x: 4.65
+          y: -1.02
+      selector:
+        object:
+    area_hash:
+      required: false
+      selector:
+        text:
+    speed:
+      required: false
+      default: 0.4
+      selector:
+        number:
+          min: 0.05
+          max: 0.4
+          step: 0.05
+    pulse_duration_ms:
+      required: false
+      default: 750
+      selector:
+        number:
+          min: 50
+          max: 750
+          step: 50
+          unit_of_measurement: ms
+    pulses_per_burst:
+      required: false
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 3
+          step: 1
+    max_bursts:
+      required: false
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 3
+          step: 1
+    waypoint_tolerance:
+      required: false
+      default: 0.1
+      selector:
+        number:
+          min: 0.02
+          max: 0.5
+          step: 0.01
+    heading_offset_degrees:
+      required: false
+      default: 0.0
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: 1
+    heading_offset_candidates:
+      required: false
+      default:
+        - 110
+        - 0
+        - 90
+        - -90
+        - 180
+      example:
+        - 110
+        - 0
+        - 90
+        - -90
+        - 180
+      selector:
+        object:
+    stop_mode:
+      required: false
+      default: "firmware"
+      selector:
+        select:
+          options:
+            - "immediate"
+            - "delayed"
+            - "firmware"
+    stop_delay_ms:
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 5000
+          step: 250
+          unit_of_measurement: ms
+    min_progress_distance:
+      required: false
+      default: 0.003
+      selector:
+        number:
+          min: 0
+          max: 0.5
+          step: 0.001
+    min_heading_change_degrees:
+      required: false
+      default: 1.0
+      selector:
+        number:
+          min: 0
+          max: 45
+          step: 0.5
+    allow_unproven_turns:
+      required: false
+      default: false
+      selector:
+        boolean:
+    calibrated_forward_heading_degrees:
+      required: false
+      default: 270
+      selector:
+        number:
+          min: 0
+          max: 360
+          step: 1
+          unit_of_measurement: °
+    calibrated_forward_heading_tolerance_degrees:
+      required: false
+      default: 45
+      selector:
+        number:
+          min: 0
+          max: 180
+          step: 1
+          unit_of_measurement: °
+    cumulative_sample_delays:
+      required: false
+      default:
+        - 0
+        - 10
+        - 20
+        - 30
+        - 45
+        - 60
+        - 90
+        - 120
+      selector:
+        object:
+    use_wifi:
+      required: false
+      default: false
+      selector:
+        boolean:
+    dry_run:
+      required: true
+      default: false
+      selector:
+        boolean:
+    confirm_blades_off:
+      required: true
+      default: true
+      selector:
+        boolean:
+    confirm_clear_area:
+      required: true
+      default: true
+      selector:
+        boolean:
+
 manual_velocity_multi_pulse_test:
   fields:
     entity_id:
@@ -811,6 +2060,24 @@ manual_velocity_multi_pulse_test:
             - "backward"
             - "turn_left"
             - "turn_right"
+    stop_mode:
+      required: false
+      default: "immediate"
+      selector:
+        select:
+          options:
+            - "immediate"
+            - "delayed"
+            - "firmware"
+    stop_delay_ms:
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 5000
+          step: 250
+          unit_of_measurement: ms
     heading_offset_degrees:
       required: false
       default: 0.0
@@ -864,6 +2131,144 @@ manual_velocity_multi_pulse_test:
       selector:
         boolean:
 
+manual_velocity_cumulative_pulse_test:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+    points:
+      required: true
+      example:
+        - x: 4.51
+          y: -0.54
+        - x: 4.65
+          y: -1.02
+      selector:
+        object:
+    area_hash:
+      required: false
+      selector:
+        text:
+    speed:
+      required: false
+      default: 0.4
+      selector:
+        number:
+          min: 0.05
+          max: 0.4
+          step: 0.05
+    pulse_duration_ms:
+      required: false
+      default: 750
+      selector:
+        number:
+          min: 50
+          max: 750
+          step: 50
+          unit_of_measurement: ms
+    max_pulses:
+      required: false
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 5
+          step: 1
+    waypoint_tolerance:
+      required: false
+      default: 0.1
+      selector:
+        number:
+          min: 0.02
+          max: 0.5
+          step: 0.01
+    force_action:
+      required: false
+      default: "auto"
+      selector:
+        select:
+          options:
+            - "auto"
+            - "forward"
+            - "backward"
+            - "turn_left"
+            - "turn_right"
+    heading_offset_degrees:
+      required: false
+      default: 0.0
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: 1
+    heading_offset_candidates:
+      required: false
+      default:
+        - 110
+        - 0
+        - 90
+        - -90
+        - 180
+      example:
+        - 110
+        - 0
+        - 90
+        - -90
+        - 180
+      selector:
+        object:
+    min_progress_distance:
+      required: false
+      default: 0.003
+      selector:
+        number:
+          min: 0
+          max: 0.5
+          step: 0.001
+    min_heading_change_degrees:
+      required: false
+      default: 1.0
+      selector:
+        number:
+          min: 0
+          max: 45
+          step: 0.5
+    cumulative_sample_delays:
+      required: false
+      default:
+        - 0
+        - 10
+        - 20
+        - 30
+        - 45
+        - 60
+        - 90
+        - 120
+      selector:
+        object:
+    use_wifi:
+      required: false
+      default: true
+      selector:
+        boolean:
+    dry_run:
+      required: false
+      default: true
+      selector:
+        boolean:
+    confirm_blades_off:
+      required: false
+      default: false
+      selector:
+        boolean:
+    confirm_clear_area:
+      required: false
+      default: false
+      selector:
+        boolean:
+
 manual_velocity_heading_calibration_test:
   fields:
     entity_id:
@@ -878,6 +2283,7 @@ manual_velocity_heading_calibration_test:
         select:
           options:
             - "forward"
+            - "backward"
             - "turn_left"
             - "turn_right"
     speed:
@@ -899,9 +2305,38 @@ manual_velocity_heading_calibration_test:
           unit_of_measurement: ms
     use_wifi:
       required: false
-      default: true
+      default: false
       selector:
         boolean:
+    stop_mode:
+      required: false
+      default: "firmware"
+      selector:
+        select:
+          options:
+            - "immediate"
+            - "delayed"
+            - "firmware"
+    stop_delay_ms:
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 5000
+          step: 250
+          unit_of_measurement: ms
+    post_command_sample_delays:
+      required: false
+      default:
+        - 0
+        - 10
+        - 20
+        - 30
+        - 45
+        - 60
+      selector:
+        object:
     dry_run:
       required: false
       default: true

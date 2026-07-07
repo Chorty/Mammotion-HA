@@ -182,8 +182,9 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         mower_device = self.manager.get_device_by_name(self.device_name)
         assert mower_device is not None
 
-        if self.data is None:
-            self.data = cast(DataT, mower_device)
+        current_data = cast(DataT | None, getattr(self, "data", None))
+        if current_data is None:
+            setattr(self, "data", cast(DataT, mower_device))
 
     @property
     def has_cloud_account(self) -> bool:

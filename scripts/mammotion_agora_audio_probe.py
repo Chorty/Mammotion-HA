@@ -14,12 +14,12 @@ import urllib.request
 import webbrowser
 from typing import Any
 
-
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PROBE_HTML = ROOT / "agora_test.html"
 
 
 def _load_dotenv(path: pathlib.Path) -> None:
+    """Load simple KEY=VALUE pairs from a dotenv file."""
     if not path.exists():
         return
     for raw_line in path.read_text(encoding="utf-8").splitlines():
@@ -41,6 +41,7 @@ def _post_ha_service(
     *,
     return_response: bool = False,
 ) -> dict[str, Any]:
+    """Call a Mammotion Home Assistant service."""
     suffix = "?return_response=true" if return_response else ""
     url = (
         ha_url.rstrip("/")
@@ -100,6 +101,7 @@ def _build_probe_url(tokens: dict[str, Any], frequency: int, duration: float) ->
 
 
 def main() -> int:
+    """Run the Agora audio probe launcher."""
     _load_dotenv(ROOT / ".env")
 
     parser = argparse.ArgumentParser(
@@ -157,16 +159,18 @@ def main() -> int:
     probe_url = _build_probe_url(tokens, args.frequency, args.duration)
     redacted_url = probe_url.replace(urllib.parse.quote(str(tokens["token"]), safe=""), "REDACTED")
 
-    print("Generated local Agora audio probe URL.")
-    print("Token-bearing URL is sensitive; full URL is not printed by default.")
+    print("Generated local Agora audio probe URL.")  # noqa: T201
+    print(  # noqa: T201
+        "Token-bearing URL is sensitive; full URL is not printed by default."
+    )
 
     if not args.print_only:
         webbrowser.open(probe_url)
-        print("Opened probe in the default browser.")
+        print("Opened probe in the default browser.")  # noqa: T201
     elif args.show_token_url:
-        print(probe_url)
+        print(probe_url)  # noqa: T201
     else:
-        print(redacted_url)
+        print(redacted_url)  # noqa: T201
 
     return 0
 
@@ -175,7 +179,7 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except KeyboardInterrupt:
-        raise SystemExit(130)
-    except Exception as err:
-        print(f"error: {err}", file=sys.stderr)
-        raise SystemExit(1)
+        raise SystemExit(130) from None
+    except Exception as err:  # noqa: BLE001
+        print(f"error: {err}", file=sys.stderr)  # noqa: T201
+        raise SystemExit(1) from err

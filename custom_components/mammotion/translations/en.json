@@ -226,6 +226,35 @@
       "last_map_task_error": {
         "name": "Last map/task error"
       },
+      "active_transport": {
+        "name": "Active transport",
+        "state": {
+          "ble": "BLE",
+          "cloud_aliyun": "Cloud (Aliyun)",
+          "cloud_mammotion": "Cloud (Mammotion)",
+          "none": "None",
+          "unknown": "Unknown"
+        }
+      },
+      "ble_only_fallback_mode": {
+        "name": "BLE-only fallback mode",
+        "state": {
+          "normal": "Normal",
+          "fallback_active": "Fallback active"
+        }
+      },
+      "last_cloud_login_success": {
+        "name": "Last cloud login success"
+      },
+      "last_token_refresh": {
+        "name": "Last token refresh"
+      },
+      "last_command_failure_reason": {
+        "name": "Last command failure reason"
+      },
+      "last_camera_stream_failure_code": {
+        "name": "Last camera stream failure code"
+      },
       "mqtt_status": {
         "name": "MQTT status",
         "state": {
@@ -412,6 +441,12 @@
       },
       "camera_wiper": {
         "name": "Run camera wiper"
+      },
+      "refresh_camera_stream": {
+        "name": "Refresh camera stream"
+      },
+      "refresh_cloud_session": {
+        "name": "Refresh cloud session"
       },
       "restart_mower": {
         "name": "Restart mower"
@@ -916,6 +951,26 @@
         }
       }
     },
+    "export_runtime_state": {
+      "name": "Export runtime state",
+      "description": "Returns read-only mower runtime telemetry and manual-motion safety blockers used by click/go preflight. Sends no movement commands.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        }
+      }
+    },
+    "export_active_route": {
+      "name": "Export active route",
+      "description": "Returns read-only active mowing route and progress GeoJSON diagnostics.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        }
+      }
+    },
     "validate_custom_path": {
       "name": "Validate custom path",
       "description": "Validates a proposed mower-map x/y path without sending movement commands.",
@@ -944,7 +999,7 @@
     },
     "preview_custom_path": {
       "name": "Preview custom path",
-      "description": "Validates a proposed mower-map x/y path and returns GeoJSON preview data without sending movement commands.",
+      "description": "Validates a proposed mower-map x/y segment and returns preview data for click/go planning without sending movement commands.",
       "fields": {
         "entity_id": {
           "name": "Entity",
@@ -1004,7 +1059,7 @@
     },
     "execute_custom_path": {
       "name": "Execute custom path",
-      "description": "Checks readiness for future custom path execution and returns the blocked movement plan. This implementation does not send movement, task, blade, or stop commands.",
+      "description": "Checks readiness for future multi-segment custom path execution and returns the blocked movement plan. This implementation does not send movement, task, blade, or stop commands.",
       "fields": {
         "entity_id": {
           "name": "Entity",
@@ -1040,6 +1095,146 @@
         }
       }
     },
+    "raw_pymammotion_motion_probe": {
+      "name": "Raw pymammotion motion probe",
+      "description": "Low-level movement diagnostic endpoint used for guarded stop-nudge and telemetry probes. Real commands require explicit confirmations.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        },
+        "command": {
+          "name": "Command",
+          "description": "Low-level movement command to test. The click/go card uses send_movement with zero linear and angular speed for stop nudge."
+        },
+        "linear_speed": {
+          "name": "Linear speed",
+          "description": "Linear movement speed for send_movement probes."
+        },
+        "angular_speed": {
+          "name": "Angular speed",
+          "description": "Angular movement speed for send_movement probes."
+        },
+        "speed": {
+          "name": "Speed",
+          "description": "Wrapper speed used for move_forward, move_back, move_left, and move_right commands."
+        },
+        "prefer_ble": {
+          "name": "Prefer BLE",
+          "description": "When true, prefer BLE over Wi-Fi/local transport when available."
+        },
+        "sample_delays": {
+          "name": "Sample delays",
+          "description": "Seconds after command dispatch to sample telemetry response."
+        },
+        "dry_run": {
+          "name": "Dry run",
+          "description": "When true, no movement command is sent."
+        },
+        "confirm_blades_off": {
+          "name": "Confirm blades off",
+          "description": "Required for real movement probes."
+        },
+        "confirm_clear_area": {
+          "name": "Confirm clear area",
+          "description": "Required for real movement probes after confirming safe clearance."
+        }
+      }
+    },
+    "raw_pymammotion_execute_vector_segment": {
+      "name": "Raw pymammotion execute vector segment",
+      "description": "Guarded one-segment endpoint used by click/go dry-run and Real Go flows. Real movement requires explicit confirmations and safety gates.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        },
+        "points": {
+          "name": "Points",
+          "description": "Exactly two map-local points: current/near-current start and one target point."
+        },
+        "area_hash": {
+          "name": "Area hash",
+          "description": "Optional area hash to constrain containment validation."
+        },
+        "dry_run": {
+          "name": "Dry run",
+          "description": "When true, return guarded plan/output only and send no movement command."
+        },
+        "confirm_blades_off": {
+          "name": "Confirm blades off",
+          "description": "Required for real movement execution."
+        },
+        "confirm_clear_area": {
+          "name": "Confirm clear area",
+          "description": "Required for real movement execution after confirming safe clearance."
+        },
+        "prefer_ble": {
+          "name": "Prefer BLE",
+          "description": "When true, prefer BLE over Wi-Fi/local transport when available."
+        },
+        "linear_speed_fast": {
+          "name": "Fast linear speed",
+          "description": "Forward pulse speed used when target distance is above the slow threshold."
+        },
+        "linear_speed_slow": {
+          "name": "Slow linear speed",
+          "description": "Forward pulse speed used when target distance is inside the slow threshold."
+        },
+        "slow_linear_threshold": {
+          "name": "Slow linear threshold",
+          "description": "Distance threshold for switching from fast to slow linear speed."
+        },
+        "max_turn_commands": {
+          "name": "Max turn commands",
+          "description": "Safety cap on turn pulses per segment iteration."
+        },
+        "max_linear_commands": {
+          "name": "Max linear commands",
+          "description": "Safety cap on forward pulses per segment iteration."
+        },
+        "heading_tolerance_degrees": {
+          "name": "Heading tolerance",
+          "description": "Heading error tolerance used to classify turn completion."
+        },
+        "angular_speed_fast": {
+          "name": "Fast angular speed",
+          "description": "Turn pulse speed used when heading error is above the slow-turn threshold."
+        },
+        "angular_speed_slow": {
+          "name": "Slow angular speed",
+          "description": "Turn pulse speed used when heading error is inside the slow-turn threshold."
+        },
+        "slow_turn_threshold_degrees": {
+          "name": "Slow turn threshold",
+          "description": "Heading-error threshold for switching from fast to slow turn speed."
+        },
+        "waypoint_tolerance": {
+          "name": "Waypoint tolerance",
+          "description": "Distance from the target that counts as reached."
+        },
+        "min_progress_distance": {
+          "name": "Minimum progress distance",
+          "description": "Minimum target-directed distance required to classify linear progress."
+        },
+        "min_heading_change_degrees": {
+          "name": "Minimum heading change",
+          "description": "Heading-change threshold used to classify telemetry-confirmed rotation."
+        },
+        "max_turn_translation_distance": {
+          "name": "Max turn translation distance",
+          "description": "Maximum translation allowed during turn pulses before the safety gate stops execution."
+        },
+        "calibrated_forward_heading_offset_degrees": {
+          "name": "Calibrated forward heading offset",
+          "description": "Offset used to convert map heading into reported mower heading for calibrated forward movement."
+        },
+        "sample_delays": {
+          "name": "Sample delays",
+          "description": "Seconds after each command to sample telemetry before continuing."
+        }
+      }
+    },
     "manual_velocity_pulse_test": {
       "name": "Manual velocity pulse test",
       "description": "Dry-runs or performs one tiny manual movement pulse, then samples telemetry and attempts a stop. Real pulses require explicit safety confirmations.",
@@ -1059,6 +1254,18 @@
         "duration_ms": {
           "name": "Duration",
           "description": "Pulse duration in milliseconds."
+        },
+        "stop_mode": {
+          "name": "Stop mode",
+          "description": "How the probe stops after sending the movement command. Firmware mode sends no explicit zero-speed stop and matches the emergency nudge behavior more closely."
+        },
+        "stop_delay_ms": {
+          "name": "Stop delay",
+          "description": "Delay before sending the explicit stop when stop mode is delayed."
+        },
+        "post_command_sample_delays": {
+          "name": "Post-command sample delays",
+          "description": "Seconds after the movement command to sample telemetry before reporting the measured movement."
         },
         "use_wifi": {
           "name": "Use Wi-Fi",
@@ -1210,6 +1417,100 @@
         }
       }
     },
+    "experimental_execute_segment_burst": {
+      "name": "Experimental execute segment burst",
+      "description": "Performs one guarded two-point movement segment using capped pulse bursts. After each burst it waits for delayed cumulative telemetry before deciding whether another burst is safe.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        },
+        "points": {
+          "name": "Points",
+          "description": "Exactly two map-local points: current/near-current start and one target point."
+        },
+        "area_hash": {
+          "name": "Area hash",
+          "description": "Optional area hash to constrain containment validation."
+        },
+        "speed": {
+          "name": "Speed",
+          "description": "Pulse speed, capped to the existing emergency nudge speed."
+        },
+        "pulse_duration_ms": {
+          "name": "Pulse duration",
+          "description": "Duration of each capped pulse in milliseconds."
+        },
+        "pulses_per_burst": {
+          "name": "Pulses per burst",
+          "description": "Number of stopped manual pulses to send before waiting for cumulative telemetry."
+        },
+        "max_bursts": {
+          "name": "Max bursts",
+          "description": "Maximum number of burst-and-wait iterations. Experimental execution is capped at three."
+        },
+        "waypoint_tolerance": {
+          "name": "Waypoint tolerance",
+          "description": "Distance from the target that counts as reached."
+        },
+        "heading_offset_degrees": {
+          "name": "Heading offset",
+          "description": "Optional correction added to reported mower heading before the controller compares it with the target heading."
+        },
+        "heading_offset_candidates": {
+          "name": "Heading offset candidates",
+          "description": "Optional list of heading offsets to evaluate before each burst. The controller chooses the candidate with the safest target-directed command."
+        },
+        "stop_mode": {
+          "name": "Stop mode",
+          "description": "How each pulse is stopped during a burst. Firmware mode omits the explicit zero-speed stop."
+        },
+        "stop_delay_ms": {
+          "name": "Stop delay",
+          "description": "Delay before sending the explicit stop when stop mode is delayed."
+        },
+        "min_progress_distance": {
+          "name": "Minimum progress distance",
+          "description": "Minimum target-directed movement required after each burst."
+        },
+        "min_heading_change_degrees": {
+          "name": "Minimum heading change",
+          "description": "Heading-change threshold used to classify telemetry-confirmed rotation."
+        },
+        "allow_unproven_turns": {
+          "name": "Allow unproven turns",
+          "description": "Allow turn commands outside the proven heading window. Keep disabled for safer operation."
+        },
+        "calibrated_forward_heading_degrees": {
+          "name": "Calibrated forward heading",
+          "description": "Reported heading that corresponds to map-forward motion for this mower calibration."
+        },
+        "calibrated_forward_heading_tolerance_degrees": {
+          "name": "Calibrated forward heading tolerance",
+          "description": "Allowed deviation from calibrated forward heading before turn commands are treated as unproven."
+        },
+        "cumulative_sample_delays": {
+          "name": "Cumulative sample delays",
+          "description": "Seconds after each pulse burst to sample telemetry before deciding whether to continue."
+        },
+        "use_wifi": {
+          "name": "Use Wi-Fi",
+          "description": "Use Wi-Fi/local path instead of the default BLE-preferred path."
+        },
+        "dry_run": {
+          "name": "Dry run",
+          "description": "Must be false. Use manual_velocity_cumulative_pulse_test for dry-run planning."
+        },
+        "confirm_blades_off": {
+          "name": "Confirm blades off",
+          "description": "Required and must be true for experimental execution."
+        },
+        "confirm_clear_area": {
+          "name": "Confirm clear area",
+          "description": "Required and must be true after confirming the mower has room to move safely."
+        }
+      }
+    },
     "manual_velocity_multi_pulse_test": {
       "name": "Manual velocity multi-pulse test",
       "description": "Dry-runs or performs a guarded multi-pulse movement probe. Each capped pulse is followed by stop, delayed telemetry sampling, a no-progress safety gate, and telemetry-quality degradation checks. Full path execution remains disabled.",
@@ -1246,6 +1547,14 @@
           "name": "Force action",
           "description": "Optional diagnostic override for the next low-level action. Auto uses the controller decision."
         },
+        "stop_mode": {
+          "name": "Stop mode",
+          "description": "How each pulse is stopped. Firmware mode omits the explicit zero-speed stop."
+        },
+        "stop_delay_ms": {
+          "name": "Stop delay",
+          "description": "Delay before sending the explicit stop when stop mode is delayed."
+        },
         "heading_offset_degrees": {
           "name": "Heading offset",
           "description": "Optional correction added to reported mower heading before the controller compares it with the target heading."
@@ -1280,6 +1589,80 @@
         }
       }
     },
+    "manual_velocity_cumulative_pulse_test": {
+      "name": "Manual velocity cumulative pulse test",
+      "description": "Dry-runs or performs a bounded burst of stopped manual pulses, then waits once for delayed telemetry to measure cumulative movement. Full path execution remains disabled.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        },
+        "points": {
+          "name": "Points",
+          "description": "Exactly two map-local points: current/start and diagnostic target."
+        },
+        "area_hash": {
+          "name": "Area hash",
+          "description": "Optional area hash to constrain containment validation."
+        },
+        "speed": {
+          "name": "Speed",
+          "description": "Pulse speed, capped to the existing emergency nudge speed."
+        },
+        "pulse_duration_ms": {
+          "name": "Pulse duration",
+          "description": "Duration of each capped pulse in milliseconds."
+        },
+        "max_pulses": {
+          "name": "Max pulses",
+          "description": "Maximum number of pulses to send before cumulative telemetry sampling."
+        },
+        "waypoint_tolerance": {
+          "name": "Waypoint tolerance",
+          "description": "Distance from the target that counts as reached before sending another pulse."
+        },
+        "force_action": {
+          "name": "Force action",
+          "description": "Optional diagnostic override for the low-level action. Auto uses the controller decision."
+        },
+        "heading_offset_degrees": {
+          "name": "Heading offset",
+          "description": "Optional correction added to reported mower heading before the controller compares it with the target heading."
+        },
+        "heading_offset_candidates": {
+          "name": "Heading offset candidates",
+          "description": "Optional list of heading offsets to evaluate before each pulse burst. The controller chooses the candidate with the safest target-directed command."
+        },
+        "min_progress_distance": {
+          "name": "Minimum progress distance",
+          "description": "Distance threshold used to classify telemetry-confirmed movement."
+        },
+        "min_heading_change_degrees": {
+          "name": "Minimum heading change",
+          "description": "Heading-change threshold used to classify telemetry-confirmed rotation."
+        },
+        "cumulative_sample_delays": {
+          "name": "Cumulative sample delays",
+          "description": "Seconds after the pulse burst to sample telemetry before making the cumulative movement decision."
+        },
+        "use_wifi": {
+          "name": "Use Wi-Fi",
+          "description": "Use Wi-Fi/local path instead of the default BLE-preferred path."
+        },
+        "dry_run": {
+          "name": "Dry run",
+          "description": "When true, no movement command is sent."
+        },
+        "confirm_blades_off": {
+          "name": "Confirm blades off",
+          "description": "Required for a real cumulative pulse probe."
+        },
+        "confirm_clear_area": {
+          "name": "Confirm clear area",
+          "description": "Required for a real cumulative pulse probe after confirming the mower has room to move safely."
+        }
+      }
+    },
     "manual_velocity_heading_calibration_test": {
       "name": "Manual velocity heading calibration test",
       "description": "Dry-runs or performs one guarded movement pulse and compares reported heading with the measured movement vector. Full path execution remains disabled.",
@@ -1299,6 +1682,18 @@
         "duration_ms": {
           "name": "Duration",
           "description": "Pulse duration in milliseconds."
+        },
+        "stop_mode": {
+          "name": "Stop mode",
+          "description": "How the calibration pulse is stopped. Firmware mode omits the explicit zero-speed stop."
+        },
+        "stop_delay_ms": {
+          "name": "Stop delay",
+          "description": "Delay before sending the explicit stop when stop mode is delayed."
+        },
+        "post_command_sample_delays": {
+          "name": "Post-command sample delays",
+          "description": "Seconds after the movement command to sample telemetry for heading calibration."
         },
         "use_wifi": {
           "name": "Use Wi-Fi",

@@ -70,6 +70,36 @@ See the wiki for how to [get started](https://github.com/mikey0000/Mammotion-HA/
 
 Once the integration is set up, you can control and monitor your Mammotion mower using Home Assistant. 🎉
 
+### Guarded Click/Go Smoke Script
+
+For guarded one-segment click/go validation from the command line, use:
+
+```bash
+uv run python scripts/mammotion_click_go_smoke.py lawn_mower.your_mower_entity
+```
+
+What this does by default:
+
+- Waits for live runtime position via `mammotion.export_runtime_state`
+- Builds one segment from current position to a nearby target offset
+- Runs read-only preview via `mammotion.preview_custom_path`
+- Runs guarded non-moving dry-run via `mammotion.raw_pymammotion_execute_vector_segment`
+- Writes artifacts under `/tmp/mammotion_click_go_smoke/<timestamp>/`
+
+To run a guarded real one-segment smoke step (movement-producing), explicit confirmations are required:
+
+```bash
+uv run python scripts/mammotion_click_go_smoke.py lawn_mower.your_mower_entity \
+	--run-real --confirm-blades-off --confirm-clear-area
+```
+
+Useful options:
+
+- `--target-x` and `--target-y` to use an explicit map-local target point
+- `--offset-x` and `--offset-y` to use runtime-relative target generation (default)
+- `--max-turn-commands` and `--max-linear-commands` to keep command caps conservative
+- `--sample-delays` to control telemetry sample timing
+
 ## Map Position Offset
 
 Satellite map tiles (Google Maps, OpenStreetMap, etc.) are sometimes misaligned relative to RTK GPS coordinates by several metres. Each mower exposes two number entities to correct this:

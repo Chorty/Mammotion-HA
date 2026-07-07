@@ -363,6 +363,35 @@
       },
       "last_map_task_error": {
         "name": "Last map/task error"
+      },
+      "active_transport": {
+        "name": "Aktiv transport",
+        "state": {
+          "ble": "BLE",
+          "cloud_aliyun": "Cloud (Aliyun)",
+          "cloud_mammotion": "Cloud (Mammotion)",
+          "none": "Ingen",
+          "unknown": "Ukendt"
+        }
+      },
+      "ble_only_fallback_mode": {
+        "name": "BLE-only fallback-tilstand",
+        "state": {
+          "normal": "Normal",
+          "fallback_active": "Nødtilstand aktiv"
+        }
+      },
+      "last_cloud_login_success": {
+        "name": "Sidste vellykkede cloud-login"
+      },
+      "last_token_refresh": {
+        "name": "Sidste tokenopdatering"
+      },
+      "last_command_failure_reason": {
+        "name": "Sidste årsag til kommandofejl"
+      },
+      "last_camera_stream_failure_code": {
+        "name": "Sidste fejlkode for kamerastream"
       }
     },
     "button": {
@@ -407,6 +436,12 @@
       },
       "camera_wiper": {
         "name": "Run camera wiper"
+      },
+      "refresh_camera_stream": {
+        "name": "Opdater kamerastream"
+      },
+      "refresh_cloud_session": {
+        "name": "Opdater cloudsession"
       }
     },
     "switch": {

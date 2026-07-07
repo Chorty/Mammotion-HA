@@ -1,33 +1,68 @@
 """Tests for Mammotion read-only map/task visibility helpers."""
 
+import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from homeassistant.exceptions import HomeAssistantError
 from pymammotion.data.model.hash_list import Plan
 
 from custom_components.mammotion import services as mammotion_services
-from custom_components.mammotion.coordinator import MammotionReportUpdateCoordinator
+from custom_components.mammotion.button import BUTTON_LUBA_PRO_YUKA
+from custom_components.mammotion.coordinator import (
+    MammotionBaseUpdateCoordinator,
+    MammotionReportUpdateCoordinator,
+)
 from custom_components.mammotion.sensor import WORK_SENSOR_TYPES
 from custom_components.mammotion.services import (
+    DEFAULT_HEADING_OFFSET_CANDIDATES,
+    EXPERIMENTAL_EXECUTE_SEGMENT_BURST_SCHEMA,
     EXPERIMENTAL_EXECUTE_SEGMENT_SCHEMA,
+    FORWARD_TWO_PULSE_LATENCY_TEST_SCHEMA,
+    MANUAL_VELOCITY_CUMULATIVE_PULSE_TEST_SCHEMA,
     MANUAL_VELOCITY_HEADING_CALIBRATION_TEST_SCHEMA,
     MANUAL_VELOCITY_MULTI_PULSE_TEST_SCHEMA,
     MANUAL_VELOCITY_PULSE_TEST_SCHEMA,
     MANUAL_VELOCITY_SEGMENT_TEST_SCHEMA,
+    POSITION_FEEDBACK_DIAGNOSTIC_SCHEMA,
+    RAW_MOTION_READINESS_TEST_SCHEMA,
+    RAW_PYMAMMOTION_ANGULAR_CALIBRATION_SCHEMA,
+    RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA,
+    RAW_PYMAMMOTION_EXECUTE_SEGMENT_SCHEMA,
+    RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA,
+    RAW_PYMAMMOTION_MOTION_PROBE_SCHEMA,
+    RAW_PYMAMMOTION_TURN_TO_HEADING_SCHEMA,
+    RAW_VECTOR_READINESS_TEST_SCHEMA,
     _custom_path_telemetry_snapshot,
     _dry_run_custom_path,
     _execute_custom_path,
+    _experimental_execute_segment_burst,
+    _export_active_route,
     _export_mower_map,
     _export_mower_tasks,
+    _export_runtime_state,
+    _forward_two_pulse_latency_test,
+    _manual_velocity_best_heading_decision,
     _manual_velocity_controller_decision,
+    _manual_velocity_cumulative_pulse_test,
     _manual_velocity_heading_calibration,
     _manual_velocity_path_progress_diagnostic,
     _manual_velocity_pulse_test,
     _manual_velocity_segment_test,
     _normalize_mower_areas,
     _normalize_mower_tasks,
+    _position_feedback_diagnostic,
     _preview_custom_path,
+    _raw_motion_readiness_test,
+    _raw_pymammotion_angular_calibration,
+    _raw_pymammotion_execute_multi_segment,
+    _raw_pymammotion_execute_segment,
+    _raw_pymammotion_execute_vector_segment,
+    _raw_pymammotion_motion_probe,
+    _raw_pymammotion_turn_to_heading,
+    _raw_vector_readiness_phase_passed,
+    _raw_vector_readiness_test,
     _validate_custom_path,
 )
 
@@ -94,12 +129,35 @@ def _pulse_coordinator(
 ) -> SimpleNamespace:
     """Build a coordinator fixture for manual velocity pulse tests."""
     pos_x, pos_y, toward = position
+    handle = SimpleNamespace(
+        last_report_at=123.0,
+        availability=SimpleNamespace(
+            mqtt_reported_offline=False,
+            ble_in_cooldown=False,
+        ),
+        active_transport=lambda: "ble",
+    )
+    manager = SimpleNamespace(
+        send_command_with_args=AsyncMock(),
+        ensure_fresh_state=AsyncMock(),
+        request_iot_sync=AsyncMock(),
+        request_iot_sync_continuous=AsyncMock(),
+        request_iot_sync_continuous_stop=AsyncMock(),
+        mower=lambda _device_name: handle,
+    )
     return SimpleNamespace(
         async_move_forward=AsyncMock(),
         async_move_back=AsyncMock(),
         async_move_left=AsyncMock(),
         async_move_right=AsyncMock(),
         async_stop_manual_motion=AsyncMock(),
+        async_request_report_snapshot=AsyncMock(),
+        async_get_reports=AsyncMock(),
+        async_start_report_stream=AsyncMock(),
+        async_send_command=AsyncMock(),
+        async_request_refresh=AsyncMock(),
+        device_name="Luba-Test",
+        manager=manager,
         is_online=lambda: True,
         data=SimpleNamespace(
             map=SimpleNamespace(
@@ -269,6 +327,269 @@ def test_export_tasks_includes_counts_and_sync_metadata() -> None:
     assert export["tasks"][0]["plan_id"] == "plan-1"
     assert export["last_task_sync"] == "2026-06-28T12:00:00+00:00"
     assert export["last_map_task_error"] is None
+
+
+def test_export_runtime_state_reports_blade_on_as_unsafe() -> None:
+    """Reported blade ON blocks motion even when cutter RPM is zero."""
+    coordinator = _pulse_coordinator(blade_state=1, cutter_rpm=0, work_mode=11)
+    coordinator.active_transport_state = "ble"
+    coordinator.ble_only_fallback_mode = False
+    coordinator.last_cloud_login_success = None
+    coordinator.last_token_refresh = None
+    coordinator.last_command_failure_reason = "set_car_wiper:GatewayTimeoutException"
+    coordinator.last_camera_stream_failure_code = "401"
+    active_route = {
+        "mow_path_feature_count": 0,
+        "mow_progress_feature_count": 0,
+        "active_progress": None,
+    }
+
+    exported = _export_runtime_state(
+        coordinator,
+        ha_state="paused",
+        active_route=active_route,
+    )
+
+    assert exported["blade"]["reported_state"] == 1
+    assert exported["blade"]["current_cutter_rpm"] == 0
+    assert exported["blade"]["blade_safe_for_motion"] is False
+    assert exported["active_transport"] == "ble"
+    assert exported["ble_only_fallback_mode"] is False
+    assert exported["last_command_failure_reason"] == "set_car_wiper:GatewayTimeoutException"
+    assert exported["last_camera_stream_failure_code"] == "401"
+    assert "blade_reported_on" in exported["safety"]["blockers"]
+
+
+def test_export_runtime_state_reports_nonzero_rpm_as_unsafe() -> None:
+    """Nonzero cutter RPM blocks motion even if reported blade state is off."""
+    coordinator = _pulse_coordinator(blade_state=0, cutter_rpm=2995, work_mode=11)
+    active_route = {
+        "mow_path_feature_count": 0,
+        "mow_progress_feature_count": 0,
+        "active_progress": None,
+    }
+
+    exported = _export_runtime_state(
+        coordinator,
+        ha_state="paused",
+        active_route=active_route,
+    )
+
+    assert exported["blade"]["reported_state"] == 0
+    assert exported["blade"]["current_cutter_rpm"] == 2995
+    assert exported["blade"]["blade_safe_for_motion"] is False
+    assert "blade_rpm_nonzero" in exported["safety"]["blockers"]
+
+
+def test_export_runtime_state_reports_active_mowing_and_route_blockers() -> None:
+    """Active mowing state and active route/progress both block manual motion."""
+    coordinator = _pulse_coordinator(blade_state=0, cutter_rpm=0, work_mode=13)
+    active_route = {
+        "mow_path_feature_count": 1,
+        "mow_progress_feature_count": 1,
+        "active_progress": {"is_active": True},
+    }
+
+    exported = _export_runtime_state(
+        coordinator,
+        ha_state="mowing",
+        active_route=active_route,
+    )
+
+    assert exported["work_mode_label"] == "MODE_WORKING"
+    assert exported["safety"]["active_mowing_detected"] is True
+    assert exported["safety"]["active_route_detected"] is True
+    assert exported["safety"]["active_route_status"]["blocks_motion"] is True
+    assert (
+        exported["safety"]["active_route_status"]["reason"]
+        == "live_route_while_mowing"
+    )
+    assert "active_mowing_detected" in exported["safety"]["blockers"]
+    assert "active_route_detected" in exported["safety"]["blockers"]
+
+
+def test_export_runtime_state_allows_stale_route_when_paused_ready() -> None:
+    """Residual active route data does not block a paused/ready mower by itself."""
+    coordinator = _pulse_coordinator(blade_state=0, cutter_rpm=0, work_mode=11)
+    active_route = {
+        "mow_path_feature_count": 6,
+        "mow_progress_feature_count": 5,
+        "active_progress": {"is_active": True},
+    }
+
+    exported = _export_runtime_state(
+        coordinator,
+        ha_state="paused",
+        active_route=active_route,
+    )
+
+    assert exported["safety"]["active_route_detected"] is True
+    assert exported["safety"]["active_route_status"]["blocks_motion"] is False
+    assert (
+        exported["safety"]["active_route_status"]["reason"]
+        == "stale_route_while_ready"
+    )
+    assert "active_route_detected" not in exported["safety"]["blockers"]
+    assert exported["safety"]["allowed_for_manual_motion"] is True
+    assert exported["manual_motion_execution_policy"] == {
+        "arbitrary_path_execution_allowed": False,
+        "full_path_execution_allowed": False,
+        "experimental_segment_execution_allowed": True,
+        "experimental_segment_scope": "one_segment_calibrated_forward_only",
+        "turn_primitive_proven": False,
+        "reverse_primitive_proven": False,
+        "lateral_motion_proven": False,
+        "raw_pymammotion_primitives": {
+            "linear_positive": {
+                "status": "partially_calibrated",
+                "command": "send_movement",
+                "linear_speed": 400,
+                "angular_speed": 0,
+                "observed_effect": "translation toward map-local negative Y",
+            },
+            "linear_negative": {
+                "status": "partially_calibrated",
+                "command": "send_movement",
+                "linear_speed": -400,
+                "angular_speed": 0,
+                "observed_effect": "translation toward map-local positive Y",
+            },
+            "angular_positive": {
+                "status": "weak_heading_change",
+                "command": "send_movement",
+                "linear_speed": 0,
+                "angular_speed": 180,
+                "observed_effect": "small positive heading change with drift",
+            },
+            "angular_negative": {
+                "status": "weak_heading_change",
+                "command": "send_movement",
+                "linear_speed": 0,
+                "angular_speed": -180,
+                "observed_effect": "small negative heading change with minimal translation",
+            },
+        },
+        "default_transport": "ble_preferred",
+        "default_stop_mode": "firmware",
+        "default_pulses_per_burst": 1,
+        "default_max_bursts": 3,
+        "calibrated_forward_heading_degrees": 270.0,
+        "calibrated_forward_heading_tolerance_degrees": 45.0,
+        "blocked_without_override": [
+            "segments_outside_calibrated_forward_window",
+            "turn_left",
+            "turn_right",
+            "multi_segment_paths",
+            "arbitrary_drawn_path_execution",
+        ],
+        "reason": (
+            "Raw pymammotion linear movement is partially calibrated; angular "
+            "movement is weak but measurable. Arbitrary path execution remains "
+            "blocked until closed-loop raw movement is implemented and tested."
+        ),
+    }
+
+
+def test_export_runtime_state_blocks_active_route_when_state_ambiguous() -> None:
+    """Residual route data blocks motion if mower runtime state is ambiguous."""
+    coordinator = _pulse_coordinator(blade_state=0, cutter_rpm=0, work_mode=99)
+    active_route = {
+        "mow_path_feature_count": 1,
+        "mow_progress_feature_count": 1,
+        "active_progress": {"is_active": True},
+    }
+
+    exported = _export_runtime_state(
+        coordinator,
+        ha_state="unknown",
+        active_route=active_route,
+    )
+
+    assert exported["safety"]["active_route_status"]["blocks_motion"] is True
+    assert (
+        exported["safety"]["active_route_status"]["reason"] == "route_state_ambiguous"
+    )
+    assert "active_route_detected" in exported["safety"]["blockers"]
+
+
+def test_export_active_route_normalizes_path_and_progress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Active route export summarizes mow-path and progress GeoJSON features."""
+    large_path_hash = 9_223_372_036_854_775_000
+    coordinator = SimpleNamespace(
+        device_name="Luba-Test",
+        map_offset_lat=0.0,
+        map_offset_lon=0.0,
+        data=SimpleNamespace(
+            device_firmwares=SimpleNamespace(main_controller="1.0.0"),
+            map=SimpleNamespace(
+                generated_mow_path_geojson={
+                    "type": "FeatureCollection",
+                    "features": [
+                        {
+                            "type": "Feature",
+                            "properties": {
+                                "transaction_id": large_path_hash,
+                                "type_name": "mow_path",
+                                "path_type": 0,
+                                "total_path_num": 86,
+                                "length": 12.5,
+                            },
+                            "geometry": {
+                                "type": "LineString",
+                                "coordinates": [[1.0, 2.0], [3.0, 4.0]],
+                            },
+                        }
+                    ],
+                },
+                generated_mow_progress_geojson={
+                    "type": "FeatureCollection",
+                    "features": [
+                        {
+                            "type": "Feature",
+                            "properties": {
+                                "type_name": "mow_progress",
+                                "path_hash": large_path_hash,
+                                "is_active": True,
+                                "now_index": 15,
+                                "total_points": 28,
+                            },
+                            "geometry": {
+                                "type": "LineString",
+                                "coordinates": [[1.0, 2.0], [2.0, 2.0], [3.0, 2.0]],
+                            },
+                        }
+                    ],
+                },
+                generated_dynamics_line_geojson={
+                    "type": "FeatureCollection",
+                    "features": [],
+                },
+            ),
+        ),
+    )
+
+    class FakeDeviceType:
+        def is_support_dynamics_line(self, _: object) -> bool:
+            return False
+
+    monkeypatch.setattr(
+        mammotion_services.DeviceType,
+        "value_of_str",
+        lambda _: FakeDeviceType(),
+    )
+
+    exported = _export_active_route(coordinator)
+
+    assert exported["mow_path_feature_count"] == 1
+    assert exported["mow_progress_feature_count"] == 1
+    assert exported["mow_path_features"][0]["type_name"] == "mow_path"
+    assert exported["mow_path_features"][0]["point_count"] == 2
+    assert exported["mow_path_features"][0]["transaction_id"] == str(large_path_hash)
+    assert exported["active_progress"]["type_name"] == "mow_progress"
+    assert exported["active_progress"]["path_hash"] == str(large_path_hash)
+    assert exported["active_progress"]["point_count"] == 3
 
 
 def test_validate_custom_path_accepts_inside_map_xy_path() -> None:
@@ -696,6 +1017,34 @@ def test_manual_velocity_controller_applies_heading_offset() -> None:
     assert decision["reason"] == "heading_aligned"
 
 
+def test_manual_velocity_best_heading_decision_selects_forward_candidate() -> None:
+    """Candidate selection prefers an aligned forward command over a turn."""
+    decision = _manual_velocity_best_heading_decision(
+        [{"x": 1.0, "y": 1.0}, {"x": 4.0, "y": 1.0}],
+        {
+            "position": {
+                "x": 1.0,
+                "y": 1.0,
+                "toward": 0.0,
+                "source": "mowing_state",
+            }
+        },
+        speed=0.2,
+        heading_offset_degrees=110.0,
+        heading_offset_candidates=[110.0, 0.0, 90.0],
+    )
+
+    assert decision["action"] == "forward"
+    assert decision["reason"] == "heading_aligned"
+    assert decision["selected_heading_offset_degrees"] == 0.0
+    assert decision["heading_offset_candidates"] == [110.0, 0.0, 90.0]
+    assert [item["heading_offset_degrees"] for item in decision["heading_offset_diagnostics"]] == [
+        110.0,
+        0.0,
+        90.0,
+    ]
+
+
 def test_manual_velocity_controller_skips_stale_start_waypoint() -> None:
     """Controller does not turn back to an obsolete drawn start point."""
     decision = _manual_velocity_controller_decision(
@@ -851,16 +1200,16 @@ def test_manual_velocity_controller_stops_without_live_position() -> None:
 
 def test_manual_velocity_pulse_schema_allows_emergency_nudge_speed() -> None:
     """Pulse probe allows the existing emergency nudge speed but no higher."""
-    assert (
-        MANUAL_VELOCITY_PULSE_TEST_SCHEMA(
-            {
-                "entity_id": "lawn_mower.test",
-                "action": "forward",
-                "speed": 0.4,
-            }
-        )["speed"]
-        == 0.4
+    parsed = MANUAL_VELOCITY_PULSE_TEST_SCHEMA(
+        {
+            "entity_id": "lawn_mower.test",
+            "action": "forward",
+            "speed": 0.4,
+        }
     )
+    assert parsed["speed"] == 0.4
+    assert parsed["stop_mode"] == "immediate"
+    assert parsed["post_command_sample_delays"] == [0.0, 2.0, 10.0, 30.0, 60.0]
     with pytest.raises(Exception):  # noqa: B017
         MANUAL_VELOCITY_PULSE_TEST_SCHEMA(
             {
@@ -869,6 +1218,1661 @@ def test_manual_velocity_pulse_schema_allows_emergency_nudge_speed() -> None:
                 "speed": 0.45,
             }
         )
+
+
+@pytest.mark.parametrize(
+    ("schema", "payload", "expected"),
+    [
+        (
+            RAW_PYMAMMOTION_MOTION_PROBE_SCHEMA,
+            {"entity_id": "lawn_mower.test"},
+            {
+                "command": "send_movement",
+                "linear_speed": 400,
+                "angular_speed": 0,
+                "speed": 0.4,
+                "prefer_ble": True,
+                "sample_delays": [0.0, 5.0, 10.0, 20.0, 30.0, 45.0, 60.0],
+                "dry_run": True,
+            },
+        ),
+        (
+            FORWARD_TWO_PULSE_LATENCY_TEST_SCHEMA,
+            {"entity_id": "lawn_mower.test"},
+            {
+                "linear_speed": 200,
+                "pulse_count": 2,
+                "pulse_gap_seconds": 5.0,
+                "telemetry_timeout_seconds": 60.0,
+                "telemetry_sample_interval_seconds": 1.0,
+                "min_position_change_distance": 0.003,
+                "prefer_ble": True,
+                "dry_run": True,
+            },
+        ),
+        (
+            POSITION_FEEDBACK_DIAGNOSTIC_SCHEMA,
+            {"entity_id": "lawn_mower.test"},
+            {
+                "linear_speed": 200,
+                "pulse_count": 0,
+                "pulse_gap_seconds": 5.0,
+                "refresh_wait_seconds": 2.0,
+                "prefer_ble": True,
+                "dry_run": True,
+            },
+        ),
+        (
+            RAW_PYMAMMOTION_EXECUTE_SEGMENT_SCHEMA,
+            {
+                "entity_id": "lawn_mower.test",
+                "points": [{"x": 1.0, "y": 1.0}, {"x": 1.0, "y": 0.8}],
+            },
+            {
+                "dry_run": True,
+                "prefer_ble": True,
+                "linear_speed_fast": 400,
+                "linear_speed_slow": 200,
+                "max_commands": 3,
+                "waypoint_tolerance": 0.08,
+                "min_progress_distance": 0.01,
+                "sample_delays": [0.0, 5.0, 10.0, 20.0, 30.0, 45.0, 60.0],
+            },
+        ),
+        (
+            RAW_PYMAMMOTION_ANGULAR_CALIBRATION_SCHEMA,
+            {"entity_id": "lawn_mower.test"},
+            {
+                "direction": "positive_heading",
+                "angular_speed": 180,
+                "target_heading_delta_degrees": 10.0,
+                "max_commands": 3,
+                "min_heading_change_degrees": 1.0,
+                "max_translation_distance": 0.25,
+                "prefer_ble": True,
+                "sample_delays": [0.0, 5.0, 10.0, 20.0, 30.0, 45.0, 60.0],
+                "dry_run": True,
+            },
+        ),
+        (
+            RAW_PYMAMMOTION_TURN_TO_HEADING_SCHEMA,
+            {"entity_id": "lawn_mower.test", "target_heading_degrees": 20},
+            {
+                "target_heading_degrees": 20.0,
+                "heading_tolerance_degrees": 3.0,
+                "angular_speed_fast": 180,
+                "angular_speed_slow": 90,
+                "slow_turn_threshold_degrees": 8.0,
+                "max_commands": 3,
+                "min_heading_change_degrees": 0.5,
+                "max_translation_distance": 0.25,
+                "prefer_ble": True,
+                "dry_run": True,
+            },
+        ),
+        (
+            RAW_MOTION_READINESS_TEST_SCHEMA,
+            {"entity_id": "lawn_mower.test"},
+            {
+                "dry_run": True,
+                "confirm_blades_off": False,
+                "confirm_clear_area": False,
+                "prefer_ble": True,
+                "max_real_steps": 0,
+                "sample_delays": [0.0, 5.0, 10.0, 20.0, 30.0, 45.0, 60.0],
+            },
+        ),
+        (
+            RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA,
+            {
+                "entity_id": "lawn_mower.test",
+                "points": [{"x": 1, "y": 1}, {"x": 1.1, "y": 1}],
+            },
+            {
+                "dry_run": True,
+                "prefer_ble": True,
+                "linear_speed_fast": 400,
+                "linear_speed_slow": 200,
+                "angular_speed_fast": 180,
+                "angular_speed_slow": 180,
+                "calibrated_forward_heading_offset_degrees": 116.5,
+                "max_turn_commands": 3,
+                "max_linear_commands": 1,
+            },
+        ),
+        (
+            RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA,
+            {
+                "entity_id": "lawn_mower.test",
+                "points": [
+                    {"x": 1, "y": 1},
+                    {"x": 1.1, "y": 1},
+                    {"x": 1.2, "y": 1.1},
+                ],
+            },
+            {
+                "dry_run": True,
+                "prefer_ble": True,
+                "max_real_segments": 1,
+                "max_turn_commands": 4,
+                "max_linear_commands": 2,
+                "calibrated_forward_heading_offset_degrees": 116.5,
+            },
+        ),
+        (
+            RAW_VECTOR_READINESS_TEST_SCHEMA,
+            {"entity_id": "lawn_mower.test"},
+            {
+                "dry_run": True,
+                "prefer_ble": True,
+                "max_real_steps": 0,
+                "target_distance": 0.10,
+                "turn_delta_degrees": 10.0,
+                "calibrated_forward_heading_offset_degrees": 116.5,
+                "max_turn_commands": 4,
+                "max_linear_commands": 2,
+            },
+        ),
+    ],
+)
+def test_motion_and_vector_schema_defaults_parameterized(
+    schema: object,
+    payload: dict[str, object],
+    expected: dict[str, object],
+) -> None:
+    """Schema defaults remain stable across motion and vector service families."""
+    parsed = schema(payload)
+    for key, value in expected.items():
+        assert parsed[key] == value
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_motion_probe_defaults_to_dry_run() -> None:
+    """Raw pymammotion probe default sends no command and reports exact call."""
+    coordinator = _pulse_coordinator()
+
+    result = await _raw_pymammotion_motion_probe(coordinator, sample_delays=())
+
+    assert result["service"] == "raw_pymammotion_motion_probe"
+    assert result["dry_run"] is True
+    assert result["would_send"] is False
+    assert result["reason"] == "dry_run"
+    assert result["command_not_sent"] == {
+        "manager_method": "send_command_with_args",
+        "device_name": "Luba-Test",
+        "command": "send_movement",
+        "prefer_ble": True,
+        "kwargs": {"linear_speed": 400, "angular_speed": 0},
+    }
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_forward_two_pulse_latency_test_defaults_to_dry_run() -> None:
+    """Two-pulse latency test default sends no raw movement commands."""
+    coordinator = _pulse_coordinator()
+
+    result = await _forward_two_pulse_latency_test(coordinator)
+
+    assert result["service"] == "forward_two_pulse_latency_test"
+    assert result["dry_run"] is True
+    assert result["would_send"] is False
+    assert result["reason"] == "dry_run"
+    assert result["command_not_sent"] == {
+        "manager_method": "send_command_with_args",
+        "device_name": "Luba-Test",
+        "command": "send_movement",
+        "prefer_ble": True,
+        "kwargs": {"linear_speed": 200, "angular_speed": 0},
+    }
+    assert len(result["commands"]) == 2
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_position_feedback_diagnostic_defaults_to_dry_run() -> None:
+    """Position feedback diagnostic default captures sources but sends nothing."""
+    coordinator = _pulse_coordinator()
+
+    result = await _position_feedback_diagnostic(coordinator)
+
+    assert result["service"] == "position_feedback_diagnostic"
+    assert result["dry_run"] is True
+    assert result["would_send"] is False
+    assert result["reason"] == "dry_run"
+    assert result["snapshots"][0]["raw_sources"]["paths"]["mowing_state.pos_x"] == 1.0
+    assert result["snapshots"][0]["raw_sources"]["handle"]["active_transport"] == "ble"
+    assert result["refresh_attempts"] == []
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_forward_two_pulse_latency_test_rejects_missing_confirmations() -> None:
+    """Real two-pulse latency test requires explicit operator confirmations."""
+    coordinator = _pulse_coordinator()
+
+    result = await _forward_two_pulse_latency_test(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=False,
+    )
+
+    assert result["would_send"] is False
+    assert result["reason"] == "safety_gates_failed"
+    assert "operator_confirmed_clear_area" in result["blockers"]
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_position_feedback_diagnostic_rejects_missing_confirmations() -> None:
+    """Position feedback diagnostic requires confirmations before real pulses."""
+    coordinator = _pulse_coordinator()
+
+    result = await _position_feedback_diagnostic(
+        coordinator,
+        dry_run=False,
+        pulse_count=1,
+        confirm_blades_off=True,
+        confirm_clear_area=False,
+    )
+
+    assert result["would_send"] is False
+    assert result["reason"] == "safety_gates_failed"
+    assert "operator_confirmed_clear_area" in result["blockers"]
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_forward_two_pulse_latency_test_sends_pulses_and_detects_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real two-pulse latency test sends exactly two forward pulses."""
+    coordinator = _pulse_coordinator()
+    clock = {"now": 100.0}
+
+    def fake_monotonic() -> float:
+        return clock["now"]
+
+    async def fake_sleep(delay: float) -> None:
+        clock["now"] += delay
+
+    original_snapshot = mammotion_services._custom_path_telemetry_snapshot  # noqa: SLF001
+
+    def fake_snapshot(
+        coordinator_arg: MammotionReportUpdateCoordinator,
+    ) -> dict:
+        telemetry = original_snapshot(coordinator_arg)
+        if clock["now"] >= 112.0:
+            telemetry["position"]["y"] = float(telemetry["position"]["y"]) - 0.02
+        return telemetry
+
+    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(
+        mammotion_services,
+        "_custom_path_telemetry_snapshot",
+        fake_snapshot,
+    )
+
+    result = await _forward_two_pulse_latency_test(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        pulse_count=3,
+        telemetry_timeout_seconds=10,
+        telemetry_sample_interval_seconds=1,
+    )
+
+    assert result["reason"] == "telemetry_position_change_detected"
+    assert len(result["commands"]) == 3
+    assert result["commands"][0]["kwargs"] == {
+        "linear_speed": 200,
+        "angular_speed": 0,
+    }
+    assert result["telemetry"]["first_position_change_after_command_1_seconds"] == 12.0
+    assert result["telemetry"]["first_position_change_after_command_2_seconds"] == 7.0
+    assert (
+        result["telemetry"]["first_position_change_after_final_command_seconds"]
+        == pytest.approx(2.0)
+    )
+    assert result["telemetry"]["final_delta"]["distance"] == pytest.approx(0.02)
+    assert coordinator.manager.send_command_with_args.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_position_feedback_diagnostic_runs_refresh_attempts_and_detects_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Position feedback diagnostic compares all snapshots after refresh paths."""
+    coordinator = _pulse_coordinator()
+
+    async def fake_sleep(_delay: float) -> None:
+        return None
+
+    async def mutate_report_snapshot() -> None:
+        coordinator.data.mowing_state.pos_y = 1.25
+
+    coordinator.async_request_report_snapshot.side_effect = mutate_report_snapshot
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+
+    result = await _position_feedback_diagnostic(
+        coordinator,
+        dry_run=False,
+        pulse_count=0,
+        refresh_wait_seconds=0.1,
+    )
+
+    assert result["reason"] == "position_source_changed"
+    assert result["position_source_changed"] is True
+    assert "telemetry.position" in result["changed_sources"]
+    assert "raw_sources.paths" in result["changed_sources"]
+    assert "telemetry.position" in result["position_changed_sources"]
+    assert result["metadata_changed_sources"] == []
+    assert [attempt["name"] for attempt in result["refresh_attempts"]] == [
+        "request_report_snapshot",
+        "request_reports_count_5",
+        "start_report_stream",
+        "request_iot_sync_one_shot",
+        "request_iot_sync_continuous_window",
+        "ensure_fresh_state_forced",
+        "ble_sync_type_3",
+        "ha_request_refresh",
+    ]
+    assert all(attempt["ok"] for attempt in result["refresh_attempts"])
+    coordinator.manager.send_command_with_args.assert_not_called()
+    coordinator.async_get_reports.assert_awaited_once_with(count=5)
+    coordinator.async_start_report_stream.assert_awaited_once_with(duration_ms=60_000)
+    coordinator.manager.request_iot_sync.assert_awaited_once_with("Luba-Test")
+    coordinator.manager.request_iot_sync_continuous.assert_awaited_once_with(
+        "Luba-Test",
+        period=1000,
+        no_change_period=4000,
+    )
+    coordinator.manager.request_iot_sync_continuous_stop.assert_awaited_once_with(
+        "Luba-Test"
+    )
+    coordinator.manager.ensure_fresh_state.assert_awaited_once_with(
+        "Luba-Test",
+        max_age_s=0.0,
+    )
+    coordinator.async_send_command.assert_awaited_once_with(
+        "send_todev_ble_sync",
+        prefer_ble=True,
+        sync_type=3,
+    )
+    coordinator.async_request_refresh.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_position_feedback_diagnostic_handle_only_change_is_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Handle timestamp changes are metadata, not proof of position feedback."""
+    coordinator = _pulse_coordinator()
+
+    async def fake_sleep(_delay: float) -> None:
+        return None
+
+    calls = {"count": 0}
+
+    def mower(_device_name: str) -> SimpleNamespace:
+        calls["count"] += 1
+        return SimpleNamespace(
+            last_report_at=float(calls["count"]),
+            availability=SimpleNamespace(
+                mqtt_reported_offline=False,
+                ble_in_cooldown=False,
+            ),
+            active_transport=lambda: "ble",
+        )
+
+    coordinator.manager.mower = mower
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+
+    result = await _position_feedback_diagnostic(
+        coordinator,
+        dry_run=False,
+        pulse_count=0,
+        refresh_wait_seconds=0.1,
+    )
+
+    assert result["reason"] == "metadata_source_changed"
+    assert result["position_source_changed"] is False
+    assert result["position_changed_sources"] == []
+    assert result["metadata_changed_sources"] == ["raw_sources.handle"]
+
+
+@pytest.mark.asyncio
+async def test_position_feedback_diagnostic_sends_optional_pulses() -> None:
+    """Position feedback diagnostic can send a bounded pulse burst when approved."""
+    coordinator = _pulse_coordinator()
+
+    result = await _position_feedback_diagnostic(
+        coordinator,
+        dry_run=False,
+        pulse_count=1,
+        refresh_wait_seconds=0,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+    )
+
+    assert result["commands"][0]["ok"] is True
+    assert result["commands"][0]["kwargs"] == {
+        "linear_speed": 200,
+        "angular_speed": 0,
+    }
+    coordinator.manager.send_command_with_args.assert_awaited_once_with(
+        "Luba-Test",
+        "send_movement",
+        prefer_ble=True,
+        linear_speed=200,
+        angular_speed=0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_motion_probe_rejects_missing_confirmations() -> None:
+    """Real raw probe rejects missing operator confirmations before command."""
+    coordinator = _pulse_coordinator()
+
+    result = await _raw_pymammotion_motion_probe(
+        coordinator,
+        dry_run=False,
+        sample_delays=(),
+    )
+
+    assert result["would_send"] is False
+    assert result["reason"] == "safety_gates_failed"
+    assert result["blockers"] == [
+        "operator_confirmed_blades_off",
+        "operator_confirmed_clear_area",
+    ]
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_motion_probe_rejects_unsafe_blades() -> None:
+    """Real raw probe rejects unsafe blade telemetry before command."""
+    coordinator = _pulse_coordinator(blade_state=1, cutter_rpm=0)
+
+    result = await _raw_pymammotion_motion_probe(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        sample_delays=(),
+    )
+
+    assert result["would_send"] is False
+    assert result["blockers"] == ["mower_reports_blades_off"]
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_motion_probe_sends_raw_movement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Raw send_movement passes integer speeds through to pymammotion."""
+    coordinator = _pulse_coordinator()
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _raw_pymammotion_motion_probe(
+        coordinator,
+        command="send_movement",
+        linear_speed=-400,
+        angular_speed=180,
+        prefer_ble=True,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        sample_delays=(0,),
+    )
+
+    assert result["command_result"]["ok"] is True
+    coordinator.manager.send_command_with_args.assert_awaited_once_with(
+        "Luba-Test",
+        "send_movement",
+        prefer_ble=True,
+        linear_speed=-400,
+        angular_speed=180,
+    )
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_motion_probe_sends_wrapper_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Wrapper commands pass through to pymammotion without HA motion wrappers."""
+    coordinator = _pulse_coordinator()
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _raw_pymammotion_motion_probe(
+        coordinator,
+        command="move_left",
+        speed=0.4,
+        prefer_ble=False,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        sample_delays=(0,),
+    )
+
+    assert result["command_result"]["ok"] is True
+    coordinator.manager.send_command_with_args.assert_awaited_once_with(
+        "Luba-Test",
+        "move_left",
+        prefer_ble=False,
+        angular=0.4,
+    )
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_motion_probe_reports_telemetry_delta(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Raw probe reports movement interpretation from sampled telemetry."""
+    coordinator = _pulse_coordinator()
+
+    async def no_sleep(_: float) -> None:
+        coordinator.data.mowing_state.pos_x = 1.0
+        coordinator.data.mowing_state.pos_y = 0.5
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _raw_pymammotion_motion_probe(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        sample_delays=(0,),
+    )
+
+    assert result["motion_interpretation"]["status"] == "translation_detected"
+    assert result["motion_interpretation"]["delta"]["distance"] == pytest.approx(0.5)
+    assert result["motion_interpretation"]["movement_heading_degrees"] == 270.0
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_execute_segment_dry_run_negative_y() -> None:
+    """Negative-Y segment selects positive raw linear speed and sends nothing."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _raw_pymammotion_execute_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.0, "y": 0.7}],
+        sample_delays=(),
+    )
+
+    assert result["service"] == "raw_pymammotion_execute_segment"
+    assert result["dry_run"] is True
+    assert result["stop_reason"] == "dry_run"
+    assert result["would_send"] is False
+    assert result["selected_axis"] == "map_y"
+    assert result["initial_command_selection"]["linear_speed"] == 400
+    assert result["command_not_sent"]["kwargs"] == {
+        "linear_speed": 400,
+        "angular_speed": 0,
+    }
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_execute_segment_dry_run_positive_y() -> None:
+    """Positive-Y segment selects negative raw linear speed."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _raw_pymammotion_execute_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.0, "y": 1.3}],
+        sample_delays=(),
+    )
+
+    assert result["stop_reason"] == "dry_run"
+    assert result["initial_command_selection"]["linear_speed"] == -400
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_execute_segment_uses_slow_speed_near_target() -> None:
+    """Remaining Y distance below threshold selects slow raw speed."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _raw_pymammotion_execute_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.0, "y": 0.88}],
+        sample_delays=(),
+    )
+
+    assert result["stop_reason"] == "dry_run"
+    assert result["initial_command_selection"]["linear_speed"] == 200
+    assert result["initial_command_selection"]["speed_tier"] == "slow"
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_execute_segment_rejects_lateral_segment() -> None:
+    """Part 1 rejects segments that need unproven lateral/turning motion."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _raw_pymammotion_execute_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.5, "y": 0.95}],
+        sample_delays=(),
+    )
+
+    assert result["stop_reason"] == "segment_requires_lateral_or_turning_motion"
+    assert result["lateral_diagnostic"]["passed"] is False
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_execute_segment_rejects_missing_confirmations() -> None:
+    """Real raw segment rejects missing operator confirmations."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _raw_pymammotion_execute_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.0, "y": 0.7}],
+        dry_run=False,
+        sample_delays=(),
+    )
+
+    assert result["stop_reason"] == "safety_gates_failed"
+    assert result["blockers"] == [
+        "operator_confirmed_blades_off",
+        "operator_confirmed_clear_area",
+    ]
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_execute_segment_sends_one_raw_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real raw segment sends one send_movement command and accepts progress."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    async def no_sleep(_: float) -> None:
+        coordinator.data.mowing_state.pos_y = 0.9
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _raw_pymammotion_execute_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.0, "y": 0.9}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        sample_delays=(0,),
+    )
+
+    assert result["commands_sent"] == 1
+    assert result["stop_reason"] == "target_reached"
+    assert result["completion_status"]["complete"] is True
+    assert result["progress_diagnostics"][0]["passed"] is True
+    coordinator.manager.send_command_with_args.assert_awaited_once_with(
+        "Luba-Test",
+        "send_movement",
+        prefer_ble=True,
+        linear_speed=200,
+        angular_speed=0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_execute_segment_stops_on_no_progress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real raw segment stops when delayed telemetry shows no target progress."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _raw_pymammotion_execute_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.0, "y": 0.7}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        sample_delays=(0,),
+    )
+
+    assert result["commands_sent"] == 1
+    assert result["stop_reason"] == "no_target_progress"
+    assert result["progress_diagnostics"][0]["status"] == "no_path_progress"
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_execute_segment_stops_after_max_commands(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real raw segment stops after capped commands when progress is insufficient."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    positions = [0.985, 0.97, 0.955, 0.94]
+
+    async def no_sleep(_: float) -> None:
+        if positions:
+            coordinator.data.mowing_state.pos_y = positions.pop(0)
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _raw_pymammotion_execute_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.0, "y": 0.5}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        max_commands=2,
+        min_progress_distance=0.01,
+        sample_delays=(0,),
+    )
+
+    assert result["commands_sent"] == 2
+    assert result["stop_reason"] == "max_commands_reached"
+    assert result["progress_diagnostics"][-1]["passed"] is True
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_angular_calibration_defaults_to_dry_run() -> None:
+    """Raw angular calibration dry-run reports the exact command not sent."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _raw_pymammotion_angular_calibration(
+        coordinator,
+        sample_delays=(),
+    )
+
+    assert result["service"] == "raw_pymammotion_angular_calibration"
+    assert result["stop_reason"] == "dry_run"
+    assert result["would_send"] is False
+    assert result["command_not_sent"] == {
+        "manager_method": "send_command_with_args",
+        "device_name": "Luba-Test",
+        "command": "send_movement",
+        "prefer_ble": True,
+        "kwargs": {"linear_speed": 0, "angular_speed": 180},
+    }
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_angular_calibration_negative_direction_dry_run() -> None:
+    """Negative heading direction selects negative raw angular speed."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _raw_pymammotion_angular_calibration(
+        coordinator,
+        direction="negative_heading",
+        sample_delays=(),
+    )
+
+    assert result["stop_reason"] == "dry_run"
+    assert result["initial_command_selection"]["angular_speed"] == -180
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_angular_calibration_rejects_missing_confirmations() -> None:
+    """Real raw angular calibration rejects missing operator confirmations."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _raw_pymammotion_angular_calibration(
+        coordinator,
+        dry_run=False,
+        sample_delays=(),
+    )
+
+    assert result["stop_reason"] == "safety_gates_failed"
+    assert result["blockers"] == [
+        "operator_confirmed_blades_off",
+        "operator_confirmed_clear_area",
+    ]
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_angular_calibration_sends_raw_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real raw angular calibration sends one angular command and reaches target."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    async def no_sleep(_: float) -> None:
+        coordinator.data.mowing_state.toward = 12.0
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _raw_pymammotion_angular_calibration(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        target_heading_delta_degrees=10.0,
+        sample_delays=(0,),
+    )
+
+    assert result["commands_sent"] == 1
+    assert result["stop_reason"] == "target_heading_reached"
+    assert result["target_status"]["complete"] is True
+    assert result["heading_diagnostics"][0]["passed"] is True
+    coordinator.manager.send_command_with_args.assert_awaited_once_with(
+        "Luba-Test",
+        "send_movement",
+        prefer_ble=True,
+        linear_speed=0,
+        angular_speed=180,
+    )
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_angular_calibration_stops_on_no_heading_progress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real raw angular calibration stops when heading telemetry does not move."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _raw_pymammotion_angular_calibration(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        sample_delays=(0,),
+    )
+
+    assert result["commands_sent"] == 1
+    assert result["stop_reason"] == "no_heading_progress"
+    assert result["heading_diagnostics"][0]["status"] == "wrong_heading_direction"
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_angular_calibration_stops_after_max_commands(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real raw angular calibration stops at the command cap with progress."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    headings = [2.0, 4.0]
+
+    async def no_sleep(_: float) -> None:
+        if headings:
+            coordinator.data.mowing_state.toward = headings.pop(0)
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _raw_pymammotion_angular_calibration(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        target_heading_delta_degrees=10.0,
+        max_commands=2,
+        min_heading_change_degrees=1.0,
+        sample_delays=(0,),
+    )
+
+    assert result["commands_sent"] == 2
+    assert result["stop_reason"] == "max_commands_reached"
+    assert result["heading_diagnostics"][-1]["passed"] is True
+    assert result["target_status"]["target_direction_progress_degrees"] == 4.0
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_turn_to_heading_dry_run_positive_direction() -> None:
+    """Dry-run chooses positive angular speed for positive shortest error."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _raw_pymammotion_turn_to_heading(
+        coordinator,
+        target_heading_degrees=20.0,
+        sample_delays=(),
+    )
+
+    assert result["service"] == "raw_pymammotion_turn_to_heading"
+    assert result["stop_reason"] == "dry_run"
+    assert result["would_send"] is False
+    assert result["heading_status"]["heading_error_degrees"] == 20.0
+    assert result["initial_command_selection"]["angular_speed"] == 180
+    assert result["command_not_sent"]["kwargs"] == {
+        "linear_speed": 0,
+        "angular_speed": 180,
+    }
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_turn_to_heading_dry_run_negative_direction() -> None:
+    """Dry-run chooses negative angular speed for negative shortest error."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _raw_pymammotion_turn_to_heading(
+        coordinator,
+        target_heading_degrees=350.0,
+        sample_delays=(),
+    )
+
+    assert result["stop_reason"] == "dry_run"
+    assert result["heading_status"]["heading_error_degrees"] == -10.0
+    assert result["initial_command_selection"]["angular_speed"] == -180
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_turn_to_heading_uses_slow_speed_near_target() -> None:
+    """Dry-run selects slow angular speed inside the slow threshold."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _raw_pymammotion_turn_to_heading(
+        coordinator,
+        target_heading_degrees=6.0,
+        heading_tolerance_degrees=1.0,
+        sample_delays=(),
+    )
+
+    assert result["stop_reason"] == "dry_run"
+    assert result["initial_command_selection"]["angular_speed"] == 90
+    assert result["initial_command_selection"]["speed_tier"] == "slow"
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_turn_to_heading_returns_reached_without_command() -> None:
+    """Already-at-target heading returns reached and sends nothing."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 1.0))
+
+    result = await _raw_pymammotion_turn_to_heading(
+        coordinator,
+        target_heading_degrees=2.0,
+        heading_tolerance_degrees=3.0,
+        sample_delays=(),
+    )
+
+    assert result["stop_reason"] == "target_heading_reached"
+    assert result["commands_sent"] == 0
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_turn_to_heading_rejects_missing_confirmations() -> None:
+    """Real turn-to-heading rejects missing confirmations."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _raw_pymammotion_turn_to_heading(
+        coordinator,
+        target_heading_degrees=20.0,
+        dry_run=False,
+        sample_delays=(),
+    )
+
+    assert result["stop_reason"] == "safety_gates_failed"
+    assert result["blockers"] == [
+        "operator_confirmed_blades_off",
+        "operator_confirmed_clear_area",
+    ]
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_turn_to_heading_sends_raw_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real turn-to-heading sends raw angular commands until target is reached."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    async def no_sleep(_: float) -> None:
+        coordinator.data.mowing_state.toward = 18.0
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _raw_pymammotion_turn_to_heading(
+        coordinator,
+        target_heading_degrees=20.0,
+        heading_tolerance_degrees=3.0,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        sample_delays=(0,),
+    )
+
+    assert result["commands_sent"] == 1
+    assert result["stop_reason"] == "target_heading_reached"
+    assert result["heading_status"]["complete"] is True
+    assert result["heading_diagnostics"][0]["passed"] is True
+    coordinator.manager.send_command_with_args.assert_awaited_once_with(
+        "Luba-Test",
+        "send_movement",
+        prefer_ble=True,
+        linear_speed=0,
+        angular_speed=180,
+    )
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_turn_to_heading_stops_on_no_progress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real turn-to-heading stops when heading telemetry does not progress."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _raw_pymammotion_turn_to_heading(
+        coordinator,
+        target_heading_degrees=20.0,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        sample_delays=(0,),
+    )
+
+    assert result["commands_sent"] == 1
+    assert result["stop_reason"] == "no_heading_progress"
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_turn_to_heading_stops_after_max_commands(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real turn-to-heading stops at cap after valid progress."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    headings = [4.0, 8.0, 12.0, 16.0]
+
+    async def no_sleep(_: float) -> None:
+        if headings:
+            coordinator.data.mowing_state.toward = headings.pop(0)
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _raw_pymammotion_turn_to_heading(
+        coordinator,
+        target_heading_degrees=20.0,
+        heading_tolerance_degrees=1.0,
+        max_commands=2,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        sample_delays=(0,),
+    )
+
+    assert result["commands_sent"] == 2
+    assert result["stop_reason"] == "max_commands_reached"
+    assert result["heading_diagnostics"][-1]["passed"] is True
+    assert result["heading_status"]["heading_error_degrees"] == 4.0
+
+
+@pytest.mark.asyncio
+async def test_raw_motion_readiness_test_dry_run_selects_expected_commands() -> None:
+    """Readiness dry-run runs all non-moving phases and selects expected commands."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _raw_motion_readiness_test(coordinator, sample_delays=())
+
+    assert result["ready_for_vector_segment"] is True
+    assert result["ready_for_multi_point"] is False
+    assert result["linear_y_ready"] is True
+    assert result["turn_to_heading_ready"] is True
+    assert result["real_steps_run"] == 0
+    assert result["failed_phase"] is None
+    phase_by_name = {phase["name"]: phase for phase in result["phases"]}
+    assert list(phase_by_name) == [
+        "safety_snapshot",
+        "dry_run_negative_y_segment",
+        "dry_run_positive_y_segment",
+        "dry_run_positive_turn_to_heading",
+        "dry_run_negative_turn_to_heading",
+    ]
+    assert phase_by_name["dry_run_negative_y_segment"]["result"]["command_not_sent"][
+        "kwargs"
+    ] == {"linear_speed": 200, "angular_speed": 0}
+    assert phase_by_name["dry_run_positive_y_segment"]["result"]["command_not_sent"][
+        "kwargs"
+    ] == {"linear_speed": -200, "angular_speed": 0}
+    assert phase_by_name["dry_run_positive_turn_to_heading"]["result"][
+        "command_not_sent"
+    ]["kwargs"] == {"linear_speed": 0, "angular_speed": 180}
+    assert phase_by_name["dry_run_negative_turn_to_heading"]["result"][
+        "command_not_sent"
+    ]["kwargs"] == {"linear_speed": 0, "angular_speed": -180}
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_raw_motion_readiness_test_fails_on_unsafe_snapshot() -> None:
+    """Readiness stops immediately on unsafe runtime state."""
+    coordinator = _pulse_coordinator(blade_state=1, position=(1.0, 1.0, 0.0))
+
+    result = await _raw_motion_readiness_test(coordinator, sample_delays=())
+
+    assert result["ready_for_vector_segment"] is False
+    assert result["failed_phase"] == "safety_snapshot"
+    assert result["blockers"] == ["blade_reported_on"]
+    assert [phase["name"] for phase in result["phases"]] == ["safety_snapshot"]
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_raw_motion_readiness_test_real_rejects_missing_confirmations() -> None:
+    """Real readiness rejects real phases without operator confirmations."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _raw_motion_readiness_test(
+        coordinator,
+        dry_run=False,
+        max_real_steps=1,
+        sample_delays=(),
+    )
+
+    assert result["failed_phase"] == "real_preflight"
+    assert result["blockers"] == [
+        "operator_confirmed_blades_off",
+        "operator_confirmed_clear_area",
+    ]
+    assert result["real_steps_run"] == 0
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_raw_motion_readiness_test_max_real_steps_limits_phases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Readiness only runs the requested number of real phases."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    headings = [4.0, 8.0, 4.0, 0.0]
+
+    async def no_sleep(_: float) -> None:
+        if headings:
+            coordinator.data.mowing_state.toward = headings.pop(0)
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _raw_motion_readiness_test(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        max_real_steps=2,
+        sample_delays=(0,),
+    )
+
+    assert result["ready_for_vector_segment"] is True
+    assert result["real_steps_run"] == 2
+    assert [phase["name"] for phase in result["phases"]][-2:] == [
+        "real_positive_turn_to_heading",
+        "real_negative_turn_to_heading",
+    ]
+    assert coordinator.manager.send_command_with_args.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_raw_motion_readiness_test_stops_on_first_failed_real_phase(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Readiness stops on the first failed real phase."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _raw_motion_readiness_test(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        max_real_steps=4,
+        sample_delays=(0,),
+    )
+
+    assert result["ready_for_vector_segment"] is False
+    assert result["failed_phase"] == "real_positive_turn_to_heading"
+    assert result["real_steps_run"] == 1
+    assert [phase["name"] for phase in result["phases"]][-1] == (
+        "real_positive_turn_to_heading"
+    )
+    assert coordinator.manager.send_command_with_args.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_execute_vector_segment_dry_run_with_zero_offset() -> None:
+    """Vector dry-run can use an explicit zero heading offset."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}],
+        calibrated_forward_heading_offset_degrees=0.0,
+        sample_delays=(0,),
+    )
+
+    assert result["service"] == "raw_pymammotion_execute_vector_segment"
+    assert result["dry_run"] is True
+    assert result["stop_reason"] == "dry_run"
+    assert result["target_map_heading_degrees"] == 0.0
+    assert result["target_reported_heading_degrees"] == 0.0
+    assert result["target_heading_degrees"] == 0.0
+    assert result["ready_for_multi_point"] is False
+    assert [phase["name"] for phase in result["phases"]] == [
+        "turn_to_target_heading",
+        "linear_forward_to_target",
+    ]
+    assert result["command_not_sent"]["kwargs"] == {
+        "linear_speed": 200,
+        "angular_speed": 0,
+    }
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_execute_vector_segment_dry_run_applies_offset() -> None:
+    """Vector dry-run converts map target heading into reported mower heading."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}],
+        calibrated_forward_heading_offset_degrees=116.5,
+        sample_delays=(0,),
+    )
+
+    assert result["stop_reason"] == "dry_run"
+    assert result["target_map_heading_degrees"] == 0.0
+    assert result["target_reported_heading_degrees"] == pytest.approx(243.5)
+    assert result["heading_calibration"] == {
+        "formula": (
+            "target_reported_heading = "
+            "target_map_heading - calibrated_forward_heading_offset"
+        ),
+        "target_map_heading_degrees": 0.0,
+        "calibrated_forward_heading_offset_degrees": 116.5,
+        "target_reported_heading_degrees": pytest.approx(243.5),
+    }
+    turn_phase = result["phases"][0]["result"]
+    assert turn_phase["command_not_sent"]["kwargs"] == {
+        "linear_speed": 0,
+        "angular_speed": -180,
+    }
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_execute_vector_segment_rejects_missing_confirmations() -> None:
+    """Real vector execution requires explicit operator confirmations."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=False,
+        sample_delays=(0,),
+    )
+
+    assert result["stop_reason"] == "safety_gates_failed"
+    assert "operator_confirmed_clear_area" in result["blockers"]
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_execute_vector_segment_sends_forward_after_heading_reached(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real vector execution sends one raw forward command after heading is aligned."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        calibrated_forward_heading_offset_degrees=0.0,
+        max_turn_commands=1,
+        max_linear_commands=1,
+        sample_delays=(0,),
+    )
+
+    assert result["turn_commands_sent"] == 0
+    assert result["linear_commands_sent"] == 1
+    assert result["stop_reason"] == "no_target_progress"
+    coordinator.manager.send_command_with_args.assert_awaited_once_with(
+        "Luba-Test",
+        "send_movement",
+        prefer_ble=True,
+        linear_speed=200,
+        angular_speed=0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_execute_multi_segment_dry_run_chains_segments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Multi-segment dry-run calls the vector primitive for each segment only."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    calls: list[tuple[list[dict[str, float]], bool]] = []
+
+    async def fake_vector(
+        coordinator_arg: MammotionReportUpdateCoordinator,
+        points: list[dict[str, float]],
+        **kwargs: object,
+    ) -> dict:
+        assert coordinator_arg is coordinator
+        calls.append((points, bool(kwargs["dry_run"])))
+        return {
+            "valid": True,
+            "stop_reason": "dry_run",
+            "blockers": [],
+            "phases": [{"passed": True}, {"passed": True}],
+            "final_telemetry": _custom_path_telemetry_snapshot(coordinator),
+            "progress_diagnostics": [],
+        }
+
+    monkeypatch.setattr(
+        mammotion_services,
+        "_raw_pymammotion_execute_vector_segment",
+        fake_vector,
+    )
+
+    result = await _raw_pymammotion_execute_multi_segment(
+        coordinator,
+        [
+            {"x": 1.0, "y": 1.0},
+            {"x": 1.1, "y": 1.0},
+            {"x": 1.2, "y": 1.1},
+        ],
+        sample_delays=(0,),
+    )
+
+    assert result["service"] == "raw_pymammotion_execute_multi_segment"
+    assert result["dry_run"] is True
+    assert result["stop_reason"] == "dry_run"
+    assert result["ready_for_multi_segment"] is True
+    assert result["ready_for_multi_point"] is False
+    assert result["segments_executed"] == 2
+    assert calls == [
+        ([{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}], True),
+        ([{"x": 1.1, "y": 1.0}, {"x": 1.2, "y": 1.1}], True),
+    ]
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_execute_multi_segment_real_rejects_missing_confirmations() -> None:
+    """Real multi-segment execution requires explicit operator confirmations."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _raw_pymammotion_execute_multi_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=False,
+        sample_delays=(0,),
+    )
+
+    assert result["stop_reason"] == "safety_gates_failed"
+    assert "operator_confirmed_clear_area" in result["blockers"]
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_execute_multi_segment_limits_real_segments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """max_real_segments limits real chained segment execution."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    calls: list[bool] = []
+
+    async def fake_vector(
+        coordinator_arg: MammotionReportUpdateCoordinator,
+        points: list[dict[str, float]],
+        **kwargs: object,
+    ) -> dict:
+        assert coordinator_arg is coordinator
+        calls.append(bool(kwargs["dry_run"]))
+        return {
+            "valid": True,
+            "stop_reason": "target_reached",
+            "blockers": [],
+            "phases": [{"passed": True}, {"passed": True}],
+            "final_telemetry": _custom_path_telemetry_snapshot(coordinator),
+            "progress_diagnostics": [{"passed": True}],
+        }
+
+    monkeypatch.setattr(
+        mammotion_services,
+        "_raw_pymammotion_execute_vector_segment",
+        fake_vector,
+    )
+
+    result = await _raw_pymammotion_execute_multi_segment(
+        coordinator,
+        [
+            {"x": 1.0, "y": 1.0},
+            {"x": 1.1, "y": 1.0},
+            {"x": 1.2, "y": 1.1},
+        ],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        max_real_segments=1,
+        sample_delays=(0,),
+    )
+
+    assert result["stop_reason"] == "max_real_segments_reached"
+    assert result["real_segments_executed"] == 1
+    assert result["segments"][1]["skipped_reason"] == "max_real_segments_reached"
+    assert calls == [False]
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_execute_multi_segment_stops_on_first_failed_segment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Multi-segment wrapper stops on the first failed vector segment."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    call_count = 0
+
+    async def fake_vector(
+        coordinator_arg: MammotionReportUpdateCoordinator,
+        points: list[dict[str, float]],
+        **kwargs: object,
+    ) -> dict:
+        nonlocal call_count
+        assert coordinator_arg is coordinator
+        call_count += 1
+        return {
+            "valid": True,
+            "stop_reason": "no_target_progress" if call_count == 1 else "dry_run",
+            "blockers": [],
+            "phases": [{"passed": True}, {"passed": True}],
+            "final_telemetry": _custom_path_telemetry_snapshot(coordinator),
+            "progress_diagnostics": [{"passed": False}],
+        }
+
+    monkeypatch.setattr(
+        mammotion_services,
+        "_raw_pymammotion_execute_vector_segment",
+        fake_vector,
+    )
+
+    result = await _raw_pymammotion_execute_multi_segment(
+        coordinator,
+        [
+            {"x": 1.0, "y": 1.0},
+            {"x": 1.1, "y": 1.0},
+            {"x": 1.2, "y": 1.1},
+        ],
+        sample_delays=(0,),
+    )
+
+    assert result["stop_reason"] == "segment_failed"
+    assert result["failed_segment_index"] == 1
+    assert result["segments_executed"] == 1
+    assert call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_raw_vector_readiness_test_dry_run_selects_expected_phases() -> None:
+    """Vector readiness dry-run covers aligned and both turn directions."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _raw_vector_readiness_test(coordinator, sample_delays=(0,))
+
+    assert result["dry_run"] is True
+    assert result["ready_for_multi_segment"] is True
+    assert result["ready_for_multi_point"] is False
+    assert result["real_steps_run"] == 0
+    assert result["failed_phase"] is None
+    assert [phase["name"] for phase in result["phases"]] == [
+        "safety_snapshot",
+        "dry_run_aligned_vector",
+        "dry_run_positive_turn_vector",
+        "dry_run_negative_turn_vector",
+    ]
+    aligned = result["phases"][1]["result"]
+    positive = result["phases"][2]["result"]
+    negative = result["phases"][3]["result"]
+    assert aligned["phases"][0]["result"]["stop_reason"] == "target_heading_reached"
+    assert positive["phases"][0]["result"]["command_not_sent"]["kwargs"] == {
+        "linear_speed": 0,
+        "angular_speed": 180,
+    }
+    assert negative["phases"][0]["result"]["command_not_sent"]["kwargs"] == {
+        "linear_speed": 0,
+        "angular_speed": -180,
+    }
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_raw_vector_readiness_test_real_rejects_missing_confirmations() -> None:
+    """Real vector readiness rejects missing operator confirmations."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _raw_vector_readiness_test(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=False,
+        max_real_steps=1,
+        sample_delays=(0,),
+    )
+
+    assert result["ready_for_multi_segment"] is False
+    assert result["failed_phase"] == "real_preflight"
+    assert result["blockers"] == ["operator_confirmed_clear_area"]
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_raw_vector_readiness_test_max_real_steps_limits_phases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Vector readiness max_real_steps limits real movement phases."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _raw_vector_readiness_test(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        max_real_steps=1,
+        calibrated_forward_heading_offset_degrees=0.0,
+        sample_delays=(0,),
+    )
+
+    assert result["real_steps_run"] == 1
+    assert [phase["name"] for phase in result["phases"]][-1] == "real_aligned_vector"
+    assert coordinator.manager.send_command_with_args.await_count == 2
+
+
+def test_raw_vector_readiness_phase_passed_accepts_proven_progress() -> None:
+    """Real phase passes when at least one path-progress pulse is demonstrated."""
+    assert (
+        _raw_vector_readiness_phase_passed(
+            "real_aligned_vector",
+            {
+                "stop_reason": "no_target_progress",
+                "valid": True,
+                "blockers": [],
+                "progress_diagnostics": [
+                    {"status": "path_progress", "passed": True},
+                    {"status": "no_path_progress", "passed": False},
+                ],
+            },
+        )
+        is True
+    )
+
+
+def test_raw_vector_readiness_phase_passed_rejects_no_progress() -> None:
+    """Real phase fails if no path-progress pulse is demonstrated."""
+    assert (
+        _raw_vector_readiness_phase_passed(
+            "real_aligned_vector",
+            {
+                "stop_reason": "no_target_progress",
+                "valid": True,
+                "blockers": [],
+                "progress_diagnostics": [
+                    {"status": "no_path_progress", "passed": False},
+                ],
+            },
+        )
+        is False
+    )
+
+
+def test_raw_vector_readiness_phase_passed_accepts_aligned_translation_signal() -> None:
+    """Aligned real phase accepts measured translation with heading progress."""
+    assert (
+        _raw_vector_readiness_phase_passed(
+            "real_aligned_vector",
+            {
+                "stop_reason": "no_target_progress",
+                "valid": True,
+                "blockers": [],
+                "progress_diagnostics": [
+                    {
+                        "status": "no_path_progress",
+                        "passed": False,
+                        "heading_progress": True,
+                        "min_progress_distance": 0.005,
+                        "measured_delta": {"distance": 0.0048},
+                        "path_progress_distance": -0.0043,
+                    }
+                ],
+            },
+        )
+        is True
+    )
 
 
 @pytest.mark.asyncio
@@ -887,6 +2891,39 @@ async def test_manual_velocity_pulse_test_defaults_to_dry_run() -> None:
         "data": {"speed": 0.1, "use_wifi": False},
     }
     coordinator.async_move_forward.assert_not_called()
+    coordinator.async_stop_manual_motion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_pulse_test_firmware_mode_skips_explicit_stop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Firmware nudge mode sends movement but does not issue zero-speed stop."""
+    coordinator = _pulse_coordinator()
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _manual_velocity_pulse_test(
+        coordinator,
+        action="forward",
+        speed=0.4,
+        duration_ms=750,
+        stop_mode="firmware",
+        post_command_sample_delays=(0.0, 2.0),
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+    )
+
+    assert result["would_send"] is True
+    assert result["stop_mode"] == "firmware"
+    assert result["stop_result"]["attempted"] is False
+    assert result["stop_result"]["reason"] == "firmware_nudge_mode_no_explicit_stop"
+    assert result["real_pulse_completed"] is True
+    assert coordinator.async_move_forward.await_count == 1
     coordinator.async_stop_manual_motion.assert_not_called()
 
 
@@ -950,6 +2987,25 @@ async def test_manual_velocity_pulse_test_rejects_active_work_mode() -> None:
 
 
 @pytest.mark.asyncio
+async def test_manual_velocity_pulse_test_allows_paused_work_mode() -> None:
+    """Real pulse allows MODE_PAUSE after a canceled job when other gates pass."""
+    coordinator = _pulse_coordinator(work_mode=19)
+
+    result = await _manual_velocity_pulse_test(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        followup_samples=0,
+    )
+
+    assert result["would_send"] is True
+    assert result["blockers"] == []
+    coordinator.async_move_forward.assert_awaited_once()
+    coordinator.async_stop_manual_motion.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_manual_velocity_pulse_test_rejects_unavailable_position() -> None:
     """Real pulse rejects missing live map-local position before movement."""
     coordinator = _pulse_coordinator(position=(None, None, None), pos_type=0, zone_hash=0)
@@ -1007,6 +3063,53 @@ async def test_manual_velocity_pulse_test_rejects_area_out_zero_zone() -> None:
     assert result["blockers"] == ["position_area_inside"]
     coordinator.async_move_forward.assert_not_called()
     coordinator.async_stop_manual_motion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_pulse_test_allows_turn_area_inside() -> None:
+    """Real pulse allows TURN_AREA_INSIDE when position and zone are known."""
+    coordinator = _pulse_coordinator(pos_type=4, zone_hash=123)
+
+    result = await _manual_velocity_pulse_test(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        followup_samples=0,
+    )
+
+    assert result["would_send"] is True
+    assert result["blockers"] == []
+    before_position = result["samples"][0]["telemetry"]["position"]
+    assert before_position["pos_type_label"] == (
+        "TURN_AREA_INSIDE"
+    )
+    assert before_position["valid_for_motion"] is True
+    coordinator.async_move_forward.assert_awaited_once()
+    coordinator.async_stop_manual_motion.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_pulse_test_allows_channel_area_overlap() -> None:
+    """Real pulse allows CHANNEL_AREA_OVERLAP when position and zone are known."""
+    coordinator = _pulse_coordinator(pos_type=9, zone_hash=123)
+
+    result = await _manual_velocity_pulse_test(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        followup_samples=0,
+    )
+
+    before_position = result["samples"][0]["telemetry"]["position"]
+
+    assert result["would_send"] is True
+    assert result["blockers"] == []
+    assert before_position["pos_type_label"] == "CHANNEL_AREA_OVERLAP"
+    assert before_position["valid_for_motion"] is True
+    coordinator.async_move_forward.assert_awaited_once()
+    coordinator.async_stop_manual_motion.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -1207,6 +3310,68 @@ def test_experimental_execute_segment_schema_is_real_two_point_only() -> None:
             EXPERIMENTAL_EXECUTE_SEGMENT_SCHEMA(invalid)
 
 
+def test_experimental_execute_segment_burst_schema_is_real_two_point_only() -> None:
+    """Burst execution requires explicit real two-point execution."""
+    parsed = EXPERIMENTAL_EXECUTE_SEGMENT_BURST_SCHEMA(
+        {
+            "entity_id": "lawn_mower.test",
+            "points": [{"x": 1, "y": 1}, {"x": 2, "y": 1}],
+            "dry_run": False,
+            "confirm_blades_off": True,
+            "confirm_clear_area": True,
+            "pulses_per_burst": 3,
+            "max_bursts": 3,
+            "heading_offset_candidates": [110, 0, 90],
+        }
+    )
+
+    assert parsed["dry_run"] is False
+    assert parsed["confirm_blades_off"] is True
+    assert parsed["confirm_clear_area"] is True
+    assert parsed["pulses_per_burst"] == 3
+    assert parsed["max_bursts"] == 3
+    assert parsed["heading_offset_candidates"] == [110.0, 0.0, 90.0]
+    assert parsed["allow_unproven_turns"] is False
+    assert parsed["calibrated_forward_heading_degrees"] == 270.0
+    assert parsed["calibrated_forward_heading_tolerance_degrees"] == 45.0
+
+    invalid_cases = [
+        {
+            "entity_id": "lawn_mower.test",
+            "points": [{"x": 1, "y": 1}],
+            "dry_run": False,
+            "confirm_blades_off": True,
+            "confirm_clear_area": True,
+        },
+        {
+            "entity_id": "lawn_mower.test",
+            "points": [{"x": 1, "y": 1}, {"x": 2, "y": 1}],
+            "dry_run": True,
+            "confirm_blades_off": True,
+            "confirm_clear_area": True,
+        },
+        {
+            "entity_id": "lawn_mower.test",
+            "points": [{"x": 1, "y": 1}, {"x": 2, "y": 1}],
+            "dry_run": False,
+            "confirm_blades_off": True,
+            "confirm_clear_area": True,
+            "pulses_per_burst": 4,
+        },
+        {
+            "entity_id": "lawn_mower.test",
+            "points": [{"x": 1, "y": 1}, {"x": 2, "y": 1}],
+            "dry_run": False,
+            "confirm_blades_off": True,
+            "confirm_clear_area": True,
+            "max_bursts": 4,
+        },
+    ]
+    for invalid in invalid_cases:
+        with pytest.raises(Exception):  # noqa: B017
+            EXPERIMENTAL_EXECUTE_SEGMENT_BURST_SCHEMA(invalid)
+
+
 def test_manual_velocity_heading_calibration_schema_defaults() -> None:
     """Heading calibration schema defaults to a dry-run forward pulse."""
     parsed = MANUAL_VELOCITY_HEADING_CALIBRATION_TEST_SCHEMA(
@@ -1217,6 +3382,38 @@ def test_manual_velocity_heading_calibration_schema_defaults() -> None:
     assert parsed["dry_run"] is True
     assert parsed["speed"] == 0.4
     assert parsed["duration_ms"] == 750
+    assert parsed["use_wifi"] is False
+    assert parsed["stop_mode"] == "firmware"
+    assert parsed["post_command_sample_delays"] == [0, 10, 20, 30, 45, 60]
+
+
+def test_manual_velocity_cumulative_pulse_schema_defaults() -> None:
+    """Cumulative pulse schema defaults to dry-run delayed telemetry sampling."""
+    parsed = MANUAL_VELOCITY_CUMULATIVE_PULSE_TEST_SCHEMA(
+        {
+            "entity_id": "lawn_mower.test",
+            "points": [{"x": 1.0, "y": 1.0}, {"x": 2.0, "y": 1.0}],
+        }
+    )
+
+    assert parsed["dry_run"] is True
+    assert parsed["max_pulses"] == 3
+    assert parsed["stop_mode"] == "immediate"
+    assert parsed["stop_delay_ms"] == 0
+    assert parsed["cumulative_sample_delays"][-1] == 120
+    assert parsed["heading_offset_candidates"] == list(DEFAULT_HEADING_OFFSET_CANDIDATES)
+
+
+def test_manual_velocity_heading_offset_candidate_schema_rejects_invalid_values() -> None:
+    """Heading offset candidates are bounded to valid degrees."""
+    with pytest.raises(Exception):  # noqa: B017
+        MANUAL_VELOCITY_CUMULATIVE_PULSE_TEST_SCHEMA(
+            {
+                "entity_id": "lawn_mower.test",
+                "points": [{"x": 1.0, "y": 1.0}, {"x": 2.0, "y": 1.0}],
+                "heading_offset_candidates": [0, 181],
+            }
+        )
 
 
 @pytest.mark.asyncio
@@ -1552,6 +3749,238 @@ async def test_manual_velocity_segment_test_can_report_multi_pulse_service_name(
 
 
 @pytest.mark.asyncio
+async def test_manual_velocity_cumulative_pulse_test_defaults_to_dry_run() -> None:
+    """Cumulative pulse probe default plans the burst but sends nothing."""
+    coordinator = _pulse_coordinator()
+
+    result = await _manual_velocity_cumulative_pulse_test(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 2.0, "y": 1.0}],
+        heading_offset_degrees=110.0,
+        heading_offset_candidates=[110.0, 0.0],
+    )
+
+    assert result["service"] == "manual_velocity_cumulative_pulse_test"
+    assert result["dry_run"] is True
+    assert result["would_send"] is False
+    assert result["real_probe_allowed"] is False
+    assert result["stop_reason"] == "dry_run"
+    assert result["heading_offset_candidates"] == [110.0, 0.0]
+    assert result["initial_controller_decision"]["selected_heading_offset_degrees"] == 0.0
+    assert len(result["initial_controller_decision"]["heading_offset_diagnostics"]) == 2
+    assert result["command_not_sent"] == {
+        "service": "mammotion.move_forward",
+        "data": {"speed": 0.4, "use_wifi": False},
+    }
+    coordinator.async_move_forward.assert_not_called()
+    coordinator.async_stop_manual_motion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_cumulative_pulse_test_firmware_mode_skips_stop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cumulative firmware nudge mode sends pulses without explicit zero-stop."""
+    coordinator = _pulse_coordinator()
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _manual_velocity_cumulative_pulse_test(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 2.0, "y": 1.0}],
+        speed=0.4,
+        pulse_duration_ms=50,
+        max_pulses=2,
+        force_action="forward",
+        stop_mode="firmware",
+        use_wifi=False,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        cumulative_sample_delays=(0.0,),
+    )
+
+    assert result["stop_mode"] == "firmware"
+    assert result["pulses_sent"] == 2
+    assert result["pulse_results"][0]["stop_result"]["attempted"] is False
+    assert result["pulse_results"][0]["stop_result"]["reason"] == (
+        "firmware_nudge_mode_no_explicit_stop"
+    )
+    assert coordinator.async_move_forward.await_count == 2
+    coordinator.async_stop_manual_motion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_manual_velocity_cumulative_pulse_test_detects_delayed_cumulative_progress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cumulative probe sends a pulse burst, then accepts delayed total progress."""
+    coordinator = _pulse_coordinator()
+    original_snapshot = mammotion_services._custom_path_telemetry_snapshot  # noqa: SLF001
+    snapshot_count = 0
+
+    def delayed_snapshot(coordinator_arg: object) -> dict[str, object]:
+        nonlocal snapshot_count
+        snapshot_count += 1
+        if snapshot_count >= 10:
+            coordinator.data.mowing_state.pos_x = 1.2
+        return original_snapshot(coordinator_arg)
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(
+        mammotion_services,
+        "_custom_path_telemetry_snapshot",
+        delayed_snapshot,
+    )
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _manual_velocity_cumulative_pulse_test(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 2.0, "y": 1.0}],
+        speed=0.4,
+        pulse_duration_ms=50,
+        max_pulses=3,
+        use_wifi=True,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        cumulative_sample_delays=(0.0, 30.0, 60.0),
+    )
+
+    assert result["stop_reason"] == "cumulative_progress_detected"
+    assert result["result_status"] == "cumulative_progress_detected"
+    assert result["pulses_sent"] == 3
+    assert result["cumulative_progress_detected"] is True
+    assert result["telemetry_latency_seconds"] == 60.0
+    assert result["cumulative_delta"]["distance"] == pytest.approx(0.2)
+    assert result["cumulative_path_progress_diagnostic"]["passed"] is True
+    assert coordinator.async_move_forward.await_count == 3
+    assert coordinator.async_stop_manual_motion.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_experimental_execute_segment_burst_stops_after_no_cumulative_progress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Burst execution stops after a burst that never gets telemetry progress."""
+    coordinator = _pulse_coordinator()
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _experimental_execute_segment_burst(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 2.0, "y": 1.0}],
+        speed=0.4,
+        pulse_duration_ms=50,
+        pulses_per_burst=2,
+        max_bursts=3,
+        stop_mode="immediate",
+        calibrated_forward_heading_degrees=0,
+        use_wifi=True,
+        cumulative_sample_delays=(0.0,),
+    )
+
+    assert result["service"] == "experimental_execute_segment_burst"
+    assert result["stop_reason"] == "no_cumulative_progress"
+    assert result["bursts_sent"] == 1
+    assert result["pulses_sent"] == 2
+    assert result["bursts"][0]["cumulative_progress_detected"] is False
+    assert coordinator.async_move_forward.await_count == 2
+    assert coordinator.async_stop_manual_motion.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_experimental_execute_segment_burst_continues_after_cumulative_progress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Burst execution can send another burst after delayed target progress."""
+    coordinator = _pulse_coordinator()
+    stop_count = 0
+
+    async def move_after_stop(*_: object, **__: object) -> None:
+        nonlocal stop_count
+        stop_count += 1
+        coordinator.data.mowing_state.pos_x = 1.2 if stop_count == 1 else 2.0
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    coordinator.async_stop_manual_motion.side_effect = move_after_stop
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _experimental_execute_segment_burst(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 2.0, "y": 1.0}],
+        speed=0.4,
+        pulse_duration_ms=50,
+        pulses_per_burst=1,
+        max_bursts=3,
+        waypoint_tolerance=0.05,
+        stop_mode="immediate",
+        calibrated_forward_heading_degrees=0,
+        use_wifi=True,
+        cumulative_sample_delays=(0.0, 60.0),
+    )
+
+    assert result["stop_reason"] == "path_complete"
+    assert result["completion_status"]["complete"] is True
+    assert result["bursts_sent"] == 2
+    assert result["pulses_sent"] == 2
+    assert result["bursts"][0]["cumulative_progress_detected"] is True
+    assert result["bursts"][1]["cumulative_progress_detected"] is True
+    assert result["cumulative_path_progress"] == pytest.approx(1.0)
+    assert coordinator.async_move_forward.await_count == 2
+    assert coordinator.async_stop_manual_motion.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_experimental_execute_segment_burst_blocks_unproven_turn_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Default experimental execution only allows calibrated forward segments."""
+    coordinator = _pulse_coordinator()
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _experimental_execute_segment_burst(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 2.0, "y": 1.0}],
+        speed=0.4,
+        pulse_duration_ms=50,
+        cumulative_sample_delays=(0.0,),
+    )
+
+    assert result["stop_reason"] == (
+        "segment_heading_outside_calibrated_forward_window"
+    )
+    assert result["blockers"] == ["unproven_turn_or_lateral_motion_required"]
+    assert result["manual_motion_execution_policy"][
+        "experimental_segment_scope"
+    ] == "one_segment_calibrated_forward_only"
+    assert result["calibrated_forward_heading_diagnostic"] == {
+        "segment_heading_degrees": 0.0,
+        "calibrated_forward_heading_degrees": 270.0,
+        "heading_error_degrees": 90.0,
+        "tolerance_degrees": 45.0,
+        "within_calibrated_forward_window": False,
+        "allow_unproven_turns": False,
+    }
+    coordinator.async_move_forward.assert_not_called()
+    coordinator.async_stop_manual_motion.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_manual_velocity_segment_test_stops_when_path_complete() -> None:
     """Segment probe sends nothing when current position is already at target."""
     coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
@@ -1839,6 +4268,12 @@ def test_diagnostic_sensor_values_match_map_and_task_data() -> None:
     """Diagnostic count/error sensors expose current coordinator data."""
     coordinator = _coordinator(_plan(enabled=False))
     coordinator.last_map_task_error = "task_sync: RuntimeError"
+    coordinator.active_transport_state = "ble"
+    coordinator.ble_only_fallback_mode = True
+    coordinator.last_cloud_login_success = datetime.datetime.now(datetime.UTC)
+    coordinator.last_token_refresh = datetime.datetime.now(datetime.UTC)
+    coordinator.last_command_failure_reason = "set_car_wiper:GatewayTimeoutException"
+    coordinator.last_camera_stream_failure_code = "401"
     descriptions = {description.key: description for description in WORK_SENSOR_TYPES}
 
     assert descriptions["task_count"].value_fn(coordinator, coordinator.data) == 1
@@ -1851,6 +4286,81 @@ def test_diagnostic_sensor_values_match_map_and_task_data() -> None:
         descriptions["last_map_task_error"].value_fn(coordinator, coordinator.data)
         == "task_sync: RuntimeError"
     )
+    assert descriptions["active_transport"].value_fn(coordinator, coordinator.data) == "ble"
+    assert (
+        descriptions["ble_only_fallback_mode"].value_fn(coordinator, coordinator.data)
+        == "fallback_active"
+    )
+    assert (
+        descriptions["last_cloud_login_success"].value_fn(coordinator, coordinator.data)
+        == coordinator.last_cloud_login_success
+    )
+    assert (
+        descriptions["last_token_refresh"].value_fn(coordinator, coordinator.data)
+        == coordinator.last_token_refresh
+    )
+    assert (
+        descriptions["last_command_failure_reason"].value_fn(coordinator, coordinator.data)
+        == "set_car_wiper:GatewayTimeoutException"
+    )
+    assert (
+        descriptions["last_camera_stream_failure_code"].value_fn(coordinator, coordinator.data)
+        == "401"
+    )
+
+
+def test_camera_recovery_buttons_present() -> None:
+    """Camera/cloud recovery buttons are exposed for camera-capable mowers."""
+    keys = {description.key for description in BUTTON_LUBA_PRO_YUKA}
+
+    assert "refresh_camera_stream" in keys
+    assert "refresh_cloud_session" in keys
+
+
+@pytest.mark.asyncio
+async def test_refresh_camera_stream_raises_when_unavailable() -> None:
+    """Camera refresh button surfaces a translated HA error if refresh fails."""
+    coordinator = SimpleNamespace(
+        async_check_stream_expiry=AsyncMock(return_value=(None, None)),
+    )
+
+    with pytest.raises(HomeAssistantError):
+        await MammotionBaseUpdateCoordinator.async_refresh_camera_stream(coordinator)
+
+
+@pytest.mark.asyncio
+async def test_refresh_camera_stream_succeeds_when_available() -> None:
+    """Camera refresh helper returns without error when stream data is available."""
+    coordinator = SimpleNamespace(
+        async_check_stream_expiry=AsyncMock(return_value=(SimpleNamespace(), None)),
+    )
+
+    await MammotionBaseUpdateCoordinator.async_refresh_camera_stream(coordinator)
+
+
+@pytest.mark.asyncio
+async def test_refresh_cloud_session_requires_cloud_account() -> None:
+    """Cloud refresh helper rejects devices without cloud account configuration."""
+    coordinator = SimpleNamespace(
+        has_cloud_account=False,
+        async_refresh_login=AsyncMock(),
+    )
+
+    with pytest.raises(HomeAssistantError):
+        await MammotionBaseUpdateCoordinator.async_refresh_cloud_session(coordinator)
+
+
+@pytest.mark.asyncio
+async def test_refresh_cloud_session_calls_refresh_login() -> None:
+    """Cloud refresh helper runs account refresh for cloud-enabled entries."""
+    coordinator = SimpleNamespace(
+        has_cloud_account=True,
+        async_refresh_login=AsyncMock(),
+    )
+
+    await MammotionBaseUpdateCoordinator.async_refresh_cloud_session(coordinator)
+
+    coordinator.async_refresh_login.assert_awaited_once_with()
 
 
 @pytest.mark.asyncio

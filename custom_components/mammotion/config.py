@@ -8,7 +8,7 @@ from pymammotion.http.model.http import ErrorInfo
 from .const import DOMAIN
 
 
-class MammotionConfigStore(Store):  # type: ignore[misc]
+class MammotionConfigStore(Store):
     """A configuration store for Mammotion."""
 
     _STORAGE_VERSION = 1

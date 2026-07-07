@@ -363,6 +363,35 @@
       },
       "last_map_task_error": {
         "name": "Last map/task error"
+      },
+      "active_transport": {
+        "name": "Transport actif",
+        "state": {
+          "ble": "BLE",
+          "cloud_aliyun": "Cloud (Aliyun)",
+          "cloud_mammotion": "Cloud (Mammotion)",
+          "none": "Aucun",
+          "unknown": "Inconnu"
+        }
+      },
+      "ble_only_fallback_mode": {
+        "name": "Mode de secours BLE uniquement",
+        "state": {
+          "normal": "Normal",
+          "fallback_active": "Secours actif"
+        }
+      },
+      "last_cloud_login_success": {
+        "name": "Dernière connexion cloud réussie"
+      },
+      "last_token_refresh": {
+        "name": "Dernier rafraîchissement du jeton"
+      },
+      "last_command_failure_reason": {
+        "name": "Dernière raison d'échec de commande"
+      },
+      "last_camera_stream_failure_code": {
+        "name": "Dernier code d'échec du flux caméra"
       }
     },
     "button": {
@@ -407,6 +436,12 @@
       },
       "camera_wiper": {
         "name": "Run camera wiper"
+      },
+      "refresh_camera_stream": {
+        "name": "Actualiser le flux caméra"
+      },
+      "refresh_cloud_session": {
+        "name": "Actualiser la session cloud"
       }
     },
     "switch": {

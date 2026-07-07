@@ -35,6 +35,12 @@
       },
       "camera_wiper": {
         "default": "mdi:wiper"
+      },
+      "refresh_camera_stream": {
+        "default": "mdi:camera-refresh"
+      },
+      "refresh_cloud_session": {
+        "default": "mdi:cloud-refresh"
       }
     },
     "camera": {
@@ -84,8 +90,26 @@
       "map_sync_status": {
         "default": "mdi:map-check"
       },
+      "active_transport": {
+        "default": "mdi:transit-connection-variant"
+      },
+      "ble_only_fallback_mode": {
+        "default": "mdi:bluetooth-transfer"
+      },
       "mqtt_status": {
         "default": "mdi:cloud-check-variant"
+      },
+      "last_cloud_login_success": {
+        "default": "mdi:account-check"
+      },
+      "last_token_refresh": {
+        "default": "mdi:clock-refresh"
+      },
+      "last_command_failure_reason": {
+        "default": "mdi:alert-circle-outline"
+      },
+      "last_camera_stream_failure_code": {
+        "default": "mdi:camera-alert"
       },
       "activity_mode": {
         "default": "mdi:information-outline"
