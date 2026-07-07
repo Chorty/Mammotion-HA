@@ -6,8 +6,9 @@ import asyncio
 import dataclasses
 import math
 import time
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Mapping, Sequence, TypedDict, cast
+from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 import voluptuous as vol
 from homeassistant.const import ATTR_ENTITY_ID
