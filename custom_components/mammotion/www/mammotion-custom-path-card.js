@@ -197,7 +197,13 @@ class MammotionCustomPathCard extends HTMLElement {
     const activeTransport = runtime.active_transport ?? "unknown";
     const bladeSafe = safety.blade_safe_for_motion === true;
     const activeMowing = safety.active_mowing_detected === true;
-    const chargingNow = String(runtime.charge_state_label || runtime.charge_state || "").toLowerCase().includes("charging");
+    // Note: a plain .includes("charging") check is wrong because "not_charging"
+    // contains the substring "charging". Guard against the negated label, and
+    // fall back to the numeric charge_state (0 == not charging) when no label.
+    const chargeLabelRaw = String(runtime.charge_state_label ?? "").toLowerCase();
+    const chargingNow = chargeLabelRaw
+      ? chargeLabelRaw.includes("charging") && !chargeLabelRaw.startsWith("not")
+      : typeof runtime.charge_state === "number" && runtime.charge_state !== 0;
     const routeBlocks = routeStatus.blocks_motion === true;
     return {
       activeTransport,
