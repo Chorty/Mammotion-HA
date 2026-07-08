@@ -798,6 +798,9 @@ class MammotionCustomPathCard extends HTMLElement {
         .status { padding: 0 12px 12px; color: var(--secondary-text-color); font-size: 13px; }
         .warnings { padding: 0 12px 12px; color: #f59e0b; font-size: 12px; }
         .waypoint-counter { font-size: 12px; color: var(--secondary-text-color); margin-left: auto; }
+        .map-caption { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 0 12px 10px; font-size: 12px; color: var(--secondary-text-color); }
+        .map-caption .legend { display: inline-flex; gap: 6px; align-items: center; }
+        .map-caption .dot { width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid #111827; display: inline-block; flex: none; }
         .preflight-panel { margin: 0 12px 12px; padding: 8px 10px; border: 1px solid rgba(127,127,127,0.35); border-radius: 6px; font-size: 12px; color: var(--secondary-text-color); }
         .preflight-panel .title { font-weight: 600; margin-bottom: 6px; color: var(--primary-text-color); }
         .preflight-row { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
@@ -828,6 +831,10 @@ class MammotionCustomPathCard extends HTMLElement {
             </select>
           </label>
           <span class="waypoint-counter">Waypoints: ${this._waypoints.length} (segments: ${segmentCount})</span>
+        </div>
+        <div class="map-caption">
+          <span class="legend"><span class="dot" style="background:#22c55e"></span>Green = mower (auto start)</span>
+          <span class="legend"><span class="dot" style="background:#f97316"></span>Click the map to add destinations (max ${MAX_WAYPOINTS}), driven in order</span>
         </div>
         <svg id="path-map"></svg>
         <div class="status">${this._escapeHtml(this._status)}</div>
