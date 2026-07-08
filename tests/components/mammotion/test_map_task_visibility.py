@@ -1,10 +1,13 @@
 """Tests for Mammotion read-only map/task visibility helpers."""
 
 import datetime
+import json
+import pathlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+import yaml
 from homeassistant.exceptions import HomeAssistantError
 from pymammotion.data.model.hash_list import Plan
 
@@ -2565,6 +2568,44 @@ async def test_raw_pymammotion_execute_vector_segment_sends_forward_after_headin
 
 
 @pytest.mark.asyncio
+async def test_raw_pymammotion_execute_vector_segment_halts_before_linear_on_incomplete_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A segment requiring a large turn halts in the turn phase; no linear command is sent.
+
+    Unlike the pure-linear `_raw_pymammotion_execute_segment`, the vector segment has no
+    explicit pre-flight rejection for out-of-calibrated-window turns -- it attempts the turn
+    and relies on the turn-command budget (`max_turn_commands`) and heading-progress checks
+    to halt safely before any forward motion is attempted. This is the actual safety
+    mechanism the multi-segment chain (used by the multi-waypoint click/go path builder)
+    relies on for segments requiring more than a small heading correction.
+    """
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.0, "y": 2.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        calibrated_forward_heading_offset_degrees=0.0,
+        max_turn_commands=1,
+        max_linear_commands=1,
+        sample_delays=(0,),
+    )
+
+    assert result["target_map_heading_degrees"] == pytest.approx(90.0)
+    assert result["stop_reason"] == "turn_phase_incomplete"
+    assert result["turn_commands_sent"] == 1
+    assert result["linear_commands_sent"] == 0
+
+
+@pytest.mark.asyncio
 async def test_raw_pymammotion_execute_multi_segment_dry_run_chains_segments(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4399,3 +4440,54 @@ async def test_sync_failure_updates_last_error() -> None:
         await MammotionReportUpdateCoordinator.async_sync_maps(coordinator)
 
     assert coordinator.last_map_task_error == "map_sync: RuntimeError"
+
+
+def test_services_yaml_has_matching_strings_entries() -> None:
+    """New services must be documented in strings.json; known pre-existing gaps are allowlisted.
+
+    raw_pymammotion_execute_multi_segment was fully implemented and registered but had no
+    strings.json entry until it was added alongside this test. A broader, older set of
+    services is intentionally allowlisted below rather than fixed here (unrelated pre-existing
+    debt), so this test only guards against *new* undocumented services going forward.
+    """
+    package_dir = pathlib.Path(mammotion_services.__file__).parent
+    services_yaml = yaml.safe_load((package_dir / "services.yaml").read_text())
+    strings_json = json.loads((package_dir / "strings.json").read_text())
+    yaml_keys = set(services_yaml.keys())
+    strings_keys = set(strings_json["services"].keys())
+
+    known_undocumented = {
+        "forward_two_pulse_latency_test",
+        "get_geojson",
+        "get_mow_path_geojson",
+        "get_mow_progress_geojson",
+        "get_tokens",
+        "move_backward",
+        "move_forward",
+        "move_left",
+        "move_right",
+        "position_feedback_diagnostic",
+        "raw_motion_readiness_test",
+        "raw_pymammotion_angular_calibration",
+        "raw_pymammotion_execute_segment",
+        "raw_pymammotion_turn_to_heading",
+        "raw_vector_readiness_test",
+        "refresh_stream",
+        "set_non_work_hours",
+        "start_stop_blades",
+        "start_video",
+        "stop_video",
+    }
+
+    missing = yaml_keys - strings_keys - known_undocumented
+    assert not missing, (
+        f"Service(s) {sorted(missing)} are registered in services.yaml but missing a "
+        "strings.json entry. Add documentation, or add to known_undocumented in this test "
+        "if the gap is intentional pre-existing debt."
+    )
+
+    now_documented = known_undocumented & strings_keys
+    assert not now_documented, (
+        f"Service(s) {sorted(now_documented)} now have strings.json entries -- remove them "
+        "from known_undocumented in this test to keep the allowlist honest."
+    )

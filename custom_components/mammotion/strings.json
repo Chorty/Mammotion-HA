@@ -1071,6 +1071,104 @@
         }
       }
     },
+    "raw_pymammotion_execute_multi_segment": {
+      "name": "Raw pymammotion execute multi segment",
+      "description": "Guarded chain of 1-3 already-proven one-segment moves (2-4 points), used by the multi-waypoint click/go path builder. Re-validates safety before every segment and stops immediately on the first failure.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        },
+        "points": {
+          "name": "Points",
+          "description": "Between two and four map-local points: current/near-current start followed by one to three waypoints, executed in order."
+        },
+        "area_hash": {
+          "name": "Area hash",
+          "description": "Optional area hash to constrain containment validation."
+        },
+        "dry_run": {
+          "name": "Dry run",
+          "description": "When true, return guarded plan/output only and send no movement command."
+        },
+        "confirm_blades_off": {
+          "name": "Confirm blades off",
+          "description": "Required for real movement execution."
+        },
+        "confirm_clear_area": {
+          "name": "Confirm clear area",
+          "description": "Required for real movement execution after confirming safe clearance."
+        },
+        "prefer_ble": {
+          "name": "Prefer BLE",
+          "description": "When true, prefer BLE over Wi-Fi/local transport when available."
+        },
+        "max_real_segments": {
+          "name": "Max real segments",
+          "description": "Caps how many segments may actually move the mower in one call. Safety is re-checked before every segment; execution stops immediately if this cap is reached or any segment fails."
+        },
+        "linear_speed_fast": {
+          "name": "Fast linear speed",
+          "description": "Forward pulse speed used when target distance is above the slow threshold."
+        },
+        "linear_speed_slow": {
+          "name": "Slow linear speed",
+          "description": "Forward pulse speed used when target distance is inside the slow threshold."
+        },
+        "slow_linear_threshold": {
+          "name": "Slow linear threshold",
+          "description": "Distance threshold for switching from fast to slow linear speed."
+        },
+        "max_turn_commands": {
+          "name": "Max turn commands",
+          "description": "Safety cap on turn pulses per segment iteration."
+        },
+        "max_linear_commands": {
+          "name": "Max linear commands",
+          "description": "Safety cap on forward pulses per segment iteration."
+        },
+        "heading_tolerance_degrees": {
+          "name": "Heading tolerance",
+          "description": "Heading error tolerance used to classify turn completion."
+        },
+        "angular_speed_fast": {
+          "name": "Fast angular speed",
+          "description": "Turn pulse speed used when heading error is above the slow-turn threshold."
+        },
+        "angular_speed_slow": {
+          "name": "Slow angular speed",
+          "description": "Turn pulse speed used when heading error is inside the slow-turn threshold."
+        },
+        "slow_turn_threshold_degrees": {
+          "name": "Slow turn threshold",
+          "description": "Heading-error threshold for switching from fast to slow turn speed."
+        },
+        "waypoint_tolerance": {
+          "name": "Waypoint tolerance",
+          "description": "Distance from a waypoint that counts as reached."
+        },
+        "min_progress_distance": {
+          "name": "Minimum progress distance",
+          "description": "Minimum target-directed distance required to classify linear progress."
+        },
+        "min_heading_change_degrees": {
+          "name": "Minimum heading change",
+          "description": "Heading-change threshold used to classify telemetry-confirmed rotation."
+        },
+        "max_turn_translation_distance": {
+          "name": "Max turn translation distance",
+          "description": "Maximum translation allowed during turn pulses before the safety gate stops execution."
+        },
+        "calibrated_forward_heading_offset_degrees": {
+          "name": "Calibrated forward heading offset",
+          "description": "Offset used to convert map heading into reported mower heading for calibrated forward movement."
+        },
+        "sample_delays": {
+          "name": "Sample delays",
+          "description": "Seconds after each command to sample telemetry before continuing."
+        }
+      }
+    },
     "manual_velocity_pulse_test": {
       "name": "Manual velocity pulse test",
       "description": "Dry-runs or performs one tiny manual movement pulse, then samples telemetry and attempts a stop. Real pulses require explicit safety confirmations.",

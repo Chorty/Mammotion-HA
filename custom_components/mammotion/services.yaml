@@ -1541,6 +1541,7 @@ raw_pymammotion_execute_vector_segment:
         object:
 
 raw_pymammotion_execute_multi_segment:
+  description: Guarded chain of 1-3 already-proven one-segment moves (2-4 points), used by the multi-waypoint click/go path builder. Re-validates safety before every segment and stops immediately on the first failure.
   fields:
     entity_id:
       required: true
