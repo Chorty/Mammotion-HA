@@ -512,7 +512,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: MammotionConfigEntry) ->
             await maintenance_coordinator.async_config_entry_first_refresh()
 
             await error_coordinator.async_config_entry_first_refresh()
-            await map_coordinator._async_setup()
+            await map_coordinator.async_setup_map()
 
             mammotion_mowers.append(
                 MammotionMowerData(
@@ -664,7 +664,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: MammotionConfigEntry) ->
                 await report_coordinator.async_refresh()
                 await maintenance_coordinator.async_refresh()
                 await error_coordinator.async_refresh()
-            await map_coordinator._async_setup()
+            await map_coordinator.async_setup_map()
 
             mammotion_mowers.append(
                 MammotionMowerData(

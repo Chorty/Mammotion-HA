@@ -481,3 +481,11 @@ ignore = [
     "SIM105",
     "TRY300",
 ]
+# Hand-written SDP/WebRTC protocol parsing and negotiation state machines;
+# inherently branchy domain logic. Refactor only alongside characterization
+# tests against real captured SDP payloads, not as a lint-driven cleanup.
+"custom_components/mammotion/agora_sdp.py" = ["C901"]
+"custom_components/mammotion/agora_websocket.py" = ["C901"]
+# Reaches into entity/coordinator private state to set up fixtures without a
+# full HA instance; standard practice for HA component tests.
+"tests/components/mammotion/test_camera_hotfix.py" = ["SLF001"]

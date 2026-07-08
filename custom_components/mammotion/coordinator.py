@@ -2388,6 +2388,10 @@ class MammotionMapUpdateCoordinator(MammotionBaseUpdateCoordinator[MowerInfo]):
                 self.device_name,
             )
 
+    async def async_setup_map(self) -> None:
+        """Run initial map setup without triggering a full first-refresh cycle."""
+        await self._async_setup()
+
 
 class MammotionDeviceErrorUpdateCoordinator(
     MammotionBaseUpdateCoordinator[MowingDevice]
