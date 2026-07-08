@@ -1926,3 +1926,72 @@ Definition of done for today:
 - mypy no longer blocked externally and is reduced to a manageable, reviewable tail (or fully passing)
 - ruff debt reduced with no new violations in touched files
 - final PR debt delta summary updated with exact remaining counts
+
+## Multi-waypoint click/go card + live findings (2026-07-08)
+
+### Shipped this session
+
+- Extended the click/go map card from a single target point to an ordered
+  multi-waypoint path (max 3 waypoints / 3 segments). One waypoint still
+  routes to `raw_pymammotion_execute_vector_segment`; 2-3 waypoints route to
+  `raw_pymammotion_execute_multi_segment` with `max_real_segments` = path
+  length. Per-segment polyline coloring (green/red/dashed), numbered
+  markers, always-visible legend caption ("Green = mower (auto start);
+  click to add destinations"). No backend motion-logic changes — built on
+  the existing guarded executor.
+- Documented `raw_pymammotion_execute_multi_segment` in `services.yaml`,
+  `strings.json`, `translations/en.json` (was previously undocumented).
+- Added a `services.yaml` vs `strings.json["services"]` key-consistency
+  test and an end-to-end lateral-rejection-in-chain test.
+- Fixed a display bug: the card's "charging now" preflight label matched the
+  `not_charging` substring; now guards against the negated label.
+- Full gate green throughout: `pytest` 182 passed, `mypy` clean, `ruff`
+  steady at 28 (pre-existing debt only).
+
+### Deployment gotcha (root-caused)
+
+- The dashboard loads the card from the **HACS copy** at
+  `www/community/mammotion/mammotion-custom-path-card.js` (served at
+  `/hacsfiles/mammotion/...?v=<ver>`), NOT the integration-bundled copy at
+  `custom_components/mammotion/www/` (served at `/mammotion/...`). These are
+  two independent copies and had drifted (HACS copy was stuck at an ancient
+  preview-only `?v=0.6.4-beta19`). Fixes must be copied to the HACS location
+  AND the resource `?v=` bumped to bust the browser/service-worker cache
+  (the integration serves with `cache_headers=True`). Old HACS copy backed
+  up as `...beta19.bak`. Unresolved: consolidate the two distribution
+  channels so repo edits reach the dashboard automatically.
+
+### Live real-run findings (blocking a clean multi-segment completion)
+
+Real multi-segment execution was exercised on the live mower. The feature
+machinery is validated: it drove real motion, tracked progress per pulse,
+and stopped safely on the first non-progressing segment (no runaway).
+BUT two environmental gaps block a useful path completion:
+
+1. **Heading offset is unstable across orientations.** `send_movement`
+   forward direction vs reported heading measured wildly different offsets:
+   ~116.5° (configured default / earlier sessions), ~46° (reported heading
+   203° → forward map-heading 248.8°), ~100° (reported heading 174° →
+   forward map-heading ~274°). A fixed `calibrated_forward_heading_offset_degrees`
+   cannot be trusted; the mower drove ~70° off from the model's predicted
+   direction in one run and the guard correctly halted on `no_target_progress`.
+   (Caveat: measured off ~0.1 m hops on cm-noisy, laggy telemetry — the
+   measurements are themselves imprecise.) Real fix = live/adaptive offset
+   measurement per run, not a constant.
+
+2. **Position telemetry is severely laggy (not frozen).** Over cloud /
+   intermittent-BLE, `report_data.locations[0]` updates only after
+   *minutes*, far outside the executor's second-scale `sample_delays`. The
+   `raw_pymammotion_motion_probe` tool does NOT force a report refresh
+   (unlike the vector/multi-segment executors, which call
+   `request_reports(count=5)` per pulse) — so it always shows "no motion";
+   use an executor path or `position_feedback_diagnostic` (dry_run=false,
+   pulse_count=0 forces all 8 refresh steps without moving) to measure.
+   Even so, the feed lag means the guard sees "no progress" within its
+   window and safe-stops.
+
+### Prerequisite for a clean completion demo
+
+Solid BLE with the mower close to a BLE source/proxy (fast telemetry) +
+reliable per-run heading calibration. Deferred until those are available;
+the multi-waypoint feature itself is shipped and validated.
