@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import ipaddress
 import json
 import logging
+import random
 import secrets
 import ssl
 import time
@@ -103,6 +105,13 @@ class AgoraWebSocketHandler:
     PEER_REJOIN_DEBOUNCE_SECS = 2.0
     PEER_RECOVER_COOLDOWN_SECS = 15.0
 
+    # WebSocket reconnect backoff: retry a dropped socket with capped
+    # exponential backoff (plus jitter) a bounded number of times, then give
+    # up and let the viewer reopen the stream.
+    RECONNECT_INITIAL_BACKOFF_SECS = 1.0
+    RECONNECT_MAX_BACKOFF_SECS = 30.0
+    RECONNECT_MAX_ATTEMPTS = 6
+
     def __init__(
         self,
         hass: HomeAssistant,
@@ -162,6 +171,10 @@ class AgoraWebSocketHandler:
         # Peer-recovery debounce task + cooldown timestamp (see _schedule_peer_recovery).
         self._peer_recover_task: asyncio.Task | None = None
         self._last_peer_recover_at: float = 0.0
+        # Reconnect state: _stopped latches an intentional disconnect so a
+        # dying socket never resurrects a session the user closed.
+        self._stopped: bool = False
+        self._reconnect_task: asyncio.Task | None = None
         self._setup_message_handlers()
 
     def _setup_message_handlers(self) -> None:
@@ -169,7 +182,7 @@ class AgoraWebSocketHandler:
         self._message_handlers = {
             "answer": self._handle_answer,
             "on_p2p_ok": self._handle_p2p_ok,
-            # "on_p2p_lost": self._handle_p2p_lost,
+            "on_p2p_lost": self._handle_p2p_lost,
             "error": self._handle_error,
             "on_rtp_capability_change": self._handle_rtp_capability_change,
             "on_user_online": self._handle_user_online,
@@ -204,6 +217,9 @@ class AgoraWebSocketHandler:
 
         _LOGGER.debug("Starting Agora WebSocket connection for session %s", session_id)
         _LOGGER.debug("Agora data: %s", agora_data)
+
+        # A new join means the session is live again — re-arm reconnects.
+        self._stopped = False
 
         # Fresh UUIDs for this session's answer SDP msid attributes
         self._msid_stream_id = 1
@@ -436,6 +452,15 @@ class AgoraWebSocketHandler:
         finally:
             self._connection_state = "DISCONNECTED"
             _LOGGER.debug("Message loop ended")
+            # Reconnect only when THIS socket is still the active one (a
+            # restart swaps sockets and must not double-schedule from the
+            # dying loop) and the drop wasn't an intentional disconnect.
+            if self._websocket is websocket and not self._stopped and self._joined:
+                _LOGGER.warning(
+                    "Agora WebSocket dropped for session %s — scheduling reconnect",
+                    session_id,
+                )
+                self._schedule_reconnect()
 
     async def _ping_loop(self) -> None:
         """Send ping messages every 3 seconds to keep the WebSocket alive.
@@ -455,6 +480,12 @@ class AgoraWebSocketHandler:
                         await self._websocket.send(json.dumps(ping_msg))
                     except (WebSocketException, ConnectionError) as ex:
                         _LOGGER.warning("Ping failed: %s", ex)
+                        # Close the socket so the message loop (which may be
+                        # hanging on a half-dead connection) exits and
+                        # schedules a reconnect.
+                        if self._websocket:
+                            with contextlib.suppress(Exception):
+                                await self._websocket.close()
                         break
         except asyncio.CancelledError:
             _LOGGER.debug("Ping loop cancelled")
@@ -649,20 +680,20 @@ class AgoraWebSocketHandler:
     async def _handle_p2p_lost(self, response: dict[str, Any]) -> None:
         """Handle P2P connection lost message.
 
-        Schedules a WebSocket restart. The restart runs as a separate task so
+        Schedules a reconnect through the shared single-flight backoff loop so
         it doesn't block (or cancel) the current message loop — the message
         loop will exit on its own once the underlying socket is closed.
         """
         error_code = response.get("error_code")
         error_str = response.get("error_str", "Unknown error")
         _LOGGER.warning(
-            "P2P connection lost: %s (code: %s) — scheduling WebSocket restart",
+            "P2P connection lost: %s (code: %s) — scheduling WebSocket reconnect",
             error_str,
             error_code,
         )
 
         self._connection_state = "DISCONNECTED"
-        self.hass.async_create_task(self._restart_websocket())
+        self._schedule_reconnect()
 
     async def _handle_error(self, response: dict[str, Any]) -> None:
         """Handle error message."""
@@ -897,7 +928,7 @@ class AgoraWebSocketHandler:
         message_id = secrets.token_hex(3)  # 6 characters
         process_id = f"process-{secrets.token_hex(4)}-{secrets.token_hex(2)}-{secrets.token_hex(2)}-{secrets.token_hex(2)}-{secrets.token_hex(6)}"
 
-        return {
+        join_message: dict[str, Any] = {
             "_id": message_id,
             "_type": "join_v3",
             "_message": {
@@ -946,6 +977,13 @@ class AgoraWebSocketHandler:
                 "ortc": ortc_info,
             },
         }
+        # Best-effort session resume: the join already advertises the rejoin
+        # feature, so pass the token from the previous join when we have one.
+        # A failed rejoin clears the token and falls back to a full join (see
+        # _reconnect_loop).
+        if self._rejoin_token:
+            join_message["_message"]["rejoin_token"] = self._rejoin_token
+        return join_message
 
     async def _send_set_client_role(
         self, role: str = "audience", level: int = 1
@@ -1876,12 +1914,54 @@ class AgoraWebSocketHandler:
         """Return whether WebSocket is connected."""
         return self._connection_state == "CONNECTED"
 
-    async def _restart_websocket(self) -> None:
-        """Restart the WebSocket connection after p2p_lost or STUN timeout.
+    def _schedule_reconnect(self) -> None:
+        """Start the reconnect loop unless stopped or already running."""
+        if self._stopped:
+            return
+        if self._reconnect_task and not self._reconnect_task.done():
+            return
+        self._reconnect_task = self.hass.async_create_task(self._reconnect_loop())
+
+    async def _reconnect_loop(self) -> None:
+        """Re-establish the WebSocket with capped exponential backoff.
+
+        Single-flight (guarded by ``_schedule_reconnect``); gives up after
+        ``RECONNECT_MAX_ATTEMPTS`` so a dead stream doesn't retry forever.
+        """
+        try:
+            for attempt in range(1, self.RECONNECT_MAX_ATTEMPTS + 1):
+                delay = min(
+                    self.RECONNECT_INITIAL_BACKOFF_SECS * 2 ** (attempt - 1),
+                    self.RECONNECT_MAX_BACKOFF_SECS,
+                ) * random.uniform(0.5, 1.5)
+                await asyncio.sleep(delay)
+                if self._stopped:
+                    return
+                _LOGGER.debug(
+                    "Agora reconnect attempt %d/%d",
+                    attempt,
+                    self.RECONNECT_MAX_ATTEMPTS,
+                )
+                if await self._restart_websocket():
+                    _LOGGER.info("Agora WebSocket reconnected on attempt %d", attempt)
+                    return
+                # A stale rejoin token may be why the join failed — fall back
+                # to a full join on the next attempt.
+                self._rejoin_token = None
+            _LOGGER.error(
+                "Agora reconnect failed after %d attempts — stream ended",
+                self.RECONNECT_MAX_ATTEMPTS,
+            )
+        except asyncio.CancelledError:
+            _LOGGER.debug("Agora reconnect loop cancelled")
+
+    async def _restart_websocket(self) -> bool:
+        """Restart the WebSocket connection after p2p_lost or a socket drop.
 
         Cancels the ping loop, closes the current socket (which causes the
         message loop to exit naturally), then re-runs connect_and_join with
-        the stored parameters and renews the token.
+        the stored parameters and renews the token.  Returns True when the
+        channel was rejoined.
         """
         _LOGGER.debug("Restarting WebSocket connection...")
 
@@ -1897,6 +1977,9 @@ class AgoraWebSocketHandler:
             self._websocket = None
 
         self._connection_state = "DISCONNECTED"
+        # Clear _joined so connect_and_join doesn't route through disconnect(),
+        # which would latch _stopped and wipe the rejoin token.
+        self._joined = False
         self._online_users.clear()
         self._video_streams.clear()
 
@@ -1907,7 +1990,7 @@ class AgoraWebSocketHandler:
             and self._agora_response
         ):
             _LOGGER.warning("Cannot restart WebSocket: missing connection parameters")
-            return
+            return False
 
         _LOGGER.debug("Reconnecting to Agora WebSocket...")
         answer_sdp = await self.connect_and_join(
@@ -1920,12 +2003,23 @@ class AgoraWebSocketHandler:
         if answer_sdp:
             _LOGGER.debug("WebSocket restarted successfully, renewing token")
             await self._send_renew_token()
-        else:
-            _LOGGER.error("WebSocket restart failed — could not rejoin channel")
+            return True
+        _LOGGER.error("WebSocket restart failed — could not rejoin channel")
+        return False
 
     async def disconnect(self) -> None:
         """Disconnect from WebSocket and clean up background tasks."""
+        # Latch first so in-flight loops and the socket-drop funnel never
+        # schedule a reconnect for a session the user is closing.
+        self._stopped = True
         # Cancel background tasks
+        if (
+            self._reconnect_task
+            and not self._reconnect_task.done()
+            and self._reconnect_task is not asyncio.current_task()
+        ):
+            self._reconnect_task.cancel()
+            self._reconnect_task = None
         if self._ping_task and not self._ping_task.done():
             self._ping_task.cancel()
             self._ping_task = None

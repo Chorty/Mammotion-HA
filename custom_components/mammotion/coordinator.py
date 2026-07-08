@@ -84,6 +84,7 @@ from webrtc_models import RTCIceServer
 
 from .agora_api import SERVICE_IDS, AgoraAPIClient, AgoraResponse
 from .config import MammotionConfigStore
+from .connectivity import CloudConnectivityMonitor, WatchdogAction
 from .const import (
     CONF_ACCOUNTNAME,
     CONF_CONNECT_DATA,
@@ -105,7 +106,11 @@ DYNAMICS_LINE_INTERVAL = timedelta(seconds=10)
 DEVICE_VERSION_INTERVAL = timedelta(weeks=1)
 MAP_INTERVAL = timedelta(minutes=60)
 RTK_INTERVAL = timedelta(hours=5)
-SPINO_INTERVAL = timedelta(weeks=1)
+SPINO_INTERVAL = timedelta(minutes=15)
+# The pool cleaner has no push loops (pymammotion skips its activity loops),
+# so status is polled every SPINO_INTERVAL — but the OTA/error-code HTTP check
+# bundled into the same update only needs to run about once a day.
+SPINO_OTA_CHECK_INTERVAL = 24 * 60 * 60.0
 
 # Possible states for ``MammotionReportUpdateCoordinator.map_sync_status`` and
 # the ``map_sync_status`` diagnostic ENUM sensor that surfaces it.
@@ -169,6 +174,7 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):  # ty
         self.map_offset_lon: float = 0.0
         self._bluetooth_enabled: bool = True
         self._cloud_enabled: bool = True
+        self._connectivity_monitor = CloudConnectivityMonitor()
 
         mower_device = self.manager.get_device_by_name(self.device_name)
 
@@ -334,6 +340,15 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):  # ty
         ):
             if ble.is_usable:
                 return True
+        if (
+            self.has_cloud_account
+            and self._cloud_enabled
+            and handle.cloud_transport() is None
+        ):
+            # The cloud transport was detached (failed unbound migration) and
+            # BLE can't cover the device: every send would raise, so report
+            # offline honestly instead of pretending the device is reachable.
+            return False
         return bool(not handle.availability.mqtt_reported_offline)
 
     @property
@@ -429,6 +444,86 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):  # ty
             raise ConfigEntryAuthFailed(
                 f"Re-authentication required for Mammotion account: {err}"
             ) from err
+
+    async def _async_connectivity_watchdog(self) -> None:
+        """Detect a stuck cloud transport and attempt in-place recovery.
+
+        Backstop for the push-driven recovery path: when the cloud transport
+        stays disconnected across consecutive report ticks (and BLE can't
+        cover the device), reconnect it in place.  A cloud transport that is
+        missing entirely (detached by pymammotion after a failed unbound
+        migration) cannot be re-attached from here — warn once so the state
+        is visible instead of silently dropping every send.
+        """
+        if (
+            self.hass.is_stopping
+            or not self.has_cloud_account
+            or not self._cloud_enabled
+        ):
+            return
+        device = self.manager.get_device_by_name(self.device_name)
+        if device is None or not device.enabled:
+            return
+        handle = self.manager.mower(self.device_name)
+        if handle is None:
+            return
+
+        ble = handle.get_transport(TransportType.BLE)
+        ble_usable = bool(ble is not None and ble.is_usable and self._bluetooth_enabled)
+        cloud_tt = handle.cloud_transport()
+        cloud_transport = (
+            handle.get_transport(cloud_tt) if cloud_tt is not None else None
+        )
+        auth_locked = bool(
+            cloud_transport is not None
+            and cloud_transport.is_unrecoverable_auth_failure
+        )
+
+        action = self._connectivity_monitor.tick(
+            ble_usable=ble_usable,
+            cloud_registered=cloud_tt is not None,
+            cloud_connected=self.mqtt_transport_connected,
+            auth_locked=auth_locked,
+        )
+
+        if self._connectivity_monitor.detached_warning_pending:
+            self._connectivity_monitor.record_detached_warning()
+            LOGGER.warning(
+                "%s: cloud transport is no longer attached and cannot be "
+                "restored in place — commands will fail until the Mammotion "
+                "config entry is reloaded",
+                self.device_name,
+            )
+            return
+
+        if action is WatchdogAction.RECONNECT and cloud_tt is not None:
+            LOGGER.warning(
+                "%s: cloud transport %s disconnected across multiple update "
+                "cycles — attempting reconnect",
+                self.device_name,
+                cloud_tt.value,
+            )
+            self._connectivity_monitor.record_reconnect_attempted()
+            await self._async_reconnect_cloud(cloud_tt)
+
+    async def _async_reconnect_cloud(self, transport_type: TransportType) -> None:
+        """Reconnect the registered cloud transport in place.
+
+        Issues no MQTT sends: ``connect_transport`` is a socket connect and
+        ``restart_keep_alive`` re-arms pymammotion's own self-pacing loops.
+        """
+        handle = self.manager.mower(self.device_name)
+        if handle is None:
+            return
+        try:
+            await handle.connect_transport(transport_type)
+            await handle.restart_keep_alive()
+        except EXPIRED_CREDENTIAL_EXCEPTIONS as exc:
+            await self.async_refresh_login(exc)
+        except (TimeoutError, OSError, HomeAssistantError) as exc:
+            LOGGER.debug(
+                "%s: cloud reconnect attempt failed: %s", self.device_name, exc
+            )
 
     async def async_send_and_wait(
         self,
@@ -1250,6 +1345,24 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):  # ty
     def clear_update_failures(self) -> None:
         """Clear update failures and reconnect transports if needed."""
         self.update_failures = 0
+        handle = self.manager.mower(self.device_name)
+        if handle is None or not self._cloud_enabled:
+            return
+        cloud_tt = handle.cloud_transport()
+        if cloud_tt is not None and not handle.is_transport_connected(cloud_tt):
+            self.hass.async_create_task(self._async_reconnect_cloud_task(cloud_tt))
+
+    async def _async_reconnect_cloud_task(self, transport_type: TransportType) -> None:
+        """Run a cloud reconnect from a detached task.
+
+        ``ConfigEntryAuthFailed`` only triggers reauth when raised inside the
+        coordinator's update method — from a task it would just be an
+        unhandled exception, so start the reauth flow explicitly instead.
+        """
+        try:
+            await self._async_reconnect_cloud(transport_type)
+        except ConfigEntryAuthFailed:
+            self.config_entry.async_start_reauth(self.hass)
 
     @property
     def operation_settings(self) -> OperationSettings:
@@ -1613,6 +1726,11 @@ class MammotionReportUpdateCoordinator(MammotionBaseUpdateCoordinator[MowingDevi
 
     async def _async_update_data(self) -> MowingDevice:
         """Get data from the device."""
+        # Runs before the base method's early-returns: the watchdog must see
+        # every tick — a device with a detached or disconnected cloud
+        # transport is exactly the one those early-returns would skip.
+        await self._async_connectivity_watchdog()
+
         if data := await super()._async_update_data():
             return data
 
@@ -2442,6 +2560,7 @@ class MammotionSpinoCoordinator(MammotionBaseUpdateCoordinator[PoolCleanerDevice
             update_interval=SPINO_INTERVAL,
             unique_name=unique_name,
         )
+        self._last_ota_check: float = 0.0
 
     async def _async_setup(self) -> None:
         """Subscribe to device events, then read the initial toggle states once.
@@ -2563,38 +2682,60 @@ class MammotionSpinoCoordinator(MammotionBaseUpdateCoordinator[PoolCleanerDevice
             return "Error message not found"
 
     async def _async_update_data(self) -> PoolCleanerDevice:
-        """Return current pool cleaner state from the device handle.
+        """Poll the pool cleaner for fresh status and check OTA daily.
 
-        Runtime state (sys_status, work_mode, battery, settings, map) is pushed
-        into the state machine by ``PoolStateReducer`` as MQTT frames arrive, so
-        the only polling work here is the HTTP OTA firmware check, which is not
-        pushed over MQTT.
+        Unlike the mowers, the pool cleaner is not push-driven: pymammotion
+        skips its activity loops for swimming-pool devices and the device
+        only reports ``dev_statue_t`` (sys_status / work_mode / battery) in
+        response to an explicit report request — so one is issued every
+        update cycle.  The bundled OTA/error-code HTTP check is throttled to
+        once per ``SPINO_OTA_CHECK_INTERVAL``.
         """
+        await self._async_connectivity_watchdog()
+
         handle = self.manager.mower(self.device_name)
         if handle is None:
             return self.data
 
-        if self.has_cloud_account:
-            http = self.manager.mammotion_http
-            if http is not None:
-                try:
-                    ota_info = await http.get_device_ota_firmware([self.device.iot_id])
-                    if check_versions := ota_info.data:
-                        for check_version in check_versions:
-                            if check_version.device_id == self.device.iot_id:
-                                self.data.apply_version_check(check_version)
-                    if not self.data.errors.error_codes:
-                        self.data.errors.error_codes = await http.get_all_error_codes()
-                except ReLoginRequiredError as err:
-                    raise ConfigEntryAuthFailed(
-                        f"Re-authentication required for Mammotion account: {err}"
-                    ) from err
-                except (DeviceOfflineException, GatewayTimeoutException):
-                    pass
+        if self.data.enabled and self.is_online():
+            with contextlib.suppress(
+                DeviceOfflineException,
+                GatewayTimeoutException,
+                NoTransportAvailableError,
+                HomeAssistantError,
+            ):
+                await self.async_request_status()
+
+        ota_check_due = (
+            time.monotonic() - self._last_ota_check >= SPINO_OTA_CHECK_INTERVAL
+        )
+        if self.has_cloud_account and ota_check_due:
+            await self._async_check_ota()
 
         await self.async_save_data(self.data)
 
         return self.data
+
+    async def _async_check_ota(self) -> None:
+        """Fetch OTA firmware info and error codes over HTTP."""
+        http = self.manager.mammotion_http
+        if http is None:
+            return
+        try:
+            ota_info = await http.get_device_ota_firmware([self.device.iot_id])
+            if check_versions := ota_info.data:
+                for check_version in check_versions:
+                    if check_version.device_id == self.device.iot_id:
+                        self.data.apply_version_check(check_version)
+            if not self.data.errors.error_codes:
+                self.data.errors.error_codes = await http.get_all_error_codes()
+            self._last_ota_check = time.monotonic()
+        except ReLoginRequiredError as err:
+            raise ConfigEntryAuthFailed(
+                f"Re-authentication required for Mammotion account: {err}"
+            ) from err
+        except (DeviceOfflineException, GatewayTimeoutException):
+            pass
 
     async def update_firmware(self, version: str) -> None:
         """Update firmware."""
@@ -2605,10 +2746,12 @@ class MammotionSpinoCoordinator(MammotionBaseUpdateCoordinator[PoolCleanerDevice
     # === Pool cleaner control helpers (called by control entities) ===
 
     async def async_subscribe_status(self) -> None:
-        """Start the Spino status report stream (called once at setup).
+        """Request an initial Spino status report (called once at setup).
 
-        Subscribes to RIT_CONNECT + RIT_DEV_STA with count=0 (continuous) so the
-        device pushes dev_statue_t frames; PoolStateReducer applies them.
+        This is a one-shot ``count=1`` request — the device answers with a
+        single dev_statue_t frame applied by PoolStateReducer.  Ongoing
+        freshness comes from ``_async_update_data`` repeating the request
+        every ``SPINO_INTERVAL``.
         """
         await self.async_send_command("get_report_cfg_spino", count=1)
 
