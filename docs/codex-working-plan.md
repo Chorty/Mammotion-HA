@@ -1995,3 +1995,53 @@ BUT two environmental gaps block a useful path completion:
 Solid BLE with the mower close to a BLE source/proxy (fast telemetry) +
 reliable per-run heading calibration. Deferred until those are available;
 the multi-waypoint feature itself is shipped and validated.
+
+### Clean-completion demo achieved (2026-07-08, later same day)
+
+Once the mower was brought within solid BLE range, the demo worked
+end-to-end. Full sequence and findings:
+
+- **BLE telemetry is fast/accurate.** With BLE connected, a forward
+  calibration pulse's position update landed at the `request_reports_count_5`
+  refresh step within the diagnostic window (seconds, not the minutes seen
+  over cloud). `raw_pymammotion_motion_probe` still shows "no motion" because
+  it does not force a report refresh; use `position_feedback_diagnostic`
+  (dry_run=false, pulse_count=1) or an executor path (which call
+  `request_reports(count=5)` per pulse) to measure real movement.
+- **Per-orientation heading calibration works.** At reported heading ~174°,
+  the measured forward map-heading was ~275-280° (empirical offset ~101-106°;
+  two independent measurements at this orientation agreed within ~6°). Using
+  `calibrated_forward_heading_offset_degrees: ~101` plus waypoints laid along
+  the measured forward gave dry-run heading errors < 0.25° per segment.
+- **Widening `heading_tolerance_degrees` from 3 to 8 was the key fix.** The
+  first aligned real run completed segment 1 (`target_reached`) but failed
+  segment 2 with `turn_phase_incomplete`: real forward motion scatters ~5-7°
+  from the model, which left a ~4° residual that (at 3° tolerance) forced a
+  micro-turn the weak angular primitive could not execute. At 8° tolerance
+  the residual stays within tolerance, so no turn is attempted and the chain
+  keeps driving straight. Subsequent runs did BOTH segments with **zero
+  turns**.
+- **Command-budget cap is the only remaining limit.** Per-pulse displacement
+  was ~0.06-0.17 m (variable) at `linear_speed_fast: 400`. With
+  `max_linear_commands` schema-capped at 3, a 0.25 m segment can run out of
+  pulses one short (`max_linear_commands_reached`) before reaching the
+  waypoint. Fix: use ~0.15 m segments so 3 pulses suffice, or raise the
+  schema cap. Segment completion is otherwise reliable.
+
+- **Physical ground-truth check (the important validation).** A run from a
+  tape-marked start:
+  - Telemetry straight-line displacement: **0.377 m** (toward map-heading
+    275.4°, seg1 0.170 m `target_reached` + seg2 0.207 m capped).
+  - Tape measure: start 10'0" -> end 8'10" = **14 in = 0.356 m**.
+  - Agreement within **~0.021 m (~0.8 in, ~6%)**, explained by tape-reading
+    precision + RTK cm-noise, not a scale error.
+  - **Conclusion: mower-map (`mower_map_xy`) coordinates are true meters, and
+    telemetry displacement is RTK-accurate to ~cm.** Distances drawn on the
+    card are physically trustworthy.
+
+Net: the guarded multi-waypoint chain is validated end-to-end over BLE —
+real chained motion, live per-orientation heading calibration, safe guarded
+stops, and physically-verified distance accuracy. Full autonomous/arbitrary
+path execution remains out of scope (heading offset still does not transfer
+across orientations, and turns remain weak/unproven) — but straight-line and
+gently-aligned guarded chains now work in the real world.
