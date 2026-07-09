@@ -34,6 +34,16 @@ class MammotionCustomPathCard extends HTMLElement {
       prefer_ble: true,
       max_turn_commands: 1,
       max_linear_commands: 1,
+      // Loop-to-tolerance: keep pulsing forward until the waypoint is reached
+      // rather than quitting at a tiny fixed pulse budget.
+      max_linear_pulse_ceiling: 30,
+      max_no_progress_pulses: 3,
+      // Wider heading tolerance avoids unreliable micro-turns from real-motion
+      // scatter on near-straight paths (validated live at ~8 deg).
+      heading_tolerance_degrees: 8,
+      // Forward-heading offset default; a per-run measured value replaces this
+      // once live calibration lands (Phase 2).
+      calibrated_forward_heading_offset_degrees: 116.5,
       sample_delays: [0, 5, 10],
       ...config,
     };
@@ -444,6 +454,12 @@ class MammotionCustomPathCard extends HTMLElement {
       prefer_ble: Boolean(this._config.prefer_ble ?? true),
       max_turn_commands: Number(this._config.max_turn_commands || 1),
       max_linear_commands: Number(this._config.max_linear_commands || 1),
+      max_linear_pulse_ceiling: Number(this._config.max_linear_pulse_ceiling || 30),
+      max_no_progress_pulses: Number(this._config.max_no_progress_pulses || 3),
+      heading_tolerance_degrees: Number(this._config.heading_tolerance_degrees || 8),
+      calibrated_forward_heading_offset_degrees: Number(
+        this._config.calibrated_forward_heading_offset_degrees ?? 116.5,
+      ),
       sample_delays: Array.isArray(this._config.sample_delays)
         ? this._config.sample_delays
         : [0, 5, 10],

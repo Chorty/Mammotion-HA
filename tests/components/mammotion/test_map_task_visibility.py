@@ -2606,6 +2606,86 @@ async def test_raw_pymammotion_execute_vector_segment_halts_before_linear_on_inc
 
 
 @pytest.mark.asyncio
+async def test_vector_segment_loop_to_tolerance_stops_on_consecutive_no_progress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Loop-to-tolerance mode keeps pulsing past the legacy budget, then stops on stall.
+
+    With ``max_linear_pulse_ceiling`` set the linear phase no longer quits at the tiny
+    ``max_linear_commands`` budget (max 3); it pulses until the waypoint is reached or
+    ``max_no_progress_pulses`` consecutive pulses make no target-directed progress. Here
+    the mocked mower never moves, so it must stop after exactly that many pulses.
+    """
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    # Target due +X with a zero offset and toward 0.0 => turn phase needs 0 commands,
+    # so the linear loop runs; a stationary mower makes no progress.
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 2.0, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        calibrated_forward_heading_offset_degrees=0.0,
+        max_linear_commands=1,
+        max_linear_pulse_ceiling=20,
+        max_no_progress_pulses=3,
+        sample_delays=(0,),
+    )
+
+    assert result["linear_execution_mode"] == "loop_to_tolerance"
+    assert result["turn_commands_sent"] == 0
+    assert result["stop_reason"] == "no_target_progress"
+    # Pulsed 3 times (max_no_progress_pulses) -- well past the legacy budget of 1.
+    assert result["linear_commands_sent"] == 3
+
+
+@pytest.mark.asyncio
+async def test_vector_segment_real_run_requires_ble_transport() -> None:
+    """Real motion is refused when the active transport is not BLE."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    # Flip the fixture's live transport to cloud; the same handle is returned each call.
+    coordinator.manager.mower("Luba-Test").active_transport = lambda: "cloud_aliyun"
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 2.0, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        calibrated_forward_heading_offset_degrees=0.0,
+        sample_delays=(),
+    )
+
+    assert "ble_transport_required" in result["blockers"]
+    assert result["stop_reason"] == "safety_gates_failed"
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_vector_segment_dry_run_allowed_off_ble() -> None:
+    """Dry-run stays valid over a non-BLE transport (the BLE gate only guards real motion)."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.manager.mower("Luba-Test").active_transport = lambda: "cloud_aliyun"
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 2.0, "y": 1.0}],
+        dry_run=True,
+        calibrated_forward_heading_offset_degrees=0.0,
+        sample_delays=(),
+    )
+
+    assert result["stop_reason"] == "dry_run"
+    assert "ble_transport_required" not in result["blockers"]
+
+
+@pytest.mark.asyncio
 async def test_raw_pymammotion_execute_multi_segment_dry_run_chains_segments(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

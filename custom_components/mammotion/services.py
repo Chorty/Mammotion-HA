@@ -742,6 +742,15 @@ RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("max_linear_commands", default=1): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=3)
         ),
+        vol.Optional("max_linear_pulse_ceiling"): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=200)
+        ),
+        vol.Optional("max_no_progress_pulses", default=3): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=20)
+        ),
+        vol.Optional("linear_distance_ceiling_factor", default=2.0): vol.All(
+            vol.Coerce(float), vol.Range(min=1.0, max=10.0)
+        ),
         vol.Optional("heading_tolerance_degrees", default=3.0): vol.All(
             vol.Coerce(float), vol.Range(min=0.5, max=30.0)
         ),
@@ -807,6 +816,15 @@ RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA = vol.Schema(
         ),
         vol.Optional("max_linear_commands", default=2): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=3)
+        ),
+        vol.Optional("max_linear_pulse_ceiling"): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=200)
+        ),
+        vol.Optional("max_no_progress_pulses", default=3): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=20)
+        ),
+        vol.Optional("linear_distance_ceiling_factor", default=2.0): vol.All(
+            vol.Coerce(float), vol.Range(min=1.0, max=10.0)
         ),
         vol.Optional("heading_tolerance_degrees", default=3.0): vol.All(
             vol.Coerce(float), vol.Range(min=0.5, max=30.0)
@@ -3045,6 +3063,32 @@ def _manual_velocity_heading_calibration(
     }
 
 
+def _active_transport_label(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> str | None:
+    """Return the mower's active transport label (e.g. 'ble'), if resolvable."""
+    try:
+        handle = coordinator.manager.mower(coordinator.device_name)
+    except Exception:  # noqa: BLE001
+        return None
+    if handle is None or not hasattr(handle, "active_transport"):
+        return None
+    try:
+        return str(handle.active_transport())
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _transport_is_ble(coordinator: MammotionReportUpdateCoordinator) -> bool:
+    """Return True when the mower's active transport is BLE.
+
+    Real guarded closed-loop motion requires BLE: cloud/Wi-Fi telemetry lags by
+    minutes, so the guard would be driving partly blind. Dry-runs are exempt.
+    """
+    label = _active_transport_label(coordinator)
+    return label is not None and label.lower() == "ble"
+
+
 def _manual_velocity_pulse_gates(
     coordinator: MammotionReportUpdateCoordinator,
     before: dict[str, Any],
@@ -3060,6 +3104,15 @@ def _manual_velocity_pulse_gates(
             "name": "stop_primitive_available",
             "passed": hasattr(coordinator, "async_stop_manual_motion"),
             "detail": "Coordinator must expose async_stop_manual_motion().",
+        },
+        {
+            "name": "ble_transport_required",
+            "passed": dry_run or _transport_is_ble(coordinator),
+            "detail": (
+                "Real closed-loop motion requires the BLE transport for "
+                "responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded "
+                "path execution."
+            ),
         },
         {
             "name": "operator_confirmed_blades_off",
@@ -5673,6 +5726,9 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     slow_linear_threshold: float = 0.15,
     max_turn_commands: int = 3,
     max_linear_commands: int = 1,
+    max_linear_pulse_ceiling: int | None = None,
+    max_no_progress_pulses: int = 3,
+    linear_distance_ceiling_factor: float = 2.0,
     heading_tolerance_degrees: float = 3.0,
     angular_speed_fast: int = 180,
     angular_speed_slow: int = 180,
@@ -5686,7 +5742,16 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     ha_state: str | None = None,
     active_route: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Execute or dry-run one vector segment using raw turn then forward motion."""
+    """Execute or dry-run one vector segment using raw turn then forward motion.
+
+    When ``max_linear_pulse_ceiling`` is provided the linear phase runs in
+    loop-to-tolerance mode: it keeps pulsing forward until the waypoint is
+    reached, stopping only on ``max_no_progress_pulses`` consecutive
+    non-progressing pulses, a cumulative-distance ceiling
+    (segment length * ``linear_distance_ceiling_factor``), the pulse ceiling,
+    or a safety gate. When it is ``None`` the legacy fixed
+    ``max_linear_commands`` budget is used unchanged.
+    """
     preview = _preview_custom_path(
         coordinator,
         points,
@@ -5930,7 +5995,32 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         return result
 
     baseline_telemetry = result["final_telemetry"]
-    for command_index in range(1, max_linear_commands + 1):
+    loop_to_tolerance = max_linear_pulse_ceiling is not None
+    effective_linear_ceiling = (
+        max_linear_pulse_ceiling
+        if max_linear_pulse_ceiling is not None
+        else max_linear_commands
+    )
+    segment_length = (
+        _path_distance([current_point, target])
+        if current_point is not None and target is not None
+        else None
+    )
+    linear_distance_ceiling = (
+        segment_length * linear_distance_ceiling_factor
+        if segment_length is not None
+        else None
+    )
+    result["linear_execution_mode"] = (
+        "loop_to_tolerance" if loop_to_tolerance else "fixed_budget"
+    )
+    result["effective_linear_ceiling"] = effective_linear_ceiling
+    result["linear_distance_ceiling"] = linear_distance_ceiling
+    consecutive_no_progress = 0
+    cumulative_linear_distance = 0.0
+    command_index = 0
+    while command_index < effective_linear_ceiling:
+        command_index += 1
         before = _custom_path_telemetry_snapshot(coordinator)
         result["final_telemetry"] = before
         if not _position_available(before):
@@ -6090,12 +6180,31 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
             result["stop_reason"] = "blade_unsafe"
             return result
         if not progress["passed"]:
+            consecutive_no_progress += 1
+            if loop_to_tolerance:
+                if consecutive_no_progress >= max_no_progress_pulses:
+                    result["stop_reason"] = "no_target_progress"
+                    return result
+                continue
             if command_index < max_linear_commands:
                 continue
             result["stop_reason"] = "no_target_progress"
             return result
+        consecutive_no_progress = 0
+        if loop_to_tolerance and linear_distance_ceiling is not None:
+            measured = (progress.get("measured_delta") or {}).get("distance")
+            if measured is not None:
+                cumulative_linear_distance += float(measured)
+                if cumulative_linear_distance > linear_distance_ceiling:
+                    result["cumulative_linear_distance"] = cumulative_linear_distance
+                    result["stop_reason"] = "linear_distance_ceiling_reached"
+                    return result
 
-    result["stop_reason"] = "max_linear_commands_reached"
+    result["stop_reason"] = (
+        "max_linear_pulse_ceiling_reached"
+        if loop_to_tolerance
+        else "max_linear_commands_reached"
+    )
     result["phases"].append(
         {
             "name": "linear_forward_to_target",
@@ -6154,6 +6263,9 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
     slow_linear_threshold: float = 0.15,
     max_turn_commands: int = 4,
     max_linear_commands: int = 2,
+    max_linear_pulse_ceiling: int | None = None,
+    max_no_progress_pulses: int = 3,
+    linear_distance_ceiling_factor: float = 2.0,
     heading_tolerance_degrees: float = 3.0,
     angular_speed_fast: int = 180,
     angular_speed_slow: int = 180,
@@ -6352,6 +6464,9 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
             slow_linear_threshold=slow_linear_threshold,
             max_turn_commands=max_turn_commands,
             max_linear_commands=max_linear_commands,
+            max_linear_pulse_ceiling=max_linear_pulse_ceiling,
+            max_no_progress_pulses=max_no_progress_pulses,
+            linear_distance_ceiling_factor=linear_distance_ceiling_factor,
             heading_tolerance_degrees=heading_tolerance_degrees,
             angular_speed_fast=angular_speed_fast,
             angular_speed_slow=angular_speed_slow,
@@ -8731,6 +8846,9 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             slow_linear_threshold=call.data["slow_linear_threshold"],
             max_turn_commands=call.data["max_turn_commands"],
             max_linear_commands=call.data["max_linear_commands"],
+            max_linear_pulse_ceiling=call.data.get("max_linear_pulse_ceiling"),
+            max_no_progress_pulses=call.data["max_no_progress_pulses"],
+            linear_distance_ceiling_factor=call.data["linear_distance_ceiling_factor"],
             heading_tolerance_degrees=call.data["heading_tolerance_degrees"],
             angular_speed_fast=call.data["angular_speed_fast"],
             angular_speed_slow=call.data["angular_speed_slow"],
@@ -8774,6 +8892,9 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             slow_linear_threshold=call.data["slow_linear_threshold"],
             max_turn_commands=call.data["max_turn_commands"],
             max_linear_commands=call.data["max_linear_commands"],
+            max_linear_pulse_ceiling=call.data.get("max_linear_pulse_ceiling"),
+            max_no_progress_pulses=call.data["max_no_progress_pulses"],
+            linear_distance_ceiling_factor=call.data["linear_distance_ceiling_factor"],
             heading_tolerance_degrees=call.data["heading_tolerance_degrees"],
             angular_speed_fast=call.data["angular_speed_fast"],
             angular_speed_slow=call.data["angular_speed_slow"],

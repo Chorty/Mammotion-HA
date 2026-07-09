@@ -1027,7 +1027,19 @@
         },
         "max_linear_commands": {
           "name": "Max linear commands",
-          "description": "Safety cap on forward pulses per segment iteration."
+          "description": "Safety cap on forward pulses per segment iteration (legacy fixed budget, used when Max linear pulse ceiling is unset)."
+        },
+        "max_linear_pulse_ceiling": {
+          "name": "Max linear pulse ceiling",
+          "description": "When set, enables loop-to-tolerance: keep pulsing forward up to this many pulses until the waypoint is reached, instead of the small fixed max-linear-commands budget."
+        },
+        "max_no_progress_pulses": {
+          "name": "Max no-progress pulses",
+          "description": "In loop-to-tolerance mode, stop the segment after this many consecutive forward pulses that make no target-directed progress."
+        },
+        "linear_distance_ceiling_factor": {
+          "name": "Linear distance ceiling factor",
+          "description": "In loop-to-tolerance mode, stop if cumulative forward travel exceeds the straight-line segment length times this factor (runaway guard)."
         },
         "heading_tolerance_degrees": {
           "name": "Heading tolerance",
@@ -1125,7 +1137,19 @@
         },
         "max_linear_commands": {
           "name": "Max linear commands",
-          "description": "Safety cap on forward pulses per segment iteration."
+          "description": "Safety cap on forward pulses per segment iteration (legacy fixed budget, used when Max linear pulse ceiling is unset)."
+        },
+        "max_linear_pulse_ceiling": {
+          "name": "Max linear pulse ceiling",
+          "description": "When set, enables loop-to-tolerance: keep pulsing forward up to this many pulses until the waypoint is reached, instead of the small fixed max-linear-commands budget."
+        },
+        "max_no_progress_pulses": {
+          "name": "Max no-progress pulses",
+          "description": "In loop-to-tolerance mode, stop the segment after this many consecutive forward pulses that make no target-directed progress."
+        },
+        "linear_distance_ceiling_factor": {
+          "name": "Linear distance ceiling factor",
+          "description": "In loop-to-tolerance mode, stop if cumulative forward travel exceeds the straight-line segment length times this factor (runaway guard)."
         },
         "heading_tolerance_degrees": {
           "name": "Heading tolerance",
