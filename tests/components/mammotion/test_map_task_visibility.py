@@ -161,6 +161,7 @@ def _pulse_coordinator(
         async_request_refresh=AsyncMock(),
         device_name="Luba-Test",
         manager=manager,
+        active_transport_state="ble",
         is_online=lambda: True,
         data=SimpleNamespace(
             map=SimpleNamespace(
@@ -2649,8 +2650,8 @@ async def test_vector_segment_loop_to_tolerance_stops_on_consecutive_no_progress
 async def test_vector_segment_real_run_requires_ble_transport() -> None:
     """Real motion is refused when the active transport is not BLE."""
     coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
-    # Flip the fixture's live transport to cloud; the same handle is returned each call.
-    coordinator.manager.mower("Luba-Test").active_transport = lambda: "cloud_aliyun"
+    # Flip the coordinator's normalized live transport to cloud.
+    coordinator.active_transport_state = "cloud_aliyun"
 
     result = await _raw_pymammotion_execute_vector_segment(
         coordinator,
@@ -2671,7 +2672,7 @@ async def test_vector_segment_real_run_requires_ble_transport() -> None:
 async def test_vector_segment_dry_run_allowed_off_ble() -> None:
     """Dry-run stays valid over a non-BLE transport (the BLE gate only guards real motion)."""
     coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
-    coordinator.manager.mower("Luba-Test").active_transport = lambda: "cloud_aliyun"
+    coordinator.active_transport_state = "cloud_aliyun"
 
     result = await _raw_pymammotion_execute_vector_segment(
         coordinator,
@@ -2683,6 +2684,36 @@ async def test_vector_segment_dry_run_allowed_off_ble() -> None:
 
     assert result["stop_reason"] == "dry_run"
     assert "ble_transport_required" not in result["blockers"]
+
+
+def test_active_transport_state_normalizes_real_ble_enum() -> None:
+    """The coordinator normalizes the real TransportType.BLE enum to 'ble'.
+
+    Regression guard for the BLE gate: ``str(TransportType.BLE)`` is
+    ``'TransportType.BLE'`` (not ``'ble'``), so any exact-string match against
+    ``str(active_transport())`` silently fails and blocks every real run. The
+    services BLE gate must go through this normalized property, and this test
+    exercises the property against the genuine enum -- not a stand-in string.
+    """
+    from pymammotion.transport.base import TransportType
+
+    # Document the trap: the raw stringified enum is not "ble".
+    assert str(TransportType.BLE).lower() != "ble"
+
+    handle = SimpleNamespace(active_transport=lambda: TransportType.BLE)
+    fake_self = SimpleNamespace(
+        device_name="Luba-Test",
+        manager=SimpleNamespace(mower=lambda _name: handle),
+    )
+
+    normalized = MammotionReportUpdateCoordinator.active_transport_state.fget(
+        fake_self
+    )
+
+    assert normalized == "ble"
+    assert mammotion_services._transport_is_ble(
+        SimpleNamespace(active_transport_state=normalized)
+    )
 
 
 @pytest.mark.asyncio

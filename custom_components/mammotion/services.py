@@ -3066,15 +3066,15 @@ def _manual_velocity_heading_calibration(
 def _active_transport_label(
     coordinator: MammotionReportUpdateCoordinator,
 ) -> str | None:
-    """Return the mower's active transport label (e.g. 'ble'), if resolvable."""
+    """Return the mower's normalized active transport label (e.g. 'ble').
+
+    Reuses the coordinator's ``active_transport_state`` property so this always
+    agrees with what ``export_runtime_state`` reports. Note that
+    ``str(TransportType.BLE)`` is ``'TransportType.BLE'`` (not ``'ble'``), so the
+    enum must be normalized rather than stringified directly.
+    """
     try:
-        handle = coordinator.manager.mower(coordinator.device_name)
-    except Exception:  # noqa: BLE001
-        return None
-    if handle is None or not hasattr(handle, "active_transport"):
-        return None
-    try:
-        return str(handle.active_transport())
+        return coordinator.active_transport_state
     except Exception:  # noqa: BLE001
         return None
 
