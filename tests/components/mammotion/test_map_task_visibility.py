@@ -69,6 +69,9 @@ from custom_components.mammotion.services import (
     _raw_vector_readiness_test,
     _transport_is_ble,
     _validate_custom_path,
+    _vio_motion_probe,
+    _vio_turn_probe,
+    _vio_turn_to_heading,
 )
 
 LARGE_HASH = 9_223_372_036_854_775_000
@@ -1487,6 +1490,243 @@ async def test_position_feedback_diagnostic_rejects_missing_confirmations() -> N
     assert result["reason"] == "safety_gates_failed"
     assert "operator_confirmed_clear_area" in result["blockers"]
     coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_vio_motion_probe_defaults_to_dry_run() -> None:
+    """VIO motion probe default captures a baseline but sends nothing."""
+    coordinator = _pulse_coordinator()
+
+    result = await _vio_motion_probe(coordinator)
+
+    assert result["service"] == "vio_motion_probe"
+    assert result["dry_run"] is True
+    assert result["would_send"] is False
+    assert result["reason"] == "dry_run"
+    assert result["command"]["kwargs"] == {"linear_speed": 200, "angular_speed": 0}
+    assert result["samples"] == []
+    coordinator.manager.send_command_with_args.assert_not_called()
+    coordinator.async_stop_manual_motion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_vio_motion_probe_rejects_missing_confirmations() -> None:
+    """Real VIO motion probe requires explicit operator confirmations."""
+    coordinator = _pulse_coordinator()
+
+    result = await _vio_motion_probe(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=False,
+    )
+
+    assert result["would_send"] is False
+    assert result["reason"] == "safety_gates_failed"
+    assert "operator_confirmed_clear_area" in result["blockers"]
+    coordinator.manager.send_command_with_args.assert_not_called()
+    coordinator.async_stop_manual_motion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_vio_motion_probe_drives_samples_vio_and_always_stops(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real VIO probe sends one continuous command, samples VIO, and always stops."""
+    coordinator = _pulse_coordinator()
+    clock = {"now": 100.0}
+
+    def fake_monotonic() -> float:
+        return clock["now"]
+
+    async def fake_sleep(delay: float) -> None:
+        clock["now"] += delay
+
+    original_snapshot = mammotion_services._custom_path_telemetry_snapshot  # noqa: SLF001
+
+    def fake_snapshot(
+        coordinator_arg: MammotionReportUpdateCoordinator,
+    ) -> dict:
+        telemetry = original_snapshot(coordinator_arg)
+        # Simulate forward motion: map-local y drifts as the clock advances.
+        moved = (clock["now"] - 100.0) * 0.05
+        telemetry["position"]["y"] = float(telemetry["position"]["y"]) - moved
+        return telemetry
+
+    async def fake_get_reports(count: int = 5) -> None:
+        # VIO initializes once the mower has been moving for a moment.
+        if clock["now"] >= 101.0:
+            coordinator.data.report_data.vision_info = SimpleNamespace(
+                heading=42.0,
+                vio_state=2,
+            )
+
+    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(
+        mammotion_services,
+        "_custom_path_telemetry_snapshot",
+        fake_snapshot,
+    )
+    coordinator.async_get_reports.side_effect = fake_get_reports
+
+    result = await _vio_motion_probe(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        drive_seconds=3.0,
+        sample_interval_seconds=1.0,
+        post_stop_samples=1,
+    )
+
+    # A single continuous velocity command, not one command per sample.
+    assert coordinator.manager.send_command_with_args.await_count == 1
+    # The explicit stop is mandatory even on the happy path.
+    coordinator.async_stop_manual_motion.assert_awaited_once()
+    assert result["command_ok"] is True
+    assert result["reason"] == "vio_initialized_during_motion"
+    assert result["verdict"]["motion_confirmed"] is True
+    assert result["verdict"]["vio_activated_while_moving"] is True
+    assert 42.0 in result["verdict"]["heading_series"]
+    assert result["samples"]
+
+
+@pytest.mark.asyncio
+async def test_vio_turn_probe_defaults_to_dry_run() -> None:
+    """VIO turn probe default plans an in-place rotation but sends nothing."""
+    coordinator = _pulse_coordinator()
+
+    result = await _vio_turn_probe(coordinator)
+
+    assert result["service"] == "vio_turn_probe"
+    assert result["dry_run"] is True
+    assert result["would_send"] is False
+    assert result["reason"] == "dry_run"
+    assert result["command"]["kwargs"] == {"linear_speed": 0, "angular_speed": 180}
+    assert result["samples"] == []
+    coordinator.manager.send_command_with_args.assert_not_called()
+    coordinator.async_stop_manual_motion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_vio_turn_probe_detects_heading_tracking_rotation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Vision heading moving while course-over-ground is frozen tracks rotation."""
+    coordinator = _pulse_coordinator()
+    clock = {"now": 100.0}
+
+    def fake_monotonic() -> float:
+        return clock["now"]
+
+    async def fake_sleep(delay: float) -> None:
+        clock["now"] += delay
+
+    async def fake_get_reports(count: int = 5) -> None:
+        # VIO heading rotates 10 deg/s; position and course-over-ground stay put.
+        heading = (clock["now"] - 100.0) * 10.0
+        coordinator.data.report_data.vision_info = SimpleNamespace(
+            heading=heading,
+            vio_state=2,
+        )
+
+    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+    coordinator.async_get_reports.side_effect = fake_get_reports
+
+    result = await _vio_turn_probe(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        angular_speed=180,
+        drive_seconds=3.0,
+        sample_interval_seconds=1.0,
+        post_stop_samples=0,
+    )
+
+    # A single continuous angular command, then a mandatory explicit stop.
+    assert coordinator.manager.send_command_with_args.await_count == 1
+    assert result["command"]["kwargs"] == {"linear_speed": 0, "angular_speed": 180}
+    coordinator.async_stop_manual_motion.assert_awaited_once()
+    assert result["reason"] == "vision_heading_tracks_rotation"
+    assert result["verdict"]["vision_heading_change"]["total_abs_degrees"] >= 3.0
+    assert result["verdict"]["course_over_ground_change"]["total_abs_degrees"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_vio_turn_to_heading_defaults_to_dry_run() -> None:
+    """VIO turn-to-heading default plans a turn (opposite sign of error), no send."""
+    coordinator = _pulse_coordinator()
+    coordinator.data.report_data.vision_info = SimpleNamespace(heading=0.0, vio_state=2)
+
+    result = await _vio_turn_to_heading(coordinator, target_vision_heading=40.0)
+
+    assert result["service"] == "vio_turn_to_heading"
+    assert result["dry_run"] is True
+    assert result["stop_reason"] == "dry_run"
+    assert result["initial_heading_error_degrees"] == 40.0
+    # Positive error -> negative angular (calibrated: -angular increases heading).
+    assert result["planned_command"]["kwargs"]["angular_speed"] == -500
+    coordinator.manager.send_command_with_args.assert_not_called()
+    coordinator.async_stop_manual_motion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_vio_turn_to_heading_rejects_missing_confirmations() -> None:
+    """Real VIO turn-to-heading requires explicit operator confirmations."""
+    coordinator = _pulse_coordinator()
+    coordinator.data.report_data.vision_info = SimpleNamespace(heading=0.0, vio_state=2)
+
+    result = await _vio_turn_to_heading(
+        coordinator,
+        target_vision_heading=40.0,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=False,
+    )
+
+    assert result["stop_reason"] == "safety_gates_failed"
+    assert "operator_confirmed_clear_area" in result["blockers"]
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_vio_turn_to_heading_closed_loop_reaches_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Bounded pulses converge vision_heading to the target and stop each pulse."""
+    coordinator = _pulse_coordinator()
+    coordinator.data.report_data.vision_info = SimpleNamespace(heading=0.0, vio_state=2)
+
+    async def fake_sleep(_delay: float) -> None:
+        return None
+
+    async def fake_get_reports(count: int = 5) -> None:
+        vi = coordinator.data.report_data.vision_info
+        vi.heading = min(30.0, vi.heading + 10.0)
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+    coordinator.async_get_reports.side_effect = fake_get_reports
+
+    result = await _vio_turn_to_heading(
+        coordinator,
+        target_vision_heading=30.0,
+        heading_tolerance_degrees=8.0,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+    )
+
+    assert result["stop_reason"] == "target_heading_reached"
+    assert result["commands_sent"] == 3
+    # First pulse: error +30 -> negative angular per calibration.
+    assert result["command_results"][0]["angular_speed"] == -500
+    # A bounded pulse + explicit stop per command.
+    assert coordinator.manager.send_command_with_args.await_count == 3
+    assert coordinator.async_stop_manual_motion.await_count == 3
+    assert abs(result["final_heading_error_degrees"]) <= 8.0
 
 
 @pytest.mark.asyncio
@@ -4652,6 +4892,9 @@ def test_services_yaml_has_matching_strings_entries() -> None:
         "start_stop_blades",
         "start_video",
         "stop_video",
+        "vio_motion_probe",
+        "vio_turn_probe",
+        "vio_turn_to_heading",
     }
 
     missing = yaml_keys - strings_keys - known_undocumented

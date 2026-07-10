@@ -70,6 +70,9 @@ SERVICE_RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT = (
 )
 SERVICE_FORWARD_TWO_PULSE_LATENCY_TEST = "forward_two_pulse_latency_test"
 SERVICE_POSITION_FEEDBACK_DIAGNOSTIC = "position_feedback_diagnostic"
+SERVICE_VIO_MOTION_PROBE = "vio_motion_probe"
+SERVICE_VIO_TURN_PROBE = "vio_turn_probe"
+SERVICE_VIO_TURN_TO_HEADING = "vio_turn_to_heading"
 SERVICE_RAW_MOTION_READINESS_TEST = "raw_motion_readiness_test"
 SERVICE_RAW_VECTOR_READINESS_TEST = "raw_vector_readiness_test"
 SERVICE_EXPERIMENTAL_EXECUTE_SEGMENT = "experimental_execute_segment"
@@ -598,6 +601,104 @@ POSITION_FEEDBACK_DIAGNOSTIC_SCHEMA = vol.Schema(
         vol.Optional("refresh_wait_seconds", default=2.0): vol.All(
             vol.Coerce(float), vol.Range(min=0.0, max=30.0)
         ),
+        vol.Optional("prefer_ble", default=True): cv.boolean,
+        vol.Optional("dry_run", default=True): cv.boolean,
+        vol.Optional("confirm_blades_off", default=False): cv.boolean,
+        vol.Optional("confirm_clear_area", default=False): cv.boolean,
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
+VIO_MOTION_PROBE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+        vol.Optional("linear_speed", default=200): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=1000)
+        ),
+        vol.Optional("drive_seconds", default=6.0): vol.All(
+            vol.Coerce(float), vol.Range(min=1.0, max=12.0)
+        ),
+        vol.Optional("sample_interval_seconds", default=1.5): vol.All(
+            vol.Coerce(float), vol.Range(min=0.5, max=5.0)
+        ),
+        vol.Optional("post_stop_samples", default=3): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=6)
+        ),
+        vol.Optional("max_displacement_m", default=1.0): vol.All(
+            vol.Coerce(float), vol.Range(min=0.1, max=2.0)
+        ),
+        vol.Optional("prefer_ble", default=True): cv.boolean,
+        vol.Optional("dry_run", default=True): cv.boolean,
+        vol.Optional("confirm_blades_off", default=False): cv.boolean,
+        vol.Optional("confirm_clear_area", default=False): cv.boolean,
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
+VIO_TURN_PROBE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+        vol.Optional("angular_speed", default=180): vol.All(
+            vol.Coerce(int), vol.Range(min=-1000, max=1000)
+        ),
+        vol.Optional("linear_speed", default=0): vol.All(
+            vol.Coerce(int), vol.Range(min=-1000, max=1000)
+        ),
+        vol.Optional("drive_seconds", default=6.0): vol.All(
+            vol.Coerce(float), vol.Range(min=1.0, max=12.0)
+        ),
+        vol.Optional("sample_interval_seconds", default=1.5): vol.All(
+            vol.Coerce(float), vol.Range(min=0.5, max=5.0)
+        ),
+        vol.Optional("post_stop_samples", default=3): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=6)
+        ),
+        vol.Optional("max_displacement_m", default=0.5): vol.All(
+            vol.Coerce(float), vol.Range(min=0.1, max=2.0)
+        ),
+        vol.Optional("min_heading_change_degrees", default=3.0): vol.All(
+            vol.Coerce(float), vol.Range(min=0.5, max=45.0)
+        ),
+        vol.Optional("prefer_ble", default=True): cv.boolean,
+        vol.Optional("dry_run", default=True): cv.boolean,
+        vol.Optional("confirm_blades_off", default=False): cv.boolean,
+        vol.Optional("confirm_clear_area", default=False): cv.boolean,
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
+VIO_TURN_TO_HEADING_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+        vol.Required("target_vision_heading"): vol.Coerce(float),
+        vol.Optional("heading_tolerance_degrees", default=8.0): vol.All(
+            vol.Coerce(float), vol.Range(min=1.0, max=45.0)
+        ),
+        vol.Optional("angular_speed", default=500): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=1000)
+        ),
+        vol.Optional("pulse_duration_ms", default=1500): vol.All(
+            vol.Coerce(int), vol.Range(min=200, max=4000)
+        ),
+        vol.Optional("slow_pulse_duration_ms", default=700): vol.All(
+            vol.Coerce(int), vol.Range(min=200, max=4000)
+        ),
+        vol.Optional("slow_threshold_degrees", default=15.0): vol.All(
+            vol.Coerce(float), vol.Range(min=1.0, max=90.0)
+        ),
+        vol.Optional("refresh_wait_seconds", default=2.0): vol.All(
+            vol.Coerce(float), vol.Range(min=0.0, max=10.0)
+        ),
+        vol.Optional("max_commands", default=8): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=20)
+        ),
+        vol.Optional("min_progress_degrees", default=2.0): vol.All(
+            vol.Coerce(float), vol.Range(min=0.1, max=20.0)
+        ),
+        vol.Optional("max_displacement_m", default=0.5): vol.All(
+            vol.Coerce(float), vol.Range(min=0.1, max=2.0)
+        ),
+        vol.Optional("invert_direction", default=False): cv.boolean,
         vol.Optional("prefer_ble", default=True): cv.boolean,
         vol.Optional("dry_run", default=True): cv.boolean,
         vol.Optional("confirm_blades_off", default=False): cv.boolean,
@@ -4094,6 +4195,732 @@ async def _position_feedback_diagnostic(  # noqa: C901, PLR0913
         if changed
         else "position_source_unchanged"
     )
+    return result
+
+
+def _vio_sample_from_snapshot(
+    snapshot: dict[str, Any],
+    prev_telemetry: dict[str, Any],
+    initial_telemetry: dict[str, Any],
+) -> dict[str, Any]:
+    """Extract VIO/heading/position fields plus motion deltas from one snapshot."""
+    paths = snapshot.get("raw_sources", {}).get("paths", {})
+    telemetry = snapshot.get("telemetry", {})
+    position = telemetry.get("position", {}) or {}
+    delta_prev = _telemetry_position_delta(prev_telemetry, telemetry)
+    delta_init = snapshot.get("delta_from_initial") or _telemetry_position_delta(
+        initial_telemetry, telemetry
+    )
+    dist_prev = delta_prev.get("distance")
+    return {
+        "label": snapshot.get("label"),
+        "captured_at": snapshot.get("captured_at"),
+        "vio_state": paths.get("report_data.vision_info.vio_state"),
+        "vision_heading": paths.get("report_data.vision_info.heading"),
+        "orientation": paths.get("location.orientation"),
+        "rtk_yaw": paths.get("location.RTK.yaw"),
+        "x": position.get("x"),
+        "y": position.get("y"),
+        "toward": position.get("toward"),
+        "delta_from_prev_m": dist_prev,
+        "delta_from_initial_m": delta_init.get("distance"),
+        "moving": bool(dist_prev is not None and dist_prev > 0.01),
+    }
+
+
+async def _vio_motion_probe(  # noqa: C901, PLR0912, PLR0913, PLR0915
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    linear_speed: int = 200,
+    drive_seconds: float = 6.0,
+    sample_interval_seconds: float = 1.5,
+    post_stop_samples: int = 3,
+    max_displacement_m: float = 1.0,
+    prefer_ble: bool = True,
+    dry_run: bool = True,
+    confirm_blades_off: bool = False,
+    confirm_clear_area: bool = False,
+    ha_state: str | None = None,
+    active_route: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Drive one bounded continuous forward motion while sampling VIO fields.
+
+    Answers whether VIO (``report_data.vision_info.heading`` / ``vio_state``)
+    initializes and produces a heading during motion, so it could serve as a
+    rotation-feedback signal for turning. Bounded by time (``drive_seconds``),
+    distance (``max_displacement_m``), and a mandatory explicit stop.
+    """
+    initial = _position_feedback_snapshot(coordinator, "initial")
+    initial_telemetry = initial["telemetry"]
+    gates = _manual_velocity_pulse_gates(
+        coordinator,
+        initial_telemetry,
+        dry_run=dry_run,
+        confirm_blades_off=confirm_blades_off,
+        confirm_clear_area=confirm_clear_area,
+    )
+    runtime_safety = _runtime_motion_safety_summary(
+        initial_telemetry,
+        ha_state=ha_state,
+        active_route=active_route,
+    )
+    if runtime_safety["active_mowing_detected"]:
+        gates.append(
+            {
+                "name": "runtime_not_mowing",
+                "passed": False,
+                "detail": "VIO motion probe is blocked while mowing is active.",
+            }
+        )
+    if runtime_safety["active_route_status"]["blocks_motion"]:
+        gates.append(
+            {
+                "name": "runtime_route_not_blocking",
+                "passed": False,
+                "detail": "VIO motion probe is blocked by live/ambiguous route data.",
+            }
+        )
+    blockers = [gate["name"] for gate in gates if not gate["passed"]]
+    command_args = {"linear_speed": int(linear_speed), "angular_speed": 0}
+    result: dict[str, Any] = {
+        "service": SERVICE_VIO_MOTION_PROBE,
+        "mode": "dry_run" if dry_run else "real_vio_motion_probe",
+        "dry_run": dry_run,
+        "would_send": not dry_run and not blockers,
+        "linear_speed": linear_speed,
+        "drive_seconds": drive_seconds,
+        "sample_interval_seconds": sample_interval_seconds,
+        "post_stop_samples": post_stop_samples,
+        "max_displacement_m": max_displacement_m,
+        "prefer_ble": prefer_ble,
+        "confirm_blades_off": confirm_blades_off,
+        "confirm_clear_area": confirm_clear_area,
+        "active_transport": _active_transport_label(coordinator),
+        "safety_gates": gates,
+        "runtime_safety": runtime_safety,
+        "blockers": blockers,
+        "baseline": _vio_sample_from_snapshot(
+            initial, initial_telemetry, initial_telemetry
+        ),
+        "command": {"command": "send_movement", "kwargs": command_args},
+        "command_ok": None,
+        "command_error": None,
+        "stop_ack": None,
+        "samples": [],
+        "post_stop": [],
+        "final_displacement_m": None,
+        "verdict": {},
+        "reason": None,
+    }
+    if dry_run or blockers:
+        result["reason"] = "dry_run" if dry_run else "safety_gates_failed"
+        return result
+
+    # BLE pre-flight: refuse to fire into cloud even if the gate momentarily passed.
+    if not _transport_is_ble(coordinator):
+        result["reason"] = "ble_not_active_at_fire"
+        return result
+
+    samples: list[dict[str, Any]] = []
+    aborted_reason: str | None = None
+    prev_telemetry = initial_telemetry
+    command_started = False
+    try:
+        await _send_manager_command_with_args(
+            coordinator,
+            "send_movement",
+            prefer_ble=prefer_ble,
+            command_kwargs=command_args,
+        )
+        command_started = True
+        result["command_ok"] = True
+        drive_start = time.monotonic()
+        sample_index = 0
+        while (time.monotonic() - drive_start) < drive_seconds:
+            sample_index += 1
+            try:
+                await coordinator.async_get_reports(count=5)
+            except Exception as err:  # noqa: BLE001
+                LOGGER.debug("vio_motion_probe drive refresh failed: %s", err)
+            snapshot = _position_feedback_snapshot(
+                coordinator, f"drive_{sample_index}", initial_telemetry
+            )
+            sample = _vio_sample_from_snapshot(
+                snapshot, prev_telemetry, initial_telemetry
+            )
+            sample["elapsed_seconds"] = round(time.monotonic() - drive_start, 3)
+            samples.append(sample)
+            prev_telemetry = snapshot["telemetry"]
+            telemetry = snapshot["telemetry"]
+            if not _blade_reported_safe(telemetry):
+                aborted_reason = "aborted_unsafe_blade"
+                break
+            if telemetry.get("work_mode_label") not in {"MODE_READY", "MODE_PAUSE"}:
+                aborted_reason = "aborted_unsafe_mode"
+                break
+            displacement = sample["delta_from_initial_m"]
+            if displacement is not None and displacement > max_displacement_m:
+                aborted_reason = "aborted_displacement_cap"
+                break
+            await asyncio.sleep(sample_interval_seconds)
+    except Exception as err:  # noqa: BLE001
+        aborted_reason = "command_failed"
+        result["command_ok"] = command_started
+        result["command_error"] = f"{type(err).__name__}: {err}"
+    finally:
+        if command_started:
+            try:
+                result["stop_ack"] = await coordinator.async_stop_manual_motion()
+            except Exception as err:  # noqa: BLE001
+                result["stop_ack"] = {"error": f"{type(err).__name__}: {err}"}
+
+    post_stop: list[dict[str, Any]] = []
+    for post_index in range(1, post_stop_samples + 1):
+        await asyncio.sleep(sample_interval_seconds)
+        try:
+            await coordinator.async_get_reports(count=5)
+        except Exception as err:  # noqa: BLE001
+            LOGGER.debug("vio_motion_probe post-stop refresh failed: %s", err)
+        snapshot = _position_feedback_snapshot(
+            coordinator, f"post_stop_{post_index}", initial_telemetry
+        )
+        sample = _vio_sample_from_snapshot(snapshot, prev_telemetry, initial_telemetry)
+        post_stop.append(sample)
+        prev_telemetry = snapshot["telemetry"]
+
+    result["samples"] = samples
+    result["post_stop"] = post_stop
+
+    def _vio_active(value: Any) -> bool:
+        return value is not None and value != 0
+
+    all_samples = samples + post_stop
+    motion_confirmed = any(sample["moving"] for sample in samples)
+    vio_activated_while_moving = any(
+        _vio_active(sample["vio_state"]) and sample["moving"] for sample in samples
+    )
+    vio_activated_any = any(_vio_active(sample["vio_state"]) for sample in all_samples)
+    heading_series = [
+        sample["vision_heading"]
+        for sample in samples
+        if _vio_active(sample["vio_state"])
+    ]
+    final_displacement: float | None = None
+    for sample in reversed(samples):
+        if sample["delta_from_initial_m"] is not None:
+            final_displacement = sample["delta_from_initial_m"]
+            break
+    result["final_displacement_m"] = final_displacement
+    result["verdict"] = {
+        "motion_confirmed": motion_confirmed,
+        "vio_activated_while_moving": vio_activated_while_moving,
+        "vio_activated_any": vio_activated_any,
+        "heading_series": heading_series,
+        "max_vio_state": max(
+            (
+                sample["vio_state"]
+                for sample in all_samples
+                if sample["vio_state"] is not None
+            ),
+            default=None,
+        ),
+    }
+    if aborted_reason:
+        result["reason"] = aborted_reason
+    elif not motion_confirmed:
+        result["reason"] = "no_motion_detected"
+    elif vio_activated_while_moving:
+        result["reason"] = "vio_initialized_during_motion"
+    else:
+        result["reason"] = "vio_never_initialized_despite_motion"
+    return result
+
+
+def _angle_series_change(values: list[Any]) -> dict[str, Any]:
+    """Return net and cumulative absolute change (deg) over an angle series."""
+    nums = [float(v) for v in values if isinstance(v, (int, float))]
+    if len(nums) < 2:
+        return {
+            "net_degrees": None,
+            "total_abs_degrees": None,
+            "samples": len(nums),
+        }
+    net = _heading_error_degrees(nums[0], nums[-1])
+    total = 0.0
+    for prev, curr in zip(nums, nums[1:], strict=False):
+        total += abs(_heading_error_degrees(prev, curr))
+    return {
+        "net_degrees": round(net, 3),
+        "total_abs_degrees": round(total, 3),
+        "samples": len(nums),
+    }
+
+
+async def _vio_turn_probe(  # noqa: C901, PLR0912, PLR0913, PLR0915
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    angular_speed: int = 180,
+    linear_speed: int = 0,
+    drive_seconds: float = 6.0,
+    sample_interval_seconds: float = 1.5,
+    post_stop_samples: int = 3,
+    max_displacement_m: float = 0.5,
+    min_heading_change_degrees: float = 3.0,
+    prefer_ble: bool = True,
+    dry_run: bool = True,
+    confirm_blades_off: bool = False,
+    confirm_clear_area: bool = False,
+    ha_state: str | None = None,
+    active_route: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Rotate in place while sampling VIO heading vs course-over-ground.
+
+    Directly tests whether ``report_data.vision_info.heading`` tracks rotation:
+    during an in-place pivot a true body heading changes while course-over-ground
+    (``toward`` / ``orientation``) stays frozen. The operator must visually
+    confirm the mower physically pivots; this probe only measures whether the
+    heading signal follows. Bounded by time (``drive_seconds``), distance
+    (``max_displacement_m`` — a pivot should barely translate), and a mandatory
+    explicit stop.
+    """
+    initial = _position_feedback_snapshot(coordinator, "initial")
+    initial_telemetry = initial["telemetry"]
+    gates = _manual_velocity_pulse_gates(
+        coordinator,
+        initial_telemetry,
+        dry_run=dry_run,
+        confirm_blades_off=confirm_blades_off,
+        confirm_clear_area=confirm_clear_area,
+    )
+    runtime_safety = _runtime_motion_safety_summary(
+        initial_telemetry,
+        ha_state=ha_state,
+        active_route=active_route,
+    )
+    if runtime_safety["active_mowing_detected"]:
+        gates.append(
+            {
+                "name": "runtime_not_mowing",
+                "passed": False,
+                "detail": "VIO turn probe is blocked while mowing is active.",
+            }
+        )
+    if runtime_safety["active_route_status"]["blocks_motion"]:
+        gates.append(
+            {
+                "name": "runtime_route_not_blocking",
+                "passed": False,
+                "detail": "VIO turn probe is blocked by live/ambiguous route data.",
+            }
+        )
+    blockers = [gate["name"] for gate in gates if not gate["passed"]]
+    command_args = {
+        "linear_speed": int(linear_speed),
+        "angular_speed": int(angular_speed),
+    }
+    baseline = _vio_sample_from_snapshot(initial, initial_telemetry, initial_telemetry)
+    result: dict[str, Any] = {
+        "service": SERVICE_VIO_TURN_PROBE,
+        "mode": "dry_run" if dry_run else "real_vio_turn_probe",
+        "dry_run": dry_run,
+        "would_send": not dry_run and not blockers,
+        "angular_speed": angular_speed,
+        "linear_speed": linear_speed,
+        "drive_seconds": drive_seconds,
+        "sample_interval_seconds": sample_interval_seconds,
+        "post_stop_samples": post_stop_samples,
+        "max_displacement_m": max_displacement_m,
+        "min_heading_change_degrees": min_heading_change_degrees,
+        "prefer_ble": prefer_ble,
+        "confirm_blades_off": confirm_blades_off,
+        "confirm_clear_area": confirm_clear_area,
+        "active_transport": _active_transport_label(coordinator),
+        "operator_note": (
+            "Visually confirm the mower physically pivots. This probe only "
+            "measures whether vision_info.heading follows the rotation."
+        ),
+        "safety_gates": gates,
+        "runtime_safety": runtime_safety,
+        "blockers": blockers,
+        "baseline": baseline,
+        "command": {"command": "send_movement", "kwargs": command_args},
+        "command_ok": None,
+        "command_error": None,
+        "stop_ack": None,
+        "samples": [],
+        "post_stop": [],
+        "final_displacement_m": None,
+        "verdict": {},
+        "reason": None,
+    }
+    if dry_run or blockers:
+        result["reason"] = "dry_run" if dry_run else "safety_gates_failed"
+        return result
+
+    # BLE pre-flight: refuse to fire into cloud even if the gate momentarily passed.
+    if not _transport_is_ble(coordinator):
+        result["reason"] = "ble_not_active_at_fire"
+        return result
+
+    samples: list[dict[str, Any]] = []
+    aborted_reason: str | None = None
+    prev_telemetry = initial_telemetry
+    command_started = False
+    try:
+        await _send_manager_command_with_args(
+            coordinator,
+            "send_movement",
+            prefer_ble=prefer_ble,
+            command_kwargs=command_args,
+        )
+        command_started = True
+        result["command_ok"] = True
+        drive_start = time.monotonic()
+        sample_index = 0
+        while (time.monotonic() - drive_start) < drive_seconds:
+            sample_index += 1
+            try:
+                await coordinator.async_get_reports(count=5)
+            except Exception as err:  # noqa: BLE001
+                LOGGER.debug("vio_turn_probe drive refresh failed: %s", err)
+            snapshot = _position_feedback_snapshot(
+                coordinator, f"turn_{sample_index}", initial_telemetry
+            )
+            sample = _vio_sample_from_snapshot(
+                snapshot, prev_telemetry, initial_telemetry
+            )
+            sample["elapsed_seconds"] = round(time.monotonic() - drive_start, 3)
+            samples.append(sample)
+            prev_telemetry = snapshot["telemetry"]
+            telemetry = snapshot["telemetry"]
+            if not _blade_reported_safe(telemetry):
+                aborted_reason = "aborted_unsafe_blade"
+                break
+            if telemetry.get("work_mode_label") not in {"MODE_READY", "MODE_PAUSE"}:
+                aborted_reason = "aborted_unsafe_mode"
+                break
+            displacement = sample["delta_from_initial_m"]
+            if displacement is not None and displacement > max_displacement_m:
+                aborted_reason = "aborted_displacement_cap"
+                break
+            await asyncio.sleep(sample_interval_seconds)
+    except Exception as err:  # noqa: BLE001
+        aborted_reason = "command_failed"
+        result["command_ok"] = command_started
+        result["command_error"] = f"{type(err).__name__}: {err}"
+    finally:
+        if command_started:
+            try:
+                result["stop_ack"] = await coordinator.async_stop_manual_motion()
+            except Exception as err:  # noqa: BLE001
+                result["stop_ack"] = {"error": f"{type(err).__name__}: {err}"}
+
+    post_stop: list[dict[str, Any]] = []
+    for post_index in range(1, post_stop_samples + 1):
+        await asyncio.sleep(sample_interval_seconds)
+        try:
+            await coordinator.async_get_reports(count=5)
+        except Exception as err:  # noqa: BLE001
+            LOGGER.debug("vio_turn_probe post-stop refresh failed: %s", err)
+        snapshot = _position_feedback_snapshot(
+            coordinator, f"post_stop_{post_index}", initial_telemetry
+        )
+        sample = _vio_sample_from_snapshot(snapshot, prev_telemetry, initial_telemetry)
+        post_stop.append(sample)
+        prev_telemetry = snapshot["telemetry"]
+
+    result["samples"] = samples
+    result["post_stop"] = post_stop
+
+    heading_seq = [baseline["vision_heading"]] + [s["vision_heading"] for s in samples]
+    cog_seq = [baseline["toward"]] + [s["toward"] for s in samples]
+    vision_change = _angle_series_change(heading_seq)
+    cog_change = _angle_series_change(cog_seq)
+    vio_states = [baseline["vio_state"]] + [s["vio_state"] for s in samples]
+    vio_active_throughout = bool(vio_states) and all(
+        state is not None and state != 0 for state in vio_states
+    )
+    max_disp: float | None = None
+    for sample in samples:
+        disp = sample["delta_from_initial_m"]
+        if disp is not None and (max_disp is None or disp > max_disp):
+            max_disp = disp
+    result["final_displacement_m"] = max_disp
+    result["verdict"] = {
+        "vision_heading_change": vision_change,
+        "course_over_ground_change": cog_change,
+        "vio_active_throughout": vio_active_throughout,
+        "max_displacement_m": max_disp,
+    }
+    vision_total = vision_change["total_abs_degrees"]
+    cog_total = cog_change["total_abs_degrees"] or 0.0
+    if aborted_reason:
+        result["reason"] = aborted_reason
+    elif vision_total is None:
+        result["reason"] = "no_vision_heading_data"
+    elif vision_total >= min_heading_change_degrees:
+        if cog_total < min_heading_change_degrees:
+            result["reason"] = "vision_heading_tracks_rotation"
+        else:
+            result["reason"] = "vision_heading_and_cog_both_moved"
+    else:
+        result["reason"] = "vision_heading_static_during_command"
+    return result
+
+
+def _vio_reading(coordinator: MammotionReportUpdateCoordinator) -> dict[str, Any]:
+    """Return the current VIO heading and state from live telemetry."""
+    paths = _position_feedback_raw_sources(coordinator).get("paths", {})
+    return {
+        "vision_heading": paths.get("report_data.vision_info.heading"),
+        "vio_state": paths.get("report_data.vision_info.vio_state"),
+    }
+
+
+async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    target_vision_heading: float,
+    heading_tolerance_degrees: float = 8.0,
+    angular_speed: int = 500,
+    pulse_duration_ms: int = 1500,
+    slow_pulse_duration_ms: int = 700,
+    slow_threshold_degrees: float = 15.0,
+    refresh_wait_seconds: float = 2.0,
+    max_commands: int = 8,
+    min_progress_degrees: float = 2.0,
+    max_displacement_m: float = 0.5,
+    invert_direction: bool = False,
+    prefer_ble: bool = True,
+    dry_run: bool = True,
+    confirm_blades_off: bool = False,
+    confirm_clear_area: bool = False,
+    ha_state: str | None = None,
+    active_route: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Closed-loop turn to an absolute ``vision_info.heading`` via bounded pulses.
+
+    Uses the VIO body heading (``report_data.vision_info.heading``) as feedback --
+    proven 2026-07-10 (via ``vio_turn_probe``) to track rotation directionally.
+    Calibration baked in: ``angular_speed`` must be strong (~500; 180 does not
+    rotate this unit), and positive angular speed DECREASES ``vision_heading``
+    while negative INCREASES it, so the loop turns the opposite sign of the
+    heading error (flip with ``invert_direction`` if a session's convention
+    differs). Because VIO refreshes ~1.5s into a command then latches, each
+    iteration is a bounded pulse + explicit stop + ``request_reports`` refresh,
+    then measures ``vision_heading`` and repeats until within tolerance.
+    """
+    initial_telemetry = _custom_path_telemetry_snapshot(coordinator)
+    initial_reading = _vio_reading(coordinator)
+    initial_heading = initial_reading["vision_heading"]
+    target = float(target_vision_heading)
+    gates = _manual_velocity_pulse_gates(
+        coordinator,
+        initial_telemetry,
+        dry_run=dry_run,
+        confirm_blades_off=confirm_blades_off,
+        confirm_clear_area=confirm_clear_area,
+    )
+    runtime_safety = _runtime_motion_safety_summary(
+        initial_telemetry,
+        ha_state=ha_state,
+        active_route=active_route,
+    )
+    if initial_heading is None:
+        gates.append(
+            {
+                "name": "vio_heading_available",
+                "passed": dry_run,
+                "detail": "VIO turn-to-heading requires live vision_info.heading.",
+            }
+        )
+    if runtime_safety["active_mowing_detected"]:
+        gates.append(
+            {
+                "name": "runtime_not_mowing",
+                "passed": False,
+                "detail": "VIO turn-to-heading is blocked while mowing is active.",
+            }
+        )
+    if runtime_safety["active_route_status"]["blocks_motion"]:
+        gates.append(
+            {
+                "name": "runtime_route_not_blocking",
+                "passed": False,
+                "detail": "VIO turn-to-heading is blocked by live/ambiguous route data.",
+            }
+        )
+    blockers = [gate["name"] for gate in gates if not gate["passed"]]
+
+    def _planned_angular(error: float) -> int:
+        # Observed: +angular decreases vision_heading, -angular increases it.
+        base = -angular_speed if error > 0 else angular_speed
+        return -base if invert_direction else base
+
+    initial_error: float | None = None
+    if initial_heading is not None:
+        initial_error = _heading_error_degrees(float(initial_heading), target)
+    planned_angular = _planned_angular(initial_error) if initial_error is not None else None
+    result: dict[str, Any] = {
+        "service": SERVICE_VIO_TURN_TO_HEADING,
+        "mode": "dry_run" if dry_run else "real_vio_turn_to_heading",
+        "dry_run": dry_run,
+        "real_execution_scope": "vio_turn_to_heading_only",
+        "path_execution_allowed": False,
+        "target_vision_heading": target,
+        "heading_tolerance_degrees": heading_tolerance_degrees,
+        "angular_speed": angular_speed,
+        "pulse_duration_ms": pulse_duration_ms,
+        "slow_pulse_duration_ms": slow_pulse_duration_ms,
+        "slow_threshold_degrees": slow_threshold_degrees,
+        "max_commands": max_commands,
+        "min_progress_degrees": min_progress_degrees,
+        "max_displacement_m": max_displacement_m,
+        "invert_direction": invert_direction,
+        "prefer_ble": prefer_ble,
+        "confirm_blades_off": confirm_blades_off,
+        "confirm_clear_area": confirm_clear_area,
+        "active_transport": _active_transport_label(coordinator),
+        "initial_vision_heading": initial_heading,
+        "initial_vio_state": initial_reading["vio_state"],
+        "initial_heading_error_degrees": (
+            round(initial_error, 3) if initial_error is not None else None
+        ),
+        "safety_gates": gates,
+        "runtime_safety": runtime_safety,
+        "blockers": blockers,
+        "would_send": (
+            not dry_run
+            and not blockers
+            and initial_error is not None
+            and abs(initial_error) > heading_tolerance_degrees
+        ),
+        "planned_command": {
+            "command": "send_movement",
+            "kwargs": {"linear_speed": 0, "angular_speed": planned_angular},
+        },
+        "commands_sent": 0,
+        "command_results": [],
+        "final_vision_heading": initial_heading,
+        "final_heading_error_degrees": (
+            round(initial_error, 3) if initial_error is not None else None
+        ),
+        "stop_reason": None,
+    }
+    if initial_error is not None and abs(initial_error) <= heading_tolerance_degrees:
+        result["stop_reason"] = "target_heading_reached"
+        return result
+    if dry_run:
+        result["stop_reason"] = "dry_run"
+        return result
+    if blockers:
+        result["stop_reason"] = "safety_gates_failed"
+        return result
+    if not _transport_is_ble(coordinator):
+        result["stop_reason"] = "ble_not_active_at_fire"
+        return result
+
+    for command_index in range(1, max_commands + 1):
+        before_telemetry = _custom_path_telemetry_snapshot(coordinator)
+        before_heading = _vio_reading(coordinator)["vision_heading"]
+        if before_heading is None:
+            result["stop_reason"] = "vio_heading_unavailable"
+            return result
+        if not _blade_reported_safe(before_telemetry):
+            result["stop_reason"] = "aborted_unsafe_blade"
+            return result
+        if before_telemetry.get("work_mode_label") not in {"MODE_READY", "MODE_PAUSE"}:
+            result["stop_reason"] = "aborted_unsafe_mode"
+            return result
+        error = _heading_error_degrees(float(before_heading), target)
+        if abs(error) <= heading_tolerance_degrees:
+            result["final_vision_heading"] = before_heading
+            result["final_heading_error_degrees"] = round(error, 3)
+            result["stop_reason"] = "target_heading_reached"
+            return result
+        pulse_ms = (
+            slow_pulse_duration_ms
+            if abs(error) <= slow_threshold_degrees
+            else pulse_duration_ms
+        )
+        angular = _planned_angular(error)
+        command_result: dict[str, Any] = {
+            "index": command_index,
+            "angular_speed": angular,
+            "pulse_duration_ms": pulse_ms,
+            "before_vision_heading": before_heading,
+            "heading_error_before": round(error, 3),
+            "command": "send_movement",
+            "ok": None,
+            "error": None,
+            "stop_ack": None,
+            "after_vision_heading": None,
+            "measured_change_degrees": None,
+            "heading_error_after": None,
+            "progress_degrees": None,
+            "displacement_m": None,
+        }
+        try:
+            await _send_manager_command_with_args(
+                coordinator,
+                "send_movement",
+                prefer_ble=prefer_ble,
+                command_kwargs={"linear_speed": 0, "angular_speed": angular},
+            )
+            command_result["ok"] = True
+        except Exception as err:  # noqa: BLE001
+            command_result["ok"] = False
+            command_result["error"] = f"{type(err).__name__}: {err}"
+            result["command_results"].append(command_result)
+            result["commands_sent"] += 1
+            result["stop_reason"] = "command_failed"
+            return result
+        result["commands_sent"] += 1
+        # Bounded pulse, then a mandatory explicit stop before sampling.
+        await asyncio.sleep(pulse_ms / 1000)
+        try:
+            command_result["stop_ack"] = await coordinator.async_stop_manual_motion()
+        except Exception as err:  # noqa: BLE001
+            command_result["stop_ack"] = {"error": f"{type(err).__name__}: {err}"}
+        try:
+            await coordinator.async_get_reports(count=5)
+        except Exception as err:  # noqa: BLE001
+            LOGGER.debug("vio_turn_to_heading refresh failed: %s", err)
+        if refresh_wait_seconds > 0:
+            await asyncio.sleep(refresh_wait_seconds)
+        after_telemetry = _custom_path_telemetry_snapshot(coordinator)
+        after_heading = _vio_reading(coordinator)["vision_heading"]
+        command_result["after_vision_heading"] = after_heading
+        if after_heading is None:
+            result["command_results"].append(command_result)
+            result["stop_reason"] = "vio_heading_unavailable"
+            return result
+        measured_change = _heading_error_degrees(float(before_heading), float(after_heading))
+        new_error = _heading_error_degrees(float(after_heading), target)
+        displacement = _telemetry_position_delta(
+            initial_telemetry, after_telemetry
+        ).get("distance")
+        command_result["measured_change_degrees"] = round(measured_change, 3)
+        command_result["heading_error_after"] = round(new_error, 3)
+        command_result["progress_degrees"] = round(abs(error) - abs(new_error), 3)
+        command_result["displacement_m"] = displacement
+        result["command_results"].append(command_result)
+        result["final_vision_heading"] = after_heading
+        result["final_heading_error_degrees"] = round(new_error, 3)
+        if displacement is not None and displacement > max_displacement_m:
+            result["stop_reason"] = "aborted_displacement_cap"
+            return result
+        if not _blade_reported_safe(after_telemetry):
+            result["stop_reason"] = "aborted_unsafe_blade"
+            return result
+        if abs(new_error) <= heading_tolerance_degrees:
+            result["stop_reason"] = "target_heading_reached"
+            return result
+        if (abs(error) - abs(new_error)) < min_progress_degrees:
+            result["stop_reason"] = "no_heading_progress"
+            return result
+
+    result["stop_reason"] = "max_commands_reached"
     return result
 
 
@@ -9026,6 +9853,107 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             active_route=active_route,
         )
 
+    async def handle_vio_motion_probe(
+        call: ServiceCall,
+    ) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        ha_state = hass.states.get(call.data[ATTR_ENTITY_ID])
+        active_route: dict[str, Any] | None = None
+        try:
+            active_route = _export_active_route(mower.reporting_coordinator)
+        except Exception as err:  # noqa: BLE001
+            LOGGER.debug(
+                "Could not export active route for VIO motion probe: %s",
+                err,
+            )
+        return await _vio_motion_probe(
+            mower.reporting_coordinator,
+            linear_speed=call.data["linear_speed"],
+            drive_seconds=call.data["drive_seconds"],
+            sample_interval_seconds=call.data["sample_interval_seconds"],
+            post_stop_samples=call.data["post_stop_samples"],
+            max_displacement_m=call.data["max_displacement_m"],
+            prefer_ble=call.data["prefer_ble"],
+            dry_run=call.data["dry_run"],
+            confirm_blades_off=call.data["confirm_blades_off"],
+            confirm_clear_area=call.data["confirm_clear_area"],
+            ha_state=ha_state.state if ha_state is not None else None,
+            active_route=active_route,
+        )
+
+    async def handle_vio_turn_probe(
+        call: ServiceCall,
+    ) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        ha_state = hass.states.get(call.data[ATTR_ENTITY_ID])
+        active_route: dict[str, Any] | None = None
+        try:
+            active_route = _export_active_route(mower.reporting_coordinator)
+        except Exception as err:  # noqa: BLE001
+            LOGGER.debug(
+                "Could not export active route for VIO turn probe: %s",
+                err,
+            )
+        return await _vio_turn_probe(
+            mower.reporting_coordinator,
+            angular_speed=call.data["angular_speed"],
+            linear_speed=call.data["linear_speed"],
+            drive_seconds=call.data["drive_seconds"],
+            sample_interval_seconds=call.data["sample_interval_seconds"],
+            post_stop_samples=call.data["post_stop_samples"],
+            max_displacement_m=call.data["max_displacement_m"],
+            min_heading_change_degrees=call.data["min_heading_change_degrees"],
+            prefer_ble=call.data["prefer_ble"],
+            dry_run=call.data["dry_run"],
+            confirm_blades_off=call.data["confirm_blades_off"],
+            confirm_clear_area=call.data["confirm_clear_area"],
+            ha_state=ha_state.state if ha_state is not None else None,
+            active_route=active_route,
+        )
+
+    async def handle_vio_turn_to_heading(
+        call: ServiceCall,
+    ) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        ha_state = hass.states.get(call.data[ATTR_ENTITY_ID])
+        active_route: dict[str, Any] | None = None
+        try:
+            active_route = _export_active_route(mower.reporting_coordinator)
+        except Exception as err:  # noqa: BLE001
+            LOGGER.debug(
+                "Could not export active route for VIO turn-to-heading: %s",
+                err,
+            )
+        return await _vio_turn_to_heading(
+            mower.reporting_coordinator,
+            target_vision_heading=call.data["target_vision_heading"],
+            heading_tolerance_degrees=call.data["heading_tolerance_degrees"],
+            angular_speed=call.data["angular_speed"],
+            pulse_duration_ms=call.data["pulse_duration_ms"],
+            slow_pulse_duration_ms=call.data["slow_pulse_duration_ms"],
+            slow_threshold_degrees=call.data["slow_threshold_degrees"],
+            refresh_wait_seconds=call.data["refresh_wait_seconds"],
+            max_commands=call.data["max_commands"],
+            min_progress_degrees=call.data["min_progress_degrees"],
+            max_displacement_m=call.data["max_displacement_m"],
+            invert_direction=call.data["invert_direction"],
+            prefer_ble=call.data["prefer_ble"],
+            dry_run=call.data["dry_run"],
+            confirm_blades_off=call.data["confirm_blades_off"],
+            confirm_clear_area=call.data["confirm_clear_area"],
+            ha_state=ha_state.state if ha_state is not None else None,
+            active_route=active_route,
+        )
+
     async def handle_raw_motion_readiness_test(
         call: ServiceCall,
     ) -> dict[str, Any]:
@@ -9346,6 +10274,27 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         SERVICE_POSITION_FEEDBACK_DIAGNOSTIC,
         handle_position_feedback_diagnostic,
         schema=POSITION_FEEDBACK_DIAGNOSTIC_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_VIO_MOTION_PROBE,
+        handle_vio_motion_probe,
+        schema=VIO_MOTION_PROBE_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_VIO_TURN_PROBE,
+        handle_vio_turn_probe,
+        schema=VIO_TURN_PROBE_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_VIO_TURN_TO_HEADING,
+        handle_vio_turn_to_heading,
+        schema=VIO_TURN_TO_HEADING_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(

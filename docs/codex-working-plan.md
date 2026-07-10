@@ -2100,3 +2100,45 @@ primitive on it; or (B) **arc-based turns** — execute turns as curved motion
 (linear + angular together) so course-over-ground (`orientation`, the one live
 signal) updates and can serve as feedback, at the cost of turns needing room to
 arc rather than pivoting in place. Decision deferred to next session.
+
+## Phase 2 turning UNBLOCKED — VIO heading tracks rotation (2026-07-10, beta9-11)
+
+Took Path (A) and it worked. Current local + deployed version: **`0.6.4-beta11`**
+(scp-deployed to HA, md5-verified, HA restarted, all services registered).
+
+**Breakthrough:** `report_data.vision_info.heading` (VIO body heading) is a live,
+directional rotation-feedback signal on this unit — the Phase-2 blocker is lifted.
+Supervised live proof (operator watched the mower physically pivot):
+- Right turn `send_movement(0, +500)` 6s → `vision_heading` net **-9.0°**.
+- Left turn `send_movement(0, -500)` 6s → `vision_heading` net **+13.6°**.
+- It **reverses with turn direction**, `vio_state=2` throughout, ~1.5cm translation.
+
+**Calibration (critical, encoded in the new services):**
+- **Angular is weak — use `angular_speed` ~500. `180` produces NO physical rotation.**
+- **Sign: +angular DECREASES `vision_heading`, -angular INCREASES it** → turn the
+  opposite sign of the heading error.
+- **VIO latches: `vision_heading` refreshes ~1.5s into a command then freezes.** Drive
+  turns as **bounded ~1.5s pulses + explicit stop + `request_reports` refresh +
+  re-measure**, not one long continuous spin.
+
+**New services (all dry-run default, BLE-active pre-flight, mandatory explicit stop,
+reuse `_manual_velocity_pulse_gates`; allowlisted in the services.yaml/strings test):**
+- `mammotion.vio_motion_probe` (beta9) — forward drive + during-motion VIO sampling.
+- `mammotion.vio_turn_probe` (beta10) — in-place rotation; VIO-vs-course-over-ground verdict.
+- `mammotion.vio_turn_to_heading` (beta11) — **closed-loop turn-to-heading primitive**
+  on `vision_heading`. Built + gated (166 tests pass, mypy/ruff clean). **NOT yet
+  live-tested end-to-end** — that is the immediate next step.
+
+Also fixed/found this session: at-rest telemetry is frozen (even forced coordinator
+refresh won't unfreeze — fresh VIO needs motion + `request_reports`); an idle mower
+(~1h) stops advertising BLE (`ble_rssi`→0) — **wake it** to restore BLE before testing.
+
+**Next steps:**
+1. Supervised live validation of `vio_turn_to_heading` (dry-run first, then a real
+   "turn to `vision_heading` X°" with confirmations + watching). Verify it converges
+   and stops within tolerance.
+2. Then rebuild the multi-segment/click-to-path executor to call `vio_turn_to_heading`
+   for the turn phase (replacing the course-over-ground turn primitive) + the proven
+   forward linear phase. Keep multi-point execution gated until the combined
+   turn+drive segment is proven live.
+3. Consider committing beta9-11 (currently uncommitted working tree).
