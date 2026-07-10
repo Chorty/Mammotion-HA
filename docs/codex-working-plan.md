@@ -2045,3 +2045,58 @@ stops, and physically-verified distance accuracy. Full autonomous/arbitrary
 path execution remains out of scope (heading offset still does not transfer
 across orientations, and turns remain weak/unproven) — but straight-line and
 gently-aligned guarded chains now work in the real world.
+
+## Missing explicit-stop safety bug + turning is unobservable (2026-07-09)
+
+Two findings this session, one fixed and one that reshapes the whole turning plan.
+
+### 1. FIXED — guarded pulses never sent an explicit stop (beta9, da0f081e)
+`send_movement` (and `move_forward/left/right`) is a **continuous-velocity
+command with no protocol-level duration bound** — the coordinator methods take
+only a speed, never a duration; `duration_ms` was never transmitted to the mower
+anywhere. Neither guarded primitive (`_raw_pymammotion_turn_to_heading`,
+`_raw_pymammotion_execute_vector_segment`) ever called
+`async_stop_manual_motion`, so every real pulse ran until the mower's own
+firmware decided to stop — empirically wildly inconsistent (a single "0.4 m"
+calibration pulse traveled **0.826 m, ~7×** expected). Fix: each real pulse now
+sleeps its intended `pulse_duration_ms` and then sends an explicit stop before
+sampling. Live-verified: a loop-to-tolerance run fired **10/10 pulses each with a
+confirmed stop** (`ack: linear_ok+angular_ok`), bounded and predictable.
+Follow-up (unfixed, not in the card path): `_raw_pymammotion_execute_segment`
+and `_raw_pymammotion_angular_calibration` have the same missing-stop pattern.
+Also fixed this session: the BLE-transport gate compared `str(TransportType.BLE)`
+(= `'TransportType.BLE'`) to `'ble'` and so blocked *every* real run; now reuses
+the coordinator's normalized `active_transport_state` (beta8, 1dc20d2a).
+
+### 2. BLOCKER — in-place rotation is not observable in telemetry
+Live turn characterization (with the explicit-stop fix in place) showed the
+mower **physically pivots** on a `move_left` pulse, but `toward` / 
+`location.orientation` stayed **bit-identical at 169.8581° across five pulses**
+(both `send_movement angular` and `move_left`, speeds to 500, durations to
+800 ms) while x/y drifted by mm. Root cause: **`toward` (= `location.orientation`)
+is course-over-ground (direction of travel), which is undefined during in-place
+rotation.** Also: raw `send_movement(0, angular)` produced *no visible rotation
+at all* in the bounded-pulse regime at speeds up to 500 — before the stop fix it
+"worked" only because firmware ran the pulse long; bounded, it is too weak. The
+approved Phase-2 "accumulate weak pulses until `toward` reaches target" fix is
+therefore **invalid** — the feedback signal is blind to the very motion it must
+measure.
+
+Searched for a motion-independent absolute heading and captured every candidate
+live (added to `_RAW_POSITION_PATHS`, read via `position_feedback_diagnostic`):
+- `location.RTK.yaw` (RTK heading, radians) = **0.0** — not populated (this
+  Luba-VSPLV397 appears to have no dual-antenna true yaw).
+- `report_data.vision_info.heading` (VIO heading) = **0.0**, `vio_state` = **0**
+  (VIO inactive at rest — may initialize during motion; untested).
+- `report_data.work.nav_heading_state.heading_state` = **3** — a status enum
+  (int), not an angle; unusable as a feedback signal.
+- `location.orientation` = **169** — the only live heading value, but it is the
+  course-over-ground signal that cannot see in-place rotation.
+
+**Consequence for Phase 2.** No ready-made motion-independent heading exists on
+this unit. Two viable paths remain: (A) test whether VIO (`vision_info.heading`)
+initializes and tracks rotation *during motion* — if so, rebuild the turn
+primitive on it; or (B) **arc-based turns** — execute turns as curved motion
+(linear + angular together) so course-over-ground (`orientation`, the one live
+signal) updates and can serve as feedback, at the cost of turns needing room to
+arc rather than pivoting in place. Decision deferred to next session.
