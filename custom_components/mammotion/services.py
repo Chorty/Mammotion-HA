@@ -702,6 +702,9 @@ RAW_PYMAMMOTION_TURN_TO_HEADING_SCHEMA = vol.Schema(
         vol.Optional("max_translation_distance", default=0.25): vol.All(
             vol.Coerce(float), vol.Range(min=0.0, max=2.0)
         ),
+        vol.Optional("pulse_duration_ms", default=300.0): vol.All(
+            vol.Coerce(float), vol.Range(min=50.0, max=2000.0)
+        ),
         vol.Optional("prefer_ble", default=True): cv.boolean,
         vol.Optional("sample_delays", default=[0, 5, 10, 20, 30, 45, 60]): vol.All(
             cv.ensure_list,
@@ -778,6 +781,12 @@ RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("calibrated_forward_heading_offset_degrees", default=116.5): vol.All(
             vol.Coerce(float), vol.Range(min=-180.0, max=180.0)
         ),
+        vol.Optional("turn_pulse_duration_ms", default=300.0): vol.All(
+            vol.Coerce(float), vol.Range(min=50.0, max=2000.0)
+        ),
+        vol.Optional("linear_pulse_duration_ms", default=300.0): vol.All(
+            vol.Coerce(float), vol.Range(min=50.0, max=2000.0)
+        ),
         vol.Optional("sample_delays", default=[0, 5, 10, 20, 30, 45, 60]): vol.All(
             cv.ensure_list,
             [vol.All(vol.Coerce(float), vol.Range(min=0.0, max=120.0))],
@@ -852,6 +861,12 @@ RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA = vol.Schema(
         ),
         vol.Optional("calibrated_forward_heading_offset_degrees", default=116.5): vol.All(
             vol.Coerce(float), vol.Range(min=-180.0, max=180.0)
+        ),
+        vol.Optional("turn_pulse_duration_ms", default=300.0): vol.All(
+            vol.Coerce(float), vol.Range(min=50.0, max=2000.0)
+        ),
+        vol.Optional("linear_pulse_duration_ms", default=300.0): vol.All(
+            vol.Coerce(float), vol.Range(min=50.0, max=2000.0)
         ),
         vol.Optional("sample_delays", default=[0, 5, 10, 20, 30, 45, 60]): vol.All(
             cv.ensure_list,
@@ -5403,6 +5418,7 @@ async def _raw_pymammotion_turn_to_heading(  # noqa: C901, PLR0913
     max_commands: int = 3,
     min_heading_change_degrees: float = 0.5,
     max_translation_distance: float = 0.25,
+    pulse_duration_ms: float = 300.0,
     prefer_ble: bool = True,
     sample_delays: list[float] | tuple[float, ...] = (0, 5, 10, 20, 30, 45, 60),
     dry_run: bool = True,
@@ -5411,7 +5427,14 @@ async def _raw_pymammotion_turn_to_heading(  # noqa: C901, PLR0913
     ha_state: str | None = None,
     active_route: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Run or simulate a guarded absolute heading turn using raw angular commands."""
+    """Run or simulate a guarded absolute heading turn using raw angular commands.
+
+    ``send_movement`` is a continuous-velocity command with no protocol-level
+    duration bound -- the mower keeps turning until something explicitly stops
+    it. Each pulse therefore sleeps ``pulse_duration_ms`` and then sends an
+    explicit stop before sampling telemetry, rather than trusting the mower's
+    own (empirically inconsistent) firmware auto-stop timing.
+    """
     initial_telemetry = _custom_path_telemetry_snapshot(coordinator)
     heading_status = _raw_turn_to_heading_status(
         initial_telemetry,
@@ -5611,6 +5634,10 @@ async def _raw_pymammotion_turn_to_heading(  # noqa: C901, PLR0913
         if command_result["ok"] is not True:
             result["stop_reason"] = "command_failed"
             return result
+        await asyncio.sleep(pulse_duration_ms / 1000)
+        command_result["stop_result"] = await _manual_velocity_stop_attempt(
+            coordinator, use_wifi=not prefer_ble
+        )
         command_result["post_command_feedback_refresh"] = (
             await _refresh_position_after_raw_motion(coordinator)
         )
@@ -5738,11 +5765,20 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     min_heading_change_degrees: float = 0.5,
     max_turn_translation_distance: float = 0.25,
     calibrated_forward_heading_offset_degrees: float = 116.5,
+    turn_pulse_duration_ms: float = 300.0,
+    linear_pulse_duration_ms: float = 300.0,
     sample_delays: list[float] | tuple[float, ...] = (0, 5, 10, 20, 30, 45, 60),
     ha_state: str | None = None,
     active_route: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Execute or dry-run one vector segment using raw turn then forward motion.
+
+    ``send_movement`` is a continuous-velocity command with no protocol-level
+    duration bound -- the mower keeps moving until something explicitly stops
+    it. Each turn/linear pulse therefore sleeps its ``*_pulse_duration_ms`` and
+    then sends an explicit stop before sampling telemetry, rather than
+    trusting the mower's own (empirically inconsistent) firmware auto-stop
+    timing.
 
     When ``max_linear_pulse_ceiling`` is provided the linear phase runs in
     loop-to-tolerance mode: it keeps pulsing forward until the waypoint is
@@ -5938,6 +5974,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         max_commands=max_turn_commands,
         min_heading_change_degrees=min_heading_change_degrees,
         max_translation_distance=max_turn_translation_distance,
+        pulse_duration_ms=turn_pulse_duration_ms,
         prefer_ble=prefer_ble,
         sample_delays=tuple(sample_delays),
         dry_run=dry_run,
@@ -6112,6 +6149,10 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         if command_result["ok"] is not True:
             result["stop_reason"] = "command_failed"
             return result
+        await asyncio.sleep(linear_pulse_duration_ms / 1000)
+        command_result["stop_result"] = await _manual_velocity_stop_attempt(
+            coordinator, use_wifi=not prefer_ble
+        )
         command_result["post_command_feedback_refresh"] = (
             await _refresh_position_after_raw_motion(coordinator)
         )
@@ -6275,6 +6316,8 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
     min_heading_change_degrees: float = 0.5,
     max_turn_translation_distance: float = 0.25,
     calibrated_forward_heading_offset_degrees: float = 116.5,
+    turn_pulse_duration_ms: float = 300.0,
+    linear_pulse_duration_ms: float = 300.0,
     sample_delays: list[float] | tuple[float, ...] = (0, 5, 10, 20, 30, 45, 60),
     ha_state: str | None = None,
     active_route: dict[str, Any] | None = None,
@@ -6478,6 +6521,8 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
             calibrated_forward_heading_offset_degrees=(
                 calibrated_forward_heading_offset_degrees
             ),
+            turn_pulse_duration_ms=turn_pulse_duration_ms,
+            linear_pulse_duration_ms=linear_pulse_duration_ms,
             sample_delays=tuple(sample_delays),
             ha_state=ha_state,
             active_route=active_route,
@@ -8811,6 +8856,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             max_commands=call.data["max_commands"],
             min_heading_change_degrees=call.data["min_heading_change_degrees"],
             max_translation_distance=call.data["max_translation_distance"],
+            pulse_duration_ms=call.data["pulse_duration_ms"],
             prefer_ble=call.data["prefer_ble"],
             sample_delays=tuple(call.data["sample_delays"]),
             dry_run=call.data["dry_run"],
@@ -8860,6 +8906,8 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             calibrated_forward_heading_offset_degrees=call.data[
                 "calibrated_forward_heading_offset_degrees"
             ],
+            turn_pulse_duration_ms=call.data["turn_pulse_duration_ms"],
+            linear_pulse_duration_ms=call.data["linear_pulse_duration_ms"],
             sample_delays=tuple(call.data["sample_delays"]),
             ha_state=ha_state.state if ha_state is not None else None,
             active_route=active_route,
@@ -8906,6 +8954,8 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             calibrated_forward_heading_offset_degrees=call.data[
                 "calibrated_forward_heading_offset_degrees"
             ],
+            turn_pulse_duration_ms=call.data["turn_pulse_duration_ms"],
+            linear_pulse_duration_ms=call.data["linear_pulse_duration_ms"],
             sample_delays=tuple(call.data["sample_delays"]),
             ha_state=ha_state.state if ha_state is not None else None,
             active_route=active_route,

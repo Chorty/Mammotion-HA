@@ -10,6 +10,7 @@ import pytest
 import yaml
 from homeassistant.exceptions import HomeAssistantError
 from pymammotion.data.model.hash_list import Plan
+from pymammotion.transport.base import TransportType
 
 from custom_components.mammotion import services as mammotion_services
 from custom_components.mammotion.button import BUTTON_LUBA_PRO_YUKA
@@ -66,6 +67,7 @@ from custom_components.mammotion.services import (
     _raw_pymammotion_turn_to_heading,
     _raw_vector_readiness_phase_passed,
     _raw_vector_readiness_test,
+    _transport_is_ble,
     _validate_custom_path,
 )
 
@@ -2263,6 +2265,38 @@ async def test_raw_pymammotion_turn_to_heading_sends_raw_turn(
 
 
 @pytest.mark.asyncio
+async def test_raw_pymammotion_turn_to_heading_sends_explicit_stop_after_pulse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each real angular pulse is followed by an explicit stop, not left to firmware.
+
+    ``send_movement`` is a continuous-velocity command with no protocol-level
+    duration bound -- live testing showed the mower can travel/turn far past
+    the intended pulse when nothing ever calls the stop primitive. Regression
+    guard: assert async_stop_manual_motion fires after the pulse.
+    """
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    async def no_sleep(_: float) -> None:
+        coordinator.data.mowing_state.toward = 18.0
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    await _raw_pymammotion_turn_to_heading(
+        coordinator,
+        target_heading_degrees=20.0,
+        heading_tolerance_degrees=3.0,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        prefer_ble=True,
+        sample_delays=(0,),
+    )
+
+    coordinator.async_stop_manual_motion.assert_awaited_once_with(use_wifi=False)
+
+
+@pytest.mark.asyncio
 async def test_raw_pymammotion_turn_to_heading_stops_on_no_progress(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2569,6 +2603,40 @@ async def test_raw_pymammotion_execute_vector_segment_sends_forward_after_headin
 
 
 @pytest.mark.asyncio
+async def test_raw_pymammotion_execute_vector_segment_sends_explicit_stop_after_pulse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each real linear pulse is followed by an explicit stop, not left to firmware.
+
+    ``send_movement`` is a continuous-velocity command with no protocol-level
+    duration bound -- live testing showed a single "pulse" travel ~7x the
+    expected distance because nothing ever called the stop primitive.
+    Regression guard: assert async_stop_manual_motion fires after the pulse.
+    """
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        calibrated_forward_heading_offset_degrees=0.0,
+        max_turn_commands=1,
+        max_linear_commands=1,
+        prefer_ble=True,
+        sample_delays=(0,),
+    )
+
+    coordinator.async_stop_manual_motion.assert_awaited_once_with(use_wifi=False)
+
+
+@pytest.mark.asyncio
 async def test_raw_pymammotion_execute_vector_segment_halts_before_linear_on_incomplete_turn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2695,8 +2763,6 @@ def test_active_transport_state_normalizes_real_ble_enum() -> None:
     services BLE gate must go through this normalized property, and this test
     exercises the property against the genuine enum -- not a stand-in string.
     """
-    from pymammotion.transport.base import TransportType
-
     # Document the trap: the raw stringified enum is not "ble".
     assert str(TransportType.BLE).lower() != "ble"
 
@@ -2711,9 +2777,7 @@ def test_active_transport_state_normalizes_real_ble_enum() -> None:
     )
 
     assert normalized == "ble"
-    assert mammotion_services._transport_is_ble(
-        SimpleNamespace(active_transport_state=normalized)
-    )
+    assert _transport_is_ble(SimpleNamespace(active_transport_state=normalized))
 
 
 @pytest.mark.asyncio

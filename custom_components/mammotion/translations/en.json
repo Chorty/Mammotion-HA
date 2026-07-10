@@ -1241,6 +1241,14 @@
           "name": "Calibrated forward heading offset",
           "description": "Offset used to convert map heading into reported mower heading for calibrated forward movement."
         },
+        "turn_pulse_duration_ms": {
+          "name": "Turn pulse duration",
+          "description": "How long each turn pulse runs before an explicit stop is sent. send_movement is a continuous-velocity command with no built-in duration bound, so this stop is required to keep pulses short and predictable."
+        },
+        "linear_pulse_duration_ms": {
+          "name": "Linear pulse duration",
+          "description": "How long each forward pulse runs before an explicit stop is sent. send_movement is a continuous-velocity command with no built-in duration bound, so this stop is required to keep pulses short and predictable."
+        },
         "sample_delays": {
           "name": "Sample delays",
           "description": "Seconds after each command to sample telemetry before continuing."
@@ -1350,6 +1358,14 @@
         "calibrated_forward_heading_offset_degrees": {
           "name": "Calibrated forward heading offset",
           "description": "Offset used to convert map heading into reported mower heading for calibrated forward movement."
+        },
+        "turn_pulse_duration_ms": {
+          "name": "Turn pulse duration",
+          "description": "How long each turn pulse runs before an explicit stop is sent. send_movement is a continuous-velocity command with no built-in duration bound, so this stop is required to keep pulses short and predictable."
+        },
+        "linear_pulse_duration_ms": {
+          "name": "Linear pulse duration",
+          "description": "How long each forward pulse runs before an explicit stop is sent. send_movement is a continuous-velocity command with no built-in duration bound, so this stop is required to keep pulses short and predictable."
         },
         "sample_delays": {
           "name": "Sample delays",

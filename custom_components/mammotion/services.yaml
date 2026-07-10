@@ -1194,6 +1194,15 @@ raw_pymammotion_turn_to_heading:
           max: 2
           step: 0.01
           unit_of_measurement: m
+    pulse_duration_ms:
+      required: false
+      default: 300
+      selector:
+        number:
+          min: 50
+          max: 2000
+          step: 50
+          unit_of_measurement: ms
     prefer_ble:
       required: false
       default: true
@@ -1550,6 +1559,24 @@ raw_pymammotion_execute_vector_segment:
           max: 180
           step: 0.1
           unit_of_measurement: °
+    turn_pulse_duration_ms:
+      required: false
+      default: 300
+      selector:
+        number:
+          min: 50
+          max: 2000
+          step: 50
+          unit_of_measurement: ms
+    linear_pulse_duration_ms:
+      required: false
+      default: 300
+      selector:
+        number:
+          min: 50
+          max: 2000
+          step: 50
+          unit_of_measurement: ms
     sample_delays:
       required: false
       default:
@@ -1757,6 +1784,24 @@ raw_pymammotion_execute_multi_segment:
           max: 180
           step: 0.1
           unit_of_measurement: °
+    turn_pulse_duration_ms:
+      required: false
+      default: 300
+      selector:
+        number:
+          min: 50
+          max: 2000
+          step: 50
+          unit_of_measurement: ms
+    linear_pulse_duration_ms:
+      required: false
+      default: 300
+      selector:
+        number:
+          min: 50
+          max: 2000
+          step: 50
+          unit_of_measurement: ms
     sample_delays:
       required: false
       default:
