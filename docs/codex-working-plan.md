@@ -2318,3 +2318,35 @@ can't consume it; RTK/basestation re-probe still awaits docked+fix).
 vio mode (card payload shape) → supervised live combined turn+drive segment (daylight,
 BLE, per-fire "go"): expect calibration drive ~2 pulses → VIO turn to target → forward to
 waypoint, `stop_reason=target_reached`. Then commit + offer PR.
+
+## LIVE: VIO turn phase PROVEN in executor; v2 steering fixes (2026-07-11 continued)
+
+Supervised daylight session. Committed `9b0c5fb2` (wiring) + `94777ff4` (v2 fixes), both
+deployed (final md5 `3ece4fb51b07476261d66ce0f2c57274`), **HA restart pending** for v2.
+
+**Live results (3 real runs, per-fire user go):**
+- Dry-run in vio mode: sane (`turn_mode: vio`, planned calibration + vio turn @500).
+- Run 1 (169° required turn): calibration 1 pulse/2.0cm → offset 191.1°; **8 VIO turn
+  pulses, error 159.7°→80.4°, perfectly monotonic ~11°/pulse**; hit 8-pulse cap →
+  correctly refused linear (`turn_phase_incomplete`).
+- Run 2 ("turn 90° right, drive 1 m"): facing probe (`vio_motion_probe` 4s) → facing
+  341.3°, offset 161.84; **turn phase `target_heading_reached` (8 pulses, → −6.5°),
+  operator-confirmed clean 90° right turn**; linear 12×1500ms pulses moved only ~0.34 m
+  net (~3 cm/pulse — firmware ramp eats short pulses).
+- Run 3 (continuation, 2000ms pulses): turn again perfect (7 pulses → −1.0°); linear
+  moved **~1.0 m real** but **~25° off-bearing**, guard stopped it (`no_target_progress`).
+
+**Root cause of off-bearing drive:** offset from a 2 cm calibration baseline carries
+~25° noise; forward pulses can't steer. **v2 fixes (committed `94777ff4`):** calibration
+baseline min 2→6 cm; continuous offset refresh from each passing linear pulse
+(`offset_source: linear_refresh`); mid-drive re-aim via bounded VIO turn when facing
+drifts >15° off bearing (≤3 realignments, `realignments` reported in result). New params:
+`vio_realign_threshold_degrees`, `vio_max_realignments`.
+
+**Operational discoveries:** mower restart (iOS app) → fresh BLE advertising → prompt
+promotion (vs. 10+ min of failed toggles at rssi −90); VIO **self-initializes in
+daylight** after mower restart (no warm-up drive needed). Linear reality: ~3 cm/pulse at
+1500 ms, ~8 cm/pulse at 2000 ms (speed 200/400 mix).
+
+**Next:** user "restart HA" → one clean run (fresh 6cm calibration → turn → steered
+drive) expecting `target_reached` → then multi-segment click-to-path proof + PR.

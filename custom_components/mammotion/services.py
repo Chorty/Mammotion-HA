@@ -7085,7 +7085,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                         else {
                             "command": "send_movement",
                             "kwargs": {
-                                "linear_speed": linear_speed_slow,
+                                "linear_speed": linear_speed_fast,
                                 "angular_speed": 0,
                             },
                             "max_pulses": max(1, vio_calibration_pulse_count),
@@ -7104,11 +7104,13 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                 calibration = await _vio_segment_calibration_drive(
                     coordinator,
                     prefer_ble=prefer_ble,
-                    linear_speed=linear_speed_slow,
+                    # Live 2026-07-11: speed-200 pulses barely move this unit
+                    # (~1-2cm real per 2s pulse; firmware ramp eats them) while
+                    # speed-400 pulses cover ~8cm -- calibrate at fast speed,
+                    # with pulses long enough and a wait matching the ~4s
+                    # position-feed latency.
+                    linear_speed=linear_speed_fast,
                     max_pulses=max(1, vio_calibration_pulse_count),
-                    # Live 2026-07-11: 1.5s pulses measured ~1cm because the
-                    # position feed lags ~4s behind request_reports; use longer
-                    # pulses (~8cm real each) and wait out the proven latency.
                     pulse_duration_ms=2000.0,
                     refresh_wait_seconds=4.0,
                 )

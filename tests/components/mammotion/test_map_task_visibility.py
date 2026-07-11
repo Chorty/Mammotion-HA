@@ -3174,7 +3174,7 @@ async def test_vector_segment_vio_dry_run_plans_calibration_and_turn() -> None:
     assert planned["turn_primitive"] == "vio_turn_to_heading"
     assert planned["angular_speed"] == 500
     assert planned["calibration_drive"]["kwargs"] == {
-        "linear_speed": 200,
+        "linear_speed": 400,
         "angular_speed": 0,
     }
     coordinator.manager.send_command_with_args.assert_not_called()
