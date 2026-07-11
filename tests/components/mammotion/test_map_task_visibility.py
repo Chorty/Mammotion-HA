@@ -70,6 +70,7 @@ from custom_components.mammotion.services import (
     _transport_is_ble,
     _validate_custom_path,
     _vio_motion_probe,
+    _vio_segment_calibration_drive,
     _vio_turn_probe,
     _vio_turn_to_heading,
 )
@@ -2801,6 +2802,7 @@ async def test_raw_pymammotion_execute_vector_segment_dry_run_with_zero_offset()
     result = await _raw_pymammotion_execute_vector_segment(
         coordinator,
         [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}],
+        turn_mode="legacy",
         calibrated_forward_heading_offset_degrees=0.0,
         sample_delays=(0,),
     )
@@ -2831,6 +2833,7 @@ async def test_raw_pymammotion_execute_vector_segment_dry_run_applies_offset() -
     result = await _raw_pymammotion_execute_vector_segment(
         coordinator,
         [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}],
+        turn_mode="legacy",
         calibrated_forward_heading_offset_degrees=116.5,
         sample_delays=(0,),
     )
@@ -2892,6 +2895,7 @@ async def test_raw_pymammotion_execute_vector_segment_sends_forward_after_headin
         dry_run=False,
         confirm_blades_off=True,
         confirm_clear_area=True,
+        turn_mode="legacy",
         calibrated_forward_heading_offset_degrees=0.0,
         max_turn_commands=1,
         max_linear_commands=1,
@@ -2934,6 +2938,7 @@ async def test_raw_pymammotion_execute_vector_segment_sends_explicit_stop_after_
         dry_run=False,
         confirm_blades_off=True,
         confirm_clear_area=True,
+        turn_mode="legacy",
         calibrated_forward_heading_offset_degrees=0.0,
         max_turn_commands=1,
         max_linear_commands=1,
@@ -2970,6 +2975,7 @@ async def test_raw_pymammotion_execute_vector_segment_halts_before_linear_on_inc
         dry_run=False,
         confirm_blades_off=True,
         confirm_clear_area=True,
+        turn_mode="legacy",
         calibrated_forward_heading_offset_degrees=0.0,
         max_turn_commands=1,
         max_linear_commands=1,
@@ -3008,6 +3014,7 @@ async def test_vector_segment_loop_to_tolerance_stops_on_consecutive_no_progress
         dry_run=False,
         confirm_blades_off=True,
         confirm_clear_area=True,
+        turn_mode="legacy",
         calibrated_forward_heading_offset_degrees=0.0,
         max_linear_commands=1,
         max_linear_pulse_ceiling=20,
@@ -3035,6 +3042,7 @@ async def test_vector_segment_real_run_requires_ble_transport() -> None:
         dry_run=False,
         confirm_blades_off=True,
         confirm_clear_area=True,
+        turn_mode="legacy",
         calibrated_forward_heading_offset_degrees=0.0,
         sample_delays=(),
     )
@@ -3054,6 +3062,7 @@ async def test_vector_segment_dry_run_allowed_off_ble() -> None:
         coordinator,
         [{"x": 1.0, "y": 1.0}, {"x": 2.0, "y": 1.0}],
         dry_run=True,
+        turn_mode="legacy",
         calibrated_forward_heading_offset_degrees=0.0,
         sample_delays=(),
     )
@@ -3139,6 +3148,257 @@ async def test_raw_pymammotion_execute_multi_segment_dry_run_chains_segments(
         ([{"x": 1.1, "y": 1.0}, {"x": 1.2, "y": 1.1}], True),
     ]
     coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_vector_segment_vio_dry_run_plans_calibration_and_turn() -> None:
+    """Default VIO turn mode dry-runs with a planned calibration drive + turn."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}],
+        sample_delays=(0,),
+    )
+
+    assert result["turn_mode"] == "vio"
+    assert result["stop_reason"] == "dry_run"
+    assert [phase["name"] for phase in result["phases"]] == [
+        "turn_to_target_heading",
+        "linear_forward_to_target",
+    ]
+    turn_phase = result["phases"][0]
+    assert turn_phase["turn_mode"] == "vio"
+    assert turn_phase["passed"] is True
+    planned = turn_phase["result"]["planned"]
+    assert planned["turn_primitive"] == "vio_turn_to_heading"
+    assert planned["angular_speed"] == 500
+    assert planned["calibration_drive"]["kwargs"] == {
+        "linear_speed": 200,
+        "angular_speed": 0,
+    }
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_vector_segment_vio_real_blocked_when_vio_cold() -> None:
+    """Real VIO-mode segment refuses to move unless VIO is actively tracking."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        sample_delays=(0,),
+    )
+
+    assert result["stop_reason"] == "safety_gates_failed"
+    assert "vio_active" in result["blockers"]
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_vector_segment_vio_real_calibrates_turns_then_drives(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real VIO segment: calibration offset -> VIO turn on mapped heading -> linear."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=10.0, vio_state=2
+    )
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    async def fake_calibration(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        assert coordinator_arg is coordinator
+        return {
+            "passed": True,
+            "reason": "calibrated",
+            "offset_degrees": -90.0,
+            "map_motion_heading_degrees": 280.0,
+            "vision_heading": 10.0,
+            "vio_state": 2,
+            "distance_m": 0.06,
+            "pulses_sent": 1,
+            "command_results": [{"phase": "vio_calibration_drive", "ok": True}],
+        }
+
+    turn_calls: list[dict[str, object]] = []
+
+    async def fake_vio_turn(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        turn_calls.append(kwargs)
+        return {
+            "stop_reason": "target_heading_reached",
+            "commands_sent": 2,
+            "command_results": [],
+            "final_vision_heading": 90.0,
+            "final_heading_error_degrees": 0.5,
+        }
+
+    monkeypatch.setattr(
+        mammotion_services, "_vio_segment_calibration_drive", fake_calibration
+    )
+    monkeypatch.setattr(mammotion_services, "_vio_turn_to_heading", fake_vio_turn)
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        max_linear_commands=1,
+        sample_delays=(0,),
+    )
+
+    # Map heading to target is 0 deg; offset -90 -> target_vision_heading 90.
+    assert len(turn_calls) == 1
+    assert turn_calls[0]["target_vision_heading"] == pytest.approx(90.0)
+    assert turn_calls[0]["angular_speed"] == 500
+    assert result["vio"]["offset_degrees"] == pytest.approx(-90.0)
+    assert result["vio"]["offset_source"] == "calibration_drive"
+    assert result["vio"]["target_vision_heading"] == pytest.approx(90.0)
+    assert result["calibration_commands_sent"] == 1
+    assert result["turn_commands_sent"] == 2
+    assert result["phases"][0]["passed"] is True
+    # Static test position never reaches the waypoint: linear stops on progress.
+    assert result["linear_commands_sent"] == 1
+    assert result["stop_reason"] == "no_target_progress"
+
+
+@pytest.mark.asyncio
+async def test_vector_segment_vio_real_stops_on_failed_calibration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed calibration drive halts the segment before any turn/linear motion."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=10.0, vio_state=2
+    )
+
+    async def fake_calibration(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        return {
+            "passed": False,
+            "reason": "vio_not_active_after_drive",
+            "offset_degrees": None,
+            "vision_heading": 0.0,
+            "vio_state": 0,
+            "distance_m": 0.05,
+            "pulses_sent": 2,
+            "command_results": [],
+        }
+
+    monkeypatch.setattr(
+        mammotion_services, "_vio_segment_calibration_drive", fake_calibration
+    )
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        sample_delays=(0,),
+    )
+
+    assert result["stop_reason"] == "vio_calibration_failed"
+    assert result["turn_commands_sent"] == 0
+    assert result["linear_commands_sent"] == 0
+    assert result["phases"][0]["passed"] is False
+
+
+@pytest.mark.asyncio
+async def test_vio_segment_calibration_drive_computes_offset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The calibration drive derives offset = map motion heading - vision heading."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=0.0, vio_state=0
+    )
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    async def fake_refresh(
+        coordinator_arg: MammotionReportUpdateCoordinator,
+    ) -> dict:
+        # Simulate the post-drive feedback refresh: mower moved +x/+y and the
+        # motion woke VIO with a fresh body heading.
+        coordinator.data.mowing_state.pos_x += 0.03
+        coordinator.data.mowing_state.pos_y += 0.03
+        coordinator.data.report_data.vision_info = SimpleNamespace(
+            heading=15.0, vio_state=2
+        )
+        return {"refreshed": True}
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+    monkeypatch.setattr(
+        mammotion_services, "_refresh_position_after_raw_motion", fake_refresh
+    )
+
+    result = await _vio_segment_calibration_drive(coordinator, max_pulses=2)
+
+    assert result["passed"] is True
+    assert result["pulses_sent"] == 1
+    # Motion vector (+0.03, +0.03) -> 45 deg map heading; offset = 45 - 15 = 30.
+    assert result["map_motion_heading_degrees"] == pytest.approx(45.0)
+    assert result["offset_degrees"] == pytest.approx(30.0)
+    coordinator.async_stop_manual_motion.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_multi_segment_vio_carries_offset_between_segments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Segment 1's derived VIO offset is passed to segment 2 (no recalibration)."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    received_offsets: list[object] = []
+
+    async def fake_vector(
+        coordinator_arg: MammotionReportUpdateCoordinator,
+        points: list[dict[str, float]],
+        **kwargs: object,
+    ) -> dict:
+        received_offsets.append(kwargs["vio_heading_offset_degrees"])
+        return {
+            "valid": True,
+            "stop_reason": "dry_run",
+            "blockers": [],
+            "phases": [{"passed": True}, {"passed": True}],
+            "final_telemetry": _custom_path_telemetry_snapshot(coordinator),
+            "progress_diagnostics": [],
+            "vio": {"offset_degrees": 42.0},
+        }
+
+    monkeypatch.setattr(
+        mammotion_services,
+        "_raw_pymammotion_execute_vector_segment",
+        fake_vector,
+    )
+
+    result = await _raw_pymammotion_execute_multi_segment(
+        coordinator,
+        [
+            {"x": 1.0, "y": 1.0},
+            {"x": 1.1, "y": 1.0},
+            {"x": 1.2, "y": 1.1},
+        ],
+        sample_delays=(0,),
+    )
+
+    assert result["stop_reason"] == "dry_run"
+    assert received_offsets == [None, 42.0]
 
 
 @pytest.mark.asyncio

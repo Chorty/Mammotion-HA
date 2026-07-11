@@ -2272,3 +2272,49 @@ use the entity keys.
 Deferred re-probes (probe paths remain in place, no redeploy needed): FPV status with the
 camera **streaming** (expect fpv_flag→1); RTK accuracy (`lat_std/lon_std`) + base-station
 info when **docked with a solid fix**; `self_check_status` bit-layout decode.
+
+## VIO turn wired into the click-to-path executor (2026-07-11, later session — CODE DONE, NOT DEPLOYED)
+
+The turn phase of `raw_pymammotion_execute_vector_segment` / `_multi_segment` (the two
+services the custom-path card `www/mammotion-custom-path-card.js` drives) was rebuilt on
+VIO. **Uncommitted working tree; gates green (205 passed, mypy/ruff clean); NOT yet
+deployed to HA.**
+
+Design (all in `services.py`):
+- New `turn_mode` param, default **"vio"** (old model available via `"legacy"`). Legacy
+  course-over-ground turning is disproven live: `angular_speed=180` does not rotate, and
+  the fixed `calibrated_forward_heading_offset_degrees=116.5` was coincidental.
+- **`_vio_segment_calibration_drive()`** — VIO frame is re-anchored per initialisation, so
+  the map→VIO offset is derived live: short forward pulses (speed-200 profile, explicit
+  stop + `request_reports` refresh), then `offset = atan2(dy,dx) map-motion heading −
+  fresh vision_heading`. Doubles as the VIO warm-up/refresh. Needs ≥0.02 m displacement +
+  `vio_state==2` to pass; else `vio_calibration_failed`.
+- Vector segment vio flow: `vio_active` gate (refuses real motion when `vio_state != 2`;
+  dry-run still plans) → calibration drive (skipped when `vio_heading_offset_degrees`
+  provided) → **re-anchor position/target heading on post-calibration telemetry** (the
+  drive moved the mower; may even complete tiny segments) → `target_vision_heading =
+  target_map_heading − offset` → the proven `_vio_turn_to_heading` primitive (angular 500,
+  bounded pulses) → unchanged proven linear phase. Fresh post-turn snapshot baselines the
+  linear phase (the VIO primitive reports headings, not telemetry).
+- Multi-segment carries segment 1's derived offset to later segments (no recalibration);
+  new params threaded; result exposes `turn_mode` + a `vio` block (offset, source, target,
+  calibration detail).
+- Schemas/handlers: new optional `turn_mode`, `vio_heading_offset_degrees`,
+  `vio_turn_max_commands` (8), `vio_angular_speed` (500), `vio_calibration_pulse_count`
+  (2). The card's existing payloads work unchanged (defaults apply; its legacy knobs are
+  ignored in vio mode). `_raw_vector_readiness_test` pins `turn_mode="legacy"` (it
+  validates the legacy pipeline).
+- Tests: legacy tests pinned with `turn_mode="legacy"`; 6 new vio tests (dry-run plan,
+  cold-VIO refusal, calibrate→turn→drive flow incl. offset math, failed-calibration halt,
+  calibration-drive offset unit test, multi-segment offset carry).
+
+**Daylight status this session:** `camera_brightness=Light`, `vio_state=2`,
+`vision_heading=90.23°` latched — VIO warm. Blockers for live work: `ble_rssi=0` (mower
+stopped advertising; needs user wake) and `active_transport=cloud`. FPV re-probe
+inconclusive (fpv_flag stayed 0; camera entity idle — needs a real WebRTC viewer, curl
+can't consume it; RTK/basestation re-probe still awaits docked+fix).
+
+**Next:** deploy `services.py` (scp+md5) → user "restart HA" → dry-run vector segment in
+vio mode (card payload shape) → supervised live combined turn+drive segment (daylight,
+BLE, per-fire "go"): expect calibration drive ~2 pulses → VIO turn to target → forward to
+waypoint, `stop_reason=target_reached`. Then commit + offer PR.

@@ -888,6 +888,19 @@ RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("linear_pulse_duration_ms", default=300.0): vol.All(
             vol.Coerce(float), vol.Range(min=50.0, max=2000.0)
         ),
+        vol.Optional("turn_mode", default="vio"): vol.In(["vio", "legacy"]),
+        vol.Optional("vio_heading_offset_degrees"): vol.All(
+            vol.Coerce(float), vol.Range(min=-180.0, max=360.0)
+        ),
+        vol.Optional("vio_turn_max_commands", default=8): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=20)
+        ),
+        vol.Optional("vio_angular_speed", default=500): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=1000)
+        ),
+        vol.Optional("vio_calibration_pulse_count", default=2): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=5)
+        ),
         vol.Optional("sample_delays", default=[0, 5, 10, 20, 30, 45, 60]): vol.All(
             cv.ensure_list,
             [vol.All(vol.Coerce(float), vol.Range(min=0.0, max=120.0))],
@@ -968,6 +981,19 @@ RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA = vol.Schema(
         ),
         vol.Optional("linear_pulse_duration_ms", default=300.0): vol.All(
             vol.Coerce(float), vol.Range(min=50.0, max=2000.0)
+        ),
+        vol.Optional("turn_mode", default="vio"): vol.In(["vio", "legacy"]),
+        vol.Optional("vio_heading_offset_degrees"): vol.All(
+            vol.Coerce(float), vol.Range(min=-180.0, max=360.0)
+        ),
+        vol.Optional("vio_turn_max_commands", default=8): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=20)
+        ),
+        vol.Optional("vio_angular_speed", default=500): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=1000)
+        ),
+        vol.Optional("vio_calibration_pulse_count", default=2): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=5)
         ),
         vol.Optional("sample_delays", default=[0, 5, 10, 20, 30, 45, 60]): vol.All(
             cv.ensure_list,
@@ -5837,6 +5863,8 @@ async def _raw_vector_readiness_test(  # noqa: C901, PLR0913
             angular_speed_fast=180,
             angular_speed_slow=180,
             slow_turn_threshold_degrees=8.0,
+            # Readiness validates the legacy course-over-ground pipeline.
+            turn_mode="legacy",
             waypoint_tolerance=0.08,
             min_progress_distance=real_min_progress_distance,
             min_heading_change_degrees=0.5,
@@ -6632,6 +6660,115 @@ def _raw_vector_linear_command_selection(
     }
 
 
+_VIO_TURN_MODES = ("vio", "legacy")
+
+
+async def _vio_segment_calibration_drive(  # noqa: PLR0913
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    prefer_ble: bool = True,
+    linear_speed: int = 200,
+    max_pulses: int = 2,
+    pulse_duration_ms: float = 1500.0,
+    refresh_wait_seconds: float = 2.0,
+    min_calibration_distance_m: float = 0.02,
+) -> dict[str, Any]:
+    """Derive the map-frame -> VIO-frame heading offset from a short forward drive.
+
+    ``vision_info.heading`` is a body heading in the VIO's own frame, which is
+    re-anchored whenever VIO (re)initialises -- it has no fixed relationship to
+    map-local coordinates. Driving forward yields both frames at once: the
+    telemetry x/y delta gives the motion heading in the map frame while the
+    concurrent (motion-refreshed) ``vision_heading`` gives the body heading in
+    the VIO frame, so ``offset = map_motion_heading - vision_heading``. The
+    drive doubles as the VIO warm-up/refresh the latched heading needs.
+    """
+    start_telemetry = _custom_path_telemetry_snapshot(coordinator)
+    result: dict[str, Any] = {
+        "passed": False,
+        "reason": None,
+        "offset_degrees": None,
+        "map_motion_heading_degrees": None,
+        "vision_heading": None,
+        "vio_state": None,
+        "distance_m": None,
+        "pulses_sent": 0,
+        "command_results": [],
+    }
+    if not _position_available(start_telemetry):
+        result["reason"] = "position_unavailable"
+        return result
+    for pulse_index in range(1, max_pulses + 1):
+        before = _custom_path_telemetry_snapshot(coordinator)
+        if not _blade_reported_safe(before):
+            result["reason"] = "aborted_unsafe_blade"
+            return result
+        if before.get("work_mode_label") not in {"MODE_READY", "MODE_PAUSE"}:
+            result["reason"] = "aborted_unsafe_mode"
+            return result
+        command_result: dict[str, Any] = {
+            "index": pulse_index,
+            "phase": "vio_calibration_drive",
+            "command": "send_movement",
+            "kwargs": {"linear_speed": linear_speed, "angular_speed": 0},
+            "ok": None,
+            "error": None,
+        }
+        try:
+            await _send_manager_command_with_args(
+                coordinator,
+                "send_movement",
+                prefer_ble=prefer_ble,
+                command_kwargs=command_result["kwargs"],
+            )
+            command_result["ok"] = True
+        except Exception as err:  # noqa: BLE001
+            command_result["ok"] = False
+            command_result["error"] = f"{type(err).__name__}: {err}"
+            result["command_results"].append(command_result)
+            result["pulses_sent"] += 1
+            result["reason"] = "command_failed"
+            return result
+        result["pulses_sent"] += 1
+        await asyncio.sleep(pulse_duration_ms / 1000)
+        command_result["stop_result"] = await _manual_velocity_stop_attempt(
+            coordinator, use_wifi=not prefer_ble
+        )
+        command_result["feedback_refresh"] = await _refresh_position_after_raw_motion(
+            coordinator
+        )
+        if refresh_wait_seconds > 0:
+            await asyncio.sleep(refresh_wait_seconds)
+        result["command_results"].append(command_result)
+        after = _custom_path_telemetry_snapshot(coordinator)
+        reading = _vio_reading(coordinator)
+        delta = _telemetry_position_delta(start_telemetry, after)
+        result["distance_m"] = delta.get("distance")
+        result["vision_heading"] = reading["vision_heading"]
+        result["vio_state"] = reading["vio_state"]
+        if (
+            delta.get("distance") is not None
+            and float(delta["distance"]) >= min_calibration_distance_m
+            and reading["vio_state"] == _VIO_STATE_ACTIVE
+            and reading["vision_heading"] is not None
+        ):
+            map_heading = (
+                math.degrees(math.atan2(float(delta["dy"]), float(delta["dx"]))) + 360
+            ) % 360
+            result["map_motion_heading_degrees"] = round(map_heading, 3)
+            result["offset_degrees"] = _normalized_heading_degrees(
+                map_heading - float(reading["vision_heading"])
+            )
+            result["passed"] = True
+            result["reason"] = "calibrated"
+            return result
+    if result["vio_state"] != _VIO_STATE_ACTIVE:
+        result["reason"] = "vio_not_active_after_drive"
+    else:
+        result["reason"] = "insufficient_calibration_distance"
+    return result
+
+
 async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     coordinator: MammotionReportUpdateCoordinator,
     points: list[dict[str, float]],
@@ -6660,11 +6797,25 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     calibrated_forward_heading_offset_degrees: float = 116.5,
     turn_pulse_duration_ms: float = 300.0,
     linear_pulse_duration_ms: float = 300.0,
+    turn_mode: str = "vio",
+    vio_heading_offset_degrees: float | None = None,
+    vio_turn_max_commands: int = 8,
+    vio_angular_speed: int = 500,
+    vio_calibration_pulse_count: int = 2,
     sample_delays: list[float] | tuple[float, ...] = (0, 5, 10, 20, 30, 45, 60),
     ha_state: str | None = None,
     active_route: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Execute or dry-run one vector segment using raw turn then forward motion.
+
+    ``turn_mode="vio"`` (default) drives the turn phase on the live VIO body
+    heading (``vision_info.heading``), which is the only signal proven
+    (2026-07-10) to observe in-place rotation on this hardware. Because the
+    VIO frame is re-anchored per initialisation, the map->VIO offset is
+    derived live from a short forward calibration drive (or accepted via
+    ``vio_heading_offset_degrees`` when already known, e.g. carried between
+    multi-segment segments). ``turn_mode="legacy"`` keeps the original
+    course-over-ground turn with the fixed calibrated offset.
 
     ``send_movement`` is a continuous-velocity command with no protocol-level
     duration bound -- the mower keeps moving until something explicitly stops
@@ -6738,6 +6889,30 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                 "name": "target_heading_available",
                 "passed": False,
                 "detail": "Vector segment execution requires live position and target heading.",
+            }
+        )
+    if turn_mode not in _VIO_TURN_MODES:
+        gates.append(
+            {
+                "name": "turn_mode_valid",
+                "passed": False,
+                "detail": f"turn_mode must be one of {_VIO_TURN_MODES}.",
+            }
+        )
+    initial_vio_reading = _vio_reading(coordinator)
+    if turn_mode == "vio" and initial_vio_reading["vio_state"] != _VIO_STATE_ACTIVE:
+        # VIO won't initialise in the dark and a cold reading latches
+        # heading=0.0 as a valid float; refuse a real VIO-mode segment until
+        # the track is actively good (warm it with daylight forward motion).
+        gates.append(
+            {
+                "name": "vio_active",
+                "passed": dry_run,
+                "detail": (
+                    "VIO turn mode requires an active VIO track "
+                    f"(vio_state == {_VIO_STATE_ACTIVE}); saw "
+                    f"{initial_vio_reading['vio_state']}."
+                ),
             }
         )
     if runtime_safety["active_mowing_detected"]:
@@ -6822,6 +6997,22 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
             "target_reported_heading_degrees": target_reported_heading,
         },
         "initial_linear_command_selection": initial_selection,
+        "turn_mode": turn_mode,
+        "vio": {
+            "initial_vio_state": initial_vio_reading["vio_state"],
+            "initial_vision_heading": initial_vio_reading["vision_heading"],
+            "provided_offset_degrees": vio_heading_offset_degrees,
+            "offset_degrees": vio_heading_offset_degrees,
+            "offset_source": (
+                "provided" if vio_heading_offset_degrees is not None else None
+            ),
+            "target_vision_heading": None,
+            "calibration": None,
+            "formula": (
+                "target_vision_heading = target_map_heading - "
+                "(map_motion_heading - vision_heading)"
+            ),
+        },
         "initial_telemetry": initial_telemetry,
         "final_telemetry": initial_telemetry,
         "runtime_safety": runtime_safety,
@@ -6830,6 +7021,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         "commands_sent": 0,
         "turn_commands_sent": 0,
         "linear_commands_sent": 0,
+        "calibration_commands_sent": 0,
         "command_results": [],
         "samples": [{"label": "initial", "telemetry": initial_telemetry}],
         "phases": [],
@@ -6857,28 +7049,128 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         result["stop_reason"] = "safety_gates_failed"
         return result
 
-    turn_result = await _raw_pymammotion_turn_to_heading(
-        coordinator,
-        target_heading_degrees=target_reported_heading,
-        heading_tolerance_degrees=heading_tolerance_degrees,
-        angular_speed_fast=angular_speed_fast,
-        angular_speed_slow=angular_speed_slow,
-        slow_turn_threshold_degrees=slow_turn_threshold_degrees,
-        max_commands=max_turn_commands,
-        min_heading_change_degrees=min_heading_change_degrees,
-        max_translation_distance=max_turn_translation_distance,
-        pulse_duration_ms=turn_pulse_duration_ms,
-        prefer_ble=prefer_ble,
-        sample_delays=tuple(sample_delays),
-        dry_run=dry_run,
-        confirm_blades_off=confirm_blades_off,
-        confirm_clear_area=confirm_clear_area,
-        ha_state=ha_state,
-        active_route=active_route,
-    )
+    turn_result: dict[str, Any]
+    if turn_mode == "vio":
+        vio_info = result["vio"]
+        if dry_run:
+            turn_result = {
+                "mode": "vio_turn",
+                "dry_run": True,
+                "stop_reason": "dry_run",
+                "commands_sent": 0,
+                "command_results": [],
+                "planned": {
+                    "calibration_drive": (
+                        "skipped_offset_provided"
+                        if vio_heading_offset_degrees is not None
+                        else {
+                            "command": "send_movement",
+                            "kwargs": {
+                                "linear_speed": linear_speed_slow,
+                                "angular_speed": 0,
+                            },
+                            "max_pulses": max(1, vio_calibration_pulse_count),
+                        }
+                    ),
+                    "turn_primitive": "vio_turn_to_heading",
+                    "angular_speed": vio_angular_speed,
+                    "max_commands": vio_turn_max_commands,
+                    "heading_tolerance_degrees": heading_tolerance_degrees,
+                    "formula": vio_info["formula"],
+                },
+            }
+        else:
+            offset = vio_heading_offset_degrees
+            if offset is None:
+                calibration = await _vio_segment_calibration_drive(
+                    coordinator,
+                    prefer_ble=prefer_ble,
+                    linear_speed=linear_speed_slow,
+                    max_pulses=max(1, vio_calibration_pulse_count),
+                )
+                vio_info["calibration"] = calibration
+                result["calibration_commands_sent"] = calibration["pulses_sent"]
+                result["commands_sent"] += calibration["pulses_sent"]
+                result["command_results"].extend(calibration["command_results"])
+                if not calibration["passed"]:
+                    result["phases"].append(
+                        {
+                            "name": "turn_to_target_heading",
+                            "turn_mode": "vio",
+                            "passed": False,
+                            "result": calibration,
+                        }
+                    )
+                    result["final_telemetry"] = _custom_path_telemetry_snapshot(
+                        coordinator
+                    )
+                    result["stop_reason"] = "vio_calibration_failed"
+                    return result
+                offset = calibration["offset_degrees"]
+                vio_info["offset_source"] = "calibration_drive"
+            vio_info["offset_degrees"] = offset
+            # The calibration drive moved the mower: re-anchor position, target
+            # heading, and completion on fresh telemetry before turning.
+            post_calibration = _custom_path_telemetry_snapshot(coordinator)
+            result["final_telemetry"] = post_calibration
+            refreshed_point = _raw_segment_current_point(post_calibration)
+            if refreshed_point is not None:
+                current_point = refreshed_point
+            completion_status = _manual_velocity_completion_status(
+                normalized_points,
+                post_calibration,
+                waypoint_tolerance=waypoint_tolerance,
+            )
+            result["completion_status"] = completion_status
+            if completion_status["complete"]:
+                result["stop_reason"] = "target_reached"
+                return result
+            if current_point is None or target is None:
+                result["stop_reason"] = "position_unavailable"
+                return result
+            target_heading = _path_heading_degrees(current_point, target)
+            result["target_map_heading_degrees"] = target_heading
+            target_vision = _normalized_heading_degrees(
+                float(target_heading) - float(offset)
+            )
+            vio_info["target_vision_heading"] = target_vision
+            turn_result = await _vio_turn_to_heading(
+                coordinator,
+                target_vision_heading=float(target_vision or 0.0),
+                heading_tolerance_degrees=heading_tolerance_degrees,
+                angular_speed=vio_angular_speed,
+                max_commands=vio_turn_max_commands,
+                prefer_ble=prefer_ble,
+                dry_run=False,
+                confirm_blades_off=confirm_blades_off,
+                confirm_clear_area=confirm_clear_area,
+                ha_state=ha_state,
+                active_route=active_route,
+            )
+    else:
+        turn_result = await _raw_pymammotion_turn_to_heading(
+            coordinator,
+            target_heading_degrees=target_reported_heading,
+            heading_tolerance_degrees=heading_tolerance_degrees,
+            angular_speed_fast=angular_speed_fast,
+            angular_speed_slow=angular_speed_slow,
+            slow_turn_threshold_degrees=slow_turn_threshold_degrees,
+            max_commands=max_turn_commands,
+            min_heading_change_degrees=min_heading_change_degrees,
+            max_translation_distance=max_turn_translation_distance,
+            pulse_duration_ms=turn_pulse_duration_ms,
+            prefer_ble=prefer_ble,
+            sample_delays=tuple(sample_delays),
+            dry_run=dry_run,
+            confirm_blades_off=confirm_blades_off,
+            confirm_clear_area=confirm_clear_area,
+            ha_state=ha_state,
+            active_route=active_route,
+        )
     result["phases"].append(
         {
             "name": "turn_to_target_heading",
+            "turn_mode": turn_mode,
             "passed": turn_result.get("stop_reason")
             in {"dry_run", "target_heading_reached"},
             "result": turn_result,
@@ -6892,7 +7184,14 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         for sample in turn_result.get("samples", [])[1:]
         if isinstance(sample, dict)
     )
-    result["final_telemetry"] = turn_result.get("final_telemetry", initial_telemetry)
+    if turn_mode == "vio" and not dry_run:
+        # The VIO primitive reports headings, not telemetry snapshots; take a
+        # fresh post-turn snapshot so the linear phase baselines correctly.
+        result["final_telemetry"] = _custom_path_telemetry_snapshot(coordinator)
+    else:
+        result["final_telemetry"] = turn_result.get(
+            "final_telemetry", result["final_telemetry"]
+        )
 
     if dry_run:
         result["stop_reason"] = "dry_run"
@@ -7211,11 +7510,21 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
     calibrated_forward_heading_offset_degrees: float = 116.5,
     turn_pulse_duration_ms: float = 300.0,
     linear_pulse_duration_ms: float = 300.0,
+    turn_mode: str = "vio",
+    vio_heading_offset_degrees: float | None = None,
+    vio_turn_max_commands: int = 8,
+    vio_angular_speed: int = 500,
+    vio_calibration_pulse_count: int = 2,
     sample_delays: list[float] | tuple[float, ...] = (0, 5, 10, 20, 30, 45, 60),
     ha_state: str | None = None,
     active_route: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Execute or dry-run a guarded chain of proven raw vector segments."""
+    """Execute or dry-run a guarded chain of proven raw vector segments.
+
+    In ``turn_mode="vio"`` the map->VIO heading offset derived by segment 1's
+    calibration drive is carried forward, so later segments skip their own
+    calibration drives and turn immediately on the shared offset.
+    """
     normalized_area_hash = _coerce_optional_int(area_hash)
     preview = _preview_custom_path(
         coordinator,
@@ -7309,6 +7618,8 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
         "calibrated_forward_heading_offset_degrees": (
             calibrated_forward_heading_offset_degrees
         ),
+        "turn_mode": turn_mode,
+        "vio_heading_offset_degrees": vio_heading_offset_degrees,
         "sample_delays": list(sample_delays),
         "confirm_blades_off": confirm_blades_off,
         "confirm_clear_area": confirm_clear_area,
@@ -7337,6 +7648,7 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
         result["stop_reason"] = "safety_gates_failed"
         return result
 
+    carried_vio_offset = vio_heading_offset_degrees
     for segment_offset in range(total_segments):
         segment_index = segment_offset + 1
         segment_points = [
@@ -7416,10 +7728,21 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
             ),
             turn_pulse_duration_ms=turn_pulse_duration_ms,
             linear_pulse_duration_ms=linear_pulse_duration_ms,
+            turn_mode=turn_mode,
+            vio_heading_offset_degrees=carried_vio_offset,
+            vio_turn_max_commands=vio_turn_max_commands,
+            vio_angular_speed=vio_angular_speed,
+            vio_calibration_pulse_count=vio_calibration_pulse_count,
             sample_delays=tuple(sample_delays),
             ha_state=ha_state,
             active_route=active_route,
         )
+        if turn_mode == "vio":
+            segment_offset_degrees = (segment_result.get("vio") or {}).get(
+                "offset_degrees"
+            )
+            if segment_offset_degrees is not None:
+                carried_vio_offset = segment_offset_degrees
         passed = _raw_multi_segment_phase_passed(
             segment_result,
             real_segment=not dry_run,
@@ -9801,6 +10124,11 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             ],
             turn_pulse_duration_ms=call.data["turn_pulse_duration_ms"],
             linear_pulse_duration_ms=call.data["linear_pulse_duration_ms"],
+            turn_mode=call.data["turn_mode"],
+            vio_heading_offset_degrees=call.data.get("vio_heading_offset_degrees"),
+            vio_turn_max_commands=call.data["vio_turn_max_commands"],
+            vio_angular_speed=call.data["vio_angular_speed"],
+            vio_calibration_pulse_count=call.data["vio_calibration_pulse_count"],
             sample_delays=tuple(call.data["sample_delays"]),
             ha_state=ha_state.state if ha_state is not None else None,
             active_route=active_route,
@@ -9849,6 +10177,11 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             ],
             turn_pulse_duration_ms=call.data["turn_pulse_duration_ms"],
             linear_pulse_duration_ms=call.data["linear_pulse_duration_ms"],
+            turn_mode=call.data["turn_mode"],
+            vio_heading_offset_degrees=call.data.get("vio_heading_offset_degrees"),
+            vio_turn_max_commands=call.data["vio_turn_max_commands"],
+            vio_angular_speed=call.data["vio_angular_speed"],
+            vio_calibration_pulse_count=call.data["vio_calibration_pulse_count"],
             sample_delays=tuple(call.data["sample_delays"]),
             ha_state=ha_state.state if ha_state is not None else None,
             active_route=active_route,
