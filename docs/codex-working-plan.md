@@ -1,8 +1,48 @@
 # Codex working plan / handoff memory
 
-Last updated: 2026-07-06
+Last updated: 2026-07-11
 
 This file is the repo-local memory index for Codex work on this branch. Use it as the source of truth when a new chat needs context. It intentionally avoids secrets, HA tokens, passwords, and live mower credentials.
+
+## GOALS / CURRENT STATE (read this first)
+
+**What this integration is for:** a Home Assistant integration for Mammotion mowers (test
+unit: Luba-VSPLV397) that goes beyond status/telemetry toward **"click-to-path"** — let a
+user draw a path on the map and have the mower drive it safely. Delivered in gated phases:
+1. Read-only map/task visibility + custom-path planning/preview — **DONE**.
+2. Guarded manual motion: forward/linear — **DONE, live-proven**; in-place turning — **turn
+   primitive built + gated, awaiting daylight live-validation**.
+3. Multi-segment executor chaining turn+drive under safety gates — **NOT STARTED**.
+4. Full arbitrary drawn-path execution — **intentionally still disabled**.
+
+**Where things stand (2026-07-11):**
+- Branch `feat/vio-turn-to-heading` @ `cb349b3e` (pushed to origin). **Actual version is
+  `0.6.4-beta11`** in `manifest.json` + `pyproject.toml`. IGNORE the "beta65" references
+  later in this file — that is stale Codex text; a GitHub bot regresses the version, and
+  deploy is by file copy + md5, not by the version string (see `reference-ha-host` memory).
+- **Turning is UNBLOCKED:** `report_data.vision_info.heading` (VIO body heading) tracks
+  in-place rotation. The closed-loop `mammotion.vio_turn_to_heading` primitive is built,
+  gated to require an active VIO track (`vio_state==2`), and deployed — **but not yet
+  live-validated end-to-end.**
+- **VIO needs DAYLIGHT:** it will not initialize in the dark / from manual motion when
+  `camera_brightness=Dark`; warm it with a FORWARD drive (`vio_motion_probe`), not a pivot.
+- **12 diagnostic sensors added + live:** 5 VIO (heading, tracked/detected features,
+  brightness, survival distance) + 7 safety (bumper, 4 ultrasonics, fuse, lock).
+
+**Remaining to finish (full detail in the 2026-07-11 sections at the END of this file):**
+1. Deferred read-only re-probes (FPV while camera streaming; RTK accuracy + base-station
+   info when docked with a fix) → expose any that populate as sensors.
+2. Daylight supervised live-validation of `vio_turn_to_heading` (warm VIO → real turn →
+   confirm it converges and stops within tolerance).
+3. Wire `vio_turn_to_heading` into the multi-segment/click-to-path executor as the turn
+   phase (replacing the course-over-ground primitive); prove one combined turn+drive
+   segment live; keep multi-point execution gated until proven.
+
+**Live-test essentials:** BLE is required for real motion (gate refuses cloud); every
+real-motion command needs a fresh explicit user "go" while they watch; deploy via scp + md5;
+a changed service or new entity needs a full HA Core restart the user triggers. Gate every
+code change with `.venv/bin/pytest` + `mypy` + `ruff` (`uv` is not on PATH). Full procedure
+in the `mower-live-testing-workflow` and `reference-ha-host` memories.
 
 ## Current operating rule
 
