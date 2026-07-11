@@ -154,6 +154,21 @@
           "SIGNAL_UNKNOWN": "Inconnu"
         }
       },
+      "vio_heading": {
+        "name": "Cap VIO"
+      },
+      "vio_tracked_features": {
+        "name": "Caractéristiques suivies VIO"
+      },
+      "vio_detected_features": {
+        "name": "Caractéristiques détectées VIO"
+      },
+      "vio_brightness_raw": {
+        "name": "Luminosité VIO"
+      },
+      "vio_survival_distance": {
+        "name": "Distance de survie VIO"
+      },
       "activity_mode": {
         "name": "Mode activité",
         "state": {

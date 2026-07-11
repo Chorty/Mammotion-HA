@@ -192,6 +192,41 @@ LUBA_2_YUKA_ONLY_TYPES: tuple[MammotionSensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     MammotionSensorEntityDescription(
+        key="vio_heading",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=DEGREE,
+        value_fn=lambda mower_data: mower_data.report_data.vision_info.heading,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionSensorEntityDescription(
+        key="vio_tracked_features",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda mower_data: mower_data.report_data.vision_info.track_feature_num,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionSensorEntityDescription(
+        key="vio_detected_features",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda mower_data: mower_data.report_data.vision_info.detect_feature_num,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionSensorEntityDescription(
+        key="vio_brightness_raw",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda mower_data: mower_data.report_data.vision_info.brightness,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionSensorEntityDescription(
+        key="vio_survival_distance",
+        state_class=SensorStateClass.MEASUREMENT,
+        device_class=SensorDeviceClass.DISTANCE,
+        native_unit_of_measurement=UnitOfLength.METERS,
+        value_fn=(
+            lambda mower_data: mower_data.report_data.dev.vio_survival_info.vio_survival_distance
+        ),
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionSensorEntityDescription(
         key="maintenance_distance",
         state_class=SensorStateClass.MEASUREMENT,
         device_class=SensorDeviceClass.DISTANCE,

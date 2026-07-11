@@ -154,6 +154,21 @@
           "SIGNAL_UNKNOWN": "Onbekend"
         }
       },
+      "vio_heading": {
+        "name": "VIO-koers"
+      },
+      "vio_tracked_features": {
+        "name": "VIO gevolgde kenmerken"
+      },
+      "vio_detected_features": {
+        "name": "VIO gedetecteerde kenmerken"
+      },
+      "vio_brightness_raw": {
+        "name": "VIO-helderheid"
+      },
+      "vio_survival_distance": {
+        "name": "VIO-overlevingsafstand"
+      },
       "activity_mode": {
         "name": "Activiteitsmodus",
         "state": {

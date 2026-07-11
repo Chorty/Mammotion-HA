@@ -154,6 +154,21 @@
           "SIGNAL_UNKNOWN": "Neznámý"
         }
       },
+      "vio_heading": {
+        "name": "Kurz VIO"
+      },
+      "vio_tracked_features": {
+        "name": "Sledované prvky VIO"
+      },
+      "vio_detected_features": {
+        "name": "Detekované prvky VIO"
+      },
+      "vio_brightness_raw": {
+        "name": "Jas VIO"
+      },
+      "vio_survival_distance": {
+        "name": "Přežitá vzdálenost VIO"
+      },
       "activity_mode": {
         "name": "Režim činnosti",
         "state": {

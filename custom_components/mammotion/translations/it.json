@@ -154,6 +154,21 @@
           "SIGNAL_UNKNOWN": "Sconosciuto"
         }
       },
+      "vio_heading": {
+        "name": "Direzione VIO"
+      },
+      "vio_tracked_features": {
+        "name": "Caratteristiche tracciate VIO"
+      },
+      "vio_detected_features": {
+        "name": "Caratteristiche rilevate VIO"
+      },
+      "vio_brightness_raw": {
+        "name": "Luminosità VIO"
+      },
+      "vio_survival_distance": {
+        "name": "Distanza di sopravvivenza VIO"
+      },
       "activity_mode": {
         "name": "Modalità attività",
         "state": {

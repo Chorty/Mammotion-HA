@@ -154,6 +154,21 @@
           "SIGNAL_UNKNOWN": "Ismeretlen"
         }
       },
+      "vio_heading": {
+        "name": "VIO irány"
+      },
+      "vio_tracked_features": {
+        "name": "VIO követett jellemzők"
+      },
+      "vio_detected_features": {
+        "name": "VIO észlelt jellemzők"
+      },
+      "vio_brightness_raw": {
+        "name": "VIO fényerő"
+      },
+      "vio_survival_distance": {
+        "name": "VIO túlélési távolság"
+      },
       "activity_mode": {
         "name": "Működési mód",
         "state": {

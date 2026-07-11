@@ -1693,6 +1693,74 @@ async def test_vio_turn_to_heading_rejects_missing_confirmations() -> None:
 
 
 @pytest.mark.asyncio
+async def test_vio_turn_to_heading_cold_vio_still_allows_dry_run() -> None:
+    """A cold VIO (vio_state != 2) still plans in dry-run without sending."""
+    coordinator = _pulse_coordinator()
+    coordinator.data.report_data.vision_info = SimpleNamespace(heading=0.0, vio_state=0)
+
+    result = await _vio_turn_to_heading(coordinator, target_vision_heading=40.0)
+
+    assert result["stop_reason"] == "dry_run"
+    assert result["initial_vio_state"] == 0
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_vio_turn_to_heading_refuses_real_turn_when_vio_cold() -> None:
+    """Real VIO turn-to-heading refuses to move unless VIO is actively tracking."""
+    coordinator = _pulse_coordinator()
+    coordinator.data.report_data.vision_info = SimpleNamespace(heading=0.0, vio_state=0)
+
+    result = await _vio_turn_to_heading(
+        coordinator,
+        target_vision_heading=40.0,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+    )
+
+    assert result["stop_reason"] == "safety_gates_failed"
+    assert "vio_active" in result["blockers"]
+    coordinator.manager.send_command_with_args.assert_not_called()
+    coordinator.async_stop_manual_motion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_vio_turn_to_heading_stops_if_vio_drops_out_mid_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If VIO deactivates during the loop, stop instead of chasing a stale heading."""
+    coordinator = _pulse_coordinator()
+    coordinator.data.report_data.vision_info = SimpleNamespace(heading=0.0, vio_state=2)
+
+    async def fake_sleep(_delay: float) -> None:
+        return None
+
+    async def fake_get_reports(count: int = 5) -> None:
+        # Pulse one makes real progress, but VIO drops out (enters shadow) so the
+        # next iteration must bail rather than trust the now-stale heading.
+        vi = coordinator.data.report_data.vision_info
+        vi.heading = vi.heading + 10.0
+        vi.vio_state = 0
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+    coordinator.async_get_reports.side_effect = fake_get_reports
+
+    result = await _vio_turn_to_heading(
+        coordinator,
+        target_vision_heading=40.0,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+    )
+
+    assert result["stop_reason"] == "vio_inactive"
+    # Exactly one pulse fired before VIO dropped out and the loop bailed.
+    assert result["commands_sent"] == 1
+    assert coordinator.async_stop_manual_motion.await_count == 1
+
+
+@pytest.mark.asyncio
 async def test_vio_turn_to_heading_closed_loop_reaches_target(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

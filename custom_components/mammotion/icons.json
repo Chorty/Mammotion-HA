@@ -84,6 +84,21 @@
       "camera_brightness": {
         "default": "mdi:brightness-5"
       },
+      "vio_heading": {
+        "default": "mdi:compass"
+      },
+      "vio_tracked_features": {
+        "default": "mdi:vector-point"
+      },
+      "vio_detected_features": {
+        "default": "mdi:vector-point-select"
+      },
+      "vio_brightness_raw": {
+        "default": "mdi:brightness-6"
+      },
+      "vio_survival_distance": {
+        "default": "mdi:map-marker-distance"
+      },
       "work_area": {
         "default": "mdi:identifier"
       },

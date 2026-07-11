@@ -198,6 +198,21 @@
           "SIGNAL_UNKNOWN": "Unknown"
         }
       },
+      "vio_heading": {
+        "name": "VIO heading"
+      },
+      "vio_tracked_features": {
+        "name": "VIO tracked features"
+      },
+      "vio_detected_features": {
+        "name": "VIO detected features"
+      },
+      "vio_brightness_raw": {
+        "name": "VIO brightness"
+      },
+      "vio_survival_distance": {
+        "name": "VIO survival distance"
+      },
       "activity_mode": {
         "name": "Activity mode"
       },

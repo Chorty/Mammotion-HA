@@ -154,6 +154,21 @@
           "SIGNAL_UNKNOWN": "Ukendt"
         }
       },
+      "vio_heading": {
+        "name": "VIO-kurs"
+      },
+      "vio_tracked_features": {
+        "name": "VIO sporede træk"
+      },
+      "vio_detected_features": {
+        "name": "VIO registrerede træk"
+      },
+      "vio_brightness_raw": {
+        "name": "VIO-lysstyrke"
+      },
+      "vio_survival_distance": {
+        "name": "VIO-overlevelsesafstand"
+      },
       "activity_mode": {
         "name": "Aktivitetstilstand",
         "state": {

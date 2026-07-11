@@ -154,6 +154,21 @@
           "SIGNAL_UNKNOWN": "Necunoscut"
         }
       },
+      "vio_heading": {
+        "name": "Direcție VIO"
+      },
+      "vio_tracked_features": {
+        "name": "Caracteristici urmărite VIO"
+      },
+      "vio_detected_features": {
+        "name": "Caracteristici detectate VIO"
+      },
+      "vio_brightness_raw": {
+        "name": "Luminozitate VIO"
+      },
+      "vio_survival_distance": {
+        "name": "Distanță de supraviețuire VIO"
+      },
       "activity_mode": {
         "name": "Tipul de activitate",
         "state": {

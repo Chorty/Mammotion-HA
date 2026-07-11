@@ -154,6 +154,21 @@
           "SIGNAL_UNKNOWN": "Neznano"
         }
       },
+      "vio_heading": {
+        "name": "Smer VIO"
+      },
+      "vio_tracked_features": {
+        "name": "Sledene značilnice VIO"
+      },
+      "vio_detected_features": {
+        "name": "Zaznane značilnice VIO"
+      },
+      "vio_brightness_raw": {
+        "name": "Svetlost VIO"
+      },
+      "vio_survival_distance": {
+        "name": "Razdalja preživetja VIO"
+      },
       "activity_mode": {
         "name": "Vrsta dejavnosti",
         "state": {

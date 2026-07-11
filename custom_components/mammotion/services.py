@@ -4668,6 +4668,11 @@ async def _vio_turn_probe(  # noqa: C901, PLR0912, PLR0913, PLR0915
     return result
 
 
+# report_data.vision_info.vio_state == 2 means the visual-odometry track is active
+# and vision_heading is trustworthy. 0 is cold/uninitialised (e.g. dark scene).
+_VIO_STATE_ACTIVE = 2
+
+
 def _vio_reading(coordinator: MammotionReportUpdateCoordinator) -> dict[str, Any]:
     """Return the current VIO heading and state from live telemetry."""
     paths = _position_feedback_raw_sources(coordinator).get("paths", {})
@@ -4726,12 +4731,30 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         ha_state=ha_state,
         active_route=active_route,
     )
+    initial_vio_state = initial_reading["vio_state"]
     if initial_heading is None:
         gates.append(
             {
                 "name": "vio_heading_available",
                 "passed": dry_run,
                 "detail": "VIO turn-to-heading requires live vision_info.heading.",
+            }
+        )
+    if initial_vio_state != _VIO_STATE_ACTIVE:
+        # VIO is visual odometry: it will not initialise in a dark scene, and a
+        # cold reading reports vision_heading=0.0 as a *valid* float. Refuse to
+        # start a real turn unless VIO is actively tracking (vio_state == 2);
+        # dry-run planning is still allowed so the command can be inspected cold.
+        gates.append(
+            {
+                "name": "vio_active",
+                "passed": dry_run,
+                "detail": (
+                    "VIO turn-to-heading requires an active VIO track "
+                    f"(vio_state == {_VIO_STATE_ACTIVE}); saw {initial_vio_state}. "
+                    "Warm VIO with forward motion in daylight "
+                    "(camera_brightness must not be Dark) before turning."
+                ),
             }
         )
     if runtime_safety["active_mowing_detected"]:
@@ -4822,9 +4845,15 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
 
     for command_index in range(1, max_commands + 1):
         before_telemetry = _custom_path_telemetry_snapshot(coordinator)
-        before_heading = _vio_reading(coordinator)["vision_heading"]
+        before_reading = _vio_reading(coordinator)
+        before_heading = before_reading["vision_heading"]
         if before_heading is None:
             result["stop_reason"] = "vio_heading_unavailable"
+            return result
+        if before_reading["vio_state"] != _VIO_STATE_ACTIVE:
+            # VIO dropped out mid-turn (e.g. drove into shadow); its heading is no
+            # longer trustworthy, so stop rather than chase a stale reading.
+            result["stop_reason"] = "vio_inactive"
             return result
         if not _blade_reported_safe(before_telemetry):
             result["stop_reason"] = "aborted_unsafe_blade"

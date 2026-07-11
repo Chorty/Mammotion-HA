@@ -2142,3 +2142,69 @@ refresh won't unfreeze — fresh VIO needs motion + `request_reports`); an idle 
    forward linear phase. Keep multi-point execution gated until the combined
    turn+drive segment is proven live.
 3. Consider committing beta9-11 (currently uncommitted working tree).
+
+## VIO night-blocker + hardening + telemetry-exposure survey (2026-07-11)
+
+### Live finding: VIO needs daylight; won't init from manual motion in the dark
+Supervised session on branch `feat/vio-turn-to-heading` (services already committed at
+`5a854a9e`). Undocked, gate GREEN (`allowed_for_manual_motion: true`, blade OFF,
+MODE_READY, transport `ble` at rssi -88..-90). VIO was cold (`vio_state=0`,
+`vision_heading=0.0`). Two real fires each failed to wake VIO:
+- `vio_turn_probe` (0,+500, 6s): mower physically pivoted (course-over-ground `toward`
+  swung ~11.7°, ~0.6cm translation) but `vio_state` stayed 0 / heading 0.0.
+- `vio_motion_probe` (200, 6s): `motion_confirmed:true` but `vio_activated_any:false`,
+  `max_vio_state:0`.
+Root cause: `sensor.<mower>_camera_brightness = Dark` (fresh, ~01:00 UTC = night). VIO is
+*visual* odometry — it can't bootstrap a feature track in the dark. The 07-10 proof only
+worked because VIO was already `SIGNAL_GOOD`, warmed by that morning's daylight mowing.
+**Pre-flight gate for any VIO turn test: `camera_brightness` must not be `Dark`.**
+Position telemetry is also frozen at rest / not refreshed mid-drive, so probe x/y looked
+static even though the mower moved.
+
+### Code hardening shipped (deployed, awaiting HA restart to activate)
+`vio_turn_to_heading` now refuses to start a real turn unless VIO is actively tracking:
+- New module const `_VIO_STATE_ACTIVE = 2` (`VioState.SIGNAL_GOOD`).
+- New initial safety gate `vio_active` (blocks real start when `initial_vio_state != 2`;
+  still passes in dry-run so cold planning works). A cold VIO reports `heading=0.0` as a
+  *valid* float, so without this the loop would turn against a meaningless 0.0 and abort
+  iteration 1 on `no_heading_progress`.
+- New per-iteration guard: if `vio_state` drops out of GOOD mid-turn, stop with
+  `stop_reason="vio_inactive"` instead of chasing a stale heading.
+- Tests added (`test_map_task_visibility.py`): cold VIO still dry-runs; real turn refused
+  when cold (`vio_active` blocker); mid-turn dropout → `vio_inactive`. Gates: `199 passed`,
+  ruff clean, mypy clean on `services.py`. Deployed via scp, md5
+  `d70e1e058ff0044e01065b7d790eb50f` verified both sides. **Needs a full HA Core restart.**
+
+### VioState enum (report_data.vision_info.vio_state)
+`-1 UNKNOWN` (also 172 = camera pipeline initialising), `0 SIGNAL_NONE` (cold, what we
+saw at night), `1 SIGNAL_INIT`, `2 SIGNAL_GOOD` (active/trustworthy — required to turn),
+`3 SIGNAL_BAD`.
+
+### Telemetry-exposure survey — VIO fields available but NOT surfaced in HA
+`report_data.vision_info` (pymammotion `VisionInfo` / `vio_to_app_info_msg`, fully parsed)
+carries more than we expose. Currently surfaced in `sensor.py` (Luba2/Yuka-only):
+- `camera_brightness` → `vision_info.brightness` via `camera_brightness()` enum
+  (numeric; `>45` = "Light", else "Dark").
+- `visual_positioning_status` → `VioState(vision_info.vio_state).name`.
+
+Recommended new DIAGNOSTIC sensors (high value for making VIO legible + explaining
+failures at a glance — all Luba2/Yuka-only, same pattern):
+1. **VIO heading** — `vision_info.heading` (deg). The proven body-heading signal that
+   Phase-2 turning rides on; worth surfacing for visibility/automations.
+2. **VIO tracked features** — `vision_info.track_feature_num`. The single best "can VIO
+   lock right now" number; ~0 = featureless/dark ⇒ VIO unusable.
+3. **VIO detected features** — `vision_info.detect_feature_num`.
+4. **VIO brightness (raw)** — `vision_info.brightness` (int; finer than the Dark/Light
+   enum, threshold >45).
+5. **VIO survival distance** — `device.vio_survival_info.vio_survival_distance` (m); how
+   far VIO can dead-reckon since last reliable fix.
+
+Also present/unexposed and possibly useful later: `vision_info.x`/`.y` (VIO-local position
+estimate, alt position source), `report_data.device.vslam_status` with `vision_distance`
+and `vision_state` sub-bytes (report_info.py:228/239), `vision_point_info` (3-D detected
+points) and `vision_statistic_info` (mean/var stats), `fpv_info.fpv_flag`.
+
+NOTE: adding entities requires the full translations sync per CLAUDE.md (strings.json +
+every locale under `translations/` + `icons.json`). Not yet implemented — documented for a
+decision on whether to add the 5 sensors above (recommend at least #1 VIO heading and #2
+tracked-features).
