@@ -3256,6 +3256,7 @@ async def test_vector_segment_vio_real_calibrates_turns_then_drives(
         confirm_blades_off=True,
         confirm_clear_area=True,
         max_linear_commands=1,
+        vio_max_realignments=0,
         sample_delays=(0,),
     )
 
@@ -3318,6 +3319,75 @@ async def test_vector_segment_vio_real_stops_on_failed_calibration(
 
 
 @pytest.mark.asyncio
+async def test_vector_segment_vio_realigns_when_facing_drifts_off_bearing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mid-drive re-aim fires a bounded VIO turn when facing drifts off bearing."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    # Facing estimate = vision_heading + offset = 10 + (-90) = -80 deg map,
+    # bearing to target is 0 deg -> 80 deg aim error > 15 deg threshold.
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=10.0, vio_state=2
+    )
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    async def fake_calibration(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        return {
+            "passed": True,
+            "reason": "calibrated",
+            "offset_degrees": -90.0,
+            "map_motion_heading_degrees": 280.0,
+            "vision_heading": 10.0,
+            "vio_state": 2,
+            "distance_m": 0.06,
+            "pulses_sent": 1,
+            "command_results": [],
+        }
+
+    turn_calls: list[dict[str, object]] = []
+
+    async def fake_vio_turn(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        turn_calls.append(kwargs)
+        return {
+            "stop_reason": "target_heading_reached",
+            "commands_sent": 1,
+            "command_results": [],
+        }
+
+    monkeypatch.setattr(
+        mammotion_services, "_vio_segment_calibration_drive", fake_calibration
+    )
+    monkeypatch.setattr(mammotion_services, "_vio_turn_to_heading", fake_vio_turn)
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        max_linear_commands=1,
+        sample_delays=(0,),
+    )
+
+    # One initial turn + one mid-drive re-aim, both via the VIO primitive.
+    assert len(turn_calls) == 2
+    assert len(result["realignments"]) == 1
+    realign = result["realignments"][0]
+    assert realign["stop_reason"] == "target_heading_reached"
+    assert abs(realign["aim_error_degrees"]) > 15.0
+    # The corrected off-bearing pulse does not count as no-progress.
+    assert result["stop_reason"] == "max_linear_commands_reached"
+
+
+@pytest.mark.asyncio
 async def test_vio_segment_calibration_drive_computes_offset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3350,8 +3420,9 @@ async def test_vio_segment_calibration_drive_computes_offset(
     result = await _vio_segment_calibration_drive(coordinator, max_pulses=2)
 
     assert result["passed"] is True
-    assert result["pulses_sent"] == 1
-    # Motion vector (+0.03, +0.03) -> 45 deg map heading; offset = 45 - 15 = 30.
+    # 6 cm minimum baseline: one 4.2 cm pulse is not enough, two (8.5 cm) are.
+    assert result["pulses_sent"] == 2
+    # Motion vector (+0.06, +0.06) -> 45 deg map heading; offset = 45 - 15 = 30.
     assert result["map_motion_heading_degrees"] == pytest.approx(45.0)
     assert result["offset_degrees"] == pytest.approx(30.0)
     coordinator.async_stop_manual_motion.assert_awaited()

@@ -901,6 +901,12 @@ RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("vio_calibration_pulse_count", default=2): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=5)
         ),
+        vol.Optional("vio_realign_threshold_degrees", default=15.0): vol.All(
+            vol.Coerce(float), vol.Range(min=5.0, max=90.0)
+        ),
+        vol.Optional("vio_max_realignments", default=3): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=10)
+        ),
         vol.Optional("sample_delays", default=[0, 5, 10, 20, 30, 45, 60]): vol.All(
             cv.ensure_list,
             [vol.All(vol.Coerce(float), vol.Range(min=0.0, max=120.0))],
@@ -994,6 +1000,12 @@ RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA = vol.Schema(
         ),
         vol.Optional("vio_calibration_pulse_count", default=2): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=5)
+        ),
+        vol.Optional("vio_realign_threshold_degrees", default=15.0): vol.All(
+            vol.Coerce(float), vol.Range(min=5.0, max=90.0)
+        ),
+        vol.Optional("vio_max_realignments", default=3): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=10)
         ),
         vol.Optional("sample_delays", default=[0, 5, 10, 20, 30, 45, 60]): vol.All(
             cv.ensure_list,
@@ -6671,9 +6683,13 @@ async def _vio_segment_calibration_drive(  # noqa: PLR0913
     max_pulses: int = 2,
     pulse_duration_ms: float = 1500.0,
     refresh_wait_seconds: float = 2.0,
-    min_calibration_distance_m: float = 0.02,
+    min_calibration_distance_m: float = 0.06,
 ) -> dict[str, Any]:
     """Derive the map-frame -> VIO-frame heading offset from a short forward drive.
+
+    The baseline requirement (default 6 cm) matters: live run 2026-07-11 showed
+    a 2 cm baseline yields ~25 deg of offset error from cm-level position noise,
+    sending the whole forward leg off-bearing.
 
     ``vision_info.heading`` is a body heading in the VIO's own frame, which is
     re-anchored whenever VIO (re)initialises -- it has no fixed relationship to
@@ -6802,6 +6818,8 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     vio_turn_max_commands: int = 8,
     vio_angular_speed: int = 500,
     vio_calibration_pulse_count: int = 2,
+    vio_realign_threshold_degrees: float = 15.0,
+    vio_max_realignments: int = 3,
     sample_delays: list[float] | tuple[float, ...] = (0, 5, 10, 20, 30, 45, 60),
     ha_state: str | None = None,
     active_route: dict[str, Any] | None = None,
@@ -7022,6 +7040,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         "turn_commands_sent": 0,
         "linear_commands_sent": 0,
         "calibration_commands_sent": 0,
+        "realignments": [],
         "command_results": [],
         "samples": [{"label": "initial", "telemetry": initial_telemetry}],
         "phases": [],
@@ -7247,6 +7266,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     result["linear_distance_ceiling"] = linear_distance_ceiling
     consecutive_no_progress = 0
     cumulative_linear_distance = 0.0
+    realignments_used = 0
     command_index = 0
     while command_index < effective_linear_ceiling:
         command_index += 1
@@ -7412,6 +7432,92 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         if not _blade_reported_safe(after):
             result["stop_reason"] = "blade_unsafe"
             return result
+        if turn_mode == "vio":
+            reading = _vio_reading(coordinator)
+            vio_info = result["vio"]
+            measured_delta = progress.get("measured_delta") or {}
+            # Continuous offset refresh: every real pulse is a fresh (and much
+            # longer) calibration vector -- motion heading in the map frame plus
+            # the concurrent VIO body heading -- so keep the map->VIO offset
+            # current instead of trusting the short initial baseline forever.
+            if (
+                reading["vio_state"] == _VIO_STATE_ACTIVE
+                and reading["vision_heading"] is not None
+                and measured_delta.get("distance") is not None
+                and float(measured_delta["distance"]) >= 0.05
+                and measured_delta.get("dx") is not None
+                and measured_delta.get("dy") is not None
+            ):
+                motion_heading = (
+                    math.degrees(
+                        math.atan2(
+                            float(measured_delta["dy"]),
+                            float(measured_delta["dx"]),
+                        )
+                    )
+                    + 360
+                ) % 360
+                vio_info["offset_degrees"] = _normalized_heading_degrees(
+                    motion_heading - float(reading["vision_heading"])
+                )
+                vio_info["offset_source"] = "linear_refresh"
+            # Mid-drive re-aim: pure forward pulses cannot steer, so when the
+            # estimated facing drifts off the bearing to the target (live run
+            # 2026-07-11 drifted ~25 deg and sailed past the waypoint), run a
+            # bounded VIO turn correction and resume driving.
+            offset_now = vio_info.get("offset_degrees")
+            current_now = _raw_segment_current_point(after)
+            if (
+                offset_now is not None
+                and reading["vio_state"] == _VIO_STATE_ACTIVE
+                and reading["vision_heading"] is not None
+                and current_now is not None
+                and target is not None
+                and realignments_used < vio_max_realignments
+            ):
+                facing = (float(reading["vision_heading"]) + float(offset_now)) % 360
+                bearing = _path_heading_degrees(current_now, target)
+                aim_error = _heading_error_degrees(facing, bearing)
+                if abs(aim_error) > vio_realign_threshold_degrees:
+                    realignments_used += 1
+                    realign_target = _normalized_heading_degrees(
+                        bearing - float(offset_now)
+                    )
+                    realign_result = await _vio_turn_to_heading(
+                        coordinator,
+                        target_vision_heading=float(realign_target or 0.0),
+                        heading_tolerance_degrees=heading_tolerance_degrees,
+                        angular_speed=vio_angular_speed,
+                        max_commands=min(6, vio_turn_max_commands),
+                        prefer_ble=prefer_ble,
+                        dry_run=False,
+                        confirm_blades_off=confirm_blades_off,
+                        confirm_clear_area=confirm_clear_area,
+                        ha_state=ha_state,
+                        active_route=active_route,
+                    )
+                    realign_commands = int(realign_result.get("commands_sent") or 0)
+                    result["turn_commands_sent"] += realign_commands
+                    result["commands_sent"] += realign_commands
+                    result["command_results"].extend(
+                        realign_result.get("command_results") or []
+                    )
+                    result["realignments"].append(
+                        {
+                            "after_linear_pulse": command_index,
+                            "facing_degrees": round(facing, 3),
+                            "bearing_degrees": round(bearing, 3),
+                            "aim_error_degrees": round(aim_error, 3),
+                            "stop_reason": realign_result.get("stop_reason"),
+                        }
+                    )
+                    if realign_result.get("stop_reason") != "target_heading_reached":
+                        result["stop_reason"] = "vio_realign_incomplete"
+                        return result
+                    # Course corrected: the off-bearing pulse should not count
+                    # toward the no-progress abort.
+                    consecutive_no_progress = 0
+                    continue
         if not progress["passed"]:
             consecutive_no_progress += 1
             if loop_to_tolerance:
@@ -7515,6 +7621,8 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
     vio_turn_max_commands: int = 8,
     vio_angular_speed: int = 500,
     vio_calibration_pulse_count: int = 2,
+    vio_realign_threshold_degrees: float = 15.0,
+    vio_max_realignments: int = 3,
     sample_delays: list[float] | tuple[float, ...] = (0, 5, 10, 20, 30, 45, 60),
     ha_state: str | None = None,
     active_route: dict[str, Any] | None = None,
@@ -7733,6 +7841,8 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
             vio_turn_max_commands=vio_turn_max_commands,
             vio_angular_speed=vio_angular_speed,
             vio_calibration_pulse_count=vio_calibration_pulse_count,
+            vio_realign_threshold_degrees=vio_realign_threshold_degrees,
+            vio_max_realignments=vio_max_realignments,
             sample_delays=tuple(sample_delays),
             ha_state=ha_state,
             active_route=active_route,
@@ -10129,6 +10239,8 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             vio_turn_max_commands=call.data["vio_turn_max_commands"],
             vio_angular_speed=call.data["vio_angular_speed"],
             vio_calibration_pulse_count=call.data["vio_calibration_pulse_count"],
+            vio_realign_threshold_degrees=call.data["vio_realign_threshold_degrees"],
+            vio_max_realignments=call.data["vio_max_realignments"],
             sample_delays=tuple(call.data["sample_delays"]),
             ha_state=ha_state.state if ha_state is not None else None,
             active_route=active_route,
@@ -10182,6 +10294,8 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             vio_turn_max_commands=call.data["vio_turn_max_commands"],
             vio_angular_speed=call.data["vio_angular_speed"],
             vio_calibration_pulse_count=call.data["vio_calibration_pulse_count"],
+            vio_realign_threshold_degrees=call.data["vio_realign_threshold_degrees"],
+            vio_max_realignments=call.data["vio_max_realignments"],
             sample_delays=tuple(call.data["sample_delays"]),
             ha_state=ha_state.state if ha_state is not None else None,
             active_route=active_route,
