@@ -2350,3 +2350,60 @@ daylight** after mower restart (no warm-up drive needed). Linear reality: ~3 cm/
 
 **Next:** user "restart HA" → one clean run (fresh 6cm calibration → turn → steered
 drive) expecting `target_reached` → then multi-segment click-to-path proof + PR.
+
+## ✅ MILESTONE: combined turn+drive segment PROVEN LIVE — target_reached (2026-07-11 evening)
+
+**The v2 executor completed a full closed-loop segment on VIO**: from (3.693, −0.997) to
+target (4.41, 0.06): turn phase 4 pulses (error −41.7°→+2.7°, `target_heading_reached`),
+linear phase 12×2s pulses all on-bearing (~10cm each, ~1.2m), continuous offset refresh
+active (`offset_source: linear_refresh`, 108.54°→106.56°), zero re-aims needed, landed
+**~7cm from target** (tolerance 15cm), `stop_reason: target_reached`, `complete: true`.
+Artifact: scratchpad `live_vio_segment_9.json`. Commits `9b0c5fb2`+`94777ff4`+`76de94e4`+
+`03d8d09e` all pushed.
+
+**Working parameter set (proven):** `heading_tolerance_degrees: 8`,
+`vio_turn_max_commands: 16` (MUST pass — default 8 only covers ~100° of turn),
+`linear_pulse_duration_ms: 2000`, `max_linear_pulse_ceiling: 20`,
+`max_no_progress_pulses: 4`, `waypoint_tolerance: 0.15`, `sample_delays: [0,3,6]`;
+`vio_heading_offset_degrees` reusable across runs in-session (pose-independent
+frame-to-frame offset; each run's result reports the refreshed value).
+
+**Hard-won operational playbook (all live-verified today):**
+1. **iOS app holds the mower's single BLE slot** — force-close it before testing;
+   promotion then lands in ~20-120s (vs never while app open).
+2. **Every mower restart kills the device-side report stream** → position telemetry
+   freezes/lags minutes. Fix: `position_feedback_diagnostic` real-mode `pulse_count: 0`
+   (zero motion, runs the full re-init arsenal: report snapshot/stream, iot sync, BLE
+   sync) → position feed goes live again (visible ±3cm jitter = healthy).
+3. **The re-init's iot-sync window flaps BLE to cloud** → one toggle after re-init
+   re-promotes (~20s when mower freshly booted).
+4. Speed-200 pulses barely move this unit (~1-2cm real per 2s; firmware ramp); speed-400
+   ≈ 8-10cm per 2s pulse. Calibration now runs at fast speed (`03d8d09e`).
+5. Idle mower stops advertising within ~30min → wake via mower restart or button.
+6. User has full-area UniFi camera coverage of the mower's reachable area (supervision).
+
+**Remaining to finish:** (1) multi-segment click-to-path proof (2-3 points through
+`raw_pymammotion_execute_multi_segment`, offset carries across segments — code ready,
+needs one supervised run); (2) then consider ungating multi-point + PR to main; (3)
+deferred re-probes (FPV while streaming; RTK accuracy when docked).
+
+## 🏆 PHASE 2 COMPLETE: multi-segment click-to-path PROVEN LIVE (2026-07-11 evening)
+
+Supervised L-path run (`raw_pymammotion_execute_multi_segment`, 3 points, 2 real
+segments, artifact `live_multi_segment_1.json`): **both segments `target_reached`,
+`ready_for_multi_segment: true`**, landed ~11cm from the final point.
+- Seg 1 (0.75m −y): turn 12 pulses −126.5°→−1.0°; drive 8 pulses; **mid-drive re-aim
+  triggered live and worked** (21.9° drift after pulse 1 → corrected → clean drive).
+- Seg 2 (0.70m −x): **carried offset, zero recalibration**; turn 5 pulses −50.7°→−1.1°;
+  drive 8 pulses all on-bearing.
+- Offset self-refined 106.56→108.28→109.63 (`linear_refresh`) across the whole path.
+
+Every executor feature validated in one run: VIO turn phase, fast-speed live
+calibration, offset carry across segments, continuous offset refresh, mid-drive re-aim,
+per-segment safety re-checks, waypoint completion. The card→multi-segment→turn+drive
+pipeline is functional end-to-end.
+
+**Next session:** decide whether to lift point-count/segment caps (currently 4 points /
+max_real_segments) + surface `turn_mode`/`vio_turn_max_commands: 16` as card defaults;
+open the PR to main; deferred FPV/RTK re-probes; consider exposing exact per-command UTC
+timestamps in command_results (user request for camera-footage correlation).
