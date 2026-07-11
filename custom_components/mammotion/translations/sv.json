@@ -169,6 +169,52 @@
       "vio_survival_distance": {
         "name": "VIO-överlevnadsavstånd"
       },
+      "bumper_status": {
+        "name": "Stötfångarstatus",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Varning",
+          "ERROR": "Fel"
+        }
+      },
+      "ultrasonic_left_status": {
+        "name": "Ultraljudsstatus vänster",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Varning",
+          "ERROR": "Fel"
+        }
+      },
+      "ultrasonic_left_front_status": {
+        "name": "Ultraljudsstatus vänster fram",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Varning",
+          "ERROR": "Fel"
+        }
+      },
+      "ultrasonic_right_front_status": {
+        "name": "Ultraljudsstatus höger fram",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Varning",
+          "ERROR": "Fel"
+        }
+      },
+      "ultrasonic_right_status": {
+        "name": "Ultraljudsstatus höger",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Varning",
+          "ERROR": "Fel"
+        }
+      },
+      "fuse_status": {
+        "name": "Säkringsstatus"
+      },
+      "lock_state": {
+        "name": "Låsstatus"
+      },
       "activity_mode": {
         "name": "Aktivitetsläge",
         "state": {

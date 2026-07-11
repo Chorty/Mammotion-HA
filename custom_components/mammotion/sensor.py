@@ -33,7 +33,7 @@ from pymammotion.data.model.device import (
     PoolCleanerDevice,
     RTKBaseStationDevice,
 )
-from pymammotion.data.model.enums import RTKStatus, TaskAreaStatus
+from pymammotion.data.model.enums import RTKStatus, SensorCheckState, TaskAreaStatus
 from pymammotion.data.model.pool_state import SpinoSysStatus, SpinoWorkMode
 from pymammotion.utility.constant import VioState
 from pymammotion.utility.constant.device_constant import (
@@ -224,6 +224,68 @@ LUBA_2_YUKA_ONLY_TYPES: tuple[MammotionSensorEntityDescription, ...] = (
         value_fn=(
             lambda mower_data: mower_data.report_data.dev.vio_survival_info.vio_survival_distance
         ),
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionSensorEntityDescription(
+        key="bumper_status",
+        state_class=None,
+        device_class=SensorDeviceClass.ENUM,
+        native_unit_of_measurement=None,
+        value_fn=lambda mower_data: SensorCheckState(
+            mower_data.report_data.dev.bumper_state
+        ).name,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionSensorEntityDescription(
+        key="ultrasonic_left_status",
+        state_class=None,
+        device_class=SensorDeviceClass.ENUM,
+        native_unit_of_measurement=None,
+        value_fn=lambda mower_data: SensorCheckState(
+            mower_data.report_data.dev.ult_left
+        ).name,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionSensorEntityDescription(
+        key="ultrasonic_left_front_status",
+        state_class=None,
+        device_class=SensorDeviceClass.ENUM,
+        native_unit_of_measurement=None,
+        value_fn=lambda mower_data: SensorCheckState(
+            mower_data.report_data.dev.ult_left_front
+        ).name,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionSensorEntityDescription(
+        key="ultrasonic_right_front_status",
+        state_class=None,
+        device_class=SensorDeviceClass.ENUM,
+        native_unit_of_measurement=None,
+        value_fn=lambda mower_data: SensorCheckState(
+            mower_data.report_data.dev.ult_right_front
+        ).name,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionSensorEntityDescription(
+        key="ultrasonic_right_status",
+        state_class=None,
+        device_class=SensorDeviceClass.ENUM,
+        native_unit_of_measurement=None,
+        value_fn=lambda mower_data: SensorCheckState(
+            mower_data.report_data.dev.ult_right
+        ).name,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionSensorEntityDescription(
+        key="fuse_status",
+        state_class=None,
+        value_fn=lambda mower_data: mower_data.report_data.dev.fuse_status,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionSensorEntityDescription(
+        key="lock_state",
+        state_class=None,
+        value_fn=lambda mower_data: mower_data.report_data.dev.lock_state.lock_state,
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     MammotionSensorEntityDescription(

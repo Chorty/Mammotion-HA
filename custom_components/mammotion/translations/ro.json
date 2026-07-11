@@ -169,6 +169,52 @@
       "vio_survival_distance": {
         "name": "Distanță de supraviețuire VIO"
       },
+      "bumper_status": {
+        "name": "Stare bară de protecție",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Avertisment",
+          "ERROR": "Eroare"
+        }
+      },
+      "ultrasonic_left_status": {
+        "name": "Stare ultrasonic stânga",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Avertisment",
+          "ERROR": "Eroare"
+        }
+      },
+      "ultrasonic_left_front_status": {
+        "name": "Stare ultrasonic față stânga",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Avertisment",
+          "ERROR": "Eroare"
+        }
+      },
+      "ultrasonic_right_front_status": {
+        "name": "Stare ultrasonic față dreapta",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Avertisment",
+          "ERROR": "Eroare"
+        }
+      },
+      "ultrasonic_right_status": {
+        "name": "Stare ultrasonic dreapta",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Avertisment",
+          "ERROR": "Eroare"
+        }
+      },
+      "fuse_status": {
+        "name": "Stare siguranță"
+      },
+      "lock_state": {
+        "name": "Stare blocare"
+      },
       "activity_mode": {
         "name": "Tipul de activitate",
         "state": {

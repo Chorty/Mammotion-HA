@@ -2205,6 +2205,30 @@ and `vision_state` sub-bytes (report_info.py:228/239), `vision_point_info` (3-D 
 points) and `vision_statistic_info` (mean/var stats), `fpv_info.fpv_flag`.
 
 NOTE: adding entities requires the full translations sync per CLAUDE.md (strings.json +
-every locale under `translations/` + `icons.json`). Not yet implemented — documented for a
-decision on whether to add the 5 sensors above (recommend at least #1 VIO heading and #2
-tracked-features).
+every locale under `translations/` + `icons.json`).
+
+### UPDATE 2026-07-11 — 5 VIO sensors implemented + wider field probe + 7 safety sensors
+The 5 VIO sensors above were implemented (see commit `e035f3fa`). Then a read-only
+shortlist probe was added to `position_feedback_diagnostic` (`_RAW_POSITION_PATHS`, kept
+for future re-probes) and run live on this Luba (undocked, paused, night, camera idle, not
+on RTK base). Probe results:
+- **Populated + meaningful:** `dev.self_check_status`=10, `dev.fuse_status`=1,
+  `dev.sensor_status` group (bumper + `ult_left/left_front/right_front/right` all `OK`=0 at
+  rest), `dev.lock_state.lock_state`=0, `dev.fpv_info.fpv_flag`=0 (0 because camera idle),
+  `connect.wifi_is_available`=1.
+- **State-dependent zero (re-probe before building):** `rtk.lat_std/lon_std/top4_total_mean`
+  =0 (undocked/night), `basestation_info.*`=0 (not connected to base), `rtk.dis_status`=a
+  packed int needing decode.
+- **Absent on this hardware (skip):** `dev.mnet_info.*` / `connect.mnet_inet` (no 4G),
+  `dev.collector_status`=0 (Luba has no collector).
+
+Implemented from the populated set (this commit): obstacle/safety group as ENUM sensors
+(`bumper_status`, `ultrasonic_left/left_front/right_front/right_status`; OK/Warning/Error
+from `SensorCheckState`) + numeric `fuse_status` + numeric `lock_state`. Full translations
+(names + enum states) across all 12 locales + icons. All 7 registered live (all `OK` / fuse
+1 / lock 0). Entity_ids are name-slugged (e.g. `..._left_ultrasonic_status`); unique_ids
+use the entity keys.
+
+Deferred re-probes (probe paths remain in place, no redeploy needed): FPV status with the
+camera **streaming** (expect fpv_flag→1); RTK accuracy (`lat_std/lon_std`) + base-station
+info when **docked with a solid fix**; `self_check_status` bit-layout decode.

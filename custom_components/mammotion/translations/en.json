@@ -180,6 +180,52 @@
       "vio_survival_distance": {
         "name": "VIO survival distance"
       },
+      "bumper_status": {
+        "name": "Bumper status",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Warning",
+          "ERROR": "Error"
+        }
+      },
+      "ultrasonic_left_status": {
+        "name": "Left ultrasonic status",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Warning",
+          "ERROR": "Error"
+        }
+      },
+      "ultrasonic_left_front_status": {
+        "name": "Left-front ultrasonic status",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Warning",
+          "ERROR": "Error"
+        }
+      },
+      "ultrasonic_right_front_status": {
+        "name": "Right-front ultrasonic status",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Warning",
+          "ERROR": "Error"
+        }
+      },
+      "ultrasonic_right_status": {
+        "name": "Right ultrasonic status",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Warning",
+          "ERROR": "Error"
+        }
+      },
+      "fuse_status": {
+        "name": "Fuse status"
+      },
+      "lock_state": {
+        "name": "Lock state"
+      },
       "activity_mode": {
         "name": "Activity mode",
         "state": {

@@ -169,6 +169,52 @@
       "vio_survival_distance": {
         "name": "VIO-overlevingsafstand"
       },
+      "bumper_status": {
+        "name": "Bumperstatus",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Waarschuwing",
+          "ERROR": "Fout"
+        }
+      },
+      "ultrasonic_left_status": {
+        "name": "Status ultrasoon links",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Waarschuwing",
+          "ERROR": "Fout"
+        }
+      },
+      "ultrasonic_left_front_status": {
+        "name": "Status ultrasoon linksvoor",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Waarschuwing",
+          "ERROR": "Fout"
+        }
+      },
+      "ultrasonic_right_front_status": {
+        "name": "Status ultrasoon rechtsvoor",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Waarschuwing",
+          "ERROR": "Fout"
+        }
+      },
+      "ultrasonic_right_status": {
+        "name": "Status ultrasoon rechts",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Waarschuwing",
+          "ERROR": "Fout"
+        }
+      },
+      "fuse_status": {
+        "name": "Zekeringstatus"
+      },
+      "lock_state": {
+        "name": "Vergrendelingsstatus"
+      },
       "activity_mode": {
         "name": "Activiteitsmodus",
         "state": {

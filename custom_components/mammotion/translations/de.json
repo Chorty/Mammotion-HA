@@ -169,6 +169,52 @@
       "vio_survival_distance": {
         "name": "VIO-Überlebensdistanz"
       },
+      "bumper_status": {
+        "name": "Stoßfängerstatus",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Warnung",
+          "ERROR": "Fehler"
+        }
+      },
+      "ultrasonic_left_status": {
+        "name": "Ultraschallstatus links",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Warnung",
+          "ERROR": "Fehler"
+        }
+      },
+      "ultrasonic_left_front_status": {
+        "name": "Ultraschallstatus links vorne",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Warnung",
+          "ERROR": "Fehler"
+        }
+      },
+      "ultrasonic_right_front_status": {
+        "name": "Ultraschallstatus rechts vorne",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Warnung",
+          "ERROR": "Fehler"
+        }
+      },
+      "ultrasonic_right_status": {
+        "name": "Ultraschallstatus rechts",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Warnung",
+          "ERROR": "Fehler"
+        }
+      },
+      "fuse_status": {
+        "name": "Sicherungsstatus"
+      },
+      "lock_state": {
+        "name": "Verriegelungsstatus"
+      },
       "activity_mode": {
         "name": "Status",
         "state": {

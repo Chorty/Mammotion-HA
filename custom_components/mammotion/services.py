@@ -3638,6 +3638,39 @@ _RAW_POSITION_PATHS = (
     "report_data.dev.blade_state",
     "report_data.rtk.status",
     "report_data.rtk.pos_level",
+    # --- feature-exposure shortlist probe (2026-07-11, read-only) ---
+    # Obstacle/safety sensor health decoded from dev.sensor_status.
+    "report_data.dev.sensor_status",
+    "report_data.dev.bumper_state",
+    "report_data.dev.ult_left",
+    "report_data.dev.ult_left_front",
+    "report_data.dev.ult_right_front",
+    "report_data.dev.ult_right",
+    "report_data.dev.fuse_status",
+    # Device status / security / self-test.
+    "report_data.dev.lock_state.lock_state",
+    "report_data.dev.self_check_status",
+    "report_data.dev.fpv_info.fpv_flag",
+    "report_data.dev.collector_status.collector_installation_status",
+    # 4G modem (non-sensitive fields only; IMEI/SIM/ICCID deliberately omitted).
+    "report_data.dev.mnet_info.operator",
+    "report_data.dev.mnet_info.model",
+    "report_data.dev.mnet_info.inet",
+    "report_data.dev.mnet_info.rssi",
+    # RTK fix-quality detail.
+    "report_data.rtk.lat_std",
+    "report_data.rtk.lon_std",
+    "report_data.rtk.top4_total_mean",
+    "report_data.rtk.dis_status",
+    # RTK base-station identity/health.
+    "report_data.basestation_info.ver_major",
+    "report_data.basestation_info.ver_minor",
+    "report_data.basestation_info.ver_patch",
+    "report_data.basestation_info.basestation_status",
+    "report_data.basestation_info.sats_num",
+    # Connectivity availability.
+    "report_data.connect.mnet_inet",
+    "report_data.connect.wifi_is_available",
 )
 
 

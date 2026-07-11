@@ -169,6 +169,52 @@
       "vio_survival_distance": {
         "name": "Dystans przetrwania VIO"
       },
+      "bumper_status": {
+        "name": "Stan zderzaka",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Ostrzeżenie",
+          "ERROR": "Błąd"
+        }
+      },
+      "ultrasonic_left_status": {
+        "name": "Stan czujnika ultradźwiękowego lewego",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Ostrzeżenie",
+          "ERROR": "Błąd"
+        }
+      },
+      "ultrasonic_left_front_status": {
+        "name": "Stan czujnika ultradźwiękowego lewego przedniego",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Ostrzeżenie",
+          "ERROR": "Błąd"
+        }
+      },
+      "ultrasonic_right_front_status": {
+        "name": "Stan czujnika ultradźwiękowego prawego przedniego",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Ostrzeżenie",
+          "ERROR": "Błąd"
+        }
+      },
+      "ultrasonic_right_status": {
+        "name": "Stan czujnika ultradźwiękowego prawego",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Ostrzeżenie",
+          "ERROR": "Błąd"
+        }
+      },
+      "fuse_status": {
+        "name": "Stan bezpiecznika"
+      },
+      "lock_state": {
+        "name": "Stan blokady"
+      },
       "activity_mode": {
         "name": "Stan pracy",
         "state": {

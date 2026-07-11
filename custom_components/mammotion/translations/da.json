@@ -169,6 +169,52 @@
       "vio_survival_distance": {
         "name": "VIO-overlevelsesafstand"
       },
+      "bumper_status": {
+        "name": "Kofangerstatus",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Advarsel",
+          "ERROR": "Fejl"
+        }
+      },
+      "ultrasonic_left_status": {
+        "name": "Ultralydstatus venstre",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Advarsel",
+          "ERROR": "Fejl"
+        }
+      },
+      "ultrasonic_left_front_status": {
+        "name": "Ultralydstatus venstre for",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Advarsel",
+          "ERROR": "Fejl"
+        }
+      },
+      "ultrasonic_right_front_status": {
+        "name": "Ultralydstatus højre for",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Advarsel",
+          "ERROR": "Fejl"
+        }
+      },
+      "ultrasonic_right_status": {
+        "name": "Ultralydstatus højre",
+        "state": {
+          "OK": "OK",
+          "WARNING": "Advarsel",
+          "ERROR": "Fejl"
+        }
+      },
+      "fuse_status": {
+        "name": "Sikringsstatus"
+      },
+      "lock_state": {
+        "name": "Låsestatus"
+      },
       "activity_mode": {
         "name": "Aktivitetstilstand",
         "state": {

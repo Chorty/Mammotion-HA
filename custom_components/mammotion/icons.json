@@ -99,6 +99,27 @@
       "vio_survival_distance": {
         "default": "mdi:map-marker-distance"
       },
+      "bumper_status": {
+        "default": "mdi:motion-sensor"
+      },
+      "ultrasonic_left_status": {
+        "default": "mdi:radar"
+      },
+      "ultrasonic_left_front_status": {
+        "default": "mdi:radar"
+      },
+      "ultrasonic_right_front_status": {
+        "default": "mdi:radar"
+      },
+      "ultrasonic_right_status": {
+        "default": "mdi:radar"
+      },
+      "fuse_status": {
+        "default": "mdi:fuse"
+      },
+      "lock_state": {
+        "default": "mdi:lock"
+      },
       "work_area": {
         "default": "mdi:identifier"
       },
