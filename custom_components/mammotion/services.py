@@ -920,7 +920,7 @@ RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA = vol.Schema(
         vol.Required(ATTR_ENTITY_ID): cv.entity_id,
         vol.Required("points"): vol.All(
             cv.ensure_list,
-            vol.Length(min=2, max=4),
+            vol.Length(min=2, max=8),
             [_CUSTOM_PATH_POINT_SCHEMA],
         ),
         vol.Optional("area_hash"): vol.Any(vol.Coerce(int), str),
@@ -929,7 +929,7 @@ RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("confirm_clear_area", default=False): cv.boolean,
         vol.Optional("prefer_ble", default=True): cv.boolean,
         vol.Optional("max_real_segments", default=1): vol.All(
-            vol.Coerce(int), vol.Range(min=0, max=3)
+            vol.Coerce(int), vol.Range(min=0, max=7)
         ),
         vol.Optional("linear_speed_fast", default=400): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=1000)
@@ -4951,6 +4951,7 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
             "before_vision_heading": before_heading,
             "heading_error_before": round(error, 3),
             "command": "send_movement",
+            "sent_at_utc": _utc_timestamp(),
             "ok": None,
             "error": None,
             "stop_ack": None,
@@ -6727,6 +6728,7 @@ async def _vio_segment_calibration_drive(  # noqa: PLR0913
             "phase": "vio_calibration_drive",
             "command": "send_movement",
             "kwargs": {"linear_speed": linear_speed, "angular_speed": 0},
+            "sent_at_utc": _utc_timestamp(),
             "ok": None,
             "error": None,
         }
@@ -7337,6 +7339,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
             "error": None,
             "duration_ms": None,
             "command": "send_movement",
+            "sent_at_utc": _utc_timestamp(),
             "prefer_ble": prefer_ble,
             "kwargs": {
                 "linear_speed": selection["linear_speed"],
@@ -7662,12 +7665,12 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
         ha_state=ha_state,
         active_route=active_route,
     )
-    if len(normalized_points) < 2 or len(normalized_points) > 4:
+    if len(normalized_points) < 2 or len(normalized_points) > 8:
         gates.append(
             {
-                "name": "point_count_2_to_4",
+                "name": "point_count_2_to_8",
                 "passed": False,
-                "detail": "Multi-segment execution accepts 2 to 4 points.",
+                "detail": "Multi-segment execution accepts 2 to 8 points.",
             }
         )
     if not dry_run and max_real_segments < 1:
@@ -7756,7 +7759,7 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
     if not preview["valid"]:
         result["stop_reason"] = "path_validation_failed"
         return result
-    if total_segments < 1 or len(normalized_points) > 4:
+    if total_segments < 1 or len(normalized_points) > 8:
         result["stop_reason"] = "invalid_point_count"
         return result
     if blockers and not dry_run:

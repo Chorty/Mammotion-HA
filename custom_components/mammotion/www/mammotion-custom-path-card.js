@@ -454,15 +454,22 @@ class MammotionCustomPathCard extends HTMLElement {
       prefer_ble: Boolean(this._config.prefer_ble ?? true),
       max_turn_commands: Number(this._config.max_turn_commands || 1),
       max_linear_commands: Number(this._config.max_linear_commands || 1),
-      max_linear_pulse_ceiling: Number(this._config.max_linear_pulse_ceiling || 30),
-      max_no_progress_pulses: Number(this._config.max_no_progress_pulses || 3),
+      max_linear_pulse_ceiling: Number(this._config.max_linear_pulse_ceiling || 20),
+      max_no_progress_pulses: Number(this._config.max_no_progress_pulses || 4),
       heading_tolerance_degrees: Number(this._config.heading_tolerance_degrees || 8),
       calibrated_forward_heading_offset_degrees: Number(
         this._config.calibrated_forward_heading_offset_degrees ?? 116.5,
       ),
+      // VIO turn-mode defaults proven live 2026-07-11 (turn+drive multi-segment
+      // path reached its targets): 16 turn pulses covers ~180deg of turn, 2s
+      // linear pulses move ~8-10cm each, 15cm waypoint tolerance.
+      turn_mode: String(this._config.turn_mode || "vio"),
+      vio_turn_max_commands: Number(this._config.vio_turn_max_commands || 16),
+      linear_pulse_duration_ms: Number(this._config.linear_pulse_duration_ms || 2000),
+      waypoint_tolerance: Number(this._config.waypoint_tolerance || 0.15),
       sample_delays: Array.isArray(this._config.sample_delays)
         ? this._config.sample_delays
-        : [0, 5, 10],
+        : [0, 3, 6],
     };
     if (this._areaHash) {
       payload.area_hash = String(this._areaHash);
@@ -472,7 +479,7 @@ class MammotionCustomPathCard extends HTMLElement {
         service: "raw_pymammotion_execute_multi_segment",
         payload: {
           ...payload,
-          max_real_segments: Math.min(points.length - 1, 3),
+          max_real_segments: Math.min(points.length - 1, 7),
         },
       };
     }
