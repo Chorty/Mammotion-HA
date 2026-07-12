@@ -1,4 +1,11 @@
 const MAX_WAYPOINTS = 7;
+const CARD_VERSION = "2026.07.12";
+
+console.info(
+  `%c MAMMOTION-CUSTOM-PATH-CARD %c v${CARD_VERSION} `,
+  "background:#22c55e;color:#000;font-weight:bold;",
+  "background:#333;color:#fff;",
+);
 
 class MammotionCustomPathCard extends HTMLElement {
   constructor() {
@@ -8,6 +15,9 @@ class MammotionCustomPathCard extends HTMLElement {
     this._config = {};
     this._mapData = null;
     this._waypoints = [];
+    this._runTicker = null;
+    this._runStartedAt = null;
+    this._livePosition = null;
     this._runtimeState = null;
     this._areaHash = "";
     this._mapT = null;
@@ -22,6 +32,79 @@ class MammotionCustomPathCard extends HTMLElement {
     this._confirmBladesOff = false;
     this._confirmClearArea = false;
     this._rendered = false;
+  }
+
+  _renderHistoryHtml() {
+    const history = this._loadHistory();
+    if (!history.length) return "";
+    const rows = history
+      .map((entry) => {
+        const when = entry.at ? new Date(entry.at).toLocaleString() : "?";
+        const mins = Math.floor((entry.elapsed_seconds || 0) / 60);
+        const secs = String((entry.elapsed_seconds || 0) % 60).padStart(2, "0");
+        const segs = (entry.segments || [])
+          .map((seg) => `${seg.index}:${seg.passed ? "✓" : "✗"}${seg.stop_reason ? ` ${seg.stop_reason}` : ""}`)
+          .join(", ");
+        return `<div class="history-row"><span class="history-when">${this._escapeHtml(when)} (${mins}:${secs})</span> <span class="history-outcome">${this._escapeHtml(entry.stop_reason || "?")}</span>${segs ? `<div class="history-segs">${this._escapeHtml(segs)}</div>` : ""}</div>`;
+      })
+      .join("");
+    return `<details><summary>Run history (${history.length})</summary>${rows}<button id="clear-history" class="history-clear">Clear history</button></details>`;
+  }
+
+  _historyKey() {
+    return `mammotion-path-card-history:${this._config.entity || "unknown"}`;
+  }
+
+  _lastRunKey() {
+    return `mammotion-path-card-last-run:${this._config.entity || "unknown"}`;
+  }
+
+  _loadHistory() {
+    try {
+      const raw = localStorage.getItem(this._historyKey());
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+      return [];
+    }
+  }
+
+  _saveRunToHistory(entry) {
+    try {
+      const history = this._loadHistory();
+      history.unshift(entry);
+      localStorage.setItem(this._historyKey(), JSON.stringify(history.slice(0, 10)));
+    } catch (err) {
+      // History is best-effort; never let persistence break the run flow.
+    }
+  }
+
+  _persistLastRun(result) {
+    try {
+      localStorage.setItem(this._lastRunKey(), JSON.stringify(result));
+    } catch (err) {
+      // Full results can be large; ignore quota failures.
+    }
+  }
+
+  _restoreLastRun() {
+    try {
+      const raw = localStorage.getItem(this._lastRunKey());
+      return raw ? JSON.parse(raw) : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  _clearHistory() {
+    try {
+      localStorage.removeItem(this._historyKey());
+      localStorage.removeItem(this._lastRunKey());
+    } catch (err) {
+      // best-effort
+    }
+    this._status = "Run history cleared.";
+    this._render();
   }
 
   setConfig(config) {
@@ -48,6 +131,11 @@ class MammotionCustomPathCard extends HTMLElement {
       ...config,
     };
     this._height = Number(this._config.card_height || 520);
+    // Survive Lovelace element rebuilds (tab switches, app backgrounding):
+    // restore the last completed run so its result stays visible.
+    if (!this._realRun) {
+      this._realRun = this._restoreLastRun();
+    }
   }
 
   set hass(hass) {
@@ -618,6 +706,39 @@ class MammotionCustomPathCard extends HTMLElement {
     }
   }
 
+  _startRunTicker(segmentCount) {
+    this._runStartedAt = Date.now();
+    this._livePosition = null;
+    const tick = async () => {
+      const elapsed = Math.round((Date.now() - this._runStartedAt) / 1000);
+      const mins = Math.floor(elapsed / 60);
+      const secs = String(elapsed % 60).padStart(2, "0");
+      let posText = "";
+      try {
+        const runtime = await this._callService("export_runtime_state", {});
+        const pos = runtime?.position;
+        if (pos && pos.x != null) {
+          this._livePosition = pos;
+          posText = ` — pos (${Number(pos.x).toFixed(2)}, ${Number(pos.y).toFixed(2)})${pos.toward != null ? ` hdg ${Number(pos.toward).toFixed(0)}°` : ""}`;
+        }
+      } catch (err) {
+        // Read-only poll; ignore transient failures while the run is in flight.
+      }
+      this._status = `Running Real Go (${segmentCount} segment${segmentCount === 1 ? "" : "s"})… ${mins}:${secs}${posText}`;
+      this._render();
+    };
+    this._runTicker = setInterval(tick, 5000);
+    tick();
+  }
+
+  _stopRunTicker() {
+    if (this._runTicker) {
+      clearInterval(this._runTicker);
+      this._runTicker = null;
+    }
+    this._runStartedAt = null;
+  }
+
   async _runRealGo() {
     const preflight = this._preflight();
     const motion = this._motionPayload(false);
@@ -637,17 +758,48 @@ class MammotionCustomPathCard extends HTMLElement {
       return;
     }
     const segmentCount = this._segmentCount();
-    this._status = `Running guarded Real Go (${segmentCount} segment${segmentCount === 1 ? "" : "s"})…`;
-    this._render();
+    const startedAt = new Date();
+    this._startRunTicker(segmentCount);
     try {
       this._realRun = await this._callService(motion.service, motion.payload);
+      this._stopRunTicker();
       this._status = `Real Go complete: ${this._segmentProgressText(this._realRun)}`;
+      this._persistLastRun(this._realRun);
+      this._saveRunToHistory({
+        at: startedAt.toISOString(),
+        elapsed_seconds: Math.round((Date.now() - startedAt.getTime()) / 1000),
+        service: motion.service,
+        waypoints: this._waypoints.length,
+        stop_reason: this._realRun?.stop_reason ?? null,
+        failed_segment_index: this._realRun?.failed_segment_index ?? null,
+        segments: (this._realRun?.segments || []).map((seg) => ({
+          index: seg.index,
+          passed: seg.passed,
+          stop_reason: seg.result?.stop_reason ?? null,
+        })),
+        summary: this._segmentProgressText(this._realRun),
+      });
       await this._loadRuntimeState();
       this._render();
     } catch (err) {
+      this._stopRunTicker();
       this._status = `Real Go failed: ${err?.message || err}`;
+      this._saveRunToHistory({
+        at: startedAt.toISOString(),
+        elapsed_seconds: Math.round((Date.now() - startedAt.getTime()) / 1000),
+        service: motion.service,
+        waypoints: this._waypoints.length,
+        stop_reason: `call_failed: ${err?.message || err}`,
+        failed_segment_index: null,
+        segments: [],
+        summary: String(err?.message || err),
+      });
       this._render();
     }
+  }
+
+  disconnectedCallback() {
+    this._stopRunTicker();
   }
 
   async _abortMotion() {
@@ -825,6 +977,12 @@ class MammotionCustomPathCard extends HTMLElement {
         ha-card { overflow: hidden; }
         .toolbar { display: flex; gap: 8px; align-items: center; padding: 12px; flex-wrap: wrap; }
         .status { padding: 0 12px 12px; color: var(--secondary-text-color); font-size: 13px; }
+        .card-version { padding: 4px 12px 10px; color: var(--secondary-text-color); font-size: 11px; opacity: 0.6; text-align: right; }
+        .history-row { padding: 4px 0; border-bottom: 1px solid rgba(127,127,127,0.2); font-size: 12px; }
+        .history-when { color: var(--secondary-text-color); }
+        .history-outcome { font-weight: 600; }
+        .history-segs { color: var(--secondary-text-color); font-size: 11px; padding-left: 8px; }
+        .history-clear { margin-top: 8px; font-size: 11px; }
         .warnings { padding: 0 12px 12px; color: #f59e0b; font-size: 12px; }
         .waypoint-counter { font-size: 12px; color: var(--secondary-text-color); margin-left: auto; }
         .map-caption { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 0 12px 10px; font-size: 12px; color: var(--secondary-text-color); }
@@ -884,6 +1042,8 @@ class MammotionCustomPathCard extends HTMLElement {
         ${pathSet ? `<details><summary>Dry-run service YAML</summary><pre>${this._escapeHtml(this._dryRunYaml())}</pre></details>` : ""}
         ${this._dryRun ? `<details><summary>Last dry-run result</summary><pre>${this._escapeHtml(JSON.stringify(this._dryRun, null, 2))}</pre></details>` : ""}
         ${this._realRun ? `<details><summary>Last Real Go result</summary><pre>${this._escapeHtml(JSON.stringify(this._realRun, null, 2))}</pre></details>` : ""}
+        ${this._renderHistoryHtml()}
+        <div class="card-version">card v${CARD_VERSION}</div>
       </ha-card>
     `;
     this._q("#reload")?.addEventListener("click", async () => {
@@ -897,6 +1057,7 @@ class MammotionCustomPathCard extends HTMLElement {
     this._q("#copy-dry-run-yaml")?.addEventListener("click", () => this._copyDryRunYaml());
     this._q("#dry-run")?.addEventListener("click", () => this._runDryRun());
     this._q("#real-go")?.addEventListener("click", () => this._runRealGo());
+    this._q("#clear-history")?.addEventListener("click", () => this._clearHistory());
     this._q("#abort")?.addEventListener("click", () => this._abortMotion());
     this._q("#confirm-blades-off")?.addEventListener("change", (event) => {
       this._confirmBladesOff = Boolean(event.target.checked);
