@@ -1,7 +1,7 @@
 const MAX_WAYPOINTS = 7;
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
-const CARD_VERSION = "2026.07.12b1";
+const CARD_VERSION = "2026.07.12b2";
 
 console.info(
   `%c MAMMOTION-CUSTOM-PATH-CARD %c v${CARD_VERSION} `,
@@ -976,7 +976,7 @@ class MammotionCustomPathCard extends HTMLElement {
     const segmentCount = this._segmentCount();
     this.shadowRoot.innerHTML = `
       <style>
-        ha-card { overflow: hidden; }
+        ha-card { overflow: hidden; user-select: text; -webkit-user-select: text; }
         .toolbar { display: flex; gap: 8px; align-items: center; padding: 12px; flex-wrap: wrap; }
         .status { padding: 0 12px 12px; color: var(--secondary-text-color); font-size: 13px; }
         .card-version { padding: 4px 12px 10px; color: var(--secondary-text-color); font-size: 11px; opacity: 0.6; text-align: right; }
@@ -999,7 +999,7 @@ class MammotionCustomPathCard extends HTMLElement {
         summary { cursor: pointer; }
         pre { overflow: auto; max-height: 220px; padding: 8px; background: rgba(127,127,127,0.12); border-radius: 4px; user-select: text; -webkit-user-select: text; }
         .copy-result { margin: 6px 0; font-size: 11px; }
-        svg { display: block; width: 100%; height: ${this._height}px; background: #0d1117; touch-action: none; cursor: crosshair; }
+        svg { display: block; width: 100%; height: ${this._height}px; background: #0d1117; touch-action: none; cursor: crosshair; user-select: none; -webkit-user-select: none; }
         select, button { font: inherit; }
       </style>
       <ha-card header="Mammotion click/go (guarded segment chain)">
@@ -1087,7 +1087,11 @@ class MammotionCustomPathCard extends HTMLElement {
   }
 }
 
-customElements.define("mammotion-custom-path-card", MammotionCustomPathCard);
+// The card is served at two URLs (/mammotion/ and /hacsfiles/); if both end up
+// registered as dashboard resources the second define() throws. Guard it.
+if (!customElements.get("mammotion-custom-path-card")) {
+  customElements.define("mammotion-custom-path-card", MammotionCustomPathCard);
+}
 
 window.customCards = window.customCards || [];
 window.customCards.push({
