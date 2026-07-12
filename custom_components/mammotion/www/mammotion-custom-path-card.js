@@ -1,4 +1,4 @@
-const MAX_WAYPOINTS = 3;
+const MAX_WAYPOINTS = 7;
 
 class MammotionCustomPathCard extends HTMLElement {
   constructor() {
