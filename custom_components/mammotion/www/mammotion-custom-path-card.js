@@ -995,7 +995,8 @@ class MammotionCustomPathCard extends HTMLElement {
         .preflight-row .value { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; text-align: right; }
         details { padding: 0 12px 12px; color: var(--secondary-text-color); font-size: 12px; }
         summary { cursor: pointer; }
-        pre { overflow: auto; max-height: 220px; padding: 8px; background: rgba(127,127,127,0.12); border-radius: 4px; }
+        pre { overflow: auto; max-height: 220px; padding: 8px; background: rgba(127,127,127,0.12); border-radius: 4px; user-select: text; -webkit-user-select: text; }
+        .copy-result { margin: 6px 0; font-size: 11px; }
         svg { display: block; width: 100%; height: ${this._height}px; background: #0d1117; touch-action: none; cursor: crosshair; }
         select, button { font: inherit; }
       </style>
@@ -1040,8 +1041,8 @@ class MammotionCustomPathCard extends HTMLElement {
         ${(this._validation?.warnings || []).length ? `<div class="warnings">Warnings: ${this._escapeHtml(this._validation.warnings.join(", "))}</div>` : ""}
         ${pathSet ? `<details><summary>Preview service YAML</summary><pre>${this._escapeHtml(this._payloadYaml())}</pre></details>` : ""}
         ${pathSet ? `<details><summary>Dry-run service YAML</summary><pre>${this._escapeHtml(this._dryRunYaml())}</pre></details>` : ""}
-        ${this._dryRun ? `<details><summary>Last dry-run result</summary><pre>${this._escapeHtml(JSON.stringify(this._dryRun, null, 2))}</pre></details>` : ""}
-        ${this._realRun ? `<details><summary>Last Real Go result</summary><pre>${this._escapeHtml(JSON.stringify(this._realRun, null, 2))}</pre></details>` : ""}
+        ${this._dryRun ? `<details><summary>Last dry-run result</summary><button id="copy-dry-result" class="copy-result">Copy dry-run JSON</button><pre>${this._escapeHtml(JSON.stringify(this._dryRun, null, 2))}</pre></details>` : ""}
+        ${this._realRun ? `<details><summary>Last Real Go result</summary><button id="copy-real-result" class="copy-result">Copy result JSON</button><pre>${this._escapeHtml(JSON.stringify(this._realRun, null, 2))}</pre></details>` : ""}
         ${this._renderHistoryHtml()}
         <div class="card-version">card v${CARD_VERSION}</div>
       </ha-card>
@@ -1058,6 +1059,10 @@ class MammotionCustomPathCard extends HTMLElement {
     this._q("#dry-run")?.addEventListener("click", () => this._runDryRun());
     this._q("#real-go")?.addEventListener("click", () => this._runRealGo());
     this._q("#clear-history")?.addEventListener("click", () => this._clearHistory());
+    this._q("#copy-dry-result")?.addEventListener("click", () =>
+      this._copyText(`${JSON.stringify(this._dryRun, null, 2)}\n`, "Dry-run result JSON"));
+    this._q("#copy-real-result")?.addEventListener("click", () =>
+      this._copyText(`${JSON.stringify(this._realRun, null, 2)}\n`, "Real Go result JSON"));
     this._q("#abort")?.addEventListener("click", () => this._abortMotion());
     this._q("#confirm-blades-off")?.addEventListener("change", (event) => {
       this._confirmBladesOff = Boolean(event.target.checked);
