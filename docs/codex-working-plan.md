@@ -2407,3 +2407,31 @@ pipeline is functional end-to-end.
 max_real_segments) + surface `turn_mode`/`vio_turn_max_commands: 16` as card defaults;
 open the PR to main; deferred FPV/RTK re-probes; consider exposing exact per-command UTC
 timestamps in command_results (user request for camera-footage correlation).
+
+## Wrap-up 2026-07-11 late evening: PR open, card tested to the VIO gate, dusk ended play
+
+All four follow-ups landed (commits pushed through `2c1dd028`, **PR #10 open**:
+https://github.com/Chorty/Mammotion-HA/pull/10):
+- Multi-segment caps lifted to 2-8 points / 7 real segments (5-point dry-run verified live
+  post-restart); card `MAX_WAYPOINTS` raised to 7.
+- Card sends proven VIO defaults (`turn_mode: vio`, `vio_turn_max_commands: 16`, 2s linear
+  pulses, 0.15 tolerance, `[0,3,6]` delays, ≤7 segments).
+- `sent_at_utc` on every calibration/turn/linear command result.
+- Probes: **`fpv_flag` confirmed 1 while streaming → `fpv_status` sensor shipped**
+  (inactive/streaming/error, all locales); RTK `lat/lon_std` + `basestation_info.*`
+  stayed 0 even docked with a fix → **dead on this firmware, intentionally not exposed**.
+
+**First card-driven run** (user clicking the map): front-end works end-to-end — service
+fired, full JSON returned. It correctly stopped at `vio_active` (VIO cold: mower
+stationary since undock + dusk; `camera_brightness=Dark` ended the day). TWO gotchas for
+the next card session:
+1. **Browser cache fingerprint**: if a card response shows `sample_delays: [0,5,10]` /
+   `waypoint_tolerance: 0.08`, the browser is running the OLD card — cache-bust via
+   Settings→Dashboards→Resources, append `?v=N` to the card URL. New card sends
+   `[0,3,6]` / `0.15`.
+2. Old-card params make long segments fail (300ms default pulses ≈ 2-3cm → ceiling).
+
+**Daylight card-session recipe:** cache-bust card → undock (release_from_dock button,
+avoids app) → app closed → BLE toggle if needed → warm VIO (`vio_motion_probe` 4s forward,
+needs go) → card dry-run (expect `[0,3,6]` fingerprint) → Real Go with 2 waypoints ~1-2m
+first, then scale to multi-waypoint paths.
