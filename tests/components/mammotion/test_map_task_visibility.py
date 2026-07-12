@@ -3473,6 +3473,63 @@ async def test_vector_segment_vio_realigns_when_facing_drifts_off_bearing(
 
 
 @pytest.mark.asyncio
+async def test_vio_calibration_drive_aborts_when_stop_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed stop (e.g. BLE cooldown) aborts the drive before another pulse."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=0.0, vio_state=2, brightness=100
+    )
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    async def failing_stop(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        return {"attempted": True, "ok": False, "error": "BLEUnavailableError: cooldown"}
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+    monkeypatch.setattr(
+        mammotion_services, "_manual_velocity_stop_attempt", failing_stop
+    )
+
+    result = await _vio_segment_calibration_drive(coordinator, max_pulses=3)
+
+    assert result["passed"] is False
+    assert result["reason"] == "stop_failed_aborting"
+    # Only the first pulse fired; no further motion after the failed stop.
+    assert result["pulses_sent"] == 1
+
+
+@pytest.mark.asyncio
+async def test_vio_turn_to_heading_aborts_when_stop_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stop exception mid-turn aborts instead of sending more turn pulses."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.data.report_data.vision_info = SimpleNamespace(heading=0.0, vio_state=2)
+    coordinator.async_stop_manual_motion.side_effect = RuntimeError("BLE cooldown")
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _vio_turn_to_heading(
+        coordinator,
+        target_vision_heading=40.0,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+    )
+
+    assert result["stop_reason"] == "stop_failed_aborting"
+    assert result["commands_sent"] == 1
+
+
+@pytest.mark.asyncio
 async def test_vio_segment_calibration_drive_computes_offset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

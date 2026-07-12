@@ -4952,6 +4952,9 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         if before_telemetry.get("work_mode_label") not in {"MODE_READY", "MODE_PAUSE"}:
             result["stop_reason"] = "aborted_unsafe_mode"
             return result
+        if prefer_ble and not _transport_is_ble(coordinator):
+            result["stop_reason"] = "ble_transport_lost"
+            return result
         error = _heading_error_degrees(float(before_heading), target)
         if abs(error) <= heading_tolerance_degrees:
             result["final_vision_heading"] = before_heading
@@ -5002,7 +5005,12 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         try:
             command_result["stop_ack"] = await coordinator.async_stop_manual_motion()
         except Exception as err:  # noqa: BLE001
+            # Never keep turning when stops are not deliverable (live 2026-07-12:
+            # BLE connect cooldown raised mid-run and motion continued unstopped).
             command_result["stop_ack"] = {"error": f"{type(err).__name__}: {err}"}
+            result["command_results"].append(command_result)
+            result["stop_reason"] = "stop_failed_aborting"
+            return result
         try:
             await coordinator.async_get_reports(count=5)
         except Exception as err:  # noqa: BLE001
@@ -6696,7 +6704,7 @@ def _raw_vector_linear_command_selection(
 _VIO_TURN_MODES = ("vio", "legacy")
 
 
-async def _vio_segment_calibration_drive(  # noqa: PLR0913
+async def _vio_segment_calibration_drive(  # noqa: C901, PLR0913
     coordinator: MammotionReportUpdateCoordinator,
     *,
     prefer_ble: bool = True,
@@ -6743,6 +6751,12 @@ async def _vio_segment_calibration_drive(  # noqa: PLR0913
         if before.get("work_mode_label") not in {"MODE_READY", "MODE_PAUSE"}:
             result["reason"] = "aborted_unsafe_mode"
             return result
+        if prefer_ble and not _transport_is_ble(coordinator):
+            # Transport can flap between the gate check and each pulse; motion
+            # over the laggy cloud fallback is neither observable nor stoppable
+            # in time, so refuse to pulse without BLE.
+            result["reason"] = "ble_transport_lost"
+            return result
         command_result: dict[str, Any] = {
             "index": pulse_index,
             "phase": "vio_calibration_drive",
@@ -6772,6 +6786,13 @@ async def _vio_segment_calibration_drive(  # noqa: PLR0913
         command_result["stop_result"] = await _manual_velocity_stop_attempt(
             coordinator, use_wifi=not prefer_ble
         )
+        if not (command_result["stop_result"] or {}).get("ok"):
+            # Live 2026-07-12: BLE dropped into its connect cooldown mid-run and
+            # the stop could not be delivered — never keep pulsing motion when
+            # stops are not deliverable.
+            result["command_results"].append(command_result)
+            result["reason"] = "stop_failed_aborting"
+            return result
         command_result["feedback_refresh"] = await _refresh_position_after_raw_motion(
             coordinator
         )
@@ -7321,6 +7342,9 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         if not _blade_reported_safe(before):
             result["stop_reason"] = "blade_unsafe"
             return result
+        if prefer_ble and not _transport_is_ble(coordinator):
+            result["stop_reason"] = "ble_transport_lost"
+            return result
         current_runtime_safety = _runtime_motion_safety_summary(
             before,
             ha_state=ha_state,
@@ -7409,6 +7433,11 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         command_result["stop_result"] = await _manual_velocity_stop_attempt(
             coordinator, use_wifi=not prefer_ble
         )
+        if not (command_result["stop_result"] or {}).get("ok"):
+            # Never keep driving when stops are not deliverable (BLE cooldown,
+            # transport loss); abort immediately.
+            result["stop_reason"] = "stop_failed_aborting"
+            return result
         command_result["post_command_feedback_refresh"] = (
             await _refresh_position_after_raw_motion(coordinator)
         )
