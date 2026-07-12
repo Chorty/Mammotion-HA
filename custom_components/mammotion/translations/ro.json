@@ -169,6 +169,14 @@
       "vio_survival_distance": {
         "name": "Distanță de supraviețuire VIO"
       },
+      "fpv_status": {
+        "name": "Stare FPV",
+        "state": {
+          "inactive": "Inactiv",
+          "streaming": "Streaming",
+          "error": "Eroare"
+        }
+      },
       "bumper_status": {
         "name": "Stare bară de protecție",
         "state": {

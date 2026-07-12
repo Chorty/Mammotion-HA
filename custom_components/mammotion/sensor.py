@@ -227,6 +227,19 @@ LUBA_2_YUKA_ONLY_TYPES: tuple[MammotionSensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     MammotionSensorEntityDescription(
+        key="fpv_status",
+        state_class=None,
+        device_class=SensorDeviceClass.ENUM,
+        native_unit_of_measurement=None,
+        value_fn=lambda mower_data: {0: "inactive", 1: "streaming", 2: "error"}.get(
+            mower_data.report_data.dev.fpv_info.fpv_flag
+            if mower_data.report_data.dev.fpv_info is not None
+            else 0,
+            "inactive",
+        ),
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionSensorEntityDescription(
         key="bumper_status",
         state_class=None,
         device_class=SensorDeviceClass.ENUM,

@@ -169,6 +169,14 @@
       "vio_survival_distance": {
         "name": "VIO-överlevnadsavstånd"
       },
+      "fpv_status": {
+        "name": "FPV-status",
+        "state": {
+          "inactive": "Inaktiv",
+          "streaming": "Strömmar",
+          "error": "Fel"
+        }
+      },
       "bumper_status": {
         "name": "Stötfångarstatus",
         "state": {

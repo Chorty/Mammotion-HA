@@ -169,6 +169,14 @@
       "vio_survival_distance": {
         "name": "VIO túlélési távolság"
       },
+      "fpv_status": {
+        "name": "FPV állapot",
+        "state": {
+          "inactive": "Inaktív",
+          "streaming": "Streamelés",
+          "error": "Hiba"
+        }
+      },
       "bumper_status": {
         "name": "Ütköző állapota",
         "state": {

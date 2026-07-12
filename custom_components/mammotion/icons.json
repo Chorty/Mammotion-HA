@@ -99,6 +99,9 @@
       "vio_survival_distance": {
         "default": "mdi:map-marker-distance"
       },
+      "fpv_status": {
+        "default": "mdi:video-wireless"
+      },
       "bumper_status": {
         "default": "mdi:motion-sensor"
       },

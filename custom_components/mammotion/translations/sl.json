@@ -169,6 +169,14 @@
       "vio_survival_distance": {
         "name": "Razdalja preživetja VIO"
       },
+      "fpv_status": {
+        "name": "Stanje FPV",
+        "state": {
+          "inactive": "Neaktivno",
+          "streaming": "Pretakanje",
+          "error": "Napaka"
+        }
+      },
       "bumper_status": {
         "name": "Stanje odbijača",
         "state": {
