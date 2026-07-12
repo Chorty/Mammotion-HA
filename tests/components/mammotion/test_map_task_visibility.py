@@ -3200,6 +3200,91 @@ async def test_vector_segment_vio_real_blocked_when_vio_cold() -> None:
 
 
 @pytest.mark.asyncio
+async def test_vector_segment_vio_cold_start_allowed_when_scene_bright(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cold VIO + bright scene: the calibration drive doubles as the warm-up."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    # vio_state 0 (cold) but brightness 100 -> "Light" scene.
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=0.0, vio_state=0, brightness=100
+    )
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    async def fake_calibration(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        # The drive woke VIO and calibrated.
+        return {
+            "passed": True,
+            "reason": "calibrated",
+            "offset_degrees": -90.0,
+            "map_motion_heading_degrees": 280.0,
+            "vision_heading": 10.0,
+            "vio_state": 2,
+            "distance_m": 0.08,
+            "pulses_sent": 1,
+            "command_results": [],
+        }
+
+    async def fake_vio_turn(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        return {
+            "stop_reason": "target_heading_reached",
+            "commands_sent": 2,
+            "command_results": [],
+        }
+
+    monkeypatch.setattr(
+        mammotion_services, "_vio_segment_calibration_drive", fake_calibration
+    )
+    monkeypatch.setattr(mammotion_services, "_vio_turn_to_heading", fake_vio_turn)
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        max_linear_commands=1,
+        vio_max_realignments=0,
+        sample_delays=(0,),
+    )
+
+    # Not blocked: the run proceeded through calibration and the turn.
+    assert "vio_active" not in result["blockers"]
+    assert result["calibration_commands_sent"] == 1
+    assert result["phases"][0]["passed"] is True
+
+
+@pytest.mark.asyncio
+async def test_vector_segment_vio_cold_start_blocked_when_offset_skips_warmup() -> None:
+    """Cold VIO stays blocked when a provided offset would skip the warm-up drive."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=0.0, vio_state=0, brightness=100
+    )
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        vio_heading_offset_degrees=100.0,
+        sample_delays=(0,),
+    )
+
+    assert result["stop_reason"] == "safety_gates_failed"
+    assert "vio_active" in result["blockers"]
+
+
+@pytest.mark.asyncio
 async def test_vector_segment_vio_real_calibrates_turns_then_drives(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -20,6 +20,7 @@ from pymammotion.data.model.hash_list import CommDataCouple, Plan
 from pymammotion.data.model.pool_state import PoolPlan
 from pymammotion.utility.constant.device_constant import (
     PosType,
+    camera_brightness,
     device_connection,
     device_mode,
 )
@@ -4753,6 +4754,25 @@ def _vio_reading(coordinator: MammotionReportUpdateCoordinator) -> dict[str, Any
     }
 
 
+def _vio_scene_is_bright(coordinator: MammotionReportUpdateCoordinator) -> bool:
+    """Return whether the camera scene is bright enough for VIO to initialise.
+
+    VIO is visual odometry: it cannot bootstrap a feature track in the dark
+    (live-proven 2026-07-11), but in daylight it wakes during the first forward
+    motion, so a bright scene means the calibration drive can double as the
+    warm-up.
+    """
+    value = _safe_attr_path(
+        coordinator.data, "report_data.vision_info.brightness"
+    )
+    if value is None:
+        return False
+    try:
+        return camera_brightness(int(value)) == "Light"
+    except (TypeError, ValueError):
+        return False
+
+
 async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
     coordinator: MammotionReportUpdateCoordinator,
     *,
@@ -6922,16 +6942,30 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     initial_vio_reading = _vio_reading(coordinator)
     if turn_mode == "vio" and initial_vio_reading["vio_state"] != _VIO_STATE_ACTIVE:
         # VIO won't initialise in the dark and a cold reading latches
-        # heading=0.0 as a valid float; refuse a real VIO-mode segment until
-        # the track is actively good (warm it with daylight forward motion).
+        # heading=0.0 as a valid float. In a BRIGHT scene the calibration
+        # drive doubles as the warm-up (VIO wakes during forward motion and
+        # the drive fails safe with vio_not_active_after_drive otherwise), so
+        # a cold start is allowed when the drive will actually run. In the
+        # dark, or when a provided offset would skip the drive, refuse.
+        calibration_will_warm = (
+            vio_heading_offset_degrees is None
+            and _vio_scene_is_bright(coordinator)
+        )
         gates.append(
             {
                 "name": "vio_active",
-                "passed": dry_run,
+                "passed": dry_run or calibration_will_warm,
                 "detail": (
-                    "VIO turn mode requires an active VIO track "
-                    f"(vio_state == {_VIO_STATE_ACTIVE}); saw "
-                    f"{initial_vio_reading['vio_state']}."
+                    "VIO is cold but the scene is bright: the calibration "
+                    "drive will warm VIO and validate it after motion."
+                    if calibration_will_warm
+                    else (
+                        "VIO turn mode requires an active VIO track "
+                        f"(vio_state == {_VIO_STATE_ACTIVE}); saw "
+                        f"{initial_vio_reading['vio_state']}. Warm it with "
+                        "forward motion in daylight, or wait for daylight "
+                        "(scene is dark)."
+                    )
                 ),
             }
         )
