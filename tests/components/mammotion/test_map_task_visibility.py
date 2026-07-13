@@ -1799,6 +1799,87 @@ async def test_vio_turn_to_heading_closed_loop_reaches_target(
 
 
 @pytest.mark.asyncio
+async def test_vio_turn_to_heading_polls_through_stale_heading(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stale first sample is re-polled to a fresh heading, not judged as progress-less."""
+    coordinator = _pulse_coordinator()
+    coordinator.data.report_data.vision_info = SimpleNamespace(heading=0.0, vio_state=2)
+
+    # The VIO feed lags ~4s: the first request_reports after a pulse returns the
+    # bit-identical pre-pulse heading (stale); only the second poll reflects the
+    # real rotation. The loop must poll through the stale sample.
+    calls = {"n": 0}
+
+    async def fake_sleep(_delay: float) -> None:
+        return None
+
+    async def fake_get_reports(count: int = 5) -> None:
+        calls["n"] += 1
+        vi = coordinator.data.report_data.vision_info
+        if calls["n"] % 2 == 0:  # advance only on the second poll of each pulse
+            vi.heading = min(30.0, vi.heading + 10.0)
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+    coordinator.async_get_reports.side_effect = fake_get_reports
+
+    result = await _vio_turn_to_heading(
+        coordinator,
+        target_vision_heading=30.0,
+        heading_tolerance_degrees=8.0,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+    )
+
+    assert result["stop_reason"] == "target_heading_reached"
+    assert result["commands_sent"] == 3
+    # Each pulse polled twice (stale then fresh) before judging progress.
+    assert all(cmd["heading_went_fresh"] for cmd in result["command_results"])
+    assert coordinator.async_get_reports.await_count == 6
+
+
+@pytest.mark.asyncio
+async def test_vio_turn_to_heading_tolerates_one_stale_pulse_before_no_progress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No-progress only aborts after max_no_progress_pulses consecutive stale pulses."""
+    coordinator = _pulse_coordinator()
+    coordinator.data.report_data.vision_info = SimpleNamespace(heading=0.0, vio_state=2)
+    clock = {"now": 100.0}
+
+    def fake_monotonic() -> float:
+        return clock["now"]
+
+    async def fake_sleep(delay: float) -> None:
+        clock["now"] += delay
+
+    async def fake_get_reports(count: int = 5) -> None:
+        # Heading is permanently latched: every poll returns the stale value, so the
+        # fresh-heading poll always times out and progress stays zero.
+        return None
+
+    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+    coordinator.async_get_reports.side_effect = fake_get_reports
+
+    result = await _vio_turn_to_heading(
+        coordinator,
+        target_vision_heading=40.0,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+    )
+
+    assert result["stop_reason"] == "no_heading_progress"
+    # One stale pulse is tolerated; the second consecutive no-progress pulse aborts.
+    assert result["commands_sent"] == 2
+    assert coordinator.async_stop_manual_motion.await_count == 2
+    assert all(not cmd["heading_went_fresh"] for cmd in result["command_results"])
+    assert result["command_results"][-1]["consecutive_no_progress"] == 2
+
+
+@pytest.mark.asyncio
 async def test_forward_two_pulse_latency_test_sends_pulses_and_detects_change(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3612,6 +3693,233 @@ async def test_multi_segment_vio_carries_offset_between_segments(
 
     assert result["stop_reason"] == "dry_run"
     assert received_offsets == [None, 42.0]
+
+
+@pytest.mark.asyncio
+async def test_vector_segment_ble_auto_recovers_then_proceeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A successful BLE auto-recovery lets ble_transport_required pass and the run proceed."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.active_transport_state = "cloud"  # not BLE at entry
+    coordinator.data.report_data.vision_info = SimpleNamespace(heading=10.0, vio_state=2)
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    recovery_calls: list[object] = []
+
+    async def fake_recover(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        recovery_calls.append(coordinator_arg)
+        coordinator.active_transport_state = "ble"  # promoted
+        return {"attempted": True, "ok": True, "reason": "promoted", "steps": []}
+
+    async def fake_calibration(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        return {
+            "passed": True,
+            "reason": "calibrated",
+            "offset_degrees": -90.0,
+            "map_motion_heading_degrees": 280.0,
+            "vision_heading": 10.0,
+            "vio_state": 2,
+            "distance_m": 0.06,
+            "pulses_sent": 1,
+            "command_results": [],
+        }
+
+    async def fake_vio_turn(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        return {
+            "stop_reason": "target_heading_reached",
+            "commands_sent": 2,
+            "command_results": [],
+        }
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+    monkeypatch.setattr(mammotion_services, "_attempt_ble_recovery", fake_recover)
+    monkeypatch.setattr(
+        mammotion_services, "_vio_segment_calibration_drive", fake_calibration
+    )
+    monkeypatch.setattr(mammotion_services, "_vio_turn_to_heading", fake_vio_turn)
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        max_linear_commands=1,
+        vio_max_realignments=0,
+        sample_delays=(0,),
+    )
+
+    # Recovery ran once, promoted BLE, and the transport gate is no longer a blocker.
+    assert recovery_calls == [coordinator]
+    assert result["ble_recovery"]["ok"] is True
+    assert "ble_transport_required" not in result["blockers"]
+    assert result["blockers"] == []
+
+
+@pytest.mark.asyncio
+async def test_vector_segment_ble_auto_recovery_failure_fails_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed BLE auto-recovery leaves ble_transport_required blocking the real run."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.active_transport_state = "cloud"  # not BLE, and recovery can't fix it
+    coordinator.data.report_data.vision_info = SimpleNamespace(heading=10.0, vio_state=2)
+
+    async def fake_recover(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        # Present-but-not-promoted: recovery could not win the slot (phone app).
+        return {
+            "attempted": True,
+            "ok": False,
+            "reason": "ble_promotion_timeout_check_phone_app",
+            "steps": ["reasserted_ble_preference", "ble_toggled"],
+        }
+
+    monkeypatch.setattr(mammotion_services, "_attempt_ble_recovery", fake_recover)
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        sample_delays=(0,),
+    )
+
+    assert result["ble_recovery"]["ok"] is False
+    assert result["ble_recovery"]["reason"] == "ble_promotion_timeout_check_phone_app"
+    assert "ble_transport_required" in result["blockers"]
+    assert result["stop_reason"] == "safety_gates_failed"
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_vector_segment_ble_auto_recover_disabled_skips_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ble_auto_recover=false skips recovery entirely; the transport gate blocks as before."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.active_transport_state = "cloud"
+    coordinator.data.report_data.vision_info = SimpleNamespace(heading=10.0, vio_state=2)
+
+    async def fail_if_called(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        raise AssertionError("recovery must not run when ble_auto_recover is False")
+
+    monkeypatch.setattr(mammotion_services, "_attempt_ble_recovery", fail_if_called)
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        ble_auto_recover=False,
+        sample_delays=(0,),
+    )
+
+    assert result["ble_recovery"] is None
+    assert "ble_transport_required" in result["blockers"]
+    assert result["stop_reason"] == "safety_gates_failed"
+
+
+@pytest.mark.asyncio
+async def test_multi_segment_ble_auto_recovers_then_proceeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Multi-segment BLE auto-recovery promotes BLE so gates pass and segments run."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.active_transport_state = "cloud"
+
+    recovery_calls: list[object] = []
+
+    async def fake_recover(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        recovery_calls.append(coordinator_arg)
+        coordinator.active_transport_state = "ble"
+        return {"attempted": True, "ok": True, "reason": "promoted", "steps": []}
+
+    async def fake_vector(
+        coordinator_arg: MammotionReportUpdateCoordinator,
+        points: list[dict[str, float]],
+        **kwargs: object,
+    ) -> dict:
+        return {
+            "valid": True,
+            "stop_reason": "target_reached",
+            "blockers": [],
+            "progress_diagnostics": [],
+            "final_telemetry": _custom_path_telemetry_snapshot(coordinator),
+            "vio": {"offset_degrees": 42.0},
+        }
+
+    monkeypatch.setattr(mammotion_services, "_attempt_ble_recovery", fake_recover)
+    monkeypatch.setattr(
+        mammotion_services, "_raw_pymammotion_execute_vector_segment", fake_vector
+    )
+
+    result = await _raw_pymammotion_execute_multi_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        max_real_segments=1,
+        sample_delays=(0,),
+    )
+
+    assert recovery_calls == [coordinator]
+    assert result["ble_recovery"]["ok"] is True
+    assert "ble_transport_required" not in result["blockers"]
+    assert result["blockers"] == []
+    assert result["stop_reason"] == "target_reached"
+
+
+@pytest.mark.asyncio
+async def test_multi_segment_ble_auto_recovery_failure_fails_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed multi-segment BLE recovery keeps ble_transport_required blocking."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.active_transport_state = "cloud"
+
+    async def fake_recover(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        return {
+            "attempted": True,
+            "ok": False,
+            "reason": "mower_not_advertising_needs_wake",
+            "steps": ["ble_cooldown_active_waiting"],
+        }
+
+    monkeypatch.setattr(mammotion_services, "_attempt_ble_recovery", fake_recover)
+
+    result = await _raw_pymammotion_execute_multi_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        sample_delays=(0,),
+    )
+
+    assert result["ble_recovery"]["ok"] is False
+    assert "ble_transport_required" in result["blockers"]
+    assert result["stop_reason"] == "safety_gates_failed"
+    coordinator.manager.send_command_with_args.assert_not_called()
 
 
 @pytest.mark.asyncio

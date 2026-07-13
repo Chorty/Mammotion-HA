@@ -690,11 +690,17 @@ VIO_TURN_TO_HEADING_SCHEMA = vol.Schema(
         vol.Optional("refresh_wait_seconds", default=2.0): vol.All(
             vol.Coerce(float), vol.Range(min=0.0, max=10.0)
         ),
+        vol.Optional("fresh_heading_timeout_seconds", default=8.0): vol.All(
+            vol.Coerce(float), vol.Range(min=0.0, max=20.0)
+        ),
         vol.Optional("max_commands", default=8): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=20)
         ),
         vol.Optional("min_progress_degrees", default=2.0): vol.All(
             vol.Coerce(float), vol.Range(min=0.1, max=20.0)
+        ),
+        vol.Optional("max_no_progress_pulses", default=2): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=6)
         ),
         vol.Optional("max_displacement_m", default=0.5): vol.All(
             vol.Coerce(float), vol.Range(min=0.1, max=2.0)
@@ -721,6 +727,7 @@ RAW_PYMAMMOTION_EXECUTE_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("confirm_blades_off", default=False): cv.boolean,
         vol.Optional("confirm_clear_area", default=False): cv.boolean,
         vol.Optional("prefer_ble", default=True): cv.boolean,
+        vol.Optional("ble_auto_recover", default=True): cv.boolean,
         vol.Optional("linear_speed_fast", default=400): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=1000)
         ),
@@ -832,6 +839,7 @@ RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("confirm_blades_off", default=False): cv.boolean,
         vol.Optional("confirm_clear_area", default=False): cv.boolean,
         vol.Optional("prefer_ble", default=True): cv.boolean,
+        vol.Optional("ble_auto_recover", default=True): cv.boolean,
         vol.Optional("linear_speed_fast", default=400): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=1000)
         ),
@@ -3244,6 +3252,80 @@ def _transport_is_ble(coordinator: MammotionReportUpdateCoordinator) -> bool:
     return label is not None and label.lower() == "ble"
 
 
+async def _attempt_ble_recovery(
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    timeout_seconds: float = 90.0,
+    poll_interval_seconds: float = 5.0,
+) -> dict[str, Any]:
+    """Try to promote BLE to the active transport without operator help.
+
+    Automates the live-proven recovery recipe (2026-07-11/12 sessions): first
+    gently re-assert the BLE preference (the switch's ON path, which also
+    re-ensures the BLE client), then poll for promotion; halfway through the
+    budget fall back to one full off->on toggle. Respects the manager's BLE
+    connect cooldown by not toggling while it is active. Cannot help when the
+    mower has stopped advertising (idle sleep) or when a phone app holds the
+    mower's single BLE connection slot -- those still need a physical/app-side
+    wake, and the report says so.
+    """
+    report: dict[str, Any] = {
+        "attempted": True,
+        "ok": False,
+        "reason": None,
+        "steps": [],
+        "ble_rssi": _safe_attr_path(
+            coordinator.data, "report_data.connect.ble_rssi"
+        ),
+        "timeout_seconds": timeout_seconds,
+    }
+    if _transport_is_ble(coordinator):
+        report.update(attempted=False, ok=True, reason="already_ble")
+        return report
+    handle = None
+    try:
+        handle = coordinator.manager.mower(coordinator.device_name)
+    except Exception:  # noqa: BLE001
+        handle = None
+    in_cooldown = bool(
+        getattr(getattr(handle, "availability", None), "ble_in_cooldown", False)
+    )
+    if in_cooldown:
+        report["steps"].append("ble_cooldown_active_waiting")
+    else:
+        try:
+            await coordinator.async_set_bluetooth_enabled(True)
+            report["steps"].append("reasserted_ble_preference")
+        except Exception as err:  # noqa: BLE001
+            report["steps"].append(f"reassert_failed: {type(err).__name__}: {err}")
+    deadline = time.monotonic() + timeout_seconds
+    half_budget = time.monotonic() + timeout_seconds / 2
+    toggled = False
+    while time.monotonic() < deadline:
+        await asyncio.sleep(poll_interval_seconds)
+        if _transport_is_ble(coordinator):
+            report.update(ok=True, reason="promoted")
+            return report
+        if not toggled and time.monotonic() >= half_budget:
+            toggled = True
+            try:
+                await coordinator.async_set_bluetooth_enabled(False)
+                await asyncio.sleep(3)
+                await coordinator.async_set_bluetooth_enabled(True)
+                report["steps"].append("ble_toggled")
+            except Exception as err:  # noqa: BLE001
+                report["steps"].append(
+                    f"toggle_failed: {type(err).__name__}: {err}"
+                )
+    rssi = report["ble_rssi"]
+    report["reason"] = (
+        "mower_not_advertising_needs_wake"
+        if rssi in (0, None)
+        else "ble_promotion_timeout_check_phone_app"
+    )
+    return report
+
+
 def _manual_velocity_pulse_gates(
     coordinator: MammotionReportUpdateCoordinator,
     before: dict[str, Any],
@@ -4783,8 +4865,10 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
     slow_pulse_duration_ms: int = 700,
     slow_threshold_degrees: float = 15.0,
     refresh_wait_seconds: float = 2.0,
+    fresh_heading_timeout_seconds: float = 8.0,
     max_commands: int = 8,
     min_progress_degrees: float = 2.0,
+    max_no_progress_pulses: int = 2,
     max_displacement_m: float = 0.5,
     invert_direction: bool = False,
     prefer_ble: bool = True,
@@ -4804,7 +4888,12 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
     heading error (flip with ``invert_direction`` if a session's convention
     differs). Because VIO refreshes ~1.5s into a command then latches, each
     iteration is a bounded pulse + explicit stop + ``request_reports`` refresh,
-    then measures ``vision_heading`` and repeats until within tolerance.
+    then measures ``vision_heading`` and repeats until within tolerance. The VIO
+    feed lags the command by ~4s (longer than ``refresh_wait_seconds``), so after
+    the stop the loop polls ``request_reports`` until the heading moves off the
+    pre-pulse value (up to ``fresh_heading_timeout_seconds``) before judging
+    progress, and only aborts on ``max_no_progress_pulses`` consecutive
+    no-progress pulses -- a single stale sample no longer ends the turn.
     """
     initial_telemetry = _custom_path_telemetry_snapshot(coordinator)
     initial_reading = _vio_reading(coordinator)
@@ -4887,8 +4976,11 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         "pulse_duration_ms": pulse_duration_ms,
         "slow_pulse_duration_ms": slow_pulse_duration_ms,
         "slow_threshold_degrees": slow_threshold_degrees,
+        "refresh_wait_seconds": refresh_wait_seconds,
+        "fresh_heading_timeout_seconds": fresh_heading_timeout_seconds,
         "max_commands": max_commands,
         "min_progress_degrees": min_progress_degrees,
+        "max_no_progress_pulses": max_no_progress_pulses,
         "max_displacement_m": max_displacement_m,
         "invert_direction": invert_direction,
         "prefer_ble": prefer_ble,
@@ -4934,6 +5026,7 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         result["stop_reason"] = "ble_not_active_at_fire"
         return result
 
+    consecutive_no_progress = 0
     for command_index in range(1, max_commands + 1):
         before_telemetry = _custom_path_telemetry_snapshot(coordinator)
         before_reading = _vio_reading(coordinator)
@@ -4983,6 +5076,8 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
             "heading_error_after": None,
             "progress_degrees": None,
             "displacement_m": None,
+            "heading_poll_seconds": None,
+            "heading_went_fresh": None,
         }
         try:
             await _send_manager_command_with_args(
@@ -5011,14 +5106,36 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
             result["command_results"].append(command_result)
             result["stop_reason"] = "stop_failed_aborting"
             return result
-        try:
-            await coordinator.async_get_reports(count=5)
-        except Exception as err:  # noqa: BLE001
-            LOGGER.debug("vio_turn_to_heading refresh failed: %s", err)
-        if refresh_wait_seconds > 0:
-            await asyncio.sleep(refresh_wait_seconds)
-        after_telemetry = _custom_path_telemetry_snapshot(coordinator)
-        after_heading = _vio_reading(coordinator)["vision_heading"]
+        # The VIO feed lags the command by ~4s -- longer than refresh_wait_seconds
+        # -- so the first post-stop sample can be bit-identical to before_heading:
+        # a stale reading, not a true absence of rotation (live 2026-07-12: a turn
+        # aborted on no_heading_progress against an unchanged 78.93922636 heading).
+        # Poll request_reports until the heading moves off the pre-pulse value or a
+        # bounded timeout, so progress is judged against a fresh reading.
+        poll_started = time.monotonic()
+        after_telemetry = before_telemetry
+        after_heading = before_heading
+        heading_went_fresh = False
+        while True:
+            try:
+                await coordinator.async_get_reports(count=5)
+            except Exception as err:  # noqa: BLE001
+                LOGGER.debug("vio_turn_to_heading refresh failed: %s", err)
+            if refresh_wait_seconds > 0:
+                await asyncio.sleep(refresh_wait_seconds)
+            after_telemetry = _custom_path_telemetry_snapshot(coordinator)
+            after_heading = _vio_reading(coordinator)["vision_heading"]
+            if after_heading is None:
+                break
+            if float(after_heading) != float(before_heading):
+                heading_went_fresh = True
+                break
+            if (time.monotonic() - poll_started) >= fresh_heading_timeout_seconds:
+                break
+        command_result["heading_poll_seconds"] = round(
+            time.monotonic() - poll_started, 2
+        )
+        command_result["heading_went_fresh"] = heading_went_fresh
         command_result["after_vision_heading"] = after_heading
         if after_heading is None:
             result["command_results"].append(command_result)
@@ -5046,8 +5163,15 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
             result["stop_reason"] = "target_heading_reached"
             return result
         if (abs(error) - abs(new_error)) < min_progress_degrees:
-            result["stop_reason"] = "no_heading_progress"
-            return result
+            # Tolerate a single stale/latched sample; only abort once the turn has
+            # made no measurable progress on max_no_progress_pulses in a row.
+            consecutive_no_progress += 1
+            command_result["consecutive_no_progress"] = consecutive_no_progress
+            if consecutive_no_progress >= max_no_progress_pulses:
+                result["stop_reason"] = "no_heading_progress"
+                return result
+            continue
+        consecutive_no_progress = 0
 
     result["stop_reason"] = "max_commands_reached"
     return result
@@ -6837,6 +6961,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     confirm_blades_off: bool = False,
     confirm_clear_area: bool = False,
     prefer_ble: bool = True,
+    ble_auto_recover: bool = True,
     linear_speed_fast: int = 400,
     linear_speed_slow: int = 200,
     slow_linear_threshold: float = 0.15,
@@ -6916,6 +7041,18 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         if target_heading is not None
         else None
     )
+    # When BLE is preferred for a real run but not yet the active transport, try to
+    # promote it automatically BEFORE building the gates, so a successful recovery
+    # lets ble_transport_required pass without an operator toggle/reboot. The report
+    # says which cases still need a human (sleeping mower, phone holding the slot).
+    ble_recovery: dict[str, Any] | None = None
+    if (
+        not dry_run
+        and prefer_ble
+        and ble_auto_recover
+        and not _transport_is_ble(coordinator)
+    ):
+        ble_recovery = await _attempt_ble_recovery(coordinator)
     gates = _manual_velocity_pulse_gates(
         coordinator,
         initial_telemetry,
@@ -7034,6 +7171,8 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         "ready_for_multi_point": False,
         "prefer_ble": prefer_ble,
         "transport_preference": "ble_preferred" if prefer_ble else "default",
+        "ble_auto_recover": ble_auto_recover,
+        "ble_recovery": ble_recovery,
         "linear_speed_fast": linear_speed_fast,
         "linear_speed_slow": linear_speed_slow,
         "slow_linear_threshold": slow_linear_threshold,
@@ -7669,6 +7808,7 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
     confirm_blades_off: bool = False,
     confirm_clear_area: bool = False,
     prefer_ble: bool = True,
+    ble_auto_recover: bool = True,
     max_real_segments: int = 1,
     linear_speed_fast: int = 400,
     linear_speed_slow: int = 200,
@@ -7716,6 +7856,17 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
     )
     normalized_points = preview["points"]
     initial_telemetry = _custom_path_telemetry_snapshot(coordinator)
+    # Auto-promote BLE before the gates for a real run (see the vector-segment
+    # executor); a successful recovery lets ble_transport_required pass without an
+    # operator toggle/reboot, and the report names the cases that still need one.
+    ble_recovery: dict[str, Any] | None = None
+    if (
+        not dry_run
+        and prefer_ble
+        and ble_auto_recover
+        and not _transport_is_ble(coordinator)
+    ):
+        ble_recovery = await _attempt_ble_recovery(coordinator)
     gates = _manual_velocity_pulse_gates(
         coordinator,
         initial_telemetry,
@@ -7782,6 +7933,8 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
         "ready_for_multi_segment": False,
         "prefer_ble": prefer_ble,
         "transport_preference": "ble_preferred" if prefer_ble else "default",
+        "ble_auto_recover": ble_auto_recover,
+        "ble_recovery": ble_recovery,
         "max_real_segments": max_real_segments,
         "max_turn_commands": max_turn_commands,
         "max_linear_commands": max_linear_commands,
@@ -10286,6 +10439,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             confirm_blades_off=call.data["confirm_blades_off"],
             confirm_clear_area=call.data["confirm_clear_area"],
             prefer_ble=call.data["prefer_ble"],
+            ble_auto_recover=call.data["ble_auto_recover"],
             linear_speed_fast=call.data["linear_speed_fast"],
             linear_speed_slow=call.data["linear_speed_slow"],
             slow_linear_threshold=call.data["slow_linear_threshold"],
@@ -10340,6 +10494,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             confirm_blades_off=call.data["confirm_blades_off"],
             confirm_clear_area=call.data["confirm_clear_area"],
             prefer_ble=call.data["prefer_ble"],
+            ble_auto_recover=call.data["ble_auto_recover"],
             max_real_segments=call.data["max_real_segments"],
             linear_speed_fast=call.data["linear_speed_fast"],
             linear_speed_slow=call.data["linear_speed_slow"],
@@ -10524,8 +10679,10 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             slow_pulse_duration_ms=call.data["slow_pulse_duration_ms"],
             slow_threshold_degrees=call.data["slow_threshold_degrees"],
             refresh_wait_seconds=call.data["refresh_wait_seconds"],
+            fresh_heading_timeout_seconds=call.data["fresh_heading_timeout_seconds"],
             max_commands=call.data["max_commands"],
             min_progress_degrees=call.data["min_progress_degrees"],
+            max_no_progress_pulses=call.data["max_no_progress_pulses"],
             max_displacement_m=call.data["max_displacement_m"],
             invert_direction=call.data["invert_direction"],
             prefer_ble=call.data["prefer_ble"],

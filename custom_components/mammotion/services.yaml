@@ -1161,6 +1161,15 @@ vio_turn_to_heading:
           max: 10
           step: 0.5
           unit_of_measurement: s
+    fresh_heading_timeout_seconds:
+      required: false
+      default: 8.0
+      selector:
+        number:
+          min: 0
+          max: 20
+          step: 0.5
+          unit_of_measurement: s
     max_commands:
       required: false
       default: 8
@@ -1177,6 +1186,14 @@ vio_turn_to_heading:
           min: 0.1
           max: 20.0
           step: 0.5
+    max_no_progress_pulses:
+      required: false
+      default: 2
+      selector:
+        number:
+          min: 1
+          max: 6
+          step: 1
     max_displacement_m:
       required: false
       default: 0.5
@@ -1690,6 +1707,11 @@ raw_pymammotion_execute_vector_segment:
       default: true
       selector:
         boolean:
+    ble_auto_recover:
+      required: false
+      default: true
+      selector:
+        boolean:
     linear_speed_fast:
       required: false
       default: 400
@@ -1903,6 +1925,11 @@ raw_pymammotion_execute_multi_segment:
       selector:
         boolean:
     prefer_ble:
+      required: false
+      default: true
+      selector:
+        boolean:
+    ble_auto_recover:
       required: false
       default: true
       selector:
