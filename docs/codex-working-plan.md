@@ -2435,3 +2435,66 @@ the next card session:
 avoids app) → app closed → BLE toggle if needed → warm VIO (`vio_motion_probe` 4s forward,
 needs go) → card dry-run (expect `[0,3,6]` fingerprint) → Real Go with 2 waypoints ~1-2m
 first, then scale to multi-waypoint paths.
+
+## Wrap-up 2026-07-13/14: code review of the stale-heading + BLE-recovery work, 5 hardening fixes
+
+The 07-12 session's work (stale-VIO poll fix + BLE auto-recovery) is committed as
+`71d2c8d8`. A high-effort /code-review over it (8 finder angles + verification) produced
+10 findings; the 5 blocking ones are FIXED in the working tree (+72/−35 in services.py,
+**uncommitted, not deployed**; 187 tests pass, ruff clean):
+1. Both executors now run BLE recovery BEFORE the `initial_telemetry` snapshot — safety
+   gates/target math previously judged state up to ~93s stale after the recovery wait.
+2. The recovery cooldown guard was DEAD: `availability.ble_in_cooldown` doesn't exist in
+   pymammotion (test fixtures fabricate it!). New `_ble_connect_cooldown_active()` reads
+   `get_transport(TransportType.BLE)._connect_cooldown_until`; the mid-budget toggle now
+   defers while cooldown is active.
+3. No-progress-streak pulses in `_vio_turn_to_heading` use `slow_pulse_duration_ms`
+   (blind rotation was unbounded — `max_displacement_m` only caps translation).
+4. Fresh-heading poll sleep floored at `max(refresh_wait_seconds, 0.5)` —
+   `refresh_wait_seconds: 0` used to hammer request_reports on the BLE queue.
+5. `ble_auto_recover` wiring: dead schema key removed from execute_segment; multi-segment
+   forwards the flag per segment (explicit false was being overridden); readiness probe
+   pinned to `ble_auto_recover=False` (keeps the diagnostic fast-fail).
+
+Deferred findings (known, unfixed): calibration drive + `linear_refresh` still consume
+single possibly-stale VIO samples (silently wrong offset); standalone `vio_turn_to_heading`
+gets no auto-recovery; `ble_auto_recover` missing from strings.json; recovery runs before
+the cheap confirmation gates; sleeping mower burns the full 90s budget.
+
+Also set up **subagent model routing** (`.claude/agents/finder.md`=sonnet,
+`verifier.md`=opus, rule in CLAUDE.md) so review fan-out runs on cheaper models.
+
+**Re-review of the fix diff is IN PROGRESS** (session ended near limit): 5/8 angles done.
+Top candidate (2 independent finders): pymammotion's connect cooldown default (120s)
+outlasts recovery's 90s budget → a cooldown-blocked recovery never toggles and the final
+`reason` misdirects to check_phone_app/needs_wake instead of naming the cooldown; also
+`_ble_connect_cooldown_active` has zero direct test coverage (fixture handle lacks
+`get_transport`). **Next session:** finish the 3 remaining angles (removed-behavior,
+efficiency, altitude), opus-verify, apply the cooldown-reason fix + a real cooldown test,
+then commit the fixes and deploy via scp for a supervised daylight run.
+
+## Wrap-up 2026-07-14/15 evening: fixes deployed + first live runs on review-hardened code
+
+Deployed the 9 review fixes to HA (scp, md5 2303a2691d…, confirmed live via the new
+`effective_poll_interval_seconds` field in a dry run). Map-blank-after-restart fixed by
+the documented recipe (mower awake → config-entry reload). Two supervised card runs:
+
+- **Run 1 (3.58m):** calibration 1 pulse; VIO turn PERFECT (one 700ms pulse, error
+  9.0°→2.6°, fresh-heading poll working); 18 linear pulses dead on bearing (~1.02m);
+  ended when BLE hit its 120s cooldown — stop hung 32.7s → `stop_failed_aborting`
+  (hardening worked). Throughput facts: ~8cm per 2s speed-400 pulse; 14s/pulse cadence
+  (10s of it card `sample_delays [0,5,10]`) → card config now `[0,3]`.
+- **Run 2 (176° U-turn):** calibration ✓; turn pulses 1-3 textbook (~12.5°/pulse);
+  then SUNSET killed VIO mid-turn (features 80→0, `vio_state` stayed 2!) — heading
+  latched bit-identical, new streak logic capped blind pulse to 700ms and aborted
+  `no_heading_progress` at streak 2. Blind rotation bounded (~29° toward-swing).
+  Live-confirmed review finding: a 0.0018° noise wiggle passed the float-inequality
+  freshness check.
+
+**Next session (Opus prompt prepared):** commit the fixes; freshness epsilon (~0.1°,
+wrap-aware); VIO liveness gate on brightness/tracked-features (vio_state alone lies at
+dusk); `linear_pulse_duration_ms` schema cap 2000→4000 (+services.yaml selectors);
+slow-streak cap only when sample stale; review backlog (cooldown test coverage, dead
+`ble_in_cooldown` diagnostic+fixtures, ha_state refetch-after-recovery). Joystick card
+idea DEFERRED (interim: grid card of emergency_nudge buttons). Mower parked ~(6.09,
+−2.80) facing ~−94°; card config carries `sample_delays [0,3]`.

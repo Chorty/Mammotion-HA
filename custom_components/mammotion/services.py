@@ -18,6 +18,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from pymammotion.data.model.hash_list import CommDataCouple, Plan
 from pymammotion.data.model.pool_state import PoolPlan
+from pymammotion.transport.base import TransportType
 from pymammotion.utility.constant.device_constant import (
     PosType,
     camera_brightness,
@@ -727,7 +728,6 @@ RAW_PYMAMMOTION_EXECUTE_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("confirm_blades_off", default=False): cv.boolean,
         vol.Optional("confirm_clear_area", default=False): cv.boolean,
         vol.Optional("prefer_ble", default=True): cv.boolean,
-        vol.Optional("ble_auto_recover", default=True): cv.boolean,
         vol.Optional("linear_speed_fast", default=400): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=1000)
         ),
@@ -3252,7 +3252,32 @@ def _transport_is_ble(coordinator: MammotionReportUpdateCoordinator) -> bool:
     return label is not None and label.lower() == "ble"
 
 
-async def _attempt_ble_recovery(
+def _ble_connect_cooldown_active(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> bool:
+    """Return True while the BLE transport's connect-failure cooldown is armed.
+
+    pymammotion exposes no public cooldown flag; ``BLETransport`` documents
+    ``_connect_cooldown_until`` as the monotonic deadline (0.0 when inactive),
+    reached via the public ``DeviceHandle.get_transport``. Any missing piece
+    reads as "no cooldown" so this never blocks recovery on API drift.
+    """
+    try:
+        handle = coordinator.manager.mower(coordinator.device_name)
+    except Exception:  # noqa: BLE001
+        return False
+    get_transport = getattr(handle, "get_transport", None)
+    if get_transport is None:
+        return False
+    try:
+        transport = get_transport(TransportType.BLE)
+        deadline = float(getattr(transport, "_connect_cooldown_until", 0.0))
+    except Exception:  # noqa: BLE001
+        return False
+    return time.monotonic() < deadline
+
+
+async def _attempt_ble_recovery(  # noqa: C901
     coordinator: MammotionReportUpdateCoordinator,
     *,
     timeout_seconds: float = 90.0,
@@ -3263,11 +3288,11 @@ async def _attempt_ble_recovery(
     Automates the live-proven recovery recipe (2026-07-11/12 sessions): first
     gently re-assert the BLE preference (the switch's ON path, which also
     re-ensures the BLE client), then poll for promotion; halfway through the
-    budget fall back to one full off->on toggle. Respects the manager's BLE
-    connect cooldown by not toggling while it is active. Cannot help when the
-    mower has stopped advertising (idle sleep) or when a phone app holds the
-    mower's single BLE connection slot -- those still need a physical/app-side
-    wake, and the report says so.
+    budget fall back to one full off->on toggle. Respects the BLE transport's
+    connect cooldown by deferring the reassert/toggle while it is active.
+    Cannot help when the mower has stopped advertising (idle sleep) or when a
+    phone app holds the mower's single BLE connection slot -- those still need
+    a physical/app-side wake, and the report says so.
     """
     report: dict[str, Any] = {
         "attempted": True,
@@ -3282,15 +3307,7 @@ async def _attempt_ble_recovery(
     if _transport_is_ble(coordinator):
         report.update(attempted=False, ok=True, reason="already_ble")
         return report
-    handle = None
-    try:
-        handle = coordinator.manager.mower(coordinator.device_name)
-    except Exception:  # noqa: BLE001
-        handle = None
-    in_cooldown = bool(
-        getattr(getattr(handle, "availability", None), "ble_in_cooldown", False)
-    )
-    if in_cooldown:
+    if _ble_connect_cooldown_active(coordinator):
         report["steps"].append("ble_cooldown_active_waiting")
     else:
         try:
@@ -3307,6 +3324,12 @@ async def _attempt_ble_recovery(
             report.update(ok=True, reason="promoted")
             return report
         if not toggled and time.monotonic() >= half_budget:
+            if _ble_connect_cooldown_active(coordinator):
+                # Defer, don't skip: retry the toggle on a later pass once the
+                # cooldown lapses instead of burning the one toggle mid-cooldown.
+                if report["steps"][-1:] != ["ble_cooldown_active_waiting"]:
+                    report["steps"].append("ble_cooldown_active_waiting")
+                continue
             toggled = True
             try:
                 await coordinator.async_set_bluetooth_enabled(False)
@@ -3318,11 +3341,15 @@ async def _attempt_ble_recovery(
                     f"toggle_failed: {type(err).__name__}: {err}"
                 )
     rssi = report["ble_rssi"]
-    report["reason"] = (
-        "mower_not_advertising_needs_wake"
-        if rssi in (0, None)
-        else "ble_promotion_timeout_check_phone_app"
-    )
+    if rssi in (0, None):
+        report["reason"] = "mower_not_advertising_needs_wake"
+    elif "ble_cooldown_active_waiting" in report["steps"] and not toggled:
+        # The connect cooldown (pymammotion default 120s) can outlast the whole
+        # recovery budget; the remedy is waiting it out, not the wake/phone-app
+        # checklist.
+        report["reason"] = "ble_connect_cooldown_active_retry_later"
+    else:
+        report["reason"] = "ble_promotion_timeout_check_phone_app"
     return report
 
 
@@ -4144,8 +4171,9 @@ async def _position_feedback_refresh_attempt(  # noqa: C901
                 period=1000,
                 no_change_period=4000,
             )
-            if refresh_wait_seconds > 0:
-                await asyncio.sleep(refresh_wait_seconds)
+            # Same pacing floor as the vio_turn poll: never hammer the BLE
+            # command queue when refresh_wait_seconds is 0.
+            await asyncio.sleep(max(refresh_wait_seconds, 0.5))
             await coordinator.manager.request_iot_sync_continuous_stop(
                 coordinator.device_name,
             )
@@ -4166,8 +4194,9 @@ async def _position_feedback_refresh_attempt(  # noqa: C901
             await coordinator.async_request_refresh()
         else:
             raise ValueError(f"unknown refresh attempt: {name}")
-        if refresh_wait_seconds > 0:
-            await asyncio.sleep(refresh_wait_seconds)
+        # Pacing floor: attempts run back-to-back per pulse over the same BLE
+        # queue that delivers motion stops; refresh_wait_seconds=0 is schema-legal.
+        await asyncio.sleep(max(refresh_wait_seconds, 0.5))
         attempt["ok"] = True
     except Exception as err:  # noqa: BLE001
         attempt["ok"] = False
@@ -4893,7 +4922,9 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
     the stop the loop polls ``request_reports`` until the heading moves off the
     pre-pulse value (up to ``fresh_heading_timeout_seconds``) before judging
     progress, and only aborts on ``max_no_progress_pulses`` consecutive
-    no-progress pulses -- a single stale sample no longer ends the turn.
+    no-progress pulses -- a single stale sample no longer ends the turn. Pulses
+    fired during a no-progress streak use ``slow_pulse_duration_ms`` so a
+    latched feed cannot drive long full-power rotations blind.
     """
     initial_telemetry = _custom_path_telemetry_snapshot(coordinator)
     initial_reading = _vio_reading(coordinator)
@@ -4977,6 +5008,9 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         "slow_pulse_duration_ms": slow_pulse_duration_ms,
         "slow_threshold_degrees": slow_threshold_degrees,
         "refresh_wait_seconds": refresh_wait_seconds,
+        # The poll loop paces at this floored value; report it so iteration
+        # math from the result matches actual behavior.
+        "effective_poll_interval_seconds": max(refresh_wait_seconds, 0.5),
         "fresh_heading_timeout_seconds": fresh_heading_timeout_seconds,
         "max_commands": max_commands,
         "min_progress_degrees": min_progress_degrees,
@@ -5054,9 +5088,12 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
             result["final_heading_error_degrees"] = round(error, 3)
             result["stop_reason"] = "target_heading_reached"
             return result
+        # During a no-progress streak the heading feed is suspect (stale/latched),
+        # so cap the pulse at the slow duration: motion is still needed to unlatch
+        # VIO, but a full-length pulse on frozen feedback risks a long blind spin.
         pulse_ms = (
             slow_pulse_duration_ms
-            if abs(error) <= slow_threshold_degrees
+            if abs(error) <= slow_threshold_degrees or consecutive_no_progress > 0
             else pulse_duration_ms
         )
         angular = _planned_angular(error)
@@ -5121,8 +5158,10 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 await coordinator.async_get_reports(count=5)
             except Exception as err:  # noqa: BLE001
                 LOGGER.debug("vio_turn_to_heading refresh failed: %s", err)
-            if refresh_wait_seconds > 0:
-                await asyncio.sleep(refresh_wait_seconds)
+            # Floor the pacing even at refresh_wait_seconds=0: back-to-back
+            # request_reports would flood the BLE command queue that also has
+            # to deliver motion stops.
+            await asyncio.sleep(max(refresh_wait_seconds, 0.5))
             after_telemetry = _custom_path_telemetry_snapshot(coordinator)
             after_heading = _vio_reading(coordinator)["vision_heading"]
             if after_heading is None:
@@ -6019,6 +6058,9 @@ async def _raw_vector_readiness_test(  # noqa: C901, PLR0913
             confirm_blades_off=confirm_blades_off if real else False,
             confirm_clear_area=confirm_clear_area if real else False,
             prefer_ble=prefer_ble,
+            # Readiness is a diagnostic probe: keep the pre-recovery fast-fail on
+            # the BLE gate instead of blocking ~90s in transport recovery.
+            ble_auto_recover=False,
             linear_speed_fast=400,
             linear_speed_slow=200,
             slow_linear_threshold=0.15,
@@ -6920,8 +6962,7 @@ async def _vio_segment_calibration_drive(  # noqa: C901, PLR0913
         command_result["feedback_refresh"] = await _refresh_position_after_raw_motion(
             coordinator
         )
-        if refresh_wait_seconds > 0:
-            await asyncio.sleep(refresh_wait_seconds)
+        await asyncio.sleep(max(refresh_wait_seconds, 0.5))
         result["command_results"].append(command_result)
         after = _custom_path_telemetry_snapshot(coordinator)
         reading = _vio_reading(coordinator)
@@ -7026,6 +7067,20 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         blade_mode="off",
     )
     normalized_points = preview["points"]
+    # When BLE is preferred for a real run but not yet the active transport, try to
+    # promote it automatically BEFORE the telemetry snapshot and gates: a successful
+    # recovery lets ble_transport_required pass without an operator toggle/reboot,
+    # and the recovery wait can span ~90s during which blades/mode/position may
+    # change -- the gates and target math below must judge post-recovery state. The
+    # report says which cases still need a human (sleeping mower, phone on the slot).
+    ble_recovery: dict[str, Any] | None = None
+    if (
+        not dry_run
+        and prefer_ble
+        and ble_auto_recover
+        and not _transport_is_ble(coordinator)
+    ):
+        ble_recovery = await _attempt_ble_recovery(coordinator)
     initial_telemetry = _custom_path_telemetry_snapshot(coordinator)
     current_point = _raw_segment_current_point(initial_telemetry)
     target = normalized_points[-1] if normalized_points else None
@@ -7041,18 +7096,6 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         if target_heading is not None
         else None
     )
-    # When BLE is preferred for a real run but not yet the active transport, try to
-    # promote it automatically BEFORE building the gates, so a successful recovery
-    # lets ble_transport_required pass without an operator toggle/reboot. The report
-    # says which cases still need a human (sleeping mower, phone holding the slot).
-    ble_recovery: dict[str, Any] | None = None
-    if (
-        not dry_run
-        and prefer_ble
-        and ble_auto_recover
-        and not _transport_is_ble(coordinator)
-    ):
-        ble_recovery = await _attempt_ble_recovery(coordinator)
     gates = _manual_velocity_pulse_gates(
         coordinator,
         initial_telemetry,
@@ -7855,10 +7898,10 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
         blade_mode="off",
     )
     normalized_points = preview["points"]
-    initial_telemetry = _custom_path_telemetry_snapshot(coordinator)
-    # Auto-promote BLE before the gates for a real run (see the vector-segment
-    # executor); a successful recovery lets ble_transport_required pass without an
-    # operator toggle/reboot, and the report names the cases that still need one.
+    # Auto-promote BLE before the telemetry snapshot and gates for a real run (see
+    # the vector-segment executor); a successful recovery lets ble_transport_required
+    # pass without an operator toggle/reboot, and the snapshot below must reflect
+    # post-recovery state since the wait can span ~90s.
     ble_recovery: dict[str, Any] | None = None
     if (
         not dry_run
@@ -7867,6 +7910,7 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
         and not _transport_is_ble(coordinator)
     ):
         ble_recovery = await _attempt_ble_recovery(coordinator)
+    initial_telemetry = _custom_path_telemetry_snapshot(coordinator)
     gates = _manual_velocity_pulse_gates(
         coordinator,
         initial_telemetry,
@@ -8041,6 +8085,7 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
             confirm_blades_off=confirm_blades_off,
             confirm_clear_area=confirm_clear_area,
             prefer_ble=prefer_ble,
+            ble_auto_recover=ble_auto_recover,
             linear_speed_fast=linear_speed_fast,
             linear_speed_slow=linear_speed_slow,
             slow_linear_threshold=slow_linear_threshold,
