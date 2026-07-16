@@ -2383,6 +2383,56 @@ def _custom_path_position_snapshot(
     }
 
 
+def _position_source_comparison(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> dict[str, Any]:
+    """Capture both independent position sources + RTK quality for one instant.
+
+    The map-local feed lags and can invent motion (live 2026-07-15: a physical
+    no-op pulse reported ~9cm). To later tell a phantom feed-jump from real motion,
+    log the two sources side by side -- ``report_data.locations[0]``
+    (``real_pos_x/y``, scaled) vs ``mowing_state`` (``pos_x/pos_y``) -- plus the
+    RTK/pos-level quality a re-anchor would move. Capture only: the phantom
+    detector gets built once a daylight run shows how the two sources diverge.
+    """
+    data = coordinator.data
+    report_location = _latest_location(data)
+    mowing_state = _safe_attr_path(data, "mowing_state")
+
+    locations_xy: tuple[float, float] | None = None
+    if report_location is not None:
+        lx = _scale_report_position(_safe_attr_path(report_location, "real_pos_x"))
+        ly = _scale_report_position(_safe_attr_path(report_location, "real_pos_y"))
+        if lx is not None and ly is not None:
+            locations_xy = (lx, ly)
+
+    mowing_xy: tuple[float, float] | None = None
+    if mowing_state is not None:
+        mx = _safe_attr_path(mowing_state, "pos_x")
+        my = _safe_attr_path(mowing_state, "pos_y")
+        if mx is not None and my is not None:
+            mowing_xy = (float(mx), float(my))
+
+    agreement_m: float | None = None
+    if locations_xy is not None and mowing_xy is not None:
+        agreement_m = round(
+            math.hypot(
+                locations_xy[0] - mowing_xy[0], locations_xy[1] - mowing_xy[1]
+            ),
+            4,
+        )
+
+    return {
+        "locations_xy": locations_xy,
+        "mowing_state_xy": mowing_xy,
+        "agreement_m": agreement_m,
+        "rtk_status": _safe_attr_path(mowing_state, "rtk_status"),
+        "pos_level": _safe_attr_path(mowing_state, "pos_level"),
+        "pos_type": _safe_attr_path(mowing_state, "pos_type"),
+        "zone_hash": _safe_attr_path(mowing_state, "zone_hash"),
+    }
+
+
 def _custom_path_position_candidates(
     data: Any, coordinator: MammotionReportUpdateCoordinator | None = None
 ) -> list[dict[str, Any]]:
@@ -4534,6 +4584,10 @@ async def _vio_motion_probe(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 snapshot, prev_telemetry, initial_telemetry
             )
             sample["elapsed_seconds"] = round(time.monotonic() - drive_start, 3)
+            # Phantom-motion investigation instrumentation (capture only).
+            sample["position_source_comparison"] = _position_source_comparison(
+                coordinator
+            )
             samples.append(sample)
             prev_telemetry = snapshot["telemetry"]
             telemetry = snapshot["telemetry"]
@@ -4570,6 +4624,7 @@ async def _vio_motion_probe(  # noqa: C901, PLR0912, PLR0913, PLR0915
             coordinator, f"post_stop_{post_index}", initial_telemetry
         )
         sample = _vio_sample_from_snapshot(snapshot, prev_telemetry, initial_telemetry)
+        sample["position_source_comparison"] = _position_source_comparison(coordinator)
         post_stop.append(sample)
         prev_telemetry = snapshot["telemetry"]
 
@@ -4580,7 +4635,13 @@ async def _vio_motion_probe(  # noqa: C901, PLR0912, PLR0913, PLR0915
         return value is not None and value != 0
 
     all_samples = samples + post_stop
-    motion_confirmed = any(sample["moving"] for sample in samples)
+    # The position feed lags ~4s and only catches up AFTER the drive ends, so a
+    # real move lands in the post-stop samples while the during-drive samples stay
+    # frozen. Judge motion + displacement across all samples (not just the frozen
+    # drive ones), otherwise a real move is mislabelled no_motion_detected and
+    # final_displacement_m reads ~0 (live 2026-07-15: a 4in 6s pulse did exactly
+    # this).
+    motion_confirmed = any(sample["moving"] for sample in all_samples)
     vio_activated_while_moving = any(
         _vio_active(sample["vio_state"]) and sample["moving"] for sample in samples
     )
@@ -4590,12 +4651,25 @@ async def _vio_motion_probe(  # noqa: C901, PLR0912, PLR0913, PLR0915
         for sample in samples
         if _vio_active(sample["vio_state"])
     ]
+    # Prefer the settled post-stop displacement; fall back to the drive samples.
+    # NOTE: this is the feed's settled best estimate -- it still cannot tell a real
+    # move from a phantom feed-jump on a no-op pulse (the position_source_comparison
+    # capture is what the phantom detector will use).
     final_displacement: float | None = None
-    for sample in reversed(samples):
+    displacement_source: str | None = None
+    for sample in reversed(post_stop):
         if sample["delta_from_initial_m"] is not None:
             final_displacement = sample["delta_from_initial_m"]
+            displacement_source = "post_stop"
             break
+    if final_displacement is None:
+        for sample in reversed(samples):
+            if sample["delta_from_initial_m"] is not None:
+                final_displacement = sample["delta_from_initial_m"]
+                displacement_source = "drive"
+                break
     result["final_displacement_m"] = final_displacement
+    result["displacement_source"] = displacement_source
     result["verdict"] = {
         "motion_confirmed": motion_confirmed,
         "vio_activated_while_moving": vio_activated_while_moving,
@@ -4775,6 +4849,10 @@ async def _vio_turn_probe(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 snapshot, prev_telemetry, initial_telemetry
             )
             sample["elapsed_seconds"] = round(time.monotonic() - drive_start, 3)
+            # Phantom-motion investigation instrumentation (capture only).
+            sample["position_source_comparison"] = _position_source_comparison(
+                coordinator
+            )
             samples.append(sample)
             prev_telemetry = snapshot["telemetry"]
             telemetry = snapshot["telemetry"]
@@ -4811,6 +4889,7 @@ async def _vio_turn_probe(  # noqa: C901, PLR0912, PLR0913, PLR0915
             coordinator, f"post_stop_{post_index}", initial_telemetry
         )
         sample = _vio_sample_from_snapshot(snapshot, prev_telemetry, initial_telemetry)
+        sample["position_source_comparison"] = _position_source_comparison(coordinator)
         post_stop.append(sample)
         prev_telemetry = snapshot["telemetry"]
 
@@ -5746,6 +5825,21 @@ async def _raw_pymammotion_execute_segment(  # noqa: C901, PLR0913
             return result
         command_result["post_command_feedback_refresh"] = (
             await _refresh_position_after_raw_motion(coordinator)
+        )
+        # Same lagged/jumpy position feed as the vector executor: settle before
+        # sampling so this pulse's displacement is attributed to this pulse. (This
+        # older executor relies on the mower's firmware auto-stop rather than an
+        # explicit stop; the settle poll simply waits for the feed to catch up once
+        # the pulse self-halts.)
+        position_settle = await _settle_linear_position_feed(coordinator, before)
+        command_result["position_settled"] = position_settle["settled"]
+        command_result["position_moved"] = position_settle["moved"]
+        command_result["position_settle_wait_seconds"] = position_settle["wait_seconds"]
+        # Phantom-motion investigation instrumentation (capture only): log both
+        # position sources + RTK quality so a later run can tell a real move from a
+        # feed-jump on a no-op pulse.
+        command_result["position_source_comparison"] = _position_source_comparison(
+            coordinator
         )
 
         command_samples: list[dict[str, Any]] = []
@@ -7833,6 +7927,12 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         command_result["position_settled"] = position_settle["settled"]
         command_result["position_moved"] = position_settle["moved"]
         command_result["position_settle_wait_seconds"] = position_settle["wait_seconds"]
+        # Phantom-motion investigation instrumentation (capture only): log both
+        # position sources + RTK quality so a later run can tell a real move from a
+        # feed-jump on a no-op pulse.
+        command_result["position_source_comparison"] = _position_source_comparison(
+            coordinator
+        )
 
         command_samples: list[dict[str, Any]] = []
         previous_delay = 0.0

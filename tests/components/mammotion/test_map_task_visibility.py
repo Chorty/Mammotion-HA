@@ -60,6 +60,7 @@ from custom_components.mammotion.services import (
     _normalize_mower_areas,
     _normalize_mower_tasks,
     _position_feedback_diagnostic,
+    _position_source_comparison,
     _preview_custom_path,
     _raw_motion_readiness_test,
     _raw_pymammotion_angular_calibration,
@@ -1604,6 +1605,133 @@ async def test_vio_motion_probe_drives_samples_vio_and_always_stops(
 
 
 @pytest.mark.asyncio
+async def test_vio_motion_probe_reports_settled_post_stop_displacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Motion that only lands post-stop is still confirmed, not mislabelled no-motion.
+
+    The position feed lags ~4s: during-drive samples stay frozen and the real move
+    only registers after the stop (live 2026-07-15, a 4in 6s pulse). The verdict
+    must read the post-stop samples for displacement + motion_confirmed.
+    """
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    clock = {"now": 100.0}
+    phase = {"stopped": False}
+
+    def fake_monotonic() -> float:
+        return clock["now"]
+
+    async def fake_sleep(delay: float) -> None:
+        clock["now"] += delay
+
+    original_snapshot = mammotion_services._custom_path_telemetry_snapshot  # noqa: SLF001
+
+    def fake_snapshot(
+        coordinator_arg: MammotionReportUpdateCoordinator,
+    ) -> dict:
+        telemetry = original_snapshot(coordinator_arg)
+        # Frozen while driving; the whole ~10cm move only appears after the stop.
+        if phase["stopped"]:
+            telemetry["position"]["y"] = float(telemetry["position"]["y"]) - 0.10
+        return telemetry
+
+    async def fake_stop() -> dict:
+        phase["stopped"] = True
+        return {"linear_ok": True, "angular_ok": True}
+
+    async def fake_get_reports(count: int = 5) -> None:
+        return None  # VIO stays cold the whole time
+
+    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(
+        mammotion_services, "_custom_path_telemetry_snapshot", fake_snapshot
+    )
+    coordinator.async_stop_manual_motion.side_effect = fake_stop
+    coordinator.async_get_reports.side_effect = fake_get_reports
+
+    result = await _vio_motion_probe(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        drive_seconds=2.0,
+        sample_interval_seconds=1.0,
+        post_stop_samples=2,
+    )
+
+    # During-drive samples never registered motion...
+    assert all(not sample["moving"] for sample in result["samples"])
+    # ...but the settled post-stop position is used for the verdict.
+    assert result["displacement_source"] == "post_stop"
+    assert result["final_displacement_m"] == pytest.approx(0.10, abs=0.02)
+    assert result["verdict"]["motion_confirmed"] is True
+    assert result["reason"] != "no_motion_detected"
+
+
+@pytest.mark.asyncio
+async def test_vio_motion_probe_static_reports_no_motion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mower that never moves (drive or post-stop) reports no motion, ~0 displacement."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    clock = {"now": 100.0}
+
+    def fake_monotonic() -> float:
+        return clock["now"]
+
+    async def fake_sleep(delay: float) -> None:
+        clock["now"] += delay
+
+    async def fake_get_reports(count: int = 5) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+    coordinator.async_get_reports.side_effect = fake_get_reports
+
+    result = await _vio_motion_probe(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        drive_seconds=2.0,
+        sample_interval_seconds=1.0,
+        post_stop_samples=2,
+    )
+
+    assert result["verdict"]["motion_confirmed"] is False
+    assert result["reason"] == "no_motion_detected"
+    assert result["final_displacement_m"] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_position_source_comparison_reports_both_sources_and_agreement() -> None:
+    """Both position sources + RTK quality are captured, with their divergence."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    # report_data.locations[0] is scaled by 1/10000; place it 0.2m off mowing_state.
+    coordinator.data.report_data.locations = [
+        SimpleNamespace(
+            real_pos_x=12000, real_pos_y=10000, real_toward=0, pos_type=1, bol_hash=123
+        )
+    ]
+
+    present = _position_source_comparison(coordinator)
+    assert present["locations_xy"] == pytest.approx((1.2, 1.0))
+    assert present["mowing_state_xy"] == pytest.approx((1.0, 1.0))
+    assert present["agreement_m"] == pytest.approx(0.2, abs=1e-4)
+    assert present["rtk_status"] == 4
+    assert present["pos_level"] == 0
+    assert present["pos_type"] == 1
+
+    # With no report_data.locations, the location source degrades to None.
+    coordinator.data.report_data.locations = []
+    missing = _position_source_comparison(coordinator)
+    assert missing["locations_xy"] is None
+    assert missing["mowing_state_xy"] == pytest.approx((1.0, 1.0))
+    assert missing["agreement_m"] is None
+
+
+@pytest.mark.asyncio
 async def test_vio_turn_probe_defaults_to_dry_run() -> None:
     """VIO turn probe default plans an in-place rotation but sends nothing."""
     coordinator = _pulse_coordinator()
@@ -2551,6 +2679,11 @@ async def test_raw_pymammotion_execute_segment_stops_on_no_progress(
     assert result["commands_sent"] == 1
     assert result["stop_reason"] == "no_target_progress"
     assert result["progress_diagnostics"][0]["status"] == "no_path_progress"
+    # The pulse ran the position-settle poll; a stationary mower never registers
+    # motion, so it records not moved / not settled.
+    settle = result["command_results"][0]
+    assert settle["position_moved"] is False
+    assert settle["position_settled"] is False
 
 
 @pytest.mark.asyncio
@@ -2559,11 +2692,19 @@ async def test_raw_pymammotion_execute_segment_stops_after_max_commands(
 ) -> None:
     """Real raw segment stops after capped commands when progress is insufficient."""
     coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
-    positions = [0.985, 0.97, 0.955, 0.94]
+
+    async def advance_on_pulse(*_args: object, **_kwargs: object) -> None:
+        # Each real pulse nudges the mower ~1.5cm toward the target -- enough to
+        # pass min_progress but never reach it. Tie movement to the pulse itself,
+        # not to asyncio.sleep count (the settle poll adds sleep calls).
+        coordinator.data.mowing_state.pos_y = round(
+            coordinator.data.mowing_state.pos_y - 0.015, 4
+        )
+
+    coordinator.manager.send_command_with_args.side_effect = advance_on_pulse
 
     async def no_sleep(_: float) -> None:
-        if positions:
-            coordinator.data.mowing_state.pos_y = positions.pop(0)
+        return None
 
     monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
 
