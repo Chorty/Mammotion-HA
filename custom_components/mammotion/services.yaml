@@ -1870,7 +1870,7 @@ raw_pymammotion_execute_vector_segment:
       selector:
         number:
           min: 50
-          max: 2000
+          max: 4000
           step: 50
           unit_of_measurement: ms
     sample_delays:
@@ -2100,7 +2100,7 @@ raw_pymammotion_execute_multi_segment:
       selector:
         number:
           min: 50
-          max: 2000
+          max: 4000
           step: 50
           unit_of_measurement: ms
     sample_delays:

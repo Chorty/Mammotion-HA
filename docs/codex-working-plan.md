@@ -2498,3 +2498,40 @@ slow-streak cap only when sample stale; review backlog (cooldown test coverage, 
 `ble_in_cooldown` diagnostic+fixtures, ha_state refetch-after-recovery). Joystick card
 idea DEFERRED (interim: grid card of emergency_nudge buttons). Mower parked ~(6.09,
 −2.80) facing ~−94°; card config carries `sample_delays [0,3]`.
+
+## Wrap-up 2026-07-15: dusk-latch hardening (epsilon + VIO liveness gate) + review backlog
+
+All six queued items landed (198 tests, was 187; ruff clean on touched files;
+NOT deployed — deploy checklist below):
+
+1. **Committed** the 9 review fixes as `1c196843` (were live on HA but uncommitted).
+2. **Freshness epsilon:** the vio_turn poll now requires
+   `abs(_heading_error_degrees(before, after)) > _VIO_HEADING_FRESH_EPSILON_DEGREES`
+   (0.1°) instead of float inequality — run 2's 0.0018° noise wiggle no longer counts
+   as fresh. Both stale-poll tests now jitter sub-epsilon; new regression test
+   `sub_epsilon_wiggle_is_not_fresh`.
+3. **VIO liveness gate:** new `_vio_feed_liveness()` reads
+   `vision_info.track_feature_num` (< `_VIO_MIN_TRACKED_FEATURES`=5 → degraded; missing
+   field → live, so non-reporting devices aren't blocked) + brightness label. Wired:
+   vio_turn entry gate `vio_feed_live` + per-pulse `stop_reason: vio_feed_degraded`;
+   vector-executor gate (only when vio_state==2 — cold-start warm-up path untouched);
+   calibration drive refuses the offset (`vio_feed_degraded`) when the post-drive feed
+   is blind. Feed dicts surfaced in results (`initial_vio_feed`, `final_vio_feed`,
+   `vio_feed`).
+4. **Pulse cap:** `linear_pulse_duration_ms` max 2000→4000 in both schemas +
+   both services.yaml selectors (user wants 4s-pulse throughput tests).
+5. **Streak refinement:** slow-pulse cap during a no-progress streak now applies only
+   when the last sample was stale (`last_heading_went_fresh` False); fresh-but-stalled
+   streaks keep the full pulse. Docstring + tests updated.
+6. **Review backlog:** cooldown helper direct tests (deadline read, API-drift
+   fallback, pinned-pymammotion attr contract); dead `availability.ble_in_cooldown`
+   diagnostic replaced with live `ble_connect_cooldown_active` (fixtures de-fabricated,
+   `get_transport` added); `refetch_runtime_context` callback threaded handler→both
+   executors (and multi→per-segment) so post-recovery gates judge fresh
+   ha_state/active_route — test proves "started mowing during the 90s recovery" blocks.
+
+**Deploy checklist (user deploys via scp):** `custom_components/mammotion/services.py`
++ `custom_components/mammotion/services.yaml` → HA, restart, verify via a dry run that
+the result carries `initial_vio_feed`. Next live objectives: daylight multi-segment run
+with 4000ms pulses; confirm `vio_feed_degraded` fires at dusk instead of
+`no_heading_progress`.
