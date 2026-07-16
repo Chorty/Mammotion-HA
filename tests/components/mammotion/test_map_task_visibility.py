@@ -70,6 +70,7 @@ from custom_components.mammotion.services import (
     _raw_pymammotion_turn_to_heading,
     _raw_vector_readiness_phase_passed,
     _raw_vector_readiness_test,
+    _settle_linear_position_feed,
     _transport_is_ble,
     _validate_custom_path,
     _vio_feed_liveness,
@@ -3311,6 +3312,14 @@ async def test_vector_segment_loop_to_tolerance_stops_on_consecutive_no_progress
     assert result["stop_reason"] == "no_target_progress"
     # Pulsed 3 times (max_no_progress_pulses) -- well past the legacy budget of 1.
     assert result["linear_commands_sent"] == 3
+    # Each linear pulse ran the position-settle poll; a stationary mower never
+    # registers motion, so every pulse records it did not settle/move.
+    settle_flags = [
+        (c.get("position_moved"), c.get("position_settled"))
+        for c in result["command_results"]
+        if "position_settled" in c
+    ]
+    assert settle_flags == [(False, False)] * 3
 
 
 @pytest.mark.asyncio
@@ -3916,6 +3925,70 @@ async def test_vio_segment_calibration_drive_rejects_offset_on_degraded_feed(
     assert result["reason"] == "vio_feed_degraded"
     assert result["offset_degrees"] is None
     assert result["vio_feed"]["live"] is False
+
+
+@pytest.mark.asyncio
+async def test_settle_linear_position_feed_waits_for_lagged_jump(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The settle poll waits through a lagged/frozen feed until the jump registers.
+
+    The map-local feed sits at the pre-pulse value for a couple of samples then
+    jumps (live 2026-07-15). Settling must require the feed to actually move off
+    the pre-pulse position AND then stop changing, so the pulse's motion is not
+    missed as a false "already settled".
+    """
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    before = _custom_path_telemetry_snapshot(coordinator)
+    calls = {"n": 0}
+
+    async def fake_sleep(_delay: float) -> None:
+        return None
+
+    async def fake_get_reports(count: int = 5) -> None:
+        calls["n"] += 1
+        # Frozen for two polls (feed lag), then a single jump on the third, then
+        # holds steady.
+        if calls["n"] == 3:
+            coordinator.data.mowing_state.pos_x += 0.10
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+    coordinator.async_get_reports.side_effect = fake_get_reports
+
+    res = await _settle_linear_position_feed(coordinator, before)
+
+    assert res["moved"] is True
+    assert res["settled"] is True
+    # Registered the jump (poll 3) then confirmed it held (poll 4); did not run to
+    # the full poll budget.
+    assert calls["n"] == 4
+
+
+@pytest.mark.asyncio
+async def test_settle_linear_position_feed_times_out_when_no_motion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A blocked pulse never registers motion, so the poll times out un-settled."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    before = _custom_path_telemetry_snapshot(coordinator)
+
+    async def fake_sleep(_delay: float) -> None:
+        return None
+
+    async def fake_get_reports(count: int = 5) -> None:
+        return None  # position never changes
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+    coordinator.async_get_reports.side_effect = fake_get_reports
+
+    res = await _settle_linear_position_feed(
+        coordinator, before, timeout_seconds=4.0, poll_interval_seconds=1.0
+    )
+
+    assert res["moved"] is False
+    assert res["settled"] is False
+    # Ran the full bounded budget (4s / 1s = 4 polls) without settling.
+    assert coordinator.async_get_reports.await_count == 4
 
 
 @pytest.mark.asyncio

@@ -4864,6 +4864,18 @@ _VIO_STATE_ACTIVE = 2
 # a collapsing feed a beat before it is fully blind without risking false aborts.
 _VIO_MIN_TRACKED_FEATURES = 5
 
+# The map-local position feed lags ~4s and updates in JUMPS: after a linear pulse
+# the reported x/y can sit at the pre-pulse value for a couple of samples and then
+# jump (live 2026-07-15: two back-to-back 4s pulses reported ~10cm each yet the
+# mower physically moved <6" total -- pulse 2's "displacement" was the delayed
+# registration of pulse 1). So before judging a linear pulse's progress, poll the
+# feed until it SETTLES (two consecutive snapshots agree within this epsilon) or a
+# bounded timeout elapses, so each pulse's displacement is attributed to that pulse
+# instead of leaking across pulses -- the position analogue of the turn phase's
+# fresh-heading poll.
+_LINEAR_POSITION_SETTLE_EPSILON_M = 0.01
+_LINEAR_POSITION_SETTLE_TIMEOUT_SECONDS = 6.0
+
 # Minimum wrap-aware heading change (degrees) that counts as a genuinely fresh
 # reading in the vio_turn poll loop. A bare float-inequality check treated a
 # latched feed's sub-0.01 sensor noise wiggle as movement (live run 2, dusk:
@@ -5421,6 +5433,55 @@ async def _refresh_position_after_raw_motion(
     finally:
         result["duration_ms"] = round((time.monotonic() - started) * 1000, 3)
     return result
+
+
+async def _settle_linear_position_feed(
+    coordinator: MammotionReportUpdateCoordinator,
+    before_telemetry: dict[str, Any],
+    *,
+    timeout_seconds: float = _LINEAR_POSITION_SETTLE_TIMEOUT_SECONDS,
+    poll_interval_seconds: float = 1.0,
+) -> dict[str, Any]:
+    """Poll the position feed until this pulse's motion has settled.
+
+    The map-local x/y feed lags ~4s and updates in jumps, so a reading taken right
+    after a stop can either miss this pulse's motion or catch a prior pulse's
+    delayed jump (live 2026-07-15). Settling requires BOTH that the feed has moved
+    off ``before_telemetry`` (the motion registered -- a still-stale feed reads as
+    unchanged and would otherwise look falsely "settled") AND that two consecutive
+    snapshots agree within ``_LINEAR_POSITION_SETTLE_EPSILON_M`` (it stopped
+    jumping). A pulse that truly produced no motion never registers movement and
+    times out with ``settled=False`` so the caller can treat it as no-progress.
+    """
+    started = time.monotonic()
+    # Bound by poll count, not wall clock: the pacing sleep does the timing, so a
+    # test that stubs asyncio.sleep to a no-op still terminates in a fixed number
+    # of iterations instead of spinning against a real monotonic clock.
+    max_polls = max(1, round(timeout_seconds / poll_interval_seconds))
+    previous = _custom_path_telemetry_snapshot(coordinator)
+    moved = False
+    settled = False
+    for _ in range(max_polls):
+        await asyncio.sleep(poll_interval_seconds)
+        try:
+            await coordinator.async_get_reports(count=5)
+        except Exception as err:  # noqa: BLE001
+            LOGGER.debug("linear position settle refresh failed: %s", err)
+        current = _custom_path_telemetry_snapshot(coordinator)
+        step = _telemetry_position_delta(previous, current).get("distance")
+        total = _telemetry_position_delta(before_telemetry, current).get("distance")
+        previous = current
+        if total is not None and total > _LINEAR_POSITION_SETTLE_EPSILON_M:
+            moved = True
+        if moved and step is not None and step <= _LINEAR_POSITION_SETTLE_EPSILON_M:
+            settled = True
+            break
+    return {
+        "telemetry": previous,
+        "settled": settled,
+        "moved": moved,
+        "wait_seconds": round(time.monotonic() - started, 2),
+    }
 
 
 async def _raw_pymammotion_execute_segment(  # noqa: C901, PLR0913
@@ -7762,6 +7823,16 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         command_result["post_command_feedback_refresh"] = (
             await _refresh_position_after_raw_motion(coordinator)
         )
+        # The map-local feed lags ~4s and jumps: wait for this pulse's motion to
+        # register and settle before sampling, so the samples below (and thus the
+        # progress/completion checks) reflect THIS pulse instead of leaking a prior
+        # pulse's delayed jump (live 2026-07-15). A blocked pulse never registers
+        # movement and times out settled=False, which the existing progress check
+        # then treats as no-progress.
+        position_settle = await _settle_linear_position_feed(coordinator, before)
+        command_result["position_settled"] = position_settle["settled"]
+        command_result["position_moved"] = position_settle["moved"]
+        command_result["position_settle_wait_seconds"] = position_settle["wait_seconds"]
 
         command_samples: list[dict[str, Any]] = []
         previous_delay = 0.0

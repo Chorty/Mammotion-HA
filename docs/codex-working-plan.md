@@ -2535,3 +2535,34 @@ NOT deployed — deploy checklist below):
 the result carries `initial_vio_feed`. Next live objectives: daylight multi-segment run
 with 4000ms pulses; confirm `vio_feed_degraded` fires at dusk instead of
 `no_heading_progress`.
+
+## Wrap-up 2026-07-15 (later): deploy + first daylight live run + position-settle fix
+
+Deployed the dusk-latch hardening (services.py md5 15c06373…, services.yaml bc23b1f8…)
+via scp, restarted HA Core, verified live: dry runs carry `initial_vio_feed` and the
+4000ms pulse is accepted. BLE promoted instantly on a single switch-reassert-ON
+(rssi −76→−68). Mower entity is `lawn_mower.back_yard_clip_skywalker`.
+
+**First daylight real motion (2 × `vio_motion_probe` 4s @ speed 400):** VIO stayed
+healthy (state 2, 80 features, Light) so the new liveness gate correctly stayed green
+with zero false aborts. BUT telemetry claimed ~11cm + ~9cm while the mower physically
+moved **< 6 inches total** (user-observed). Root cause: the map-local x/y feed lags ~4s
+and updates in JUMPS, so pulse 2's "displacement" was pulse 1's delayed registration —
+`motion_confirmed`/`displacement_m` over-attributed across back-to-back pulses. Finding:
+**4s pulses are not a throughput win (~2–3" each); the 4000 cap won't speed up path
+runs.** The dusk-degradation code paths remain unverified live (can't trigger in
+daylight).
+
+**Fix authored (committed, NOT deployed — needs daylight tape-measure validation):** the
+linear phase now runs a bounded position-SETTLE poll after each pulse's stop
+(`_settle_linear_position_feed`), mirroring the turn phase's fresh-heading poll. Settling
+requires the feed to both move off the pre-pulse position AND stop jumping, so per-pulse
+displacement is attributed to the right pulse; a blocked pulse times out `settled=False`
+→ existing no-progress logic handles it. Module constants
+`_LINEAR_POSITION_SETTLE_EPSILON_M` (0.01) / `_LINEAR_POSITION_SETTLE_TIMEOUT_SECONDS`
+(6.0); poll bounded by count so no-op-sleep tests don't spin. Applied to the vector
+executor (the click-to-go path) only; `_raw_pymammotion_execute_segment` + the other
+legacy linear loop share the bug and are NOT yet patched. 200 tests (was 187). NEXT:
+deploy in daylight, tape-measure a single pulse to confirm `position_settled` improves
+attribution, then decide whether to extend the settle poll to the other executors and
+whether to shorten pulses back to ~2s given the throughput finding.
