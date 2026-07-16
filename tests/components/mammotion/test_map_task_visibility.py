@@ -1670,6 +1670,76 @@ async def test_vio_motion_probe_reports_settled_post_stop_displacement(
 
 
 @pytest.mark.asyncio
+async def test_vio_motion_probe_active_vio_lagged_motion_not_mislabelled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """VIO active during a lagged pulse is NOT reported as 'never initialized'.
+
+    Regression: motion_confirmed reads post_stop (where the lagged move lands), so
+    vio_activated_while_moving must judge VIO over the drive window rather than
+    require the frozen per-sample `moving` flag -- otherwise a VIO-active pulse
+    whose motion only registers after the stop is mislabelled
+    vio_never_initialized_despite_motion.
+    """
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=42.0, vio_state=2
+    )
+    clock = {"now": 100.0}
+    phase = {"stopped": False}
+
+    def fake_monotonic() -> float:
+        return clock["now"]
+
+    async def fake_sleep(delay: float) -> None:
+        clock["now"] += delay
+
+    original_snapshot = mammotion_services._custom_path_telemetry_snapshot  # noqa: SLF001
+
+    def fake_snapshot(
+        coordinator_arg: MammotionReportUpdateCoordinator,
+    ) -> dict:
+        telemetry = original_snapshot(coordinator_arg)
+        # Frozen during the drive; the whole move lands only after the stop.
+        if phase["stopped"]:
+            telemetry["position"]["y"] = float(telemetry["position"]["y"]) - 0.10
+        return telemetry
+
+    async def fake_stop() -> dict:
+        phase["stopped"] = True
+        return {"linear_ok": True, "angular_ok": True}
+
+    async def fake_get_reports(count: int = 5) -> None:
+        return None  # VIO stays active (state 2) the whole time
+
+    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(
+        mammotion_services, "_custom_path_telemetry_snapshot", fake_snapshot
+    )
+    coordinator.async_stop_manual_motion.side_effect = fake_stop
+    coordinator.async_get_reports.side_effect = fake_get_reports
+
+    result = await _vio_motion_probe(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        drive_seconds=2.0,
+        sample_interval_seconds=1.0,
+        post_stop_samples=2,
+    )
+
+    # Frozen feed during the drive -> no drive sample registered `moving`...
+    assert all(not sample["moving"] for sample in result["samples"])
+    # ...but VIO was active throughout, so the verdict credits it instead of
+    # claiming VIO never initialized.
+    assert result["verdict"]["motion_confirmed"] is True
+    assert result["verdict"]["vio_activated_while_moving"] is True
+    assert result["reason"] == "vio_initialized_during_motion"
+
+
+@pytest.mark.asyncio
 async def test_vio_motion_probe_static_reports_no_motion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1717,6 +1787,7 @@ def test_position_source_comparison_reports_both_sources_and_agreement() -> None
 
     present = _position_source_comparison(coordinator)
     assert present["locations_xy"] == pytest.approx((1.2, 1.0))
+    assert present["locations_stale_zero"] is False
     assert present["mowing_state_xy"] == pytest.approx((1.0, 1.0))
     assert present["agreement_m"] == pytest.approx(0.2, abs=1e-4)
     assert present["rtk_status"] == 4
@@ -1729,6 +1800,18 @@ def test_position_source_comparison_reports_both_sources_and_agreement() -> None
     assert missing["locations_xy"] is None
     assert missing["mowing_state_xy"] == pytest.approx((1.0, 1.0))
     assert missing["agreement_m"] is None
+
+    # The post-restart stale (0,0)/AREA_OUT pose is filtered out so it can't
+    # masquerade as a huge source divergence in agreement_m.
+    coordinator.data.report_data.locations = [
+        SimpleNamespace(
+            real_pos_x=0, real_pos_y=0, real_toward=0, pos_type=0, bol_hash=0
+        )
+    ]
+    stale = _position_source_comparison(coordinator)
+    assert stale["locations_xy"] is None
+    assert stale["locations_stale_zero"] is True
+    assert stale["agreement_m"] is None
 
 
 @pytest.mark.asyncio
@@ -2023,6 +2106,8 @@ async def test_vio_turn_to_heading_closed_loop_reaches_target(
     assert coordinator.manager.send_command_with_args.await_count == 3
     assert coordinator.async_stop_manual_motion.await_count == 3
     assert abs(result["final_heading_error_degrees"]) <= 8.0
+    # final_vio_feed is always present (not only on the degraded stop path).
+    assert result["final_vio_feed"]["live"] is True
 
 
 @pytest.mark.asyncio

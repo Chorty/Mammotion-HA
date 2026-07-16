@@ -2400,11 +2400,24 @@ def _position_source_comparison(
     mowing_state = _safe_attr_path(data, "mowing_state")
 
     locations_xy: tuple[float, float] | None = None
+    locations_stale_zero = False
     if report_location is not None:
         lx = _scale_report_position(_safe_attr_path(report_location, "real_pos_x"))
         ly = _scale_report_position(_safe_attr_path(report_location, "real_pos_y"))
         if lx is not None and ly is not None:
-            locations_xy = (lx, ly)
+            # Drop the known post-restart stale (0,0)/AREA_OUT pose (same guard as
+            # _custom_path_position_snapshot); otherwise it reads as a huge source
+            # divergence in agreement_m exactly in the window phantom analysis
+            # cares about. Keep a flag so the raw fact stays visible.
+            if _is_stale_zero_area_out_pose(
+                lx,
+                ly,
+                _safe_attr_path(report_location, "pos_type"),
+                _safe_attr_path(report_location, "bol_hash"),
+            ):
+                locations_stale_zero = True
+            else:
+                locations_xy = (lx, ly)
 
     mowing_xy: tuple[float, float] | None = None
     if mowing_state is not None:
@@ -2424,6 +2437,7 @@ def _position_source_comparison(
 
     return {
         "locations_xy": locations_xy,
+        "locations_stale_zero": locations_stale_zero,
         "mowing_state_xy": mowing_xy,
         "agreement_m": agreement_m,
         "rtk_status": _safe_attr_path(mowing_state, "rtk_status"),
@@ -4642,8 +4656,14 @@ async def _vio_motion_probe(  # noqa: C901, PLR0912, PLR0913, PLR0915
     # final_displacement_m reads ~0 (live 2026-07-15: a 4in 6s pulse did exactly
     # this).
     motion_confirmed = any(sample["moving"] for sample in all_samples)
+    # motion_confirmed (above) already establishes the mower moved; the per-sample
+    # `moving` flag is unreliable DURING the drive because the position feed lags
+    # ~4s and stays frozen, so a VIO-active pulse whose motion only registers
+    # post-stop must NOT be judged "VIO never initialized". Ask only whether VIO
+    # was active across the drive window -- VIO waking after the stop is not
+    # "during motion", so post_stop samples are deliberately excluded here.
     vio_activated_while_moving = any(
-        _vio_active(sample["vio_state"]) and sample["moving"] for sample in samples
+        _vio_active(sample["vio_state"]) for sample in samples
     )
     vio_activated_any = any(_vio_active(sample["vio_state"]) for sample in all_samples)
     heading_series = [
@@ -5213,6 +5233,9 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         "final_heading_error_degrees": (
             round(initial_error, 3) if initial_error is not None else None
         ),
+        # Always present (like final_vision_heading); the vio_feed_degraded stop
+        # path overwrites it. Avoids a KeyError for consumers on other stops.
+        "final_vio_feed": initial_feed,
         "stop_reason": None,
     }
     if initial_error is not None and abs(initial_error) <= heading_tolerance_degrees:
