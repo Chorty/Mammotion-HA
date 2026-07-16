@@ -2566,3 +2566,38 @@ legacy linear loop share the bug and are NOT yet patched. 200 tests (was 187). N
 deploy in daylight, tape-measure a single pulse to confirm `position_settled` improves
 attribution, then decide whether to extend the settle poll to the other executors and
 whether to shorten pulses back to ~2s given the throughput finding.
+
+## Wrap-up 2026-07-16: 4 motion-reliability issues + self-review
+
+Implemented the approved 4-issue plan off-mower (branch feat/vio-turn-to-heading,
+commits 0684bf54 + the review-fix commit below). NOT deployed -- needs daylight tape
+validation.
+
+- #1 (extend settle poll to legacy linear executor): the review found the premise was
+  wrong -- `_raw_pymammotion_execute_segment` issues NO software stop (relies on firmware
+  auto-stop), so a settle wait there only prolongs blind motion. REVERTED the settle poll
+  from that executor; kept the dual-source instrumentation. The vector executor (the card
+  path, which does stop) keeps its settle poll from a35afdd3.
+- #2 (vio_motion_probe honesty): judge motion_confirmed + final_displacement_m across
+  post_stop samples (where the lagged real move lands); add displacement_source. Done.
+- #3 (phantom instrumentation): `_position_source_comparison` (read-only) logs both
+  position sources + RTK quality per pulse in both executors and both VIO probes. Detector
+  deferred until a daylight run yields phantom-vs-real data.
+- #4 self-review (high, 5 findings): FIXED #1-revert (finding 2), settle-poll docstring now
+  states the phantom limitation (finding 1), extracted the duplicated
+  `_make_refetch_runtime_context` factory (finding 5).
+
+**Deferred review findings (noted, not fixed -- decide during daylight validation):**
+- The position-settle poll can settle on a PHANTOM feed-jump (epsilon 1cm << the ~9cm
+  phantom seen live), so over-attribution persists on no-op pulses -- only the #3 detector
+  can fix this; the settle poll only handles LAG.
+- `_VIO_MIN_TRACKED_FEATURES=5` is re-checked EVERY pulse in `_vio_turn_to_heading`, so a
+  single transient feature dip (occlusion) aborts an otherwise-healthy turn with
+  vio_feed_degraded -- same single-sample-abort class we fixed for heading; consider a
+  consecutive-degraded streak before aborting.
+- The settle poll's wait is ADDITIVE to the card's sample_delays window (~+4s/pulse), a
+  throughput cost; once validated, trim sample_delays (the settle poll already waits out
+  the feed) or have the executor use the settle telemetry as `after` instead of re-sampling.
+
+Tests 200 -> 203; ruff clean. Deploy checklist unchanged (services.py only; daylight scp +
+restart + tape validation, collect position_source_comparison data).

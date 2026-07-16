@@ -5531,6 +5531,12 @@ async def _settle_linear_position_feed(
     snapshots agree within ``_LINEAR_POSITION_SETTLE_EPSILON_M`` (it stopped
     jumping). A pulse that truly produced no motion never registers movement and
     times out with ``settled=False`` so the caller can treat it as no-progress.
+
+    Limitation: this fixes attribution for LAG (waiting out the delayed jump) but
+    NOT for PHANTOM motion -- the feed can report a jump the mower did not make
+    (live 2026-07-15: a physical no-op pulse showed ~9cm), which clears the epsilon
+    and reads as settled=moved=True. Distinguishing phantom from real needs the
+    dual-source data captured by ``_position_source_comparison``.
     """
     started = time.monotonic()
     # Bound by poll count, not wall clock: the pacing sleep does the timing, so a
@@ -5826,18 +5832,13 @@ async def _raw_pymammotion_execute_segment(  # noqa: C901, PLR0913
         command_result["post_command_feedback_refresh"] = (
             await _refresh_position_after_raw_motion(coordinator)
         )
-        # Same lagged/jumpy position feed as the vector executor: settle before
-        # sampling so this pulse's displacement is attributed to this pulse. (This
-        # older executor relies on the mower's firmware auto-stop rather than an
-        # explicit stop; the settle poll simply waits for the feed to catch up once
-        # the pulse self-halts.)
-        position_settle = await _settle_linear_position_feed(coordinator, before)
-        command_result["position_settled"] = position_settle["settled"]
-        command_result["position_moved"] = position_settle["moved"]
-        command_result["position_settle_wait_seconds"] = position_settle["wait_seconds"]
         # Phantom-motion investigation instrumentation (capture only): log both
         # position sources + RTK quality so a later run can tell a real move from a
-        # feed-jump on a no-op pulse.
+        # feed-jump on a no-op pulse. NOTE: the vector executor's position-settle
+        # poll is intentionally NOT applied here -- this older executor issues no
+        # explicit software stop (it relies on firmware auto-stop), so a settle
+        # wait would only prolong blind firmware-dependent motion before sampling.
+        # Giving this executor a real stop is the prerequisite follow-up.
         command_result["position_source_comparison"] = _position_source_comparison(
             coordinator
         )
@@ -10194,6 +10195,30 @@ def _build_spino_plan(data: dict[str, Any], base: PoolPlan | None = None) -> Poo
     return plan
 
 
+def _make_refetch_runtime_context(
+    hass: HomeAssistant,
+    entity_id: str,
+    coordinator: MammotionReportUpdateCoordinator,
+) -> Callable[[], tuple[str | None, dict[str, Any] | None]]:
+    """Build the post-recovery HA-state + active-route re-capture callback.
+
+    The vector/multi-segment executors call this after an in-executor BLE recovery
+    wait (~90s) so the runtime gates judge fresh context instead of the handler's
+    pre-recovery snapshot.
+    """
+
+    def _refetch() -> tuple[str | None, dict[str, Any] | None]:
+        state = hass.states.get(entity_id)
+        route: dict[str, Any] | None = None
+        try:
+            route = _export_active_route(coordinator)
+        except Exception as err:  # noqa: BLE001
+            LOGGER.debug("Could not refetch active route: %s", err)
+        return (state.state if state is not None else None, route)
+
+    return _refetch
+
+
 @callback
 def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
     """Register Mammotion services."""
@@ -10797,15 +10822,9 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         except Exception as err:  # noqa: BLE001
             LOGGER.debug("Could not export active route for vector segment: %s", err)
 
-        def _refetch_runtime_context() -> tuple[str | None, dict[str, Any] | None]:
-            """Re-capture HA state + active route after an in-executor recovery wait."""
-            state = hass.states.get(call.data[ATTR_ENTITY_ID])
-            route: dict[str, Any] | None = None
-            try:
-                route = _export_active_route(mower.reporting_coordinator)
-            except Exception as refetch_err:  # noqa: BLE001
-                LOGGER.debug("Could not refetch active route: %s", refetch_err)
-            return (state.state if state is not None else None, route)
+        _refetch_runtime_context = _make_refetch_runtime_context(
+            hass, call.data[ATTR_ENTITY_ID], mower.reporting_coordinator
+        )
 
         return await _raw_pymammotion_execute_vector_segment(
             mower.reporting_coordinator,
@@ -10864,15 +10883,9 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         except Exception as err:  # noqa: BLE001
             LOGGER.debug("Could not export active route for multi segment: %s", err)
 
-        def _refetch_runtime_context() -> tuple[str | None, dict[str, Any] | None]:
-            """Re-capture HA state + active route after an in-executor recovery wait."""
-            state = hass.states.get(call.data[ATTR_ENTITY_ID])
-            route: dict[str, Any] | None = None
-            try:
-                route = _export_active_route(mower.reporting_coordinator)
-            except Exception as refetch_err:  # noqa: BLE001
-                LOGGER.debug("Could not refetch active route: %s", refetch_err)
-            return (state.state if state is not None else None, route)
+        _refetch_runtime_context = _make_refetch_runtime_context(
+            hass, call.data[ATTR_ENTITY_ID], mower.reporting_coordinator
+        )
 
         return await _raw_pymammotion_execute_multi_segment(
             mower.reporting_coordinator,

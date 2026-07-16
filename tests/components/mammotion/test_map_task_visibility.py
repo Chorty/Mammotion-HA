@@ -2679,11 +2679,10 @@ async def test_raw_pymammotion_execute_segment_stops_on_no_progress(
     assert result["commands_sent"] == 1
     assert result["stop_reason"] == "no_target_progress"
     assert result["progress_diagnostics"][0]["status"] == "no_path_progress"
-    # The pulse ran the position-settle poll; a stationary mower never registers
-    # motion, so it records not moved / not settled.
-    settle = result["command_results"][0]
-    assert settle["position_moved"] is False
-    assert settle["position_settled"] is False
+    # This older executor issues no software stop, so it deliberately does NOT run
+    # the position-settle poll (which would prolong blind motion); it still records
+    # the dual-source comparison for the phantom-motion investigation.
+    assert "position_source_comparison" in result["command_results"][0]
 
 
 @pytest.mark.asyncio
