@@ -4963,6 +4963,13 @@ _VIO_STATE_ACTIVE = 2
 # a collapsing feed a beat before it is fully blind without risking false aborts.
 _VIO_MIN_TRACKED_FEATURES = 5
 
+# A single degraded feed read mid-turn can be a transient feature dip (a brief
+# occlusion), not sustained dusk blindness. Before aborting the turn, re-poll the
+# feed (read-only, no motion) up to this many times, returning as soon as it
+# recovers -- symmetric with tolerating a single stale heading sample rather than
+# ending the turn on it.
+_VIO_FEED_RECONFIRM_POLLS = 2
+
 # The map-local position feed lags ~4s and updates in JUMPS: after a linear pulse
 # the reported x/y can sit at the pre-pulse value for a couple of samples and then
 # jump (live 2026-07-15: two back-to-back 4s pulses reported ~10cm each yet the
@@ -4992,6 +4999,25 @@ def _vio_reading(coordinator: MammotionReportUpdateCoordinator) -> dict[str, Any
     }
 
 
+def _vio_scene_brightness(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> tuple[Any, str | None]:
+    """Return the raw camera brightness value and its label ("Light"/"Dark"/...).
+
+    One place for the (historically fragile) ``vision_info.brightness`` read plus
+    the ``camera_brightness()`` mapping, shared by ``_vio_scene_is_bright`` and
+    ``_vio_feed_liveness``. Label is None when brightness is absent or unparseable.
+    """
+    raw = _safe_attr_path(coordinator.data, "report_data.vision_info.brightness")
+    label: str | None = None
+    if raw is not None:
+        try:
+            label = camera_brightness(int(raw))
+        except (TypeError, ValueError):
+            label = None
+    return raw, label
+
+
 def _vio_scene_is_bright(coordinator: MammotionReportUpdateCoordinator) -> bool:
     """Return whether the camera scene is bright enough for VIO to initialise.
 
@@ -5000,15 +5026,7 @@ def _vio_scene_is_bright(coordinator: MammotionReportUpdateCoordinator) -> bool:
     motion, so a bright scene means the calibration drive can double as the
     warm-up.
     """
-    value = _safe_attr_path(
-        coordinator.data, "report_data.vision_info.brightness"
-    )
-    if value is None:
-        return False
-    try:
-        return camera_brightness(int(value)) == "Light"
-    except (TypeError, ValueError):
-        return False
+    return _vio_scene_brightness(coordinator)[1] == "Light"
 
 
 def _vio_feed_liveness(
@@ -5027,15 +5045,7 @@ def _vio_feed_liveness(
     features = _safe_attr_path(
         coordinator.data, "report_data.vision_info.track_feature_num"
     )
-    brightness_raw = _safe_attr_path(
-        coordinator.data, "report_data.vision_info.brightness"
-    )
-    brightness_label: str | None = None
-    if brightness_raw is not None:
-        try:
-            brightness_label = camera_brightness(int(brightness_raw))
-        except (TypeError, ValueError):
-            brightness_label = None
+    brightness_raw, brightness_label = _vio_scene_brightness(coordinator)
     degraded = False
     if features is not None:
         try:
@@ -5048,6 +5058,53 @@ def _vio_feed_liveness(
         "brightness_raw": brightness_raw,
         "brightness_label": brightness_label,
     }
+
+
+def _vio_feed_live_gate(feed: dict[str, Any], *, dry_run: bool) -> dict[str, Any]:
+    """Build the ``vio_feed_live`` safety gate for a degraded VIO feed.
+
+    Shared by the turn and vector-segment executors so the blind-feed messaging
+    stays consistent. Passes on dry runs (planning is allowed against a cold/blind
+    feed); blocks a real run because the latched heading cannot be trusted.
+    """
+    return {
+        "name": "vio_feed_live",
+        "passed": dry_run,
+        "detail": (
+            "VIO feed degraded: only "
+            f"{feed['tracked_features']} tracked features "
+            f"(need >= {_VIO_MIN_TRACKED_FEATURES}), "
+            f"brightness {feed['brightness_label']}. The track is blind despite "
+            "vio_state; wait for daylight or warm VIO with forward motion."
+        ),
+    }
+
+
+async def _reconfirm_vio_feed_degraded(
+    coordinator: MammotionReportUpdateCoordinator,
+    current: dict[str, Any],
+    *,
+    refresh_wait_seconds: float,
+) -> dict[str, Any]:
+    """Re-poll a degraded VIO feed (read-only) to tell a transient dip from blindness.
+
+    ``current`` is the already-degraded reading. Poll ``request_reports`` up to
+    ``_VIO_FEED_RECONFIRM_POLLS`` times, returning as soon as the feed recovers, so
+    the caller only aborts on SUSTAINED degradation. No motion is issued -- the
+    mower is already stopped, so this is purely a confirmation wait.
+    """
+    feed = current
+    for _ in range(_VIO_FEED_RECONFIRM_POLLS):
+        try:
+            await coordinator.async_get_reports(count=5)
+        except Exception as err:  # noqa: BLE001
+            LOGGER.debug("vio_feed recheck refresh failed: %s", err)
+        # Same pacing floor as the fresh-heading poll: never hammer request_reports.
+        await asyncio.sleep(max(refresh_wait_seconds, 0.5))
+        feed = _vio_feed_liveness(coordinator)
+        if feed["live"]:
+            break
+    return feed
 
 
 async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
@@ -5141,20 +5198,7 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # vio_state can read active while the track is blind (feature count
         # collapsed at dusk); refuse the real turn and name the brightness so an
         # operator can tell a dark scene from a mower that just is not rotating.
-        gates.append(
-            {
-                "name": "vio_feed_live",
-                "passed": dry_run,
-                "detail": (
-                    "VIO feed degraded: only "
-                    f"{initial_feed['tracked_features']} tracked features "
-                    f"(need >= {_VIO_MIN_TRACKED_FEATURES}), "
-                    f"brightness {initial_feed['brightness_label']}. "
-                    "The track is blind despite vio_state; wait for daylight "
-                    "or warm VIO with forward motion before turning."
-                ),
-            }
-        )
+        gates.append(_vio_feed_live_gate(initial_feed, dry_run=dry_run))
     if runtime_safety["active_mowing_detected"]:
         gates.append(
             {
@@ -5253,6 +5297,7 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
 
     consecutive_no_progress = 0
     last_heading_went_fresh = True
+    last_progress_degrees = 0.0
     for command_index in range(1, max_commands + 1):
         before_telemetry = _custom_path_telemetry_snapshot(coordinator)
         before_reading = _vio_reading(coordinator)
@@ -5265,14 +5310,27 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
             # longer trustworthy, so stop rather than chase a stale reading.
             result["stop_reason"] = "vio_inactive"
             return result
-        before_feed = _vio_feed_liveness(coordinator)
+        # Pulse 1's feed was already proven live by the entry gate (a real run
+        # can't get here otherwise, and nothing refreshes in between), so reuse it
+        # rather than re-read; later pulses re-check live.
+        before_feed = (
+            initial_feed
+            if command_index == 1
+            else _vio_feed_liveness(coordinator)
+        )
         if not before_feed["live"]:
-            # vio_state stayed active but the feature track collapsed (dusk):
-            # the heading is a stale latch. Stop with a distinct reason so the
-            # operator sees "blind feed", not "not rotating".
-            result["final_vio_feed"] = before_feed
-            result["stop_reason"] = "vio_feed_degraded"
-            return result
+            # vio_state stayed active but the feature track collapsed (dusk): the
+            # heading is a stale latch. A single degraded read may be a transient
+            # dip, so re-poll (read-only) before aborting; only a SUSTAINED blind
+            # feed stops the turn, with a distinct reason so the operator sees
+            # "blind feed", not "not rotating".
+            before_feed = await _reconfirm_vio_feed_degraded(
+                coordinator, before_feed, refresh_wait_seconds=refresh_wait_seconds
+            )
+            if not before_feed["live"]:
+                result["final_vio_feed"] = before_feed
+                result["stop_reason"] = "vio_feed_degraded"
+                return result
         if not _blade_reported_safe(before_telemetry):
             result["stop_reason"] = "aborted_unsafe_blade"
             return result
@@ -5288,16 +5346,20 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
             result["final_heading_error_degrees"] = round(error, 3)
             result["stop_reason"] = "target_heading_reached"
             return result
-        # Cap the pulse at the slow duration during a no-progress streak *only when
-        # the last sample was stale* (heading never went fresh): that is the blind/
-        # latched-feed case where a full-length pulse risks a long spin on frozen
-        # feedback. When the feed was fresh but progress stalled (e.g. the mower is
-        # simply turning slowly), a full pulse is still the right, faster move.
+        # Cap the pulse at the slow duration during a no-progress streak when the
+        # last sample was stale (blind/latched feed) OR the last pulse moved AWAY
+        # from the target (negative progress -- e.g. an angular sign miscalibration
+        # or mechanical fault turning the wrong way): both are cases where a
+        # full-length pulse risks a long wrong/blind rotation. A fresh streak that
+        # was still moving toward the target (merely slowly) keeps the full pulse.
         pulse_ms = (
             slow_pulse_duration_ms
             if (
                 abs(error) <= slow_threshold_degrees
-                or (consecutive_no_progress > 0 and not last_heading_went_fresh)
+                or (
+                    consecutive_no_progress > 0
+                    and (not last_heading_went_fresh or last_progress_degrees < 0)
+                )
             )
             else pulse_duration_ms
         )
@@ -5395,12 +5457,16 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
             return result
         measured_change = _heading_error_degrees(float(before_heading), float(after_heading))
         new_error = _heading_error_degrees(float(after_heading), target)
+        progress = abs(error) - abs(new_error)
+        # Remembered for the next pulse's slow-cap decision: a negative value means
+        # this pulse moved away from the target (wrong direction).
+        last_progress_degrees = progress
         displacement = _telemetry_position_delta(
             initial_telemetry, after_telemetry
         ).get("distance")
         command_result["measured_change_degrees"] = round(measured_change, 3)
         command_result["heading_error_after"] = round(new_error, 3)
-        command_result["progress_degrees"] = round(abs(error) - abs(new_error), 3)
+        command_result["progress_degrees"] = round(progress, 3)
         command_result["displacement_m"] = displacement
         result["command_results"].append(command_result)
         result["final_vision_heading"] = after_heading
@@ -5414,7 +5480,7 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         if abs(new_error) <= heading_tolerance_degrees:
             result["stop_reason"] = "target_heading_reached"
             return result
-        if (abs(error) - abs(new_error)) < min_progress_degrees:
+        if progress < min_progress_degrees:
             # Tolerate a single stale/latched sample; only abort once the turn has
             # made no measurable progress on max_no_progress_pulses in a row.
             consecutive_no_progress += 1
@@ -5585,6 +5651,10 @@ async def _settle_linear_position_feed(
             settled = True
             break
     return {
+        # The settled snapshot. Currently informational: callers re-sample via
+        # their sample_delays for `after`. Reserved as the hook for the deferred
+        # throughput fix (use this directly as `after` and trim sample_delays so
+        # the settle wait and the sampling wait stop being additive).
         "telemetry": previous,
         "settled": settled,
         "moved": moved,
@@ -7474,19 +7544,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         # vio_state reads active but the feature track has collapsed (dusk latch);
         # the heading is stale. Block the real run distinctly from the cold-start
         # case above so the operator sees "blind feed", not "warm VIO".
-        gates.append(
-            {
-                "name": "vio_feed_live",
-                "passed": dry_run,
-                "detail": (
-                    "VIO feed degraded: only "
-                    f"{initial_vio_feed['tracked_features']} tracked features "
-                    f"(need >= {_VIO_MIN_TRACKED_FEATURES}), "
-                    f"brightness {initial_vio_feed['brightness_label']}. The "
-                    "track is blind despite vio_state; wait for daylight."
-                ),
-            }
-        )
+        gates.append(_vio_feed_live_gate(initial_vio_feed, dry_run=dry_run))
     if runtime_safety["active_mowing_detected"]:
         gates.append(
             {
@@ -8264,6 +8322,16 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
         ha_state=ha_state,
         active_route=active_route,
     )
+    initial_vio_feed = _vio_feed_liveness(coordinator)
+    if (
+        turn_mode == "vio"
+        and _vio_reading(coordinator)["vio_state"] == _VIO_STATE_ACTIVE
+        and not initial_vio_feed["live"]
+    ):
+        # Same dusk-latch guard as the per-segment vector executor, but at the
+        # chain entry so a blind feed (vio_state active yet 0 tracked features) is
+        # refused once up front rather than only when segment 1 happens to run.
+        gates.append(_vio_feed_live_gate(initial_vio_feed, dry_run=dry_run))
     if len(normalized_points) < 2 or len(normalized_points) > 8:
         gates.append(
             {
@@ -8316,6 +8384,7 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
         "full_path_execution_allowed": False,
         "ready_for_multi_point": False,
         "ready_for_multi_segment": False,
+        "initial_vio_feed": initial_vio_feed,
         "prefer_ble": prefer_ble,
         "transport_preference": "ble_preferred" if prefer_ble else "default",
         "ble_auto_recover": ble_auto_recover,

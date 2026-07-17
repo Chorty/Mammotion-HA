@@ -2037,6 +2037,61 @@ async def test_vio_turn_to_heading_stops_when_feed_degrades_mid_turn(
 
 
 @pytest.mark.asyncio
+async def test_vio_turn_to_heading_tolerates_transient_feed_dip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A single transient feed dip that recovers on re-poll does NOT abort the turn.
+
+    A one-read feature dip (brief occlusion) must not end an otherwise-good turn;
+    the read-only re-confirmation poll should see the feed recover and continue,
+    unlike the sustained-degradation case which aborts vio_feed_degraded.
+    """
+    coordinator = _pulse_coordinator()
+    coordinator.data.report_data.vision_info = SimpleNamespace(heading=0.0, vio_state=2)
+
+    # Feed liveness by call: entry(live) -> pulse-2 before_feed(dip) ->
+    # re-confirm(recovered) -> live thereafter.
+    feed_live = iter([True, False, True])
+
+    def fake_feed_liveness(_coordinator: object) -> dict:
+        live = next(feed_live, True)
+        return {
+            "live": live,
+            "tracked_features": 80 if live else 0,
+            "brightness_raw": 200 if live else 10,
+            "brightness_label": "Light" if live else "Dark",
+        }
+
+    async def advance_on_pulse(*_args: object, **_kwargs: object) -> None:
+        vi = coordinator.data.report_data.vision_info
+        vi.heading = min(40.0, vi.heading + 20.0)  # reach +40 target in 2 pulses
+
+    async def fake_sleep(_delay: float) -> None:
+        return None
+
+    async def fake_get_reports(count: int = 5) -> None:
+        return None  # heading is driven by the pulse, feed by the fake above
+
+    monkeypatch.setattr(mammotion_services, "_vio_feed_liveness", fake_feed_liveness)
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+    coordinator.manager.send_command_with_args.side_effect = advance_on_pulse
+    coordinator.async_get_reports.side_effect = fake_get_reports
+
+    result = await _vio_turn_to_heading(
+        coordinator,
+        target_vision_heading=40.0,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+    )
+
+    # The dip recovered on re-poll, so the turn continued to its target instead of
+    # aborting vio_feed_degraded.
+    assert result["stop_reason"] == "target_heading_reached"
+    assert result["commands_sent"] == 2
+
+
+@pytest.mark.asyncio
 async def test_vio_turn_to_heading_stops_if_vio_drops_out_mid_turn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2204,15 +2259,15 @@ async def test_vio_turn_to_heading_tolerates_one_stale_pulse_before_no_progress(
 
 
 @pytest.mark.asyncio
-async def test_vio_turn_to_heading_streak_keeps_full_pulse_when_sample_fresh(
+async def test_vio_turn_to_heading_slow_caps_wrong_direction_streak(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A fresh-but-stalled no-progress streak keeps the full pulse (not the slow cap).
+    """A fresh streak that moves AWAY from target is slow-capped (wrong-direction guard).
 
-    The slow-duration cap exists to bound blind rotation on a latched feed, so it
-    only applies when the streak's last sample was stale. Here the heading moves
-    the wrong way each pulse (fresh reading, negative progress): the feed is not
-    blind, so the full pulse -- the faster correction -- must be kept.
+    Even with a fresh feed, negative progress (e.g. an angular sign miscalibration
+    turning the wrong way) must not keep running full-power pulses. The first pulse
+    runs full (no streak yet); once the streak sees the away-drift, subsequent
+    pulses are capped to the slow duration to bound the wrong-way rotation.
     """
     coordinator = _pulse_coordinator()
     coordinator.data.report_data.vision_info = SimpleNamespace(heading=0.0, vio_state=2)
@@ -2221,8 +2276,8 @@ async def test_vio_turn_to_heading_streak_keeps_full_pulse_when_sample_fresh(
         return None
 
     async def fake_get_reports(count: int = 5) -> None:
-        # Each poll returns a genuinely fresh reading that drifts *away* from the
-        # +40 target, so heading_went_fresh is True but progress is negative.
+        # Genuinely fresh reading that drifts *away* from the +40 target: fresh but
+        # negative progress.
         vi = coordinator.data.report_data.vision_info
         vi.heading = vi.heading - 10.0
 
@@ -2239,7 +2294,48 @@ async def test_vio_turn_to_heading_streak_keeps_full_pulse_when_sample_fresh(
 
     assert result["stop_reason"] == "no_heading_progress"
     assert all(cmd["heading_went_fresh"] for cmd in result["command_results"])
-    # Fresh feed -> the streak never forces the slow cap; every pulse is full-length.
+    # Pulse 1 runs full (streak not started); pulse 2, fired after away-progress,
+    # is slow-capped.
+    assert result["command_results"][0]["pulse_duration_ms"] == 1500
+    assert result["command_results"][1]["pulse_duration_ms"] == 700
+
+
+@pytest.mark.asyncio
+async def test_vio_turn_to_heading_keeps_full_pulse_creeping_toward_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fresh streak still creeping TOWARD target (small +progress) keeps the full pulse.
+
+    The slow cap is for stale/latched feeds and wrong-direction motion; a mower
+    genuinely turning toward the target but slower than min_progress_degrees should
+    keep the full, faster pulse.
+    """
+    coordinator = _pulse_coordinator()
+    coordinator.data.report_data.vision_info = SimpleNamespace(heading=0.0, vio_state=2)
+
+    async def fake_sleep(_delay: float) -> None:
+        return None
+
+    async def fake_get_reports(count: int = 5) -> None:
+        # Fresh reading creeping toward the +40 target by +1 deg/poll: fresh, and
+        # positive progress but below min_progress_degrees (2.0).
+        vi = coordinator.data.report_data.vision_info
+        vi.heading = vi.heading + 1.0
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+    coordinator.async_get_reports.side_effect = fake_get_reports
+
+    result = await _vio_turn_to_heading(
+        coordinator,
+        target_vision_heading=40.0,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+    )
+
+    assert result["stop_reason"] == "no_heading_progress"
+    assert all(cmd["heading_went_fresh"] for cmd in result["command_results"])
+    # Fresh AND still moving toward target -> never slow-capped; all pulses full.
     assert all(
         cmd["pulse_duration_ms"] == 1500 for cmd in result["command_results"]
     )
@@ -3592,6 +3688,31 @@ async def test_vector_segment_vio_real_run_blocked_when_feed_degraded() -> None:
     assert "vio_feed_live" in result["blockers"]
     assert result["stop_reason"] == "safety_gates_failed"
     assert result["vio"]["initial_vio_feed"]["live"] is False
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_multi_segment_vio_real_run_blocked_when_feed_degraded() -> None:
+    """Multi-segment refuses a real VIO run when the feed is blind at chain entry."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=0.0, vio_state=2, track_feature_num=0, brightness=10
+    )
+
+    result = await _raw_pymammotion_execute_multi_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}, {"x": 1.2, "y": 1.1}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        turn_mode="vio",
+        vio_heading_offset_degrees=0.0,
+        sample_delays=(),
+    )
+
+    assert "vio_feed_live" in result["blockers"]
+    assert result["stop_reason"] == "safety_gates_failed"
+    assert result["initial_vio_feed"]["live"] is False
     coordinator.manager.send_command_with_args.assert_not_called()
 
 

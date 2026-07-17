@@ -2601,3 +2601,37 @@ validation.
 
 Tests 200 -> 203; ruff clean. Deploy checklist unchanged (services.py only; daylight scp +
 restart + tape validation, collect position_source_comparison data).
+
+## Wrap-up 2026-07-16: resolve xhigh-review findings (2 hardening + cleanups)
+
+Worked through the resolvable xhigh-review findings off-mower. 2 hardening + cleanups
+(commit below). NOT deployed.
+
+Hardening (correctness):
+- H1 (transient feed-dip tolerance): the per-pulse vio_feed_live check in
+  _vio_turn_to_heading now re-confirms a degraded read with a bounded read-only poll
+  (_reconfirm_vio_feed_degraded, _VIO_FEED_RECONFIRM_POLLS=2) before aborting, so a
+  single transient feature dip no longer kills a good turn while sustained dusk
+  blindness still aborts. No motion during the wait (mower already stopped).
+- H2 (wrong-direction slow-cap): the no-progress slow-pulse cap now also fires when the
+  last pulse made NEGATIVE progress (moved away from target, e.g. sign miscalibration),
+  not only when the sample was stale -- bounds wrong-way full-power rotation. Safe
+  (only shortens pulses). Split the streak test into wrong-direction (slow-capped) vs
+  creeping-toward-target (full pulse kept).
+
+Cleanups:
+- C1 _vio_feed_live_gate() helper shared by both executors (unifies the drifted detail
+  strings). C2 _vio_scene_brightness() shared by _vio_scene_is_bright + _vio_feed_liveness.
+  C7 pulse-1 reuses initial_feed (entry gate already proved it live). C8 added the
+  vio_feed_live gate to the multi-segment ENTRY (was only per-segment). C3 documented the
+  settle-poll `telemetry` return field as the reserved hook for the deferred throughput fix.
+
+Deferred (with rationale, NOT done): the settle-poll phantom limitation (needs the #3
+detector + daylight data); max_displacement_m-can't-fire-mid-drive and the sub-epsilon
+slow-turn timing (change proven motion, want live confirmation); the additive-settle-wait
+throughput fix (changes the progress-`after` source; validate first). Reuse findings C4
+(agreement_m hypot) / C5 (settle refresh helper) / C6 (source-comparison on raw_sources)
+skipped: the reuse would add coupling/clunkiness for marginal benefit (verified
+_telemetry_position_delta wants dict-shaped inputs, not the 2-tuples).
+
+Tests 204 -> 207; ruff clean. Deploy checklist unchanged (services.py only).
