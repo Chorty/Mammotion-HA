@@ -937,6 +937,10 @@ RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("confirm_blades_off", default=False): cv.boolean,
         vol.Optional("confirm_clear_area", default=False): cv.boolean,
         vol.Optional("prefer_ble", default=True): cv.boolean,
+        # The handler reads call.data["ble_auto_recover"]; without this default a
+        # call that omits it (the card never sends it) KeyErrors -> HTTP 500. Kept
+        # in sync with RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA.
+        vol.Optional("ble_auto_recover", default=True): cv.boolean,
         vol.Optional("max_real_segments", default=1): vol.All(
             vol.Coerce(int), vol.Range(min=0, max=7)
         ),

@@ -1352,6 +1352,8 @@ def test_manual_velocity_pulse_schema_allows_emergency_nudge_speed() -> None:
             {
                 "dry_run": True,
                 "prefer_ble": True,
+                # Handler reads call.data["ble_auto_recover"]; schema must default it.
+                "ble_auto_recover": True,
                 "linear_speed_fast": 400,
                 "linear_speed_slow": 200,
                 "angular_speed_fast": 180,
@@ -1374,6 +1376,9 @@ def test_manual_velocity_pulse_schema_allows_emergency_nudge_speed() -> None:
             {
                 "dry_run": True,
                 "prefer_ble": True,
+                # Regression: the multi handler reads call.data["ble_auto_recover"];
+                # a missing schema default made every card multi-segment call 500.
+                "ble_auto_recover": True,
                 "max_real_segments": 1,
                 "max_turn_commands": 4,
                 "max_linear_commands": 2,
