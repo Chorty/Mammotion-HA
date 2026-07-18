@@ -2635,3 +2635,92 @@ skipped: the reuse would add coupling/clunkiness for marginal benefit (verified
 _telemetry_position_delta wants dict-shaped inputs, not the 2-tuples).
 
 Tests 204 -> 207; ruff clean. Deploy checklist unchanged (services.py only).
+
+## Wrap-up 2026-07-18: off-mower session — schema parity sweep, hassfest fix, PR prep, segment stop, telemetry research
+
+Off-mower (mower unavailable, night). Commits `0ebdf7c1`..`8271f02f`, all pushed to
+PR #10. Tests 207 -> 260; mypy + ruff clean throughout. NOTHING deployed.
+
+1. **Schema/handler key-parity audit (the KeyError->500 class).** AST audit of all 50
+   service registrations found ONE more real gap beyond the multi-segment
+   `ble_auto_recover` bug: `manual_velocity_segment_test`'s handler reads
+   `stop_mode`/`stop_delay_ms` but the schema declared neither -> every call omitting
+   them 500'd. Fixed (defaults immediate/0 matching the pulse-test sibling + executor
+   signature; yaml selectors added). svg_add/update x_move/y_move flagged but safely
+   membership-guarded. NEW generic regression sweep in the test file: parses
+   services.py's AST, extracts each handler's unguarded `call.data[...]` reads
+   (following one level of call-passing helpers, e.g. handle_movement), and asserts
+   every key resolves after applying the real schema to a minimal required-keys
+   payload. 47 parametrized cases + a discovery meta-test. Kills the bug class.
+
+2. **Hygiene.** `mypy custom_components/` (repo config): clean. pre-commit: applied the
+   one scoped codespell fix (unparseable->unparsable in services.py); did NOT apply the
+   ruff-format/prettier churn on pre-existing drift (17 files reverted per-file);
+   pre-commit's mypy --strict hook fails on ~170 pre-existing environmental errors
+   (isolated env without HA) across entity platforms — out of scope, repo mypy is the
+   real gate.
+
+3. **PR #10 prepped.** Branch 31 commits ahead of main, 0 behind — no rebase needed;
+   version beta11 > main's beta8 kept per the standing rule. CI triage: `python` check
+   = requirements_test.txt pip conflict (pre-existing), `hacs` = repo settings
+   (license/issues/topics, not code), `hassfest` = uppercase translation state keys +
+   http/web_rtc deps (pre-existing on main) PLUS uppercase `OK/WARNING/ERROR` states
+   the branch itself added — FIXED: the 5 safety sensors now emit
+   `SensorCheckState(...).name.lower()` and the state keys are lowercased across
+   strings.json + all 12 locales (values kept translated; no per-state icons). NOTE:
+   sensor.py + translations now differ from what's deployed on HA — include them in
+   the next deploy (previously services.py-only). PR description rewritten
+   (hardening-since-open section + validation state). MERGEABLE; left unmerged for
+   human review.
+
+4. **C4/C5/C6 reuse findings re-judged — all three skips stand.** C4: the comparison
+   is two same-instant xy tuples; `_telemetry_position_delta` wants start/end telemetry
+   dicts + availability gating — reuse means fabricating fake telemetry shapes.
+   C5: `_position_feedback_refresh_attempt` is a diagnostic multiplexer with its own
+   pacing sleep (double-sleep risk) and attempt-report shape; the settle loop's bare
+   `async_get_reports(count=5)` is the file-wide idiom. C6: `_position_feedback_raw_sources`
+   is a heavyweight raw dump (3 locations + transport/handle probing) — per-pulse reuse
+   costs more and still needs all the scaling/filtering; the real shared layer is
+   `_safe_attr_path`/`_scale_report_position`/`_latest_location`.
+
+5. **`_raw_pymammotion_execute_segment` got its software stop (+ settle poll).** Now
+   mirrors the vector executor per pulse: bounded `linear_pulse_duration_ms` (new
+   param/schema/yaml, default 300ms, range 50-4000) -> `_manual_velocity_stop_attempt`
+   -> abort `stop_failed_aborting` on undeliverable stop -> `_settle_linear_position_feed`
+   (settled/moved/wait per command). 2 new tests + no-progress test asserts the settle
+   fields. **DO NOT DEPLOY until a supervised daylight run validates it** — suggest
+   passing `linear_pulse_duration_ms: 3000-4000` on that run (taped model: sub-2s
+   pulses risk physical no-ops; default 300 mirrors the sibling schema, not the
+   proven pulse length).
+
+6. **Dormant obstacle/report telemetry during autonomous mowing — ROOT CAUSE FOUND
+   (research only, no code).** The report coordinator's `_async_update_data` NEVER
+   solicits reports — it re-reads pymammotion's in-memory state (REPORT_INTERVAL=5min
+   tick is a cache read; that's why `homeassistant.update_entity` does nothing).
+   Freshness while mowing comes entirely from pymammotion's own cadence loops:
+   - **BLE connected:** `ble_polling_loop` maintains a continuous count=0 report
+     stream in ACTIVE mode (renew 8s, stale watchdog 15s, ~1 report/s). The
+     "subscribe to DEV_STA push" idea ALREADY EXISTS on the BLE path.
+   - **Cloud only:** `mqtt_activity_loop` polls count=1 every 10-15 MINUTES in
+     ACTIVE mode (quota protection; env-overridable `MAMMOTION_POLL_ACTIVE_SECS`).
+   - `NO_REQUEST_MODES` does NOT include MODE_WORKING — not deliberately blocked.
+   Tonight's dormancy signature (only advertisement-derived ble_rssi live) means the
+   BLE connection was NOT held during the mow (app slot theft and/or range) and the
+   user runs BLE-only (cloud switch off) -> no fallback stream at all. HA already
+   auto-retries BLE on every advertisement (debounced 60s, `_add_ble_device` ->
+   `ble.connect()`), so mid-mow re-latch SHOULD happen with the app closed.
+   **Recommended next steps:** (a) live diagnosis next daylight mow, app force-closed:
+   watch `active_transport`/`ble_stream_active` — if BLE re-latches, sensors go live
+   at ~1s cadence with zero code changes; (b) if cloud-side coverage is wanted, the
+   cheap HA change is in `MammotionReportUpdateCoordinator._async_update_data`: when
+   device_mode ACTIVE and not `handle.ble_stream_active`, call
+   `async_start_report_stream(duration_ms=330_000)` per 5-min tick — RPT_START goes
+   via best transport (verified `_send_report_stream_start` uses `send_raw`), repeat
+   calls send RPT_KEEP, pushes damped by no_change_period=4000; bounded cloud cost,
+   config-gate it. Deferred: needs the user's call on cloud quota + a live mow to
+   validate; useless for the current BLE-only setup until cloud is re-enabled.
+
+**Deploy checklist changed:** next scp must include `services.py`, `services.yaml`
+(segment-test + execute-segment selectors), `sensor.py`, `strings.json`, and ALL
+`translations/*.json` (lowercase ENUM states) — then restart + re-run a multi-segment
+dry-run and check the 5 safety sensors show translated states.
