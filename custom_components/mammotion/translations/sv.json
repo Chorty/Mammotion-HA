@@ -180,41 +180,41 @@
       "bumper_status": {
         "name": "Stötfångarstatus",
         "state": {
-          "OK": "OK",
-          "WARNING": "Varning",
-          "ERROR": "Fel"
+          "ok": "OK",
+          "warning": "Varning",
+          "error": "Fel"
         }
       },
       "ultrasonic_left_status": {
         "name": "Ultraljudsstatus vänster",
         "state": {
-          "OK": "OK",
-          "WARNING": "Varning",
-          "ERROR": "Fel"
+          "ok": "OK",
+          "warning": "Varning",
+          "error": "Fel"
         }
       },
       "ultrasonic_left_front_status": {
         "name": "Ultraljudsstatus vänster fram",
         "state": {
-          "OK": "OK",
-          "WARNING": "Varning",
-          "ERROR": "Fel"
+          "ok": "OK",
+          "warning": "Varning",
+          "error": "Fel"
         }
       },
       "ultrasonic_right_front_status": {
         "name": "Ultraljudsstatus höger fram",
         "state": {
-          "OK": "OK",
-          "WARNING": "Varning",
-          "ERROR": "Fel"
+          "ok": "OK",
+          "warning": "Varning",
+          "error": "Fel"
         }
       },
       "ultrasonic_right_status": {
         "name": "Ultraljudsstatus höger",
         "state": {
-          "OK": "OK",
-          "WARNING": "Varning",
-          "ERROR": "Fel"
+          "ok": "OK",
+          "warning": "Varning",
+          "error": "Fel"
         }
       },
       "fuse_status": {

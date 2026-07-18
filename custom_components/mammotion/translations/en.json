@@ -191,41 +191,41 @@
       "bumper_status": {
         "name": "Bumper status",
         "state": {
-          "OK": "OK",
-          "WARNING": "Warning",
-          "ERROR": "Error"
+          "ok": "OK",
+          "warning": "Warning",
+          "error": "Error"
         }
       },
       "ultrasonic_left_status": {
         "name": "Left ultrasonic status",
         "state": {
-          "OK": "OK",
-          "WARNING": "Warning",
-          "ERROR": "Error"
+          "ok": "OK",
+          "warning": "Warning",
+          "error": "Error"
         }
       },
       "ultrasonic_left_front_status": {
         "name": "Left-front ultrasonic status",
         "state": {
-          "OK": "OK",
-          "WARNING": "Warning",
-          "ERROR": "Error"
+          "ok": "OK",
+          "warning": "Warning",
+          "error": "Error"
         }
       },
       "ultrasonic_right_front_status": {
         "name": "Right-front ultrasonic status",
         "state": {
-          "OK": "OK",
-          "WARNING": "Warning",
-          "ERROR": "Error"
+          "ok": "OK",
+          "warning": "Warning",
+          "error": "Error"
         }
       },
       "ultrasonic_right_status": {
         "name": "Right ultrasonic status",
         "state": {
-          "OK": "OK",
-          "WARNING": "Warning",
-          "ERROR": "Error"
+          "ok": "OK",
+          "warning": "Warning",
+          "error": "Error"
         }
       },
       "fuse_status": {

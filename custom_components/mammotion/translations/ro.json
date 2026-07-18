@@ -180,41 +180,41 @@
       "bumper_status": {
         "name": "Stare bară de protecție",
         "state": {
-          "OK": "OK",
-          "WARNING": "Avertisment",
-          "ERROR": "Eroare"
+          "ok": "OK",
+          "warning": "Avertisment",
+          "error": "Eroare"
         }
       },
       "ultrasonic_left_status": {
         "name": "Stare ultrasonic stânga",
         "state": {
-          "OK": "OK",
-          "WARNING": "Avertisment",
-          "ERROR": "Eroare"
+          "ok": "OK",
+          "warning": "Avertisment",
+          "error": "Eroare"
         }
       },
       "ultrasonic_left_front_status": {
         "name": "Stare ultrasonic față stânga",
         "state": {
-          "OK": "OK",
-          "WARNING": "Avertisment",
-          "ERROR": "Eroare"
+          "ok": "OK",
+          "warning": "Avertisment",
+          "error": "Eroare"
         }
       },
       "ultrasonic_right_front_status": {
         "name": "Stare ultrasonic față dreapta",
         "state": {
-          "OK": "OK",
-          "WARNING": "Avertisment",
-          "ERROR": "Eroare"
+          "ok": "OK",
+          "warning": "Avertisment",
+          "error": "Eroare"
         }
       },
       "ultrasonic_right_status": {
         "name": "Stare ultrasonic dreapta",
         "state": {
-          "OK": "OK",
-          "WARNING": "Avertisment",
-          "ERROR": "Eroare"
+          "ok": "OK",
+          "warning": "Avertisment",
+          "error": "Eroare"
         }
       },
       "fuse_status": {

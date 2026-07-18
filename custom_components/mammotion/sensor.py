@@ -246,7 +246,7 @@ LUBA_2_YUKA_ONLY_TYPES: tuple[MammotionSensorEntityDescription, ...] = (
         native_unit_of_measurement=None,
         value_fn=lambda mower_data: SensorCheckState(
             mower_data.report_data.dev.bumper_state
-        ).name,
+        ).name.lower(),
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     MammotionSensorEntityDescription(
@@ -256,7 +256,7 @@ LUBA_2_YUKA_ONLY_TYPES: tuple[MammotionSensorEntityDescription, ...] = (
         native_unit_of_measurement=None,
         value_fn=lambda mower_data: SensorCheckState(
             mower_data.report_data.dev.ult_left
-        ).name,
+        ).name.lower(),
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     MammotionSensorEntityDescription(
@@ -266,7 +266,7 @@ LUBA_2_YUKA_ONLY_TYPES: tuple[MammotionSensorEntityDescription, ...] = (
         native_unit_of_measurement=None,
         value_fn=lambda mower_data: SensorCheckState(
             mower_data.report_data.dev.ult_left_front
-        ).name,
+        ).name.lower(),
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     MammotionSensorEntityDescription(
@@ -276,7 +276,7 @@ LUBA_2_YUKA_ONLY_TYPES: tuple[MammotionSensorEntityDescription, ...] = (
         native_unit_of_measurement=None,
         value_fn=lambda mower_data: SensorCheckState(
             mower_data.report_data.dev.ult_right_front
-        ).name,
+        ).name.lower(),
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     MammotionSensorEntityDescription(
@@ -286,7 +286,7 @@ LUBA_2_YUKA_ONLY_TYPES: tuple[MammotionSensorEntityDescription, ...] = (
         native_unit_of_measurement=None,
         value_fn=lambda mower_data: SensorCheckState(
             mower_data.report_data.dev.ult_right
-        ).name,
+        ).name.lower(),
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     MammotionSensorEntityDescription(

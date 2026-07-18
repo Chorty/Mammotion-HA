@@ -180,41 +180,41 @@
       "bumper_status": {
         "name": "Stanje odbijača",
         "state": {
-          "OK": "OK",
-          "WARNING": "Opozorilo",
-          "ERROR": "Napaka"
+          "ok": "OK",
+          "warning": "Opozorilo",
+          "error": "Napaka"
         }
       },
       "ultrasonic_left_status": {
         "name": "Stanje ultrazvočnega senzorja levo",
         "state": {
-          "OK": "OK",
-          "WARNING": "Opozorilo",
-          "ERROR": "Napaka"
+          "ok": "OK",
+          "warning": "Opozorilo",
+          "error": "Napaka"
         }
       },
       "ultrasonic_left_front_status": {
         "name": "Stanje ultrazvočnega senzorja levo spredaj",
         "state": {
-          "OK": "OK",
-          "WARNING": "Opozorilo",
-          "ERROR": "Napaka"
+          "ok": "OK",
+          "warning": "Opozorilo",
+          "error": "Napaka"
         }
       },
       "ultrasonic_right_front_status": {
         "name": "Stanje ultrazvočnega senzorja desno spredaj",
         "state": {
-          "OK": "OK",
-          "WARNING": "Opozorilo",
-          "ERROR": "Napaka"
+          "ok": "OK",
+          "warning": "Opozorilo",
+          "error": "Napaka"
         }
       },
       "ultrasonic_right_status": {
         "name": "Stanje ultrazvočnega senzorja desno",
         "state": {
-          "OK": "OK",
-          "WARNING": "Opozorilo",
-          "ERROR": "Napaka"
+          "ok": "OK",
+          "warning": "Opozorilo",
+          "error": "Napaka"
         }
       },
       "fuse_status": {

@@ -180,41 +180,41 @@
       "bumper_status": {
         "name": "Stav nárazníku",
         "state": {
-          "OK": "OK",
-          "WARNING": "Varování",
-          "ERROR": "Chyba"
+          "ok": "OK",
+          "warning": "Varování",
+          "error": "Chyba"
         }
       },
       "ultrasonic_left_status": {
         "name": "Stav ultrazvukového snímače vlevo",
         "state": {
-          "OK": "OK",
-          "WARNING": "Varování",
-          "ERROR": "Chyba"
+          "ok": "OK",
+          "warning": "Varování",
+          "error": "Chyba"
         }
       },
       "ultrasonic_left_front_status": {
         "name": "Stav ultrazvukového snímače vlevo vpředu",
         "state": {
-          "OK": "OK",
-          "WARNING": "Varování",
-          "ERROR": "Chyba"
+          "ok": "OK",
+          "warning": "Varování",
+          "error": "Chyba"
         }
       },
       "ultrasonic_right_front_status": {
         "name": "Stav ultrazvukového snímače vpravo vpředu",
         "state": {
-          "OK": "OK",
-          "WARNING": "Varování",
-          "ERROR": "Chyba"
+          "ok": "OK",
+          "warning": "Varování",
+          "error": "Chyba"
         }
       },
       "ultrasonic_right_status": {
         "name": "Stav ultrazvukového snímače vpravo",
         "state": {
-          "OK": "OK",
-          "WARNING": "Varování",
-          "ERROR": "Chyba"
+          "ok": "OK",
+          "warning": "Varování",
+          "error": "Chyba"
         }
       },
       "fuse_status": {

@@ -180,41 +180,41 @@
       "bumper_status": {
         "name": "État du pare-chocs",
         "state": {
-          "OK": "OK",
-          "WARNING": "Avertissement",
-          "ERROR": "Erreur"
+          "ok": "OK",
+          "warning": "Avertissement",
+          "error": "Erreur"
         }
       },
       "ultrasonic_left_status": {
         "name": "État ultrason gauche",
         "state": {
-          "OK": "OK",
-          "WARNING": "Avertissement",
-          "ERROR": "Erreur"
+          "ok": "OK",
+          "warning": "Avertissement",
+          "error": "Erreur"
         }
       },
       "ultrasonic_left_front_status": {
         "name": "État ultrason avant gauche",
         "state": {
-          "OK": "OK",
-          "WARNING": "Avertissement",
-          "ERROR": "Erreur"
+          "ok": "OK",
+          "warning": "Avertissement",
+          "error": "Erreur"
         }
       },
       "ultrasonic_right_front_status": {
         "name": "État ultrason avant droit",
         "state": {
-          "OK": "OK",
-          "WARNING": "Avertissement",
-          "ERROR": "Erreur"
+          "ok": "OK",
+          "warning": "Avertissement",
+          "error": "Erreur"
         }
       },
       "ultrasonic_right_status": {
         "name": "État ultrason droit",
         "state": {
-          "OK": "OK",
-          "WARNING": "Avertissement",
-          "ERROR": "Erreur"
+          "ok": "OK",
+          "warning": "Avertissement",
+          "error": "Erreur"
         }
       },
       "fuse_status": {

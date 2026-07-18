@@ -180,41 +180,41 @@
       "bumper_status": {
         "name": "Stato paraurti",
         "state": {
-          "OK": "OK",
-          "WARNING": "Avviso",
-          "ERROR": "Errore"
+          "ok": "OK",
+          "warning": "Avviso",
+          "error": "Errore"
         }
       },
       "ultrasonic_left_status": {
         "name": "Stato ultrasuoni sinistra",
         "state": {
-          "OK": "OK",
-          "WARNING": "Avviso",
-          "ERROR": "Errore"
+          "ok": "OK",
+          "warning": "Avviso",
+          "error": "Errore"
         }
       },
       "ultrasonic_left_front_status": {
         "name": "Stato ultrasuoni anteriore sinistra",
         "state": {
-          "OK": "OK",
-          "WARNING": "Avviso",
-          "ERROR": "Errore"
+          "ok": "OK",
+          "warning": "Avviso",
+          "error": "Errore"
         }
       },
       "ultrasonic_right_front_status": {
         "name": "Stato ultrasuoni anteriore destra",
         "state": {
-          "OK": "OK",
-          "WARNING": "Avviso",
-          "ERROR": "Errore"
+          "ok": "OK",
+          "warning": "Avviso",
+          "error": "Errore"
         }
       },
       "ultrasonic_right_status": {
         "name": "Stato ultrasuoni destra",
         "state": {
-          "OK": "OK",
-          "WARNING": "Avviso",
-          "ERROR": "Errore"
+          "ok": "OK",
+          "warning": "Avviso",
+          "error": "Errore"
         }
       },
       "fuse_status": {

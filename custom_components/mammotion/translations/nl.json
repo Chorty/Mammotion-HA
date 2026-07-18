@@ -180,41 +180,41 @@
       "bumper_status": {
         "name": "Bumperstatus",
         "state": {
-          "OK": "OK",
-          "WARNING": "Waarschuwing",
-          "ERROR": "Fout"
+          "ok": "OK",
+          "warning": "Waarschuwing",
+          "error": "Fout"
         }
       },
       "ultrasonic_left_status": {
         "name": "Status ultrasoon links",
         "state": {
-          "OK": "OK",
-          "WARNING": "Waarschuwing",
-          "ERROR": "Fout"
+          "ok": "OK",
+          "warning": "Waarschuwing",
+          "error": "Fout"
         }
       },
       "ultrasonic_left_front_status": {
         "name": "Status ultrasoon linksvoor",
         "state": {
-          "OK": "OK",
-          "WARNING": "Waarschuwing",
-          "ERROR": "Fout"
+          "ok": "OK",
+          "warning": "Waarschuwing",
+          "error": "Fout"
         }
       },
       "ultrasonic_right_front_status": {
         "name": "Status ultrasoon rechtsvoor",
         "state": {
-          "OK": "OK",
-          "WARNING": "Waarschuwing",
-          "ERROR": "Fout"
+          "ok": "OK",
+          "warning": "Waarschuwing",
+          "error": "Fout"
         }
       },
       "ultrasonic_right_status": {
         "name": "Status ultrasoon rechts",
         "state": {
-          "OK": "OK",
-          "WARNING": "Waarschuwing",
-          "ERROR": "Fout"
+          "ok": "OK",
+          "warning": "Waarschuwing",
+          "error": "Fout"
         }
       },
       "fuse_status": {

@@ -180,41 +180,41 @@
       "bumper_status": {
         "name": "Ütköző állapota",
         "state": {
-          "OK": "OK",
-          "WARNING": "Figyelmeztetés",
-          "ERROR": "Hiba"
+          "ok": "OK",
+          "warning": "Figyelmeztetés",
+          "error": "Hiba"
         }
       },
       "ultrasonic_left_status": {
         "name": "Bal ultrahang állapota",
         "state": {
-          "OK": "OK",
-          "WARNING": "Figyelmeztetés",
-          "ERROR": "Hiba"
+          "ok": "OK",
+          "warning": "Figyelmeztetés",
+          "error": "Hiba"
         }
       },
       "ultrasonic_left_front_status": {
         "name": "Bal elülső ultrahang állapota",
         "state": {
-          "OK": "OK",
-          "WARNING": "Figyelmeztetés",
-          "ERROR": "Hiba"
+          "ok": "OK",
+          "warning": "Figyelmeztetés",
+          "error": "Hiba"
         }
       },
       "ultrasonic_right_front_status": {
         "name": "Jobb elülső ultrahang állapota",
         "state": {
-          "OK": "OK",
-          "WARNING": "Figyelmeztetés",
-          "ERROR": "Hiba"
+          "ok": "OK",
+          "warning": "Figyelmeztetés",
+          "error": "Hiba"
         }
       },
       "ultrasonic_right_status": {
         "name": "Jobb ultrahang állapota",
         "state": {
-          "OK": "OK",
-          "WARNING": "Figyelmeztetés",
-          "ERROR": "Hiba"
+          "ok": "OK",
+          "warning": "Figyelmeztetés",
+          "error": "Hiba"
         }
       },
       "fuse_status": {

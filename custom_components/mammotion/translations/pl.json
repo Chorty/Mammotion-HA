@@ -180,41 +180,41 @@
       "bumper_status": {
         "name": "Stan zderzaka",
         "state": {
-          "OK": "OK",
-          "WARNING": "Ostrzeżenie",
-          "ERROR": "Błąd"
+          "ok": "OK",
+          "warning": "Ostrzeżenie",
+          "error": "Błąd"
         }
       },
       "ultrasonic_left_status": {
         "name": "Stan czujnika ultradźwiękowego lewego",
         "state": {
-          "OK": "OK",
-          "WARNING": "Ostrzeżenie",
-          "ERROR": "Błąd"
+          "ok": "OK",
+          "warning": "Ostrzeżenie",
+          "error": "Błąd"
         }
       },
       "ultrasonic_left_front_status": {
         "name": "Stan czujnika ultradźwiękowego lewego przedniego",
         "state": {
-          "OK": "OK",
-          "WARNING": "Ostrzeżenie",
-          "ERROR": "Błąd"
+          "ok": "OK",
+          "warning": "Ostrzeżenie",
+          "error": "Błąd"
         }
       },
       "ultrasonic_right_front_status": {
         "name": "Stan czujnika ultradźwiękowego prawego przedniego",
         "state": {
-          "OK": "OK",
-          "WARNING": "Ostrzeżenie",
-          "ERROR": "Błąd"
+          "ok": "OK",
+          "warning": "Ostrzeżenie",
+          "error": "Błąd"
         }
       },
       "ultrasonic_right_status": {
         "name": "Stan czujnika ultradźwiękowego prawego",
         "state": {
-          "OK": "OK",
-          "WARNING": "Ostrzeżenie",
-          "ERROR": "Błąd"
+          "ok": "OK",
+          "warning": "Ostrzeżenie",
+          "error": "Błąd"
         }
       },
       "fuse_status": {
