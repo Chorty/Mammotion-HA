@@ -1299,6 +1299,9 @@ def test_manual_velocity_pulse_schema_allows_emergency_nudge_speed() -> None:
                 "max_commands": 3,
                 "waypoint_tolerance": 0.08,
                 "min_progress_distance": 0.01,
+                # The handler reads this for the software-stop pulse bound;
+                # covered by the generic parity sweep too.
+                "linear_pulse_duration_ms": 300.0,
                 "sample_delays": [0.0, 5.0, 10.0, 20.0, 30.0, 45.0, 60.0],
             },
         ),
@@ -3074,9 +3077,10 @@ async def test_raw_pymammotion_execute_segment_stops_on_no_progress(
     assert result["commands_sent"] == 1
     assert result["stop_reason"] == "no_target_progress"
     assert result["progress_diagnostics"][0]["status"] == "no_path_progress"
-    # This older executor issues no software stop, so it deliberately does NOT run
-    # the position-settle poll (which would prolong blind motion); it still records
-    # the dual-source comparison for the phantom-motion investigation.
+    # With the explicit software stop in place this executor now also runs the
+    # position-settle poll; a no-op pulse never registers movement.
+    assert result["command_results"][0]["position_settled"] is False
+    assert result["command_results"][0]["position_moved"] is False
     assert "position_source_comparison" in result["command_results"][0]
 
 
@@ -3116,6 +3120,69 @@ async def test_raw_pymammotion_execute_segment_stops_after_max_commands(
     assert result["commands_sent"] == 2
     assert result["stop_reason"] == "max_commands_reached"
     assert result["progress_diagnostics"][-1]["passed"] is True
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_execute_segment_sends_explicit_stop_after_pulse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each real raw-segment pulse is followed by an explicit software stop.
+
+    This executor used to rely on firmware auto-stop only (the reason the
+    position-settle poll was reverted from it); it now mirrors the vector
+    executor: bounded pulse -> stop primitive -> settle poll.
+    """
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _raw_pymammotion_execute_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.0, "y": 0.7}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        prefer_ble=True,
+        sample_delays=(0,),
+    )
+
+    assert result["commands_sent"] == 1
+    coordinator.async_stop_manual_motion.assert_awaited_once_with(use_wifi=False)
+    command_result = result["command_results"][0]
+    assert command_result["stop_result"]["ok"] is True
+    assert command_result["position_settled"] is False
+
+
+@pytest.mark.asyncio
+async def test_raw_pymammotion_execute_segment_aborts_when_stop_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An undeliverable stop aborts the raw segment run immediately."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.async_stop_manual_motion.return_value = False
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    result = await _raw_pymammotion_execute_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.0, "y": 0.7}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        max_commands=3,
+        sample_delays=(0,),
+    )
+
+    assert result["stop_reason"] == "stop_failed_aborting"
+    assert result["commands_sent"] == 1
+    assert result["command_results"][0]["stop_result"]["ok"] is False
+    coordinator.manager.send_command_with_args.assert_awaited_once()
 
 
 @pytest.mark.asyncio

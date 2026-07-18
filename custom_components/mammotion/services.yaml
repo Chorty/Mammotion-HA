@@ -1324,6 +1324,15 @@ raw_pymammotion_execute_segment:
           max: 0.5
           step: 0.005
           unit_of_measurement: m
+    linear_pulse_duration_ms:
+      required: false
+      default: 300
+      selector:
+        number:
+          min: 50
+          max: 4000
+          step: 50
+          unit_of_measurement: ms
     sample_delays:
       required: false
       default:

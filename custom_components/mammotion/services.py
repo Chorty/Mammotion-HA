@@ -752,6 +752,9 @@ RAW_PYMAMMOTION_EXECUTE_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("min_progress_distance", default=0.01): vol.All(
             vol.Coerce(float), vol.Range(min=0.0, max=0.5)
         ),
+        vol.Optional("linear_pulse_duration_ms", default=300.0): vol.All(
+            vol.Coerce(float), vol.Range(min=50.0, max=4000.0)
+        ),
         vol.Optional("sample_delays", default=[0, 5, 10, 20, 30, 45, 60]): vol.All(
             cv.ensure_list,
             [vol.All(vol.Coerce(float), vol.Range(min=0.0, max=120.0))],
@@ -5689,11 +5692,18 @@ async def _raw_pymammotion_execute_segment(  # noqa: C901, PLR0913
     max_commands: int = 3,
     waypoint_tolerance: float = 0.08,
     min_progress_distance: float = 0.01,
+    linear_pulse_duration_ms: float = 300.0,
     sample_delays: list[float] | tuple[float, ...] = (0, 5, 10, 20, 30, 45, 60),
     ha_state: str | None = None,
     active_route: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Execute or dry-run one calibrated raw Y-axis segment."""
+    """Execute or dry-run one calibrated raw Y-axis segment.
+
+    Each real pulse is bounded by ``linear_pulse_duration_ms`` and followed by
+    an explicit software stop (mirroring the vector executor) instead of
+    relying on firmware auto-stop; an undeliverable stop aborts the run
+    (``stop_failed_aborting``).
+    """
     preview = _preview_custom_path(
         coordinator,
         points,
@@ -5791,6 +5801,7 @@ async def _raw_pymammotion_execute_segment(  # noqa: C901, PLR0913
         "max_commands": max_commands,
         "waypoint_tolerance": waypoint_tolerance,
         "min_progress_distance": min_progress_distance,
+        "linear_pulse_duration_ms": linear_pulse_duration_ms,
         "sample_delays": list(sample_delays),
         "confirm_blades_off": confirm_blades_off,
         "confirm_clear_area": confirm_clear_area,
@@ -5935,16 +5946,28 @@ async def _raw_pymammotion_execute_segment(  # noqa: C901, PLR0913
         if command_result["ok"] is not True:
             result["stop_reason"] = "command_failed"
             return result
+        await asyncio.sleep(linear_pulse_duration_ms / 1000)
+        command_result["stop_result"] = await _manual_velocity_stop_attempt(
+            coordinator, use_wifi=not prefer_ble
+        )
+        if not (command_result["stop_result"] or {}).get("ok"):
+            # Never keep driving when stops are not deliverable (BLE cooldown,
+            # transport loss); abort immediately.
+            result["stop_reason"] = "stop_failed_aborting"
+            return result
         command_result["post_command_feedback_refresh"] = (
             await _refresh_position_after_raw_motion(coordinator)
         )
+        # With the pulse now software-stopped (above), wait for the lagged
+        # map-local feed to register and settle this pulse's motion before
+        # sampling, mirroring the vector executor.
+        position_settle = await _settle_linear_position_feed(coordinator, before)
+        command_result["position_settled"] = position_settle["settled"]
+        command_result["position_moved"] = position_settle["moved"]
+        command_result["position_settle_wait_seconds"] = position_settle["wait_seconds"]
         # Phantom-motion investigation instrumentation (capture only): log both
         # position sources + RTK quality so a later run can tell a real move from a
-        # feed-jump on a no-op pulse. NOTE: the vector executor's position-settle
-        # poll is intentionally NOT applied here -- this older executor issues no
-        # explicit software stop (it relies on firmware auto-stop), so a settle
-        # wait would only prolong blind firmware-dependent motion before sampling.
-        # Giving this executor a real stop is the prerequisite follow-up.
+        # feed-jump on a no-op pulse.
         command_result["position_source_comparison"] = _position_source_comparison(
             coordinator
         )
@@ -10845,6 +10868,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             max_commands=call.data["max_commands"],
             waypoint_tolerance=call.data["waypoint_tolerance"],
             min_progress_distance=call.data["min_progress_distance"],
+            linear_pulse_duration_ms=call.data["linear_pulse_duration_ms"],
             sample_delays=tuple(call.data["sample_delays"]),
             ha_state=ha_state.state if ha_state is not None else None,
             active_route=active_route,
