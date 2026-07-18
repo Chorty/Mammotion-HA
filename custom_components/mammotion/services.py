@@ -5019,7 +5019,7 @@ def _vio_scene_brightness(
 
     One place for the (historically fragile) ``vision_info.brightness`` read plus
     the ``camera_brightness()`` mapping, shared by ``_vio_scene_is_bright`` and
-    ``_vio_feed_liveness``. Label is None when brightness is absent or unparseable.
+    ``_vio_feed_liveness``. Label is None when brightness is absent or unparsable.
     """
     raw = _safe_attr_path(coordinator.data, "report_data.vision_info.brightness")
     label: str | None = None
