@@ -366,6 +366,15 @@ MANUAL_VELOCITY_SEGMENT_TEST_SCHEMA = vol.Schema(
         vol.Optional("force_action", default="auto"): vol.In(
             ["auto", "forward", "backward", "turn_left", "turn_right"]
         ),
+        # The handler reads call.data["stop_mode"]/["stop_delay_ms"]; without these
+        # defaults any call omitting them raises KeyError -> HTTP 500 (same class
+        # as the multi-segment ble_auto_recover bug).
+        vol.Optional("stop_mode", default="immediate"): vol.In(
+            ["immediate", "delayed", "firmware"]
+        ),
+        vol.Optional("stop_delay_ms", default=0): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=5000)
+        ),
         vol.Optional("heading_offset_degrees", default=0.0): vol.All(
             vol.Coerce(float), vol.Range(min=-180.0, max=180.0)
         ),

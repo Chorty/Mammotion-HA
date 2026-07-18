@@ -667,6 +667,24 @@ manual_velocity_segment_test:
             - "backward"
             - "turn_left"
             - "turn_right"
+    stop_mode:
+      required: false
+      default: "immediate"
+      selector:
+        select:
+          options:
+            - "immediate"
+            - "delayed"
+            - "firmware"
+    stop_delay_ms:
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 5000
+          step: 250
+          unit_of_measurement: ms
     heading_offset_degrees:
       required: false
       default: 0.0

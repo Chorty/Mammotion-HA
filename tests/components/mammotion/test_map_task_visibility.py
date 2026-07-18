@@ -1,5 +1,6 @@
 """Tests for Mammotion read-only map/task visibility helpers."""
 
+import ast
 import datetime
 import json
 import pathlib
@@ -7,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+import voluptuous as vol
 import yaml
 from homeassistant.exceptions import HomeAssistantError
 from pymammotion.data.model.hash_list import Plan
@@ -1410,6 +1412,213 @@ def test_motion_and_vector_schema_defaults_parameterized(
     parsed = schema(payload)
     for key, value in expected.items():
         assert parsed[key] == value
+
+
+# ---------------------------------------------------------------------------
+# Schema/handler key parity.
+#
+# Every call.data["key"] subscript read in a service handler must resolve after
+# schema validation of a minimal payload (vol.Required, or vol.Optional with a
+# default). Otherwise any caller omitting the key gets KeyError -> HTTP 500 —
+# the multi-segment ble_auto_recover / segment-test stop_mode regression class.
+# Executor-level tests bypass the service schema, so this sweep is the only
+# coverage of the handler<->schema contract.
+# ---------------------------------------------------------------------------
+
+_SERVICES_AST = ast.parse(
+    pathlib.Path(mammotion_services.__file__).read_text(encoding="utf-8")
+)
+
+
+def _collect_function_defs() -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
+    """Index every function definition in services.py by name, nested included."""
+    defs: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
+    for node in ast.walk(_SERVICES_AST):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            defs.setdefault(node.name, node)
+    return defs
+
+
+_FUNCTION_DEFS = _collect_function_defs()
+
+
+def _resolve_key_node(node: ast.expr) -> str | None:
+    """Resolve an AST key node (string literal or module constant) to a string."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.Name):
+        value = getattr(mammotion_services, node.id, None)
+        return value if isinstance(value, str) else None
+    return None
+
+
+def _is_call_data_attribute(node: ast.expr) -> bool:
+    """Return True when the node is the ``call.data`` attribute access."""
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == "data"
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "call"
+    )
+
+
+def _direct_call_data_reads(fn: ast.AST) -> set[str]:
+    """Collect keys read via ``call.data[...]`` subscripts inside a function."""
+    reads: set[str] = set()
+    for node in ast.walk(fn):
+        if isinstance(node, ast.Subscript) and _is_call_data_attribute(node.value):
+            key = _resolve_key_node(node.slice)
+            if key is not None:
+                reads.add(key)
+    return reads
+
+
+def _membership_guarded_keys(fn: ast.AST) -> set[str]:
+    """Collect keys the function membership-tests via ``"key" in call.data``."""
+    guarded: set[str] = set()
+    for node in ast.walk(fn):
+        if (
+            isinstance(node, ast.Compare)
+            and len(node.ops) == 1
+            and isinstance(node.ops[0], ast.In)
+            and _is_call_data_attribute(node.comparators[0])
+        ):
+            key = _resolve_key_node(node.left)
+            if key is not None:
+                guarded.add(key)
+    return guarded
+
+
+def _callees_passed_call(fn: ast.AST) -> set[str]:
+    """Collect names of functions this function calls with ``call`` as an arg."""
+    callees: set[str] = set()
+    for node in ast.walk(fn):
+        if not isinstance(node, ast.Call):
+            continue
+        passes_call = any(
+            isinstance(arg, ast.Name) and arg.id == "call" for arg in node.args
+        ) or any(
+            isinstance(kw.value, ast.Name) and kw.value.id == "call"
+            for kw in node.keywords
+        )
+        if not passes_call:
+            continue
+        if isinstance(node.func, ast.Name):
+            callees.add(node.func.id)
+        elif isinstance(node.func, ast.Attribute):
+            callees.add(node.func.attr)
+    return callees
+
+
+def _handler_call_data_keys(handler_name: str, _depth: int = 0) -> set[str]:
+    """Unguarded call.data keys a handler reads, following call-passing helpers."""
+    fn = _FUNCTION_DEFS.get(handler_name)
+    if fn is None or _depth > 3:
+        return set()
+    keys = _direct_call_data_reads(fn) - _membership_guarded_keys(fn)
+    for callee in _callees_passed_call(fn):
+        if callee != handler_name:
+            keys |= _handler_call_data_keys(callee, _depth + 1)
+    return keys
+
+
+def _service_schema_registrations() -> list[tuple[str, str, str | None]]:
+    """Map every async_register call to (service label, handler, schema name)."""
+    registrations: list[tuple[str, str, str | None]] = []
+    for node in ast.walk(_SERVICES_AST):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "async_register"
+        ):
+            continue
+        args = node.args
+        handler_node = args[2] if len(args) > 2 else None
+        schema_node: ast.expr | None = args[3] if len(args) > 3 else None
+        for keyword in node.keywords:
+            if keyword.arg == "schema":
+                schema_node = keyword.value
+        if not isinstance(handler_node, ast.Name):
+            continue
+        schema_name = schema_node.id if isinstance(schema_node, ast.Name) else None
+        service_label = (
+            _resolve_key_node(args[1]) if len(args) > 1 else None
+        ) or handler_node.id
+        registrations.append((service_label, handler_node.id, schema_name))
+    return registrations
+
+
+_SERVICE_REGISTRATIONS = _service_schema_registrations()
+
+_MINIMAL_REQUIRED_SAMPLES: dict[str, object] = {
+    "entity_id": "lawn_mower.test",
+    "name": "Test task",
+    "enabled": True,
+    "points": [{"x": 1.0, "y": 1.0}, {"x": 1.2, "y": 1.0}],
+    "target_vision_heading": 90.0,
+    "target_heading_degrees": 90.0,
+    "dry_run": False,
+    "confirm_blades_off": True,
+    "confirm_clear_area": True,
+    "area_hash": 12345,
+    "device_hash": 67890,
+    "svg_data": "<svg></svg>",
+}
+
+
+def _minimal_valid_payload(schema: vol.Schema) -> dict[str, object]:
+    """Build the smallest payload that satisfies the schema's required keys."""
+    payload: dict[str, object] = {}
+    for marker in schema.schema:
+        if not isinstance(marker, vol.Required):
+            continue
+        key = marker.schema
+        assert key in _MINIMAL_REQUIRED_SAMPLES, (
+            f"add a sample value for new required schema key {key!r} to"
+            " _MINIMAL_REQUIRED_SAMPLES"
+        )
+        payload[key] = _MINIMAL_REQUIRED_SAMPLES[key]
+    return payload
+
+
+def test_service_registration_discovery_is_complete() -> None:
+    """The AST sweep keeps seeing the full service surface and known reads."""
+    assert len(_SERVICE_REGISTRATIONS) >= 45
+    assert "ble_auto_recover" in _handler_call_data_keys(
+        "handle_raw_pymammotion_execute_multi_segment"
+    )
+    assert "stop_mode" in _handler_call_data_keys(
+        "handle_manual_velocity_segment_test"
+    )
+    # Indirection: the movement services read speed/use_wifi via handle_movement.
+    assert "speed" in _handler_call_data_keys("handle_directional_movement")
+
+
+@pytest.mark.parametrize(
+    ("service_label", "handler_name", "schema_name"),
+    _SERVICE_REGISTRATIONS,
+    ids=[registration[0] for registration in _SERVICE_REGISTRATIONS],
+)
+def test_handler_read_keys_resolve_from_schema_defaults(
+    service_label: str, handler_name: str, schema_name: str | None
+) -> None:
+    """Every unguarded call.data[...] read resolves on a minimal service call."""
+    read_keys = _handler_call_data_keys(handler_name)
+    if schema_name is None:
+        assert not read_keys, (
+            f"{service_label}: handler {handler_name} reads call.data keys"
+            f" {sorted(read_keys)} but is registered without a schema"
+        )
+        return
+    schema = getattr(mammotion_services, schema_name)
+    parsed = schema(_minimal_valid_payload(schema))
+    missing = sorted(key for key in read_keys if key not in parsed)
+    assert not missing, (
+        f"{service_label}: handler {handler_name} reads call.data[...] for"
+        f" {missing} but {schema_name} does not guarantee them on a minimal"
+        " call — declare vol.Required or vol.Optional with a default"
+        " (KeyError -> HTTP 500 regression class)"
+    )
 
 
 @pytest.mark.asyncio
