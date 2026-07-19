@@ -1,6 +1,7 @@
 """Tests for Mammotion read-only map/task visibility helpers."""
 
 import ast
+import asyncio
 import datetime
 import json
 import pathlib
@@ -52,6 +53,7 @@ from custom_components.mammotion.services import (
     _export_mower_tasks,
     _export_runtime_state,
     _forward_two_pulse_latency_test,
+    _is_zero_motion_stop_nudge,
     _manual_velocity_best_heading_decision,
     _manual_velocity_controller_decision,
     _manual_velocity_cumulative_pulse_test,
@@ -59,6 +61,7 @@ from custom_components.mammotion.services import (
     _manual_velocity_path_progress_diagnostic,
     _manual_velocity_pulse_test,
     _manual_velocity_segment_test,
+    _motion_open_sleep,
     _normalize_mower_areas,
     _normalize_mower_tasks,
     _position_feedback_diagnostic,
@@ -81,6 +84,7 @@ from custom_components.mammotion.services import (
     _vio_segment_calibration_drive,
     _vio_turn_probe,
     _vio_turn_to_heading,
+    _wrap_exclusive_manual_motion,
 )
 
 LARGE_HASH = 9_223_372_036_854_775_000
@@ -1541,6 +1545,16 @@ def _service_schema_registrations() -> list[tuple[str, str, str | None]]:
         for keyword in node.keywords:
             if keyword.arg == "schema":
                 schema_node = keyword.value
+        if (
+            isinstance(handler_node, ast.Call)
+            and isinstance(handler_node.func, ast.Name)
+            and handler_node.func.id == "_wrap_exclusive_manual_motion"
+            and len(handler_node.args) > 2
+        ):
+            # The per-mower exclusivity guard wraps the real handler at
+            # registration time; parity must keep checking the handler's
+            # call.data reads (the guard itself only uses .get()).
+            handler_node = handler_node.args[2]
         if not isinstance(handler_node, ast.Name):
             continue
         schema_name = schema_node.id if isinstance(schema_node, ast.Name) else None
@@ -6822,4 +6836,219 @@ def test_services_yaml_has_matching_strings_entries() -> None:
     assert not now_documented, (
         f"Service(s) {sorted(now_documented)} now have strings.json entries -- remove them "
         "from known_undocumented in this test to keep the allowlist honest."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Cancellation-safe motion stop + per-mower manual-motion exclusivity
+# (2026-07-18 adversarial-review fixes)
+# ---------------------------------------------------------------------------
+
+
+async def test_motion_open_sleep_normal_path_sends_no_stop() -> None:
+    """An uncancelled pulse sleep must not add an extra stop of its own."""
+    coordinator = SimpleNamespace(async_stop_manual_motion=AsyncMock())
+    await _motion_open_sleep(coordinator, 0)
+    coordinator.async_stop_manual_motion.assert_not_called()
+
+
+async def test_motion_open_sleep_delivers_stop_on_cancellation() -> None:
+    """Cancellation mid-pulse delivers the mandatory stop before re-raising."""
+    coordinator = SimpleNamespace(async_stop_manual_motion=AsyncMock())
+    task = asyncio.create_task(_motion_open_sleep(coordinator, 30.0))
+    await asyncio.sleep(0)  # let the task enter the pulse sleep
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    coordinator.async_stop_manual_motion.assert_awaited_once()
+
+
+async def test_motion_open_sleep_swallows_stop_errors_on_cancellation() -> None:
+    """A failing stop must not mask the CancelledError during teardown."""
+    coordinator = SimpleNamespace(
+        async_stop_manual_motion=AsyncMock(side_effect=RuntimeError("ble gone"))
+    )
+    task = asyncio.create_task(_motion_open_sleep(coordinator, 30.0))
+    await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    coordinator.async_stop_manual_motion.assert_awaited_once()
+
+
+def _fake_motion_mower(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
+    """Route _get_mower_by_entity_id to a fixed fake mower/coordinator."""
+    coordinator = SimpleNamespace(async_stop_manual_motion=AsyncMock())
+    mower = SimpleNamespace(reporting_coordinator=coordinator)
+    monkeypatch.setattr(
+        mammotion_services,
+        "_get_mower_by_entity_id",
+        lambda _hass, _entity_id: mower,
+    )
+    return mower
+
+
+def _motion_call(**overrides: object) -> SimpleNamespace:
+    """Minimal ServiceCall stand-in for the exclusivity wrapper."""
+    data: dict[str, object] = {"entity_id": "lawn_mower.test", "dry_run": False}
+    data.update(overrides)
+    return SimpleNamespace(data=data)
+
+
+async def test_exclusive_motion_wrapper_rejects_concurrent_real_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A second real motion run is strictly rejected while the first owns the mower."""
+    _fake_motion_mower(monkeypatch)
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def slow_handler(call: object) -> dict[str, object]:
+        started.set()
+        await release.wait()
+        return {"ran": "slow"}
+
+    async def fast_handler(call: object) -> dict[str, object]:
+        return {"ran": "fast"}
+
+    slow = _wrap_exclusive_manual_motion(object(), "svc_slow", slow_handler)
+    fast = _wrap_exclusive_manual_motion(object(), "svc_fast", fast_handler)
+    task = asyncio.create_task(slow(_motion_call()))
+    await started.wait()
+
+    busy = await fast(_motion_call())
+    assert busy["stop_reason"] == "manual_motion_in_progress"
+    assert busy["blockers"] == ["manual_motion_in_progress"]
+    assert busy["busy_owner"] == "svc_slow"
+    assert busy["would_send"] is False
+
+    # Dry runs never move and pass straight through while the owner runs.
+    dry = await fast(_motion_call(dry_run=True))
+    assert dry == {"ran": "fast"}
+
+    release.set()
+    assert await task == {"ran": "slow"}
+
+    # Owner finished: the mower is claimable again.
+    again = await fast(_motion_call())
+    assert again == {"ran": "fast"}
+
+
+async def test_exclusive_motion_wrapper_releases_on_handler_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A crashing run must release the mower for the next start."""
+    _fake_motion_mower(monkeypatch)
+
+    async def crashing_handler(call: object) -> dict[str, object]:
+        raise RuntimeError("boom")
+
+    async def ok_handler(call: object) -> dict[str, object]:
+        return {"ran": True}
+
+    crashing = _wrap_exclusive_manual_motion(object(), "svc_crash", crashing_handler)
+    ok = _wrap_exclusive_manual_motion(object(), "svc_ok", ok_handler)
+    with pytest.raises(RuntimeError):
+        await crashing(_motion_call())
+    assert await ok(_motion_call()) == {"ran": True}
+
+
+async def test_exclusive_motion_wrapper_exempts_zero_motion_stop_nudge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The card's Abort (send_movement 0/0) preempts a running loop; real probes don't."""
+    _fake_motion_mower(monkeypatch)
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def slow_handler(call: object) -> dict[str, object]:
+        started.set()
+        await release.wait()
+        return {"ran": "slow"}
+
+    async def probe_handler(call: object) -> dict[str, object]:
+        return {"ran": "probe"}
+
+    slow = _wrap_exclusive_manual_motion(object(), "svc_slow", slow_handler)
+    probe = _wrap_exclusive_manual_motion(
+        object(), "svc_probe", probe_handler, allow_stop_nudge=True
+    )
+    task = asyncio.create_task(slow(_motion_call()))
+    await started.wait()
+
+    # Zero-motion stop nudge: passes through even while the mower is owned.
+    nudge = await probe(
+        _motion_call(command="send_movement", linear_speed=0, angular_speed=0)
+    )
+    assert nudge == {"ran": "probe"}
+
+    # A real (nonzero) probe is still rejected as busy.
+    real_probe = await probe(
+        _motion_call(command="send_movement", linear_speed=400, angular_speed=0)
+    )
+    assert real_probe["stop_reason"] == "manual_motion_in_progress"
+
+    release.set()
+    await task
+
+
+def test_is_zero_motion_stop_nudge_truth_table() -> None:
+    """Only send_movement with both speeds zero counts as a stop nudge."""
+    is_nudge = _is_zero_motion_stop_nudge
+    assert is_nudge("send_movement", 0, 0)
+    assert not is_nudge("send_movement", 400, 0)
+    assert not is_nudge("send_movement", 0, 500)
+    assert not is_nudge("move_forward", 0, 0)
+
+
+def test_motion_services_registered_with_exclusive_guard() -> None:
+    """Every manual-motion service registration goes through the guard."""
+    guarded: set[str] = set()
+    for node in ast.walk(_SERVICES_AST):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "async_register"
+        ):
+            continue
+        args = node.args
+        handler_node = args[2] if len(args) > 2 else None
+        if (
+            isinstance(handler_node, ast.Call)
+            and isinstance(handler_node.func, ast.Name)
+            and handler_node.func.id == "_wrap_exclusive_manual_motion"
+            and len(args) > 1
+        ):
+            label = _resolve_key_node(args[1])
+            if label is not None:
+                guarded.add(label)
+    expected = {
+        getattr(mammotion_services, name)
+        for name in (
+            "SERVICE_MANUAL_VELOCITY_PULSE_TEST",
+            "SERVICE_MANUAL_VELOCITY_SEGMENT_TEST",
+            "SERVICE_MANUAL_VELOCITY_MULTI_PULSE_TEST",
+            "SERVICE_MANUAL_VELOCITY_CUMULATIVE_PULSE_TEST",
+            "SERVICE_EXPERIMENTAL_EXECUTE_SEGMENT",
+            "SERVICE_EXPERIMENTAL_EXECUTE_SEGMENT_BURST",
+            "SERVICE_MANUAL_VELOCITY_HEADING_CALIBRATION_TEST",
+            "SERVICE_RAW_PYMAMMOTION_MOTION_PROBE",
+            "SERVICE_RAW_PYMAMMOTION_EXECUTE_SEGMENT",
+            "SERVICE_RAW_PYMAMMOTION_ANGULAR_CALIBRATION",
+            "SERVICE_RAW_PYMAMMOTION_TURN_TO_HEADING",
+            "SERVICE_RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT",
+            "SERVICE_RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT",
+            "SERVICE_FORWARD_TWO_PULSE_LATENCY_TEST",
+            "SERVICE_POSITION_FEEDBACK_DIAGNOSTIC",
+            "SERVICE_VIO_MOTION_PROBE",
+            "SERVICE_VIO_TURN_PROBE",
+            "SERVICE_VIO_TURN_TO_HEADING",
+            "SERVICE_RAW_MOTION_READINESS_TEST",
+            "SERVICE_RAW_VECTOR_READINESS_TEST",
+        )
+    }
+    missing = expected - guarded
+    assert not missing, (
+        f"Manual-motion service(s) {sorted(missing)} are registered without "
+        "_wrap_exclusive_manual_motion -- concurrent motion loops can interleave."
     )

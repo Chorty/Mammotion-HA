@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import math
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Coroutine, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, TypedDict, cast
 
@@ -3511,6 +3512,129 @@ def _manual_velocity_pulse_gates(
     ]
 
 
+# Bounded ceiling for the best-effort stop delivered when a motion loop is
+# cancelled mid-pulse (HA shutdown, task cancel, integration teardown).
+_MOTION_CANCEL_STOP_TIMEOUT_SECONDS = 6.0
+
+
+async def _deliver_stop_despite_cancellation(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> None:
+    """Best-effort motion stop that survives task cancellation.
+
+    ``asyncio.shield`` keeps the stop running to completion even if this await
+    is interrupted by a further cancellation; ``wait_for`` bounds it so a dead
+    transport cannot hang teardown.
+    """
+    with contextlib.suppress(Exception):
+        await asyncio.shield(
+            asyncio.wait_for(
+                coordinator.async_stop_manual_motion(),
+                timeout=_MOTION_CANCEL_STOP_TIMEOUT_SECONDS,
+            )
+        )
+
+
+async def _motion_open_sleep(
+    coordinator: MammotionReportUpdateCoordinator, seconds: float
+) -> None:
+    """Sleep out a window in which a movement command is open on the mower.
+
+    ``CancelledError`` is a ``BaseException``, so the surrounding
+    ``except Exception`` handlers never see it: a cancellation during the bare
+    pulse sleep used to exit the loop without delivering the mandatory stop,
+    leaving the mower moving. Deliver the stop first, then re-raise.
+    """
+    try:
+        await asyncio.sleep(seconds)
+    except asyncio.CancelledError:
+        await _deliver_stop_despite_cancellation(coordinator)
+        raise
+
+
+# Per-mower registry of the manual-motion service run currently in flight,
+# keyed by id(coordinator). HA service calls can overlap; two motion loops
+# interleaving movement and stop commands would defeat every bounded-pulse
+# guarantee, so a second start is strictly rejected (never queued -- a queued
+# motion run would fire unattended after the owner finishes).
+_ACTIVE_MANUAL_MOTION_RUNS: dict[int, str] = {}
+
+
+def _manual_motion_busy_result(service: str, owner: str) -> dict[str, Any]:
+    """Structured rejection returned when another motion run owns the mower."""
+    return {
+        "service": service,
+        "mode": "rejected_busy",
+        "valid": False,
+        "would_send": False,
+        "blockers": ["manual_motion_in_progress"],
+        "stop_reason": "manual_motion_in_progress",
+        "busy_owner": owner,
+    }
+
+
+def _is_zero_motion_stop_nudge(
+    command: str, linear_speed: int, angular_speed: int
+) -> bool:
+    """Return True for the zero-motion stop nudge (the card's Abort path).
+
+    A ``send_movement`` with both speeds zero is a stop, not motion -- it must
+    be allowed to preempt a running motion loop, never be rejected as busy.
+    """
+    return (
+        command == "send_movement"
+        and int(linear_speed) == 0
+        and int(angular_speed) == 0
+    )
+
+
+def _wrap_exclusive_manual_motion(
+    hass: HomeAssistant,
+    service: str,
+    handler: Callable[[ServiceCall], Coroutine[Any, Any, dict[str, Any]]],
+    *,
+    allow_stop_nudge: bool = False,
+) -> Callable[[ServiceCall], Coroutine[Any, Any, dict[str, Any]]]:
+    """Serialize a motion service's real runs per mower at registration time.
+
+    Dry runs pass straight through (they read telemetry, never move). A real
+    run atomically claims the mower on the event loop (no await between check
+    and set) and releases it on every exit path, including cancellation.
+    ``allow_stop_nudge`` exempts the zero-motion stop nudge (the card's Abort
+    path) so a stop can always preempt a running loop.
+    """
+
+    async def wrapped(call: ServiceCall) -> dict[str, Any]:
+        real = call.data.get("dry_run", True) is False
+        if (
+            real
+            and allow_stop_nudge
+            and _is_zero_motion_stop_nudge(
+                str(call.data.get("command", "")),
+                int(call.data.get("linear_speed", 0)),
+                int(call.data.get("angular_speed", 0)),
+            )
+        ):
+            real = False
+        if not real:
+            return await handler(call)
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            # The wrapped handler logs the unknown entity and returns {}.
+            return await handler(call)
+        key = id(mower.reporting_coordinator)
+        owner = _ACTIVE_MANUAL_MOTION_RUNS.get(key)
+        if owner is not None:
+            return _manual_motion_busy_result(service, owner)
+        _ACTIVE_MANUAL_MOTION_RUNS[key] = service
+        try:
+            return await handler(call)
+        finally:
+            _ACTIVE_MANUAL_MOTION_RUNS.pop(key, None)
+
+    return wrapped
+
+
 async def _manual_velocity_pulse_test(
     coordinator: MammotionReportUpdateCoordinator,
     *,
@@ -3592,11 +3716,11 @@ async def _manual_velocity_pulse_test(
         use_wifi=use_wifi,
     )
     command_ok = result["command_result"]["ok"] is True
-    await asyncio.sleep(duration_ms / 1000)
+    await _motion_open_sleep(coordinator, duration_ms / 1000)
     after_command = _custom_path_telemetry_snapshot(coordinator)
     result["samples"].append({"label": "after_command_window", "telemetry": after_command})
     if stop_mode == "delayed" and stop_delay_ms > 0:
-        await asyncio.sleep(stop_delay_ms / 1000)
+        await _motion_open_sleep(coordinator, stop_delay_ms / 1000)
     if stop_mode in {"immediate", "delayed"}:
         result["stop_result"] = await _manual_velocity_stop_attempt(
             coordinator,
@@ -4152,7 +4276,7 @@ async def _forward_two_pulse_latency_test(  # noqa: C901, PLR0913
 
     for command_index in range(1, pulse_count + 1):
         if command_index > 1:
-            await asyncio.sleep(pulse_gap_seconds)
+            await _motion_open_sleep(coordinator, pulse_gap_seconds)
         command_result = await send_pulse(command_index)
         command_result["planned_after_gap_seconds"] = (
             None if command_index == 1 else pulse_gap_seconds
@@ -4374,7 +4498,7 @@ async def _position_feedback_diagnostic(  # noqa: C901, PLR0913
 
     for command_index in range(1, pulse_count + 1):
         if command_index > 1:
-            await asyncio.sleep(pulse_gap_seconds)
+            await _motion_open_sleep(coordinator, pulse_gap_seconds)
         started = time.monotonic()
         command_result: dict[str, Any] = {
             "index": command_index,
@@ -5416,7 +5540,7 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
             return result
         result["commands_sent"] += 1
         # Bounded pulse, then a mandatory explicit stop before sampling.
-        await asyncio.sleep(pulse_ms / 1000)
+        await _motion_open_sleep(coordinator, pulse_ms / 1000)
         try:
             command_result["stop_ack"] = await coordinator.async_stop_manual_motion()
         except Exception as err:  # noqa: BLE001
@@ -5946,7 +6070,7 @@ async def _raw_pymammotion_execute_segment(  # noqa: C901, PLR0913
         if command_result["ok"] is not True:
             result["stop_reason"] = "command_failed"
             return result
-        await asyncio.sleep(linear_pulse_duration_ms / 1000)
+        await _motion_open_sleep(coordinator, linear_pulse_duration_ms / 1000)
         command_result["stop_result"] = await _manual_velocity_stop_attempt(
             coordinator, use_wifi=not prefer_ble
         )
@@ -7146,7 +7270,7 @@ async def _raw_pymammotion_turn_to_heading(  # noqa: C901, PLR0913
         if command_result["ok"] is not True:
             result["stop_reason"] = "command_failed"
             return result
-        await asyncio.sleep(pulse_duration_ms / 1000)
+        await _motion_open_sleep(coordinator, pulse_duration_ms / 1000)
         command_result["stop_result"] = await _manual_velocity_stop_attempt(
             coordinator, use_wifi=not prefer_ble
         )
@@ -7333,7 +7457,7 @@ async def _vio_segment_calibration_drive(  # noqa: C901, PLR0913
             result["reason"] = "command_failed"
             return result
         result["pulses_sent"] += 1
-        await asyncio.sleep(pulse_duration_ms / 1000)
+        await _motion_open_sleep(coordinator, pulse_duration_ms / 1000)
         command_result["stop_result"] = await _manual_velocity_stop_attempt(
             coordinator, use_wifi=not prefer_ble
         )
@@ -8023,7 +8147,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         if command_result["ok"] is not True:
             result["stop_reason"] = "command_failed"
             return result
-        await asyncio.sleep(linear_pulse_duration_ms / 1000)
+        await _motion_open_sleep(coordinator, linear_pulse_duration_ms / 1000)
         command_result["stop_result"] = await _manual_velocity_stop_attempt(
             coordinator, use_wifi=not prefer_ble
         )
@@ -9086,9 +9210,9 @@ async def _manual_velocity_cumulative_pulse_test(  # noqa: C901
             speed=speed,
             use_wifi=use_wifi,
         )
-        await asyncio.sleep(pulse_duration_ms / 1000)
+        await _motion_open_sleep(coordinator, pulse_duration_ms / 1000)
         if stop_mode == "delayed" and stop_delay_ms > 0:
-            await asyncio.sleep(stop_delay_ms / 1000)
+            await _motion_open_sleep(coordinator, stop_delay_ms / 1000)
         if stop_mode in {"immediate", "delayed"}:
             stop_result = await _manual_velocity_stop_attempt(
                 coordinator,
@@ -9747,7 +9871,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
             speed=speed,
             use_wifi=use_wifi,
         )
-        await asyncio.sleep(pulse_duration_ms / 1000)
+        await _motion_open_sleep(coordinator, pulse_duration_ms / 1000)
         stop_result = await _manual_velocity_stop_attempt(
             coordinator,
             use_wifi=use_wifi,
@@ -11444,140 +11568,211 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
     hass.services.async_register(
         DOMAIN,
         SERVICE_MANUAL_VELOCITY_PULSE_TEST,
-        handle_manual_velocity_pulse_test,
+        _wrap_exclusive_manual_motion(
+            hass, SERVICE_MANUAL_VELOCITY_PULSE_TEST, handle_manual_velocity_pulse_test
+        ),
         schema=MANUAL_VELOCITY_PULSE_TEST_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_MANUAL_VELOCITY_SEGMENT_TEST,
-        handle_manual_velocity_segment_test,
+        _wrap_exclusive_manual_motion(
+            hass,
+            SERVICE_MANUAL_VELOCITY_SEGMENT_TEST,
+            handle_manual_velocity_segment_test,
+        ),
         schema=MANUAL_VELOCITY_SEGMENT_TEST_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_MANUAL_VELOCITY_MULTI_PULSE_TEST,
-        handle_manual_velocity_multi_pulse_test,
+        _wrap_exclusive_manual_motion(
+            hass,
+            SERVICE_MANUAL_VELOCITY_MULTI_PULSE_TEST,
+            handle_manual_velocity_multi_pulse_test,
+        ),
         schema=MANUAL_VELOCITY_MULTI_PULSE_TEST_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_MANUAL_VELOCITY_CUMULATIVE_PULSE_TEST,
-        handle_manual_velocity_cumulative_pulse_test,
+        _wrap_exclusive_manual_motion(
+            hass,
+            SERVICE_MANUAL_VELOCITY_CUMULATIVE_PULSE_TEST,
+            handle_manual_velocity_cumulative_pulse_test,
+        ),
         schema=MANUAL_VELOCITY_CUMULATIVE_PULSE_TEST_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_EXPERIMENTAL_EXECUTE_SEGMENT,
-        handle_experimental_execute_segment,
+        _wrap_exclusive_manual_motion(
+            hass,
+            SERVICE_EXPERIMENTAL_EXECUTE_SEGMENT,
+            handle_experimental_execute_segment,
+        ),
         schema=EXPERIMENTAL_EXECUTE_SEGMENT_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_EXPERIMENTAL_EXECUTE_SEGMENT_BURST,
-        handle_experimental_execute_segment_burst,
+        _wrap_exclusive_manual_motion(
+            hass,
+            SERVICE_EXPERIMENTAL_EXECUTE_SEGMENT_BURST,
+            handle_experimental_execute_segment_burst,
+        ),
         schema=EXPERIMENTAL_EXECUTE_SEGMENT_BURST_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_MANUAL_VELOCITY_HEADING_CALIBRATION_TEST,
-        handle_manual_velocity_heading_calibration_test,
+        _wrap_exclusive_manual_motion(
+            hass,
+            SERVICE_MANUAL_VELOCITY_HEADING_CALIBRATION_TEST,
+            handle_manual_velocity_heading_calibration_test,
+        ),
         schema=MANUAL_VELOCITY_HEADING_CALIBRATION_TEST_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_RAW_PYMAMMOTION_MOTION_PROBE,
-        handle_raw_pymammotion_motion_probe,
+        _wrap_exclusive_manual_motion(
+            hass,
+            SERVICE_RAW_PYMAMMOTION_MOTION_PROBE,
+            handle_raw_pymammotion_motion_probe,
+            # The card's Abort is this service with linear/angular 0 -- a stop,
+            # not motion; it must preempt a running loop, never be rejected.
+            allow_stop_nudge=True,
+        ),
         schema=RAW_PYMAMMOTION_MOTION_PROBE_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_RAW_PYMAMMOTION_EXECUTE_SEGMENT,
-        handle_raw_pymammotion_execute_segment,
+        _wrap_exclusive_manual_motion(
+            hass,
+            SERVICE_RAW_PYMAMMOTION_EXECUTE_SEGMENT,
+            handle_raw_pymammotion_execute_segment,
+        ),
         schema=RAW_PYMAMMOTION_EXECUTE_SEGMENT_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_RAW_PYMAMMOTION_ANGULAR_CALIBRATION,
-        handle_raw_pymammotion_angular_calibration,
+        _wrap_exclusive_manual_motion(
+            hass,
+            SERVICE_RAW_PYMAMMOTION_ANGULAR_CALIBRATION,
+            handle_raw_pymammotion_angular_calibration,
+        ),
         schema=RAW_PYMAMMOTION_ANGULAR_CALIBRATION_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_RAW_PYMAMMOTION_TURN_TO_HEADING,
-        handle_raw_pymammotion_turn_to_heading,
+        _wrap_exclusive_manual_motion(
+            hass,
+            SERVICE_RAW_PYMAMMOTION_TURN_TO_HEADING,
+            handle_raw_pymammotion_turn_to_heading,
+        ),
         schema=RAW_PYMAMMOTION_TURN_TO_HEADING_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT,
-        handle_raw_pymammotion_execute_vector_segment,
+        _wrap_exclusive_manual_motion(
+            hass,
+            SERVICE_RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT,
+            handle_raw_pymammotion_execute_vector_segment,
+        ),
         schema=RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT,
-        handle_raw_pymammotion_execute_multi_segment,
+        _wrap_exclusive_manual_motion(
+            hass,
+            SERVICE_RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT,
+            handle_raw_pymammotion_execute_multi_segment,
+        ),
         schema=RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_FORWARD_TWO_PULSE_LATENCY_TEST,
-        handle_forward_two_pulse_latency_test,
+        _wrap_exclusive_manual_motion(
+            hass,
+            SERVICE_FORWARD_TWO_PULSE_LATENCY_TEST,
+            handle_forward_two_pulse_latency_test,
+        ),
         schema=FORWARD_TWO_PULSE_LATENCY_TEST_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_POSITION_FEEDBACK_DIAGNOSTIC,
-        handle_position_feedback_diagnostic,
+        _wrap_exclusive_manual_motion(
+            hass,
+            SERVICE_POSITION_FEEDBACK_DIAGNOSTIC,
+            handle_position_feedback_diagnostic,
+        ),
         schema=POSITION_FEEDBACK_DIAGNOSTIC_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_VIO_MOTION_PROBE,
-        handle_vio_motion_probe,
+        _wrap_exclusive_manual_motion(
+            hass, SERVICE_VIO_MOTION_PROBE, handle_vio_motion_probe
+        ),
         schema=VIO_MOTION_PROBE_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_VIO_TURN_PROBE,
-        handle_vio_turn_probe,
+        _wrap_exclusive_manual_motion(
+            hass, SERVICE_VIO_TURN_PROBE, handle_vio_turn_probe
+        ),
         schema=VIO_TURN_PROBE_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_VIO_TURN_TO_HEADING,
-        handle_vio_turn_to_heading,
+        _wrap_exclusive_manual_motion(
+            hass, SERVICE_VIO_TURN_TO_HEADING, handle_vio_turn_to_heading
+        ),
         schema=VIO_TURN_TO_HEADING_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_RAW_MOTION_READINESS_TEST,
-        handle_raw_motion_readiness_test,
+        _wrap_exclusive_manual_motion(
+            hass, SERVICE_RAW_MOTION_READINESS_TEST, handle_raw_motion_readiness_test
+        ),
         schema=RAW_MOTION_READINESS_TEST_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_RAW_VECTOR_READINESS_TEST,
-        handle_raw_vector_readiness_test,
+        _wrap_exclusive_manual_motion(
+            hass, SERVICE_RAW_VECTOR_READINESS_TEST, handle_raw_vector_readiness_test
+        ),
         schema=RAW_VECTOR_READINESS_TEST_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
