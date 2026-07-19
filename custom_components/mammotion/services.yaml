@@ -1079,7 +1079,7 @@ vio_turn_to_heading:
           step: 1
     heading_tolerance_degrees:
       required: false
-      default: 8.0
+      default: 18
       selector:
         number:
           min: 1.0
@@ -1266,7 +1266,7 @@ raw_pymammotion_execute_segment:
           unit_of_measurement: m
     min_progress_distance:
       required: false
-      default: 0.01
+      default: 0.06
       selector:
         number:
           min: 0
@@ -1275,7 +1275,7 @@ raw_pymammotion_execute_segment:
           unit_of_measurement: m
     linear_pulse_duration_ms:
       required: false
-      default: 300
+      default: 3500
       selector:
         number:
           min: 50
@@ -1403,7 +1403,7 @@ raw_pymammotion_turn_to_heading:
           unit_of_measurement: °
     heading_tolerance_degrees:
       required: false
-      default: 3
+      default: 18
       selector:
         number:
           min: 0.5
@@ -1754,7 +1754,7 @@ raw_pymammotion_execute_vector_segment:
           step: 0.5
     heading_tolerance_degrees:
       required: false
-      default: 3
+      default: 18
       selector:
         number:
           min: 0.5
@@ -1797,7 +1797,7 @@ raw_pymammotion_execute_vector_segment:
           unit_of_measurement: m
     min_progress_distance:
       required: false
-      default: 0.01
+      default: 0.06
       selector:
         number:
           min: 0
@@ -1833,7 +1833,7 @@ raw_pymammotion_execute_vector_segment:
           unit_of_measurement: °
     turn_pulse_duration_ms:
       required: false
-      default: 300
+      default: 1500
       selector:
         number:
           min: 50
@@ -1842,7 +1842,7 @@ raw_pymammotion_execute_vector_segment:
           unit_of_measurement: ms
     linear_pulse_duration_ms:
       required: false
-      default: 300
+      default: 3500
       selector:
         number:
           min: 50
@@ -1984,7 +1984,7 @@ raw_pymammotion_execute_multi_segment:
           step: 0.5
     heading_tolerance_degrees:
       required: false
-      default: 3
+      default: 18
       selector:
         number:
           min: 0.5
@@ -2027,7 +2027,7 @@ raw_pymammotion_execute_multi_segment:
           unit_of_measurement: m
     min_progress_distance:
       required: false
-      default: 0.01
+      default: 0.06
       selector:
         number:
           min: 0
@@ -2063,7 +2063,7 @@ raw_pymammotion_execute_multi_segment:
           unit_of_measurement: °
     turn_pulse_duration_ms:
       required: false
-      default: 300
+      default: 1500
       selector:
         number:
           min: 50
@@ -2072,7 +2072,7 @@ raw_pymammotion_execute_multi_segment:
           unit_of_measurement: ms
     linear_pulse_duration_ms:
       required: false
-      default: 300
+      default: 3500
       selector:
         number:
           min: 50

@@ -44,6 +44,8 @@ from custom_components.mammotion.services import (
     RAW_PYMAMMOTION_TURN_TO_HEADING_SCHEMA,
     RAW_VECTOR_READINESS_TEST_SCHEMA,
     _ble_connect_cooldown_active,
+    _ble_ready_for_motion,
+    _ble_transport_usable,
     _custom_path_telemetry_snapshot,
     _dry_run_custom_path,
     _experimental_execute_segment_burst,
@@ -76,6 +78,7 @@ from custom_components.mammotion.services import (
     _raw_vector_readiness_phase_passed,
     _raw_vector_readiness_test,
     _settle_linear_position_feed,
+    _streak_shows_no_actuation,
     _transport_is_ble,
     _validate_custom_path,
     _vio_feed_liveness,
@@ -157,8 +160,12 @@ def _pulse_coordinator(
         # The real BLE connect cooldown lives on the transport, not on
         # availability; expose it the way pymammotion's DeviceHandle does. 0.0 =
         # no cooldown armed.
+        # ``is_usable`` is a real BLETransport property: a transport can be the
+        # active routing choice while being unusable (no BLEDevice / weak RSSI /
+        # armed cooldown), which is why the motion gate checks it separately.
         get_transport=lambda _transport_type: SimpleNamespace(
-            _connect_cooldown_until=0.0
+            _connect_cooldown_until=0.0,
+            is_usable=True,
         ),
         active_transport=lambda: "ble",
     )
@@ -1192,10 +1199,10 @@ def test_manual_velocity_pulse_schema_allows_emergency_nudge_speed() -> None:
                 "linear_speed_slow": 200,
                 "max_commands": 3,
                 "waypoint_tolerance": 0.08,
-                "min_progress_distance": 0.01,
+                "min_progress_distance": 0.06,
                 # The handler reads this for the software-stop pulse bound;
                 # covered by the generic parity sweep too.
-                "linear_pulse_duration_ms": 300.0,
+                "linear_pulse_duration_ms": 3500.0,
                 "sample_delays": [0.0, 5.0, 10.0, 20.0, 30.0, 45.0, 60.0],
             },
         ),
@@ -1219,7 +1226,7 @@ def test_manual_velocity_pulse_schema_allows_emergency_nudge_speed() -> None:
             {"entity_id": "lawn_mower.test", "target_heading_degrees": 20},
             {
                 "target_heading_degrees": 20.0,
-                "heading_tolerance_degrees": 3.0,
+                "heading_tolerance_degrees": 18.0,
                 "angular_speed_fast": 180,
                 "angular_speed_slow": 90,
                 "slow_turn_threshold_degrees": 8.0,
@@ -1996,6 +2003,66 @@ async def test_vio_turn_probe_detects_heading_tracking_rotation(
     assert result["reason"] == "vision_heading_tracks_rotation"
     assert result["verdict"]["vision_heading_change"]["total_abs_degrees"] >= 3.0
     assert result["verdict"]["course_over_ground_change"]["total_abs_degrees"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_vio_turn_probe_counts_rotation_that_lands_after_the_stop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A real rotation visible only in post_stop must not read as static/zero.
+
+    Regression for 2026-07-19: VIO heading refreshes ~1.5s into the command and
+    the position feed lags ~4s, so on a short pulse the only during-command
+    sample is the t=0 one. A tape-confirmed 13.18 deg pivot came back
+    `vision_heading_static_during_command` with `final_displacement_m: 0.0`
+    because the verdict ignored post_stop -- while this function's own post_stop
+    samples held the real values.
+    """
+    coordinator = _pulse_coordinator()
+    clock = {"now": 100.0}
+    stopped = {"value": False}
+
+    def fake_monotonic() -> float:
+        return clock["now"]
+
+    async def fake_sleep(delay: float) -> None:
+        clock["now"] += delay
+
+    async def fake_stop() -> None:
+        stopped["value"] = True
+
+    async def fake_get_reports(count: int = 5) -> None:
+        # Frozen during the command; the real rotation only registers post-stop.
+        heading = 76.82 if stopped["value"] else 90.0
+        coordinator.data.report_data.vision_info = SimpleNamespace(
+            heading=heading,
+            vio_state=2,
+        )
+
+    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+    coordinator.async_get_reports.side_effect = fake_get_reports
+    coordinator.async_stop_manual_motion.side_effect = fake_stop
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=90.0, vio_state=2
+    )
+
+    result = await _vio_turn_probe(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        angular_speed=500,
+        drive_seconds=1.5,
+        sample_interval_seconds=1.5,
+        post_stop_samples=3,
+    )
+
+    # The ~13.18 deg swing lands entirely in post_stop and must be counted.
+    total = result["verdict"]["vision_heading_change"]["total_abs_degrees"]
+    assert total == pytest.approx(13.18, abs=0.05)
+    assert result["reason"] != "vision_heading_static_during_command"
+    assert result["displacement_source"] in {"post_stop", "drive", None}
 
 
 @pytest.mark.asyncio
@@ -4862,6 +4929,238 @@ def test_ble_connect_cooldown_active_reads_transport_deadline(
     # Deadline already elapsed -> inactive again.
     deadline["value"] = 995.0
     assert _ble_connect_cooldown_active(coordinator) is False
+
+
+def test_streak_shows_no_actuation_requires_both_sensors_flat() -> None:
+    """Only a fully flat streak (no heading AND no position change) counts.
+
+    Models the 2026-07-19 e-stop session: five commands returned ok with a
+    dual-axis stop ACK, heading stayed bit-identical and displacement read
+    0.25-0.43cm.
+    """
+    frozen = 91.38829636391407
+    dead = [
+        {
+            "before_vision_heading": frozen,
+            "after_vision_heading": frozen,
+            "displacement_m": 0.0043,
+        },
+        {
+            "before_vision_heading": frozen,
+            "after_vision_heading": frozen,
+            "displacement_m": 0.0025,
+        },
+    ]
+    assert _streak_shows_no_actuation(dead, 2) is True
+
+    # Dusk-latched VIO on a mower that may well be rotating: the feed still emits
+    # sub-epsilon noise, so it is NOT bit-identical. Must stay no_heading_progress.
+    latched_with_noise = [
+        {
+            "before_vision_heading": -49.836495,
+            "after_vision_heading": -49.8382935,
+            "displacement_m": 0.0,
+        },
+        {
+            "before_vision_heading": -49.8382935,
+            "after_vision_heading": -49.836495,
+            "displacement_m": 0.0,
+        },
+    ]
+    assert _streak_shows_no_actuation(latched_with_noise, 2) is False
+
+    # Heading frozen but the mower demonstrably translated -> not "no actuation".
+    latched_but_moving = [
+        {
+            "before_vision_heading": frozen,
+            "after_vision_heading": frozen,
+            "displacement_m": 0.081,
+        },
+        {
+            "before_vision_heading": frozen,
+            "after_vision_heading": frozen,
+            "displacement_m": 0.074,
+        },
+    ]
+    assert _streak_shows_no_actuation(latched_but_moving, 2) is False
+
+    # Real rotation that simply isn't converging -> no_heading_progress.
+    turning = [
+        {
+            "before_vision_heading": 0.0,
+            "after_vision_heading": 8.2,
+            "displacement_m": 0.001,
+        },
+        {
+            "before_vision_heading": 8.2,
+            "after_vision_heading": -7.3,
+            "displacement_m": 0.002,
+        },
+    ]
+    assert _streak_shows_no_actuation(turning, 2) is False
+
+    # Unknown displacement cannot prove the mower stayed put.
+    unknown = [
+        {
+            "before_vision_heading": frozen,
+            "after_vision_heading": frozen,
+            "displacement_m": None,
+        },
+        {
+            "before_vision_heading": frozen,
+            "after_vision_heading": frozen,
+            "displacement_m": None,
+        },
+    ]
+    assert _streak_shows_no_actuation(unknown, 2) is False
+
+    # Not enough pulses yet.
+    assert _streak_shows_no_actuation(dead[:1], 2) is False
+    assert _streak_shows_no_actuation(dead, 0) is False
+
+
+@pytest.mark.asyncio
+async def test_vio_turn_reports_no_actuation_when_nothing_moves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dead command path aborts as no_actuation_detected, not no_heading_progress.
+
+    Regression for 2026-07-19: a forgotten physical e-stop silently no-opped
+    every motion command for ~40 minutes while every health indicator read
+    green. The turn loop blamed the turn (no_heading_progress) instead of
+    surfacing that nothing actuated at all.
+    """
+    coordinator = _pulse_coordinator()
+    clock = {"now": 100.0}
+
+    def fake_monotonic() -> float:
+        return clock["now"]
+
+    async def fake_sleep(delay: float) -> None:
+        clock["now"] += delay
+
+    # Heading is frozen bit-identical and the mower never moves, exactly as the
+    # live e-stopped runs reported.
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=91.38829636391407, vio_state=2
+    )
+
+    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+
+    result = await _vio_turn_to_heading(
+        coordinator,
+        target_vision_heading=9.2,
+        heading_tolerance_degrees=18.0,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        max_commands=16,
+    )
+
+    assert result["stop_reason"] == "no_actuation_detected"
+    assert "e-stop" in result["no_actuation_hint"]
+    # Bounded exactly like the old path: it still stops after the streak.
+    assert result["commands_sent"] == 2
+
+
+def test_ble_transport_usable_reflects_transport_flag() -> None:
+    """The usability probe mirrors BLETransport.is_usable."""
+    coordinator = _pulse_coordinator()
+    usable = {"value": True}
+
+    coordinator.manager.mower = lambda _device_name: SimpleNamespace(
+        get_transport=lambda _transport_type: SimpleNamespace(
+            is_usable=usable["value"]
+        )
+    )
+
+    assert _ble_transport_usable(coordinator) is True
+    usable["value"] = False
+    assert _ble_transport_usable(coordinator) is False
+
+
+def test_ble_transport_usable_defends_against_api_drift() -> None:
+    """Anything unreadable degrades to "usable" (the old label-only behaviour)."""
+    coordinator = _pulse_coordinator()
+
+    # Handle without get_transport at all.
+    coordinator.manager.mower = lambda _device_name: SimpleNamespace()
+    assert _ble_transport_usable(coordinator) is True
+
+    # Transport without the is_usable property (older pymammotion).
+    coordinator.manager.mower = lambda _device_name: SimpleNamespace(
+        get_transport=lambda _transport_type: SimpleNamespace()
+    )
+    assert _ble_transport_usable(coordinator) is True
+
+    def raising_mower(_device_name: str) -> object:
+        raise RuntimeError("handle unavailable")
+
+    coordinator.manager.mower = raising_mower
+    assert _ble_transport_usable(coordinator) is True
+
+
+def test_ble_ready_for_motion_requires_label_and_usability() -> None:
+    """BLE must be BOTH the active transport and actually usable.
+
+    Regression for 2026-07-19: the mower reported active_transport "ble" while
+    BLETransport.is_usable was False (advertisement lost). Motion commands
+    returned command_ok with a dual-axis stop ACK and the mower never moved.
+    """
+    coordinator = _pulse_coordinator()
+    usable = {"value": True}
+    coordinator.manager.mower = lambda _device_name: SimpleNamespace(
+        get_transport=lambda _transport_type: SimpleNamespace(
+            is_usable=usable["value"]
+        )
+    )
+
+    coordinator.active_transport_state = "ble"
+    assert _ble_ready_for_motion(coordinator) is True
+
+    # The live failure: selected for routing, but cannot carry a command.
+    usable["value"] = False
+    assert _ble_ready_for_motion(coordinator) is False
+
+    # Usable but not the active transport is still not ready.
+    usable["value"] = True
+    coordinator.active_transport_state = "cloud"
+    assert _ble_ready_for_motion(coordinator) is False
+
+
+@pytest.mark.asyncio
+async def test_motion_gate_blocks_when_ble_selected_but_unusable() -> None:
+    """ble_transport_required must fail on an unusable BLE transport.
+
+    End-to-end regression for the 2026-07-19 live bug: before the fix the gate
+    only compared the transport label, so real motion was dispatched onto a dead
+    link -- five commands in a row silently no-opped while every health
+    indicator read green.
+    """
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.active_transport_state = "ble"
+    coordinator.manager.mower = lambda _device_name: SimpleNamespace(
+        last_report_at=123.0,
+        availability=SimpleNamespace(mqtt_reported_offline=False),
+        get_transport=lambda _transport_type: SimpleNamespace(
+            _connect_cooldown_until=0.0,
+            is_usable=False,
+        ),
+        active_transport=lambda: "ble",
+    )
+
+    result = await _vio_turn_probe(
+        coordinator,
+        angular_speed=500,
+        drive_seconds=1.5,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+    )
+
+    assert "ble_transport_required" in result["blockers"]
+    coordinator.manager.send_command_with_args.assert_not_called()
 
 
 def test_ble_connect_cooldown_active_defends_against_api_drift() -> None:

@@ -664,7 +664,7 @@ VIO_TURN_TO_HEADING_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_ENTITY_ID): cv.entity_id,
         vol.Required("target_vision_heading"): vol.Coerce(float),
-        vol.Optional("heading_tolerance_degrees", default=8.0): vol.All(
+        vol.Optional("heading_tolerance_degrees", default=18.0): vol.All(
             vol.Coerce(float), vol.Range(min=1.0, max=45.0)
         ),
         vol.Optional("angular_speed", default=500): vol.All(
@@ -731,10 +731,10 @@ RAW_PYMAMMOTION_EXECUTE_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("waypoint_tolerance", default=0.08): vol.All(
             vol.Coerce(float), vol.Range(min=0.02, max=0.5)
         ),
-        vol.Optional("min_progress_distance", default=0.01): vol.All(
+        vol.Optional("min_progress_distance", default=0.06): vol.All(
             vol.Coerce(float), vol.Range(min=0.0, max=0.5)
         ),
-        vol.Optional("linear_pulse_duration_ms", default=300.0): vol.All(
+        vol.Optional("linear_pulse_duration_ms", default=3500.0): vol.All(
             vol.Coerce(float), vol.Range(min=50.0, max=4000.0)
         ),
         vol.Optional("sample_delays", default=[0, 5, 10, 20, 30, 45, 60]): vol.All(
@@ -784,7 +784,7 @@ RAW_PYMAMMOTION_TURN_TO_HEADING_SCHEMA = vol.Schema(
         vol.Required("target_heading_degrees"): vol.All(
             vol.Coerce(float), vol.Range(min=-360.0, max=360.0)
         ),
-        vol.Optional("heading_tolerance_degrees", default=3.0): vol.All(
+        vol.Optional("heading_tolerance_degrees", default=18.0): vol.All(
             vol.Coerce(float), vol.Range(min=0.5, max=30.0)
         ),
         vol.Optional("angular_speed_fast", default=180): vol.All(
@@ -858,7 +858,7 @@ RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("linear_distance_ceiling_factor", default=2.0): vol.All(
             vol.Coerce(float), vol.Range(min=1.0, max=10.0)
         ),
-        vol.Optional("heading_tolerance_degrees", default=3.0): vol.All(
+        vol.Optional("heading_tolerance_degrees", default=18.0): vol.All(
             vol.Coerce(float), vol.Range(min=0.5, max=30.0)
         ),
         vol.Optional("angular_speed_fast", default=180): vol.All(
@@ -873,7 +873,7 @@ RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("waypoint_tolerance", default=0.08): vol.All(
             vol.Coerce(float), vol.Range(min=0.02, max=0.5)
         ),
-        vol.Optional("min_progress_distance", default=0.005): vol.All(
+        vol.Optional("min_progress_distance", default=0.06): vol.All(
             vol.Coerce(float), vol.Range(min=0.0, max=0.5)
         ),
         vol.Optional("min_heading_change_degrees", default=0.5): vol.All(
@@ -885,10 +885,10 @@ RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("calibrated_forward_heading_offset_degrees", default=116.5): vol.All(
             vol.Coerce(float), vol.Range(min=-180.0, max=180.0)
         ),
-        vol.Optional("turn_pulse_duration_ms", default=300.0): vol.All(
+        vol.Optional("turn_pulse_duration_ms", default=1500.0): vol.All(
             vol.Coerce(float), vol.Range(min=50.0, max=2000.0)
         ),
-        vol.Optional("linear_pulse_duration_ms", default=300.0): vol.All(
+        vol.Optional("linear_pulse_duration_ms", default=3500.0): vol.All(
             vol.Coerce(float), vol.Range(min=50.0, max=4000.0)
         ),
         vol.Optional("turn_mode", default="vio"): vol.In(["vio", "legacy"]),
@@ -962,7 +962,7 @@ RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("linear_distance_ceiling_factor", default=2.0): vol.All(
             vol.Coerce(float), vol.Range(min=1.0, max=10.0)
         ),
-        vol.Optional("heading_tolerance_degrees", default=3.0): vol.All(
+        vol.Optional("heading_tolerance_degrees", default=18.0): vol.All(
             vol.Coerce(float), vol.Range(min=0.5, max=30.0)
         ),
         vol.Optional("angular_speed_fast", default=180): vol.All(
@@ -977,7 +977,7 @@ RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("waypoint_tolerance", default=0.08): vol.All(
             vol.Coerce(float), vol.Range(min=0.02, max=0.5)
         ),
-        vol.Optional("min_progress_distance", default=0.01): vol.All(
+        vol.Optional("min_progress_distance", default=0.06): vol.All(
             vol.Coerce(float), vol.Range(min=0.0, max=0.5)
         ),
         vol.Optional("min_heading_change_degrees", default=0.5): vol.All(
@@ -989,10 +989,10 @@ RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("calibrated_forward_heading_offset_degrees", default=116.5): vol.All(
             vol.Coerce(float), vol.Range(min=-180.0, max=180.0)
         ),
-        vol.Optional("turn_pulse_duration_ms", default=300.0): vol.All(
+        vol.Optional("turn_pulse_duration_ms", default=1500.0): vol.All(
             vol.Coerce(float), vol.Range(min=50.0, max=2000.0)
         ),
-        vol.Optional("linear_pulse_duration_ms", default=300.0): vol.All(
+        vol.Optional("linear_pulse_duration_ms", default=3500.0): vol.All(
             vol.Coerce(float), vol.Range(min=50.0, max=4000.0)
         ),
         vol.Optional("turn_mode", default="vio"): vol.In(["vio", "legacy"]),
@@ -3339,6 +3339,47 @@ def _ble_connect_cooldown_active(
     return time.monotonic() < deadline
 
 
+def _ble_transport_usable(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> bool:
+    """Return False only when the BLE transport positively reports itself unusable.
+
+    ``DeviceHandle.active_transport()`` can hand back the BLE transport as the
+    routing choice while ``BLETransport.is_usable`` is False -- that property
+    additionally requires a live ``BLEDevice``, an advertisement RSSI at or above
+    ``config.min_rssi``, and no armed connect cooldown. "Selected for routing" is
+    therefore a weaker claim than "can carry a command".
+
+    Live evidence (2026-07-19): a real motion command returned ``command_ok`` with
+    a dual-axis stop ACK and the mower never moved, while HA's own
+    ``emergency_nudge_*`` buttons -- which gate on ``is_usable`` via
+    ``button.py::_nudge_available`` -- were correctly greyed out. The entity layer
+    knew the link was dead; the service layer did not, because it only compared
+    the transport label.
+
+    Any missing piece reads as "usable" so this degrades to the pre-existing
+    label-only behaviour rather than blocking all motion on pymammotion API drift.
+    """
+    try:
+        handle = coordinator.manager.mower(coordinator.device_name)
+    except Exception:  # noqa: BLE001
+        return True
+    get_transport = getattr(handle, "get_transport", None)
+    if get_transport is None:
+        return True
+    try:
+        transport = get_transport(TransportType.BLE)
+        usable = getattr(transport, "is_usable", None)
+    except Exception:  # noqa: BLE001
+        return True
+    return True if usable is None else bool(usable)
+
+
+def _ble_ready_for_motion(coordinator: MammotionReportUpdateCoordinator) -> bool:
+    """Return True when BLE is both the active transport and actually usable."""
+    return _transport_is_ble(coordinator) and _ble_transport_usable(coordinator)
+
+
 async def _attempt_ble_recovery(  # noqa: C901
     coordinator: MammotionReportUpdateCoordinator,
     *,
@@ -3366,7 +3407,7 @@ async def _attempt_ble_recovery(  # noqa: C901
         ),
         "timeout_seconds": timeout_seconds,
     }
-    if _transport_is_ble(coordinator):
+    if _ble_ready_for_motion(coordinator):
         report.update(attempted=False, ok=True, reason="already_ble")
         return report
     if _ble_connect_cooldown_active(coordinator):
@@ -3382,7 +3423,7 @@ async def _attempt_ble_recovery(  # noqa: C901
     toggled = False
     while time.monotonic() < deadline:
         await asyncio.sleep(poll_interval_seconds)
-        if _transport_is_ble(coordinator):
+        if _ble_ready_for_motion(coordinator):
             report.update(ok=True, reason="promoted")
             return report
         if not toggled and time.monotonic() >= half_budget:
@@ -3433,11 +3474,12 @@ def _manual_velocity_pulse_gates(
         },
         {
             "name": "ble_transport_required",
-            "passed": dry_run or _transport_is_ble(coordinator),
+            "passed": dry_run or _ble_ready_for_motion(coordinator),
             "detail": (
                 "Real closed-loop motion requires the BLE transport for "
                 "responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded "
-                "path execution."
+                "path execution. BLE must also report itself usable -- being "
+                "selected for routing does not mean a command can be delivered."
             ),
         },
         {
@@ -4679,6 +4721,7 @@ async def _vio_motion_probe(  # noqa: C901, PLR0912, PLR0913, PLR0915
         "samples": [],
         "post_stop": [],
         "final_displacement_m": None,
+        "displacement_source": None,
         "verdict": {},
         "reason": None,
     }
@@ -4950,6 +4993,7 @@ async def _vio_turn_probe(  # noqa: C901, PLR0912, PLR0913, PLR0915
         "samples": [],
         "post_stop": [],
         "final_displacement_m": None,
+        "displacement_source": None,
         "verdict": {},
         "reason": None,
     }
@@ -5037,20 +5081,50 @@ async def _vio_turn_probe(  # noqa: C901, PLR0912, PLR0913, PLR0915
     result["samples"] = samples
     result["post_stop"] = post_stop
 
-    heading_seq = [baseline["vision_heading"]] + [s["vision_heading"] for s in samples]
-    cog_seq = [baseline["toward"]] + [s["toward"] for s in samples]
+    # VIO heading refreshes ~1.5s into the command and the position feed lags ~4s,
+    # so on a short pulse the ONLY sample taken during the command is the t=0 one
+    # (bit-identical to baseline) and every real change lands in post_stop. Judging
+    # the during-command samples alone therefore reports a real rotation as zero:
+    # live 2026-07-19 a taped 13.18 deg pivot came back
+    # `vision_heading_static_during_command` with `final_displacement_m: 0.0` while
+    # this function's own post_stop samples held the answer. Same class of bug the
+    # 2026-07-16 pass fixed in _vio_motion_probe; judge across all samples.
+    turn_samples = samples + post_stop
+    heading_seq = [baseline["vision_heading"]] + [
+        s["vision_heading"] for s in turn_samples
+    ]
+    cog_seq = [baseline["toward"]] + [s["toward"] for s in turn_samples]
     vision_change = _angle_series_change(heading_seq)
     cog_change = _angle_series_change(cog_seq)
+    # Liveness stays scoped to the command window: VIO waking after the stop is not
+    # "active throughout the turn", so post_stop is deliberately excluded here.
     vio_states = [baseline["vio_state"]] + [s["vio_state"] for s in samples]
     vio_active_throughout = bool(vio_states) and all(
         state is not None and state != 0 for state in vio_states
     )
+    # max_displacement_m is the safety bound (a pivot should barely translate), so
+    # it stays a MAX across the whole window. final_displacement_m is the settled
+    # post-stop estimate, mirroring _vio_motion_probe.
     max_disp: float | None = None
-    for sample in samples:
+    for sample in turn_samples:
         disp = sample["delta_from_initial_m"]
         if disp is not None and (max_disp is None or disp > max_disp):
             max_disp = disp
-    result["final_displacement_m"] = max_disp
+    final_displacement: float | None = None
+    displacement_source: str | None = None
+    for sample in reversed(post_stop):
+        if sample["delta_from_initial_m"] is not None:
+            final_displacement = sample["delta_from_initial_m"]
+            displacement_source = "post_stop"
+            break
+    if final_displacement is None:
+        for sample in reversed(samples):
+            if sample["delta_from_initial_m"] is not None:
+                final_displacement = sample["delta_from_initial_m"]
+                displacement_source = "drive"
+                break
+    result["final_displacement_m"] = final_displacement
+    result["displacement_source"] = displacement_source
     result["verdict"] = {
         "vision_heading_change": vision_change,
         "course_over_ground_change": cog_change,
@@ -5109,6 +5183,58 @@ _LINEAR_POSITION_SETTLE_TIMEOUT_SECONDS = 6.0
 # a 0.0018 deg jitter passed while VIO was actually blind), so require the
 # change to clear real noise before judging progress.
 _VIO_HEADING_FRESH_EPSILON_DEGREES = 0.1
+
+# Displacement (metres) below which a pulse is treated as having produced no
+# physical motion at all. Deliberately conservative: the position feed has a
+# ~2-6cm ABSOLUTE noise floor, and a real in-place pivot was measured at ~8cm of
+# incidental translation (live 2026-07-19, tape-confirmed 13.18 deg), while
+# genuinely dead pulses in the same session read 0.25-0.43cm. False negatives
+# (missing a real no-actuation) are acceptable; false positives (calling a real
+# turn "no actuation") are not, so this sits well under both the noise floor and
+# the observed pivot translation.
+_NO_ACTUATION_DISPLACEMENT_M = 0.02
+
+
+def _streak_shows_no_actuation(
+    command_results: list[dict[str, Any]], streak: int
+) -> bool:
+    """Return True when the last ``streak`` pulses show no actuation whatsoever.
+
+    Distinguishes "the mower is moving but the turn isn't converging" (a control
+    problem -- ``no_heading_progress``) from "the command path is dead" (an
+    actuation problem). The latter has no HA-visible cause: a physical e-stop is
+    completely invisible in telemetry (2026-07-19: raw report fields are
+    byte-identical engaged vs cleared), and an unusable-but-selected BLE
+    transport also accepts commands that never arrive. In both cases the mower
+    reports ``command_ok`` with a sub-millisecond dual-axis stop ACK and does
+    nothing, so the only evidence is that neither sensor moved.
+
+    Requires the raw heading to be **bit-identical** across the pulse, not merely
+    rounded-to-zero. That is the measured signature of a dead command path (live
+    2026-07-19: 91.38829636391407 unchanged to 14 decimal places across five
+    commands and 45 minutes). A VIO feed latched by dusk on a mower that IS
+    rotating instead emits sub-epsilon sensor noise (~0.0018 deg, live run 2),
+    which is NOT bit-identical -- so that case correctly stays
+    ``no_heading_progress`` rather than being mislabelled a dead link.
+
+    Position must ALSO be flat, since a latched feed alone proves nothing about
+    whether the mower moved.
+    """
+    if streak <= 0 or len(command_results) < streak:
+        return False
+    for command in command_results[-streak:]:
+        before = command.get("before_vision_heading")
+        after = command.get("after_vision_heading")
+        # Bit-identical raw heading: no sensor noise at all, not just "small".
+        if before is None or after is None or float(before) != float(after):
+            return False
+        displacement = command.get("displacement_m")
+        # Unknown displacement means we cannot prove the mower stayed put.
+        if displacement is None:
+            return False
+        if float(displacement) > _NO_ACTUATION_DISPLACEMENT_M:
+            return False
+    return True
 
 
 def _vio_reading(coordinator: MammotionReportUpdateCoordinator) -> dict[str, Any]:
@@ -5607,7 +5733,21 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
             consecutive_no_progress += 1
             command_result["consecutive_no_progress"] = consecutive_no_progress
             if consecutive_no_progress >= max_no_progress_pulses:
-                result["stop_reason"] = "no_heading_progress"
+                if _streak_shows_no_actuation(
+                    result["command_results"], max_no_progress_pulses
+                ):
+                    # Neither heading nor position moved: the commands were
+                    # accepted but nothing actuated. Name the real failure so the
+                    # operator checks the mower instead of retuning the turn.
+                    result["stop_reason"] = "no_actuation_detected"
+                    result["no_actuation_hint"] = (
+                        "Commands were accepted (and the stop ACKed) but neither "
+                        "heading nor position changed. Check the mower's physical "
+                        "e-stop -- it is invisible in telemetry -- and whether the "
+                        "BLE transport is actually usable."
+                    )
+                else:
+                    result["stop_reason"] = "no_heading_progress"
                 return result
             continue
         consecutive_no_progress = 0
