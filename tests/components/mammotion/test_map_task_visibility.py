@@ -46,7 +46,6 @@ from custom_components.mammotion.services import (
     _ble_connect_cooldown_active,
     _custom_path_telemetry_snapshot,
     _dry_run_custom_path,
-    _execute_custom_path,
     _experimental_execute_segment_burst,
     _export_active_route,
     _export_mower_map,
@@ -846,115 +845,6 @@ def test_dry_run_custom_path_builds_segments_without_allowing_execution() -> Non
     assert result["estimated_total_seconds"] == 35.0
     assert result["candidate_existing_feature_plan"]["would_send"] is False
     assert result["safety_gates"][-1]["passed"] is False
-
-
-def test_execute_custom_path_remains_blocked_even_when_requested_real() -> None:
-    """Execution envelope performs readiness checks but still sends nothing."""
-    coordinator = _coordinator()
-    coordinator.is_online = lambda: True
-    coordinator.data.map.area = {
-        123: SimpleNamespace(
-            data=[
-                SimpleNamespace(
-                    current_frame=0,
-                    data_couple=[
-                        SimpleNamespace(x=0.0, y=0.0),
-                        SimpleNamespace(x=10.0, y=0.0),
-                        SimpleNamespace(x=10.0, y=10.0),
-                        SimpleNamespace(x=0.0, y=10.0),
-                    ],
-                )
-            ]
-        )
-    }
-    coordinator.data.mowing_state = SimpleNamespace(
-        pos_x=1.0,
-        pos_y=1.0,
-        toward=0.0,
-        pos_level=0,
-        rtk_status=4,
-        zone_hash=123,
-        pos_type=1,
-    )
-    coordinator.data.report_data = SimpleNamespace(
-        dev=SimpleNamespace(sys_status=11, charge_state=2, blade_state=0),
-        rtk=SimpleNamespace(status=4, pos_level=0),
-        locations=[],
-        cutter_work_mode_info=SimpleNamespace(
-            current_cutter_mode=0,
-            current_cutter_rpm=0,
-        ),
-        connect=None,
-    )
-
-    result = _execute_custom_path(
-        coordinator,
-        [{"x": 1.0, "y": 1.0}, {"x": 4.0, "y": 1.0}],
-        area_hash=123,
-        speed=0.2,
-        dry_run=False,
-        confirm_blades_off=True,
-        allow_manual_velocity=True,
-    )
-
-    readiness = result["execution_readiness"]
-    assert result["dry_run"] is False
-    assert result["real_execution_allowed"] is False
-    assert readiness["requested_real_execution"] is True
-    assert readiness["can_execute_now"] is False
-    assert readiness["start_distance"] == 0.0
-    assert readiness["blockers"] == [
-        "firmware_waypoint_api_proven",
-        "dry_run_guard",
-    ]
-    assert result["manual_velocity_command_plan"]["would_send"] is False
-
-
-def test_execute_custom_path_reports_operator_and_blade_blockers() -> None:
-    """Readiness output shows the missing safety requirements."""
-    coordinator = _coordinator()
-    coordinator.is_online = lambda: True
-    coordinator.data.map.area = {
-        123: SimpleNamespace(
-            data=[
-                SimpleNamespace(
-                    current_frame=0,
-                    data_couple=[
-                        SimpleNamespace(x=0.0, y=0.0),
-                        SimpleNamespace(x=10.0, y=0.0),
-                        SimpleNamespace(x=10.0, y=10.0),
-                        SimpleNamespace(x=0.0, y=10.0),
-                    ],
-                )
-            ]
-        )
-    }
-    coordinator.data.report_data = SimpleNamespace(
-        dev=SimpleNamespace(sys_status=11, charge_state=2, blade_state=1),
-        rtk=SimpleNamespace(status=4, pos_level=0),
-        locations=[],
-        cutter_work_mode_info=SimpleNamespace(
-            current_cutter_mode=0,
-            current_cutter_rpm=1200,
-        ),
-        connect=None,
-    )
-
-    result = _execute_custom_path(
-        coordinator,
-        [{"x": 1.0, "y": 1.0}, {"x": 4.0, "y": 1.0}],
-        area_hash=123,
-        speed=0.2,
-    )
-
-    assert result["real_execution_allowed"] is False
-    assert result["execution_readiness"]["blockers"] == [
-        "operator_confirmed_blades_off",
-        "mower_reports_blades_off",
-        "live_map_position_available",
-        "manual_velocity_opt_in",
-        "firmware_waypoint_api_proven",
-    ]
 
 
 def test_manual_velocity_controller_simulates_forward_when_heading_aligned() -> None:

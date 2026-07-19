@@ -49,7 +49,6 @@ SERVICE_EXPORT_ACTIVE_ROUTE = "export_active_route"
 SERVICE_VALIDATE_CUSTOM_PATH = "validate_custom_path"
 SERVICE_PREVIEW_CUSTOM_PATH = "preview_custom_path"
 SERVICE_DRY_RUN_CUSTOM_PATH = "dry_run_custom_path"
-SERVICE_EXECUTE_CUSTOM_PATH = "execute_custom_path"
 SERVICE_MANUAL_VELOCITY_PULSE_TEST = "manual_velocity_pulse_test"
 SERVICE_MANUAL_VELOCITY_SEGMENT_TEST = "manual_velocity_segment_test"
 SERVICE_MANUAL_VELOCITY_MULTI_PULSE_TEST = "manual_velocity_multi_pulse_test"
@@ -293,24 +292,6 @@ DRY_RUN_CUSTOM_PATH_SCHEMA = vol.Schema(
             vol.Coerce(float), vol.Range(min=-180.0, max=180.0)
         ),
         vol.Optional("dry_run", default=True): vol.All(cv.boolean, vol.Equal(True)),
-    },
-    extra=vol.ALLOW_EXTRA,
-)
-
-EXECUTE_CUSTOM_PATH_SCHEMA = vol.Schema(
-    {
-        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
-        vol.Required("points"): vol.All(
-            cv.ensure_list, [_CUSTOM_PATH_POINT_SCHEMA]
-        ),
-        vol.Optional("area_hash"): vol.Coerce(int),
-        vol.Optional("speed", default=0.2): vol.All(
-            vol.Coerce(float), vol.Range(min=0.05, max=0.3)
-        ),
-        vol.Optional("blade_mode", default="off"): vol.In(["off"]),
-        vol.Optional("dry_run", default=True): cv.boolean,
-        vol.Optional("confirm_blades_off", default=False): cv.boolean,
-        vol.Optional("allow_manual_velocity", default=False): cv.boolean,
     },
     extra=vol.ALLOW_EXTRA,
 )
@@ -10111,144 +10092,6 @@ def _dry_run_custom_path(
     }
 
 
-def _custom_path_execution_readiness(
-    dry_run_plan: dict[str, Any],
-    *,
-    dry_run: bool,
-    confirm_blades_off: bool,
-    allow_manual_velocity: bool,
-) -> dict[str, Any]:
-    """Return safety/readiness gates for a future custom-path executor."""
-    telemetry = dry_run_plan["telemetry_snapshot"]
-    position = telemetry.get("position", {})
-    blade = telemetry.get("blade", {})
-    reported_blade_state = blade.get("reported_state")
-    cutter_rpm = blade.get("current_cutter_rpm")
-    blade_reported_off = reported_blade_state == 0 and cutter_rpm in (None, 0)
-
-    start_distance = None
-    path_points = dry_run_plan.get("points") or []
-    if path_points and position.get("x") is not None and position.get("y") is not None:
-        start_distance = _path_distance(
-            [
-                {"x": float(position["x"]), "y": float(position["y"])},
-                path_points[0],
-            ]
-        )
-
-    gates = [
-        {
-            "name": "path_validation",
-            "passed": bool(dry_run_plan.get("valid")),
-            "detail": "Custom path must pass map containment and blade_mode validation.",
-        },
-        {
-            "name": "blade_mode_off_requested",
-            "passed": dry_run_plan.get("blade_mode") == "off",
-            "detail": "Only blade_mode=off is accepted.",
-        },
-        {
-            "name": "operator_confirmed_blades_off",
-            "passed": bool(confirm_blades_off),
-            "detail": "Future real movement requires an explicit confirm_blades_off=true request.",
-        },
-        {
-            "name": "mower_reports_blades_off",
-            "passed": blade_reported_off,
-            "detail": "Telemetry must report blade state off and cutter RPM zero/unknown.",
-        },
-        {
-            "name": "live_map_position_available",
-            "passed": position.get("source") != "unavailable"
-            and position.get("x") is not None
-            and position.get("y") is not None,
-            "detail": "Manual path following requires a live map-local mower position.",
-        },
-        {
-            "name": "manual_velocity_opt_in",
-            "passed": bool(allow_manual_velocity),
-            "detail": "Existing commands are low-level velocity controls and require explicit opt-in.",
-        },
-        {
-            "name": "firmware_waypoint_api_proven",
-            "passed": False,
-            "detail": "No proven Mammotion/pymammotion arbitrary waypoint API with guaranteed blades-off behavior has been found.",
-        },
-        {
-            "name": "dry_run_guard",
-            "passed": bool(dry_run),
-            "detail": "This implementation never sends mower movement, task, blade, or stop commands.",
-        },
-    ]
-
-    blockers = [gate["name"] for gate in gates if not gate["passed"]]
-    return {
-        "can_execute_now": False,
-        "real_execution_allowed": False,
-        "reason_real_execution_blocked": (
-            "firmware_waypoint_api_with_blades_off_not_proven"
-        ),
-        "requested_real_execution": not dry_run,
-        "confirm_blades_off": confirm_blades_off,
-        "allow_manual_velocity": allow_manual_velocity,
-        "start_distance": start_distance,
-        "blockers": blockers,
-        "gates": gates,
-    }
-
-
-def _execute_custom_path(
-    coordinator: MammotionReportUpdateCoordinator,
-    points: list[dict[str, float]],
-    *,
-    area_hash: int | None = None,
-    speed: float = 0.2,
-    blade_mode: str = "off",
-    dry_run: bool = True,
-    confirm_blades_off: bool = False,
-    allow_manual_velocity: bool = False,
-) -> dict[str, Any]:
-    """Build a guarded custom-path execution response without moving the mower."""
-    dry_run_plan = _dry_run_custom_path(
-        coordinator,
-        points,
-        area_hash=area_hash,
-        speed=speed,
-        blade_mode=blade_mode,
-    )
-    readiness = _custom_path_execution_readiness(
-        dry_run_plan,
-        dry_run=dry_run,
-        confirm_blades_off=confirm_blades_off,
-        allow_manual_velocity=allow_manual_velocity,
-    )
-
-    return {
-        **dry_run_plan,
-        "service": SERVICE_EXECUTE_CUSTOM_PATH,
-        "dry_run": dry_run,
-        "execution_readiness": readiness,
-        "real_execution_allowed": False,
-        "reason_real_execution_blocked": readiness["reason_real_execution_blocked"],
-        "manual_velocity_command_plan": {
-            "would_send": False,
-            "transport_preference": "BLE",
-            "strategy": "closed_loop_manual_velocity_controller",
-            "commands_not_sent": [
-                "start_stop_blades(false)",
-                "move_left/move_right to heading",
-                "move_forward by short timed pulses",
-                "position re-check after each pulse",
-                "cancel_job/stop safety fallback",
-            ],
-            "why_not_sent": (
-                "The integration has manual velocity commands, but no proven "
-                "closed-loop waypoint executor with guaranteed blades-off behavior."
-            ),
-        },
-    }
-
-
 def _get_mower_by_entity_id(
     hass: HomeAssistant, entity_id: str
 ) -> MammotionMowerData | None:
@@ -10736,22 +10579,6 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             speed=call.data["speed"],
             blade_mode=call.data["blade_mode"],
             heading_offset_degrees=call.data["heading_offset_degrees"],
-        )
-
-    async def handle_execute_custom_path(call: ServiceCall) -> dict[str, Any]:
-        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
-        if mower is None:
-            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
-            return {}
-        return _execute_custom_path(
-            mower.reporting_coordinator,
-            cast(list[dict[str, float]], call.data["points"]),
-            area_hash=call.data.get("area_hash"),
-            speed=call.data["speed"],
-            blade_mode=call.data["blade_mode"],
-            dry_run=call.data["dry_run"],
-            confirm_blades_off=call.data["confirm_blades_off"],
-            allow_manual_velocity=call.data["allow_manual_velocity"],
         )
 
     async def handle_manual_velocity_pulse_test(
@@ -11556,13 +11383,6 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         SERVICE_DRY_RUN_CUSTOM_PATH,
         handle_dry_run_custom_path,
         schema=DRY_RUN_CUSTOM_PATH_SCHEMA,
-        supports_response=SupportsResponse.ONLY,
-    )
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_EXECUTE_CUSTOM_PATH,
-        handle_execute_custom_path,
-        schema=EXECUTE_CUSTOM_PATH_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(

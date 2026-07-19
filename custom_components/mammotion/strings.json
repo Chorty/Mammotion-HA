@@ -962,44 +962,6 @@
         }
       }
     },
-    "execute_custom_path": {
-      "name": "Execute custom path",
-      "description": "Checks readiness for future multi-segment custom path execution and returns the blocked movement plan. This implementation does not send movement, task, blade, or stop commands.",
-      "fields": {
-        "entity_id": {
-          "name": "Entity",
-          "description": "Any Mammotion mower entity belonging to the device."
-        },
-        "points": {
-          "name": "Points",
-          "description": "List of map-local points, each with x and y."
-        },
-        "area_hash": {
-          "name": "Area hash",
-          "description": "Optional area hash to constrain containment validation."
-        },
-        "speed": {
-          "name": "Speed",
-          "description": "Proposed movement speed for readiness estimates."
-        },
-        "blade_mode": {
-          "name": "Blade mode",
-          "description": "Must be off."
-        },
-        "dry_run": {
-          "name": "Dry run",
-          "description": "If false, the service records that real execution was requested but still blocks movement until a safe waypoint API is proven."
-        },
-        "confirm_blades_off": {
-          "name": "Confirm blades off",
-          "description": "Operator confirmation that blades should remain off for any future real movement."
-        },
-        "allow_manual_velocity": {
-          "name": "Allow manual velocity",
-          "description": "Operator opt-in for researching the existing low-level manual movement commands. This service still does not send them."
-        }
-      }
-    },
     "raw_pymammotion_motion_probe": {
       "name": "Raw pymammotion motion probe",
       "description": "Low-level movement diagnostic endpoint used for guarded stop-nudge and telemetry probes. Real commands require explicit confirmations.",

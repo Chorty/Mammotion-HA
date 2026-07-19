@@ -468,57 +468,6 @@ dry_run_custom_path:
       selector:
         boolean:
 
-execute_custom_path:
-  description: Readiness-only custom path planning endpoint. Real movement remains blocked in this implementation.
-  fields:
-    entity_id:
-      required: true
-      selector:
-        entity:
-          integration: mammotion
-    points:
-      required: true
-      example:
-        - x: 0.0
-          y: 0.0
-        - x: 1.0
-          y: 1.0
-      selector:
-        object:
-    area_hash:
-      required: false
-      selector:
-        text:
-    speed:
-      required: false
-      default: 0.2
-      selector:
-        number:
-          min: 0.05
-          max: 0.3
-          step: 0.05
-    blade_mode:
-      required: false
-      default: "off"
-      selector:
-        select:
-          options:
-            - "off"
-    dry_run:
-      required: false
-      default: true
-      selector:
-        boolean:
-    confirm_blades_off:
-      required: false
-      default: false
-      selector:
-        boolean:
-    allow_manual_velocity:
-      required: false
-      default: false
-      selector:
-        boolean:
 
 manual_velocity_pulse_test:
   fields:
