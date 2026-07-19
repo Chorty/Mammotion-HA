@@ -5194,6 +5194,16 @@ _VIO_HEADING_FRESH_EPSILON_DEGREES = 0.1
 # the observed pivot translation.
 _NO_ACTUATION_DISPLACEMENT_M = 0.02
 
+# Consecutive settle polls that must all return bit-identical coordinates before
+# the position feed is called stale. A live feed jitters ~2-4mm between reads, so
+# zero movement across several polls means the feed stopped updating rather than
+# the mower stopping. Live 2026-07-19: linear pulses 11-13 of a card run all read
+# (4.6672, -1.4147) exactly and the run aborted no_target_progress -- but the
+# mower had actually driven 25.4cm during them (~8.5cm/pulse, matching the proven
+# step), which only showed up after the feed caught up post-run. The executor was
+# issuing motion commands against a stale position for ~30s.
+_STALE_FEED_MIN_POLLS = 3
+
 
 def _streak_shows_no_actuation(
     command_results: list[dict[str, Any]], streak: int
@@ -5896,6 +5906,14 @@ async def _settle_linear_position_feed(
     previous = _custom_path_telemetry_snapshot(coordinator)
     moved = False
     settled = False
+    # A LIVE position feed always carries sensor noise: consecutive reads of a
+    # stationary mower differ by ~2-4mm. A feed that returns bit-identical
+    # coordinates poll after poll is not reporting stillness, it has stopped
+    # updating. Track that separately so the caller can tell "the mower stopped"
+    # from "we went blind" -- they look identical in a single before/after
+    # comparison but need opposite responses.
+    polls = 0
+    observed_jitter = False
     for _ in range(max_polls):
         await asyncio.sleep(poll_interval_seconds)
         try:
@@ -5906,11 +5924,17 @@ async def _settle_linear_position_feed(
         step = _telemetry_position_delta(previous, current).get("distance")
         total = _telemetry_position_delta(before_telemetry, current).get("distance")
         previous = current
+        polls += 1
+        if step is not None and float(step) > 0.0:
+            observed_jitter = True
         if total is not None and total > _LINEAR_POSITION_SETTLE_EPSILON_M:
             moved = True
         if moved and step is not None and step <= _LINEAR_POSITION_SETTLE_EPSILON_M:
             settled = True
             break
+    # Only claim staleness on the evidence we actually have: several polls that
+    # all returned the exact same coordinates. One poll proves nothing.
+    feed_stale = polls >= _STALE_FEED_MIN_POLLS and not observed_jitter
     return {
         # The settled snapshot. Currently informational: callers re-sample via
         # their sample_delays for `after`. Reserved as the hook for the deferred
@@ -5919,6 +5943,9 @@ async def _settle_linear_position_feed(
         "telemetry": previous,
         "settled": settled,
         "moved": moved,
+        "feed_stale": feed_stale,
+        "observed_jitter": observed_jitter,
+        "settle_polls": polls,
         "wait_seconds": round(time.monotonic() - started, 2),
     }
 
@@ -6210,6 +6237,8 @@ async def _raw_pymammotion_execute_segment(  # noqa: C901, PLR0913
         command_result["position_settled"] = position_settle["settled"]
         command_result["position_moved"] = position_settle["moved"]
         command_result["position_settle_wait_seconds"] = position_settle["wait_seconds"]
+        command_result["position_feed_stale"] = position_settle["feed_stale"]
+        command_result["position_settle_polls"] = position_settle["settle_polls"]
         # Phantom-motion investigation instrumentation (capture only): log both
         # position sources + RTK quality so a later run can tell a real move from a
         # feed-jump on a no-op pulse.
@@ -8171,6 +8200,11 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     cumulative_linear_distance = 0.0
     realignments_used = 0
     command_index = 0
+    # A dead report stream is only a credible diagnosis if the feed was
+    # demonstrably alive earlier in THIS run. Bit-identical coordinates from the
+    # very first pulse are better explained by a mower that never moved; the
+    # 2026-07-19 signature was ten good pulses followed by three frozen ones.
+    feed_moved_earlier = False
     while command_index < effective_linear_ceiling:
         command_index += 1
         before = _custom_path_telemetry_snapshot(coordinator)
@@ -8290,6 +8324,10 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         command_result["position_settled"] = position_settle["settled"]
         command_result["position_moved"] = position_settle["moved"]
         command_result["position_settle_wait_seconds"] = position_settle["wait_seconds"]
+        command_result["position_feed_stale"] = position_settle["feed_stale"]
+        command_result["position_settle_polls"] = position_settle["settle_polls"]
+        if position_settle["moved"]:
+            feed_moved_earlier = True
         # Phantom-motion investigation instrumentation (capture only): log both
         # position sources + RTK quality so a later run can tell a real move from a
         # feed-jump on a no-op pulse.
@@ -8447,6 +8485,24 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                     consecutive_no_progress = 0
                     continue
         if not progress["passed"]:
+            # A stale feed and a stopped mower both read as "no progress", but only
+            # one of them means the mower is fine. Bit-identical coordinates across
+            # several settle polls mean the feed stopped updating, so every
+            # position-derived guard below (waypoint tolerance, displacement caps,
+            # progress) is judging a coordinate that no longer describes reality.
+            # Stop commanding motion rather than pulsing blind: live 2026-07-19 the
+            # mower drove 25.4cm across three such pulses while the executor
+            # believed it had not moved at all, then aborted a healthy run.
+            if position_settle["feed_stale"] and feed_moved_earlier:
+                result["stop_reason"] = "telemetry_stream_stale"
+                result["telemetry_stream_stale_hint"] = (
+                    "Position feed returned bit-identical coordinates across "
+                    f"{position_settle['settle_polls']} settle polls (a live feed "
+                    "jitters ~2-4mm). The mower may still have been moving; "
+                    "position-derived guards were judging a stale coordinate, so "
+                    "motion was stopped rather than continued blind."
+                )
+                return result
             consecutive_no_progress += 1
             if loop_to_tolerance:
                 if consecutive_no_progress >= max_no_progress_pulses:
@@ -8689,6 +8745,16 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
         ),
         "turn_mode": turn_mode,
         "vio_heading_offset_degrees": vio_heading_offset_degrees,
+        # Echoed for post-run forensics. The handler has always forwarded these to
+        # each segment, but the multi-segment result never reported them, so a
+        # failed run gave no way to confirm what pulse lengths the mower was
+        # actually told to use -- the first thing you want to know when a linear
+        # phase stalls (live 2026-07-19).
+        "turn_pulse_duration_ms": turn_pulse_duration_ms,
+        "linear_pulse_duration_ms": linear_pulse_duration_ms,
+        "vio_turn_max_commands": vio_turn_max_commands,
+        "vio_angular_speed": vio_angular_speed,
+        "max_linear_pulse_ceiling": max_linear_pulse_ceiling,
         "sample_delays": list(sample_delays),
         "confirm_blades_off": confirm_blades_off,
         "confirm_clear_area": confirm_clear_area,

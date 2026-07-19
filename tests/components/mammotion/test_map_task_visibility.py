@@ -4201,6 +4201,98 @@ async def test_vector_segment_vio_cold_start_blocked_when_offset_skips_warmup() 
 
 
 @pytest.mark.asyncio
+async def test_vector_segment_reports_stale_stream_after_feed_dies_mid_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A feed that works then freezes aborts telemetry_stream_stale, not no_progress.
+
+    Replays the 2026-07-19 card run: linear pulses advanced normally, then the
+    position feed froze bit-identical for three pulses. The run aborted
+    no_target_progress -- but the mower had actually driven 25.4cm during those
+    pulses (~8.5cm each, the proven step), which only surfaced after the feed
+    caught up post-run. The executor spent ~30s issuing motion against a stale
+    coordinate, so it must stop and say so rather than blame progress.
+    """
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=10.0, vio_state=2
+    )
+    state = {"y": 1.0, "frozen": False, "pulses": 0}
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    async def advancing_then_frozen(count: int = 5) -> None:
+        # Feed advances ~9cm per refresh until it dies, then repeats verbatim.
+        if not state["frozen"]:
+            state["y"] += 0.09
+            coordinator.data.mowing_state.pos_y = state["y"]
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+    coordinator.async_get_reports.side_effect = advancing_then_frozen
+
+    async def fake_calibration(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        return {
+            "passed": True,
+            "reason": "calibrated",
+            "offset_degrees": -90.0,
+            "map_motion_heading_degrees": 280.0,
+            "vision_heading": 10.0,
+            "vio_state": 2,
+            "distance_m": 0.06,
+            "pulses_sent": 1,
+            "command_results": [],
+        }
+
+    async def fake_vio_turn(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        return {
+            "stop_reason": "target_heading_reached",
+            "commands_sent": 1,
+            "command_results": [],
+            "final_vision_heading": 90.0,
+            "final_heading_error_degrees": 0.5,
+        }
+
+    async def freeze_after_two(*args: object, **kwargs: object) -> None:
+        state["pulses"] += 1
+        if state["pulses"] >= 3:
+            state["frozen"] = True
+
+    monkeypatch.setattr(
+        mammotion_services, "_vio_segment_calibration_drive", fake_calibration
+    )
+    monkeypatch.setattr(mammotion_services, "_vio_turn_to_heading", fake_vio_turn)
+    monkeypatch.setattr(mammotion_services, "_motion_open_sleep", freeze_after_two)
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.0, "y": 4.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        # A ceiling switches the executor into loop-to-tolerance mode.
+        max_linear_pulse_ceiling=12,
+        vio_max_realignments=0,
+        sample_delays=(0,),
+    )
+
+    assert result["stop_reason"] == "telemetry_stream_stale"
+    assert "bit-identical" in result["telemetry_stream_stale_hint"]
+    # It must have driven successfully first -- otherwise "the stream died" is
+    # not a supportable claim.
+    assert any(
+        c.get("position_moved") for c in result["command_results"]
+    )
+    assert any(
+        c.get("position_feed_stale") for c in result["command_results"]
+    )
+
+
+@pytest.mark.asyncio
 async def test_vector_segment_vio_real_calibrates_turns_then_drives(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4929,6 +5021,60 @@ def test_ble_connect_cooldown_active_reads_transport_deadline(
     # Deadline already elapsed -> inactive again.
     deadline["value"] = 995.0
     assert _ble_connect_cooldown_active(coordinator) is False
+
+
+@pytest.mark.asyncio
+async def test_settle_feed_flags_stale_when_coordinates_bit_identical(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Bit-identical coordinates across polls read as a stale feed, not stillness."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    async def fake_sleep(delay: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+    before = _custom_path_telemetry_snapshot(coordinator)
+
+    result = await _settle_linear_position_feed(coordinator, before)
+
+    assert result["feed_stale"] is True
+    assert result["observed_jitter"] is False
+    assert result["settle_polls"] >= 3
+    assert result["moved"] is False
+
+
+@pytest.mark.asyncio
+async def test_settle_feed_not_stale_when_live_feed_jitters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A live feed's mm-level noise on a stationary mower is NOT staleness.
+
+    This is the case that must stay distinguishable: during the 2026-07-19 e-stop
+    the mower genuinely did not move, but the feed still jittered 2-4mm, which is
+    what tells us the link is alive and the mower is the thing that stopped.
+    """
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    tick = {"n": 0}
+
+    async def fake_sleep(delay: float) -> None:
+        return None
+
+    async def jitter(count: int = 5) -> None:
+        tick["n"] += 1
+        # ~2mm of sensor noise, well under the 1cm settle epsilon.
+        coordinator.data.mowing_state.pos_x = 1.0 + (
+            0.002 if tick["n"] % 2 else 0.0
+        )
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+    coordinator.async_get_reports.side_effect = jitter
+    before = _custom_path_telemetry_snapshot(coordinator)
+
+    result = await _settle_linear_position_feed(coordinator, before)
+
+    assert result["observed_jitter"] is True
+    assert result["feed_stale"] is False
 
 
 def test_streak_shows_no_actuation_requires_both_sensors_flat() -> None:
