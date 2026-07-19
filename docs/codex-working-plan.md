@@ -2724,3 +2724,137 @@ PR #10. Tests 207 -> 260; mypy + ruff clean throughout. NOTHING deployed.
 (segment-test + execute-segment selectors), `sensor.py`, `strings.json`, and ALL
 `translations/*.json` (lowercase ENUM states) — then restart + re-run a multi-segment
 dry-run and check the 5 safety sensors show translated states.
+
+## Wrap-up 2026-07-18 (on-mower, daylight): expanded deploy verified, software stop proven, turn-tolerance bug found+fixed, card corrected
+
+Live supervised session on `feat/vio-turn-to-heading` @ `330117ce`. Working tree was
+clean, so everything deployed was the committed branch state. Blade OFF for the entire
+session (see the scope note in item 8).
+
+### 1. Expanded deploy + post-restart verification (all green)
+
+scp'd the full 16-file set (`services.py` `e72343fa`, `services.yaml` `ad427ffc`,
+`sensor.py` `b900684a`, `strings.json` `62ee44bd`, all 12 `translations/*.json`),
+md5-matched both sides, restarted HA Core (~105s). All four checks passed:
+
+- safety sensors now emit lowercase `ok` (were `OK` pre-restart) — the hassfest fix live
+- multi-segment dry-run HTTP 200 with `initial_vio_feed {live, 80 features, Light}`
+- `manual_velocity_segment_test` omitting `stop_mode`/`stop_delay_ms` returns **200**
+  (the KeyError->500 fix confirmed on hardware)
+- `execute_segment` accepts `linear_pulse_duration_ms: 3500` and echoes it back
+
+BLE promoted to `ble` on its own through the restart — no toggle needed.
+
+### 2. `_raw_pymammotion_execute_segment` software stop: VALIDATED (tape)
+
+Two real single pulses (`max_commands: 1`, 3500ms, speed 400). Both stops delivered and
+**dual-axis ACKed (`linear_ok`/`angular_ok`) in 0.83ms / 1.06ms** — versus the 07-14 run
+where a stop hung **32.7s** then threw `BLEUnavailableError`. No `stop_failed_aborting`.
+`position_settled: true` + `position_moved: true` on both.
+
+**Settle poll fixes cross-pulse bleed (the 07-15 bug):** pulse 1 ended (4.3864, 2.0409),
+pulse 2 started (4.3874, 2.0400) — pulse 1's travel had fully registered before pulse 2
+began. **Consecutive-pulse no-op did NOT reproduce** (2/2 executed back-to-back).
+
+### 3. Position feed has a ~2-6cm ABSOLUTE noise floor (not a % error)
+
+Both pulses taped **exactly 4in (10.16cm)**; telemetry said 11.97cm then 14.52cm. First
+read as "+18%/+43% inflation" — **corrected by the operator's 10-foot hand-push**: feed
+said 3.107m vs 3.048m actual (**+5.9cm**). Absolute error is ~2-6cm at BOTH 10cm and 3m
+scales => constant noise floor, not scaling.
+
+Consequences: (a) per-pulse displacement is hopeless (noise ≈ signal at 10cm/pulse);
+(b) segment-scale distance-to-target is reliable (~2% at 3m); (c) **`min_progress_distance`
+defaults of 0.01/0.003m sit an order of magnitude INSIDE the floor** — the no-progress
+detector is largely reading noise.
+
+### 4. TURN-TOLERANCE BUG: deadband below the physical rotation quantum
+
+First L-path attempt died `turn_phase_incomplete` on segment 1 with only a **−4.8°**
+error: pulse 1 (+500, 700ms) swung **8.2°** through zero to +3.42°; pulse 2 (−500,
+700ms) swung **15.5°** to −12.11° — *worse than it started*; abort at 2 no-progress.
+
+**Root cause: rotation has a fixed minimum quantum of ~8-15° per pulse (700ms gave 8.2°
+and 15.5°; 1500ms gives ~12.5° — angular yield is NOT proportional to duration, same as
+the linear step), but `heading_tolerance_degrees` defaults to 3.0°.** The controller
+cannot land inside its own deadband, so any error smaller than the step oscillates and
+diverges. When initial error < step size, turning is strictly counterproductive.
+H2 wrong-direction slow-cap + the 2-pulse abort worked exactly as designed and bounded
+the damage — the safety layer is sound, the SETPOINT was wrong.
+
+### 5. Multi-segment L-path PROVEN with `heading_tolerance_degrees: 18` (one param)
+
+Retry succeeded: **both segments `target_reached`, 2/2 real, `path_complete`.**
+seg1 turn −18.4°->−11.2° (1 pulse) + 4 linear, landed 13.6cm; **seg2 turn +83.4°->+9.6°
+in 5 pulses (~14.8°/pulse) + 7 linear, landed 6.5cm from target** — the ~90° VIO turn
+phase proven again (broken since the 07-15 sunset abort). 2m22s at ble_rssi −94.
+**Cross-validation of the tape: 11 linear pulses moved 1.072m = 9.75cm = 3.84in/pulse.**
+
+### 6. Card fixed (`v2026.07.18b1`) — its own defaults were the failure modes
+
+The card was sending `linear_pulse_duration_ms: 2000` (**a taped PHYSICAL NO-OP**),
+`heading_tolerance_degrees: 8` (inside the 8-15° step band), no `min_progress_distance`
+(-> schema 0.01, inside the noise floor), no `turn_pulse_duration_ms` (-> 300ms), and
+`sample_delays [0,5,10]`. All corrected to the proven config (3500 / 18 / 0.06 / 1500 /
+[0,3], `max_linear_commands` 3); stale "2s pulses move ~8-10cm" comment replaced with
+the taped findings. Dry-run confirmed every value lands.
+
+**⚠️ THE CARD LIVES IN TWO PLACES.** The dashboard resource is
+`/hacsfiles/mammotion/mammotion-custom-path-card.js?v=N` ->
+`/config/www/community/mammotion/`, **NOT** the integration's
+`/config/custom_components/mammotion/www/` (served at `/mammotion/`). Deploying to only
+the integration path md5-verifies GREEN while the browser loads the old card — a silent
+failure. Deploy to BOTH. Also: bump `CARD_VERSION` + `?v=N` every deploy, and HA's
+frontend **service worker** can still serve stale JS afterwards (reset frontend cache).
+
+**Blank card map fixed** by the documented config-entry reload *while the mower was
+awake* — containment then passed (`valid: true`, no `no_area_geometry` warning) and BLE
+survived the reload.
+
+### 7. ❗ OPEN: card run stalled in the turn, and the feed may under-report ~5x
+
+Real card run needed −67.7°. Pulses yielded **9.5°, 9.4°, 5.7°, 0.001° (poll timed out
+8.07s, `heading_went_fresh` FALSE), 0.49°** -> `no_heading_progress`, final error −42.6°,
+`linear_commands_sent: 0`. **VIO was HEALTHY throughout (live, 80 features, Light)** — not
+a dusk path. VIO heading (−25.05°) and course-over-ground `toward` (+26.0°) INDEPENDENTLY
+agree it rotated ~25-30° then stopped. Yield was ~9.5°/pulse vs **14.8° in the successful
+run 90 min earlier at identical params** — location/moment-specific, not parameter-driven.
+
+**UNRESOLVED, TOP PRIORITY:** the run logged **15-16cm** total displacement; the operator
+observed **~1ft forward + ~2.5ft left ≈ 82cm** — a **~5x UNDER-report**, on pulses
+commanded at `linear_speed: 0`. (`displacement_m` did climb 1.7->7.1cm across those
+pulses, so some translation registered, just far too little.) If real, the mower converts
+commanded rotation into forward/lateral lurch AND the feed misses most of it — which
+would undermine the linear phase's progress logic and cast doubt on prior "landed Xcm
+from target" claims. **Caveat: the operator figure is a recollection, not a tape, and
+could NOT be verified — the mower auto-docked at 01:06Z before a check was possible.**
+
+**NEXT DAYLIGHT SESSION, FIRST TEST (~2 min): mark the ground, fire ONE rotation pulse,
+tape BOTH the rotation and any translation.** Do not redesign progress logic before this.
+
+### 8. Scope correction (operator)
+
+An "autonomous-mow telemetry test" was queued from the 07-18 plan; the operator stopped
+it — the goal is **point-and-click map movement with the blade OFF**, not mowing/blade
+automation. That telemetry item is a separate side-quest, already root-caused off-mower.
+An item appearing on a queue is not sufficient reason to run it.
+
+### Defaults to fix off-mower (each with live evidence)
+
+1. `heading_tolerance_degrees` **3.0 -> ~18** — strongest; proven necessary AND sufficient
+   in back-to-back runs an hour apart.
+2. `execute_segment.linear_pulse_duration_ms` **300 -> ~3500** — 300ms is below the no-op
+   threshold, so any caller taking the default gets stop-validated pulses that never move.
+3. `min_progress_distance` **0.01/0.003 -> ~0.06** — inside the measured noise floor.
+   **Handle with care**: changes abort behaviour in proven motion loops; wants tests.
+4. Minor: the multi-segment result does NOT echo `linear_pulse_duration_ms`/
+   `turn_pulse_duration_ms`/`vio_turn_max_commands`/`vio_angular_speed`/
+   `max_linear_pulse_ceiling` (the handler DOES forward them — verified). Echo-only gap,
+   but it blocks post-run forensics on the numbers that matter most.
+
+Also noted: `position_source_comparison`'s `mowing_state_xy` is flat **[0.0, 0.0]** with
+`rtk_status` dropping 4(`Fix`)->0 during motion — the second position source is dead on
+this firmware, so the deferred phantom detector (#3) has only ONE live input.
+
+Session end state: mower docked 01:06Z, `Dark`, 0 tracked features, transport back to
+`cloud_aliyun`, blade OFF.

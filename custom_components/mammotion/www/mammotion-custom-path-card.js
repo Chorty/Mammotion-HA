@@ -1,7 +1,7 @@
 const MAX_WAYPOINTS = 7;
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
-const CARD_VERSION = "2026.07.12b2";
+const CARD_VERSION = "2026.07.18b1";
 
 console.info(
   `%c MAMMOTION-CUSTOM-PATH-CARD %c v${CARD_VERSION} `,
@@ -118,18 +118,26 @@ class MammotionCustomPathCard extends HTMLElement {
       blade_mode: "off",
       prefer_ble: true,
       max_turn_commands: 1,
-      max_linear_commands: 1,
+      max_linear_commands: 3,
       // Loop-to-tolerance: keep pulsing forward until the waypoint is reached
       // rather than quitting at a tiny fixed pulse budget.
       max_linear_pulse_ceiling: 30,
       max_no_progress_pulses: 3,
-      // Wider heading tolerance avoids unreliable micro-turns from real-motion
-      // scatter on near-straight paths (validated live at ~8 deg).
-      heading_tolerance_degrees: 8,
+      // Rotation has a FIXED minimum quantum of ~8-15 deg per pulse (taped live
+      // 2026-07-18: a 700ms pulse swung 8.2 deg then 15.5 deg), so the deadband
+      // MUST sit above it or every correction overshoots, reverses and diverges.
+      // A 3 deg tolerance aborted no_heading_progress on a 4.8 deg error; 18 deg
+      // converged an 83 deg turn in 5 pulses and reached both segment targets.
+      heading_tolerance_degrees: 18,
       // Forward-heading offset default; a per-run measured value replaces this
       // once live calibration lands (Phase 2).
       calibrated_forward_heading_offset_degrees: 116.5,
-      sample_delays: [0, 5, 10],
+      // Map-local position carries a ~2-6cm absolute noise floor (taped live
+      // 2026-07-18 at both 10cm and 3m scales), so a 1cm progress threshold is
+      // reading noise. 6cm sits above the floor.
+      min_progress_distance: 0.06,
+      turn_pulse_duration_ms: 1500,
+      sample_delays: [0, 3],
       ...config,
     };
     this._height = Number(this._config.card_height || 520);
@@ -543,23 +551,27 @@ class MammotionCustomPathCard extends HTMLElement {
       confirm_clear_area: dryRun ? false : this._confirmClearArea,
       prefer_ble: Boolean(this._config.prefer_ble ?? true),
       max_turn_commands: Number(this._config.max_turn_commands || 1),
-      max_linear_commands: Number(this._config.max_linear_commands || 1),
-      max_linear_pulse_ceiling: Number(this._config.max_linear_pulse_ceiling || 20),
+      max_linear_commands: Number(this._config.max_linear_commands || 3),
+      max_linear_pulse_ceiling: Number(this._config.max_linear_pulse_ceiling || 30),
       max_no_progress_pulses: Number(this._config.max_no_progress_pulses || 4),
-      heading_tolerance_degrees: Number(this._config.heading_tolerance_degrees || 8),
+      heading_tolerance_degrees: Number(this._config.heading_tolerance_degrees || 18),
+      min_progress_distance: Number(this._config.min_progress_distance || 0.06),
       calibrated_forward_heading_offset_degrees: Number(
         this._config.calibrated_forward_heading_offset_degrees ?? 116.5,
       ),
-      // VIO turn-mode defaults proven live 2026-07-11 (turn+drive multi-segment
-      // path reached its targets): 16 turn pulses covers ~180deg of turn, 2s
-      // linear pulses move ~8-10cm each, 15cm waypoint tolerance.
+      // VIO turn-mode config proven live 2026-07-18 (multi-segment L-path, both
+      // segments target_reached, 83deg turn in 5 pulses, 6.5cm final landing):
+      // 16 turn pulses covers ~180deg; forward motion is a FIXED ~4in (10cm)
+      // step per pulse regardless of duration, but needs >=3s to trigger at all
+      // (2s pulses tape as physical no-ops), so 3500ms; 15cm waypoint tolerance.
       turn_mode: String(this._config.turn_mode || "vio"),
       vio_turn_max_commands: Number(this._config.vio_turn_max_commands || 16),
-      linear_pulse_duration_ms: Number(this._config.linear_pulse_duration_ms || 2000),
+      turn_pulse_duration_ms: Number(this._config.turn_pulse_duration_ms || 1500),
+      linear_pulse_duration_ms: Number(this._config.linear_pulse_duration_ms || 3500),
       waypoint_tolerance: Number(this._config.waypoint_tolerance || 0.15),
       sample_delays: Array.isArray(this._config.sample_delays)
         ? this._config.sample_delays
-        : [0, 3, 6],
+        : [0, 3],
     };
     if (this._areaHash) {
       payload.area_hash = String(this._areaHash);
