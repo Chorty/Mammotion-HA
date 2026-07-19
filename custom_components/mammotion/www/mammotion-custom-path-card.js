@@ -1,7 +1,7 @@
 const MAX_WAYPOINTS = 7;
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
-const CARD_VERSION = "2026.07.18b1";
+const CARD_VERSION = "2026.07.18b2";
 
 console.info(
   `%c MAMMOTION-CUSTOM-PATH-CARD %c v${CARD_VERSION} `,
