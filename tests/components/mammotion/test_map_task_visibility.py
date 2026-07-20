@@ -12,10 +12,13 @@ import pytest
 import voluptuous as vol
 import yaml
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.service import _validate_entity_service_schema
 from pymammotion.data.model.hash_list import Plan
 from pymammotion.transport.base import TransportType
 from pymammotion.transport.ble import BLETransport, BLETransportConfig
 
+from custom_components.mammotion import lawn_mower as mammotion_lawn_mower
 from custom_components.mammotion import services as mammotion_services
 from custom_components.mammotion.button import BUTTON_LUBA_PRO_YUKA
 from custom_components.mammotion.coordinator import (
@@ -7387,3 +7390,30 @@ def test_motion_services_registered_with_exclusive_guard() -> None:
         f"Manual-motion service(s) {sorted(missing)} are registered without "
         "_wrap_exclusive_manual_motion -- concurrent motion loops can interleave."
     )
+
+
+@pytest.mark.parametrize(
+    "schema_name",
+    [
+        "START_MOW_SCHEMA",
+        "START_STOP_BLADES_SCHEMA",
+        "SET_NON_WORK_HOURS_SCHEMA",
+        "SET_BLADE_WARNING_TIME_SCHEMA",
+    ],
+)
+def test_lawn_mower_platform_schemas_are_entity_service_schemas(
+    schema_name: str,
+) -> None:
+    """Platform entity-service schemas must survive HA's own validator.
+
+    Regression for 2026-07-19: these were registered as ``vol.Schema(DICT)``.
+    HA wraps a plain dict with ``cv.make_entity_service_schema`` but requires an
+    already-built schema to BE an entity service schema, so setup raised "The
+    mammotion.start_mow service registers an entity service with a non entity
+    service schema" on every restart. Because that raised out of
+    ``async_setup_entry`` AFTER ``async_add_entities``, the entities loaded but
+    all six lawn_mower platform services were silently missing.
+    """
+    schema = getattr(mammotion_lawn_mower, schema_name)
+    validated = _validate_entity_service_schema(schema, f"mammotion.{schema_name}")
+    assert cv.is_entity_service_schema(validated)

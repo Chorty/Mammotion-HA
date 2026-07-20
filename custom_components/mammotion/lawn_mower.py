@@ -19,6 +19,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import service
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.typing import VolDictType
 from pymammotion.data.model.report_info import DeviceData, ReportData
 from pymammotion.utility.constant.device_constant import WorkMode
 from pymammotion.utility.device_type import DeviceType
@@ -35,7 +36,7 @@ SERVICE_SET_NON_WORK_HOURS = "set_non_work_hours"
 SERVICE_RESET_BLADE_TIME = "reset_blade_time"
 SERVICE_SET_BLADE_WARNING_TIME = "set_blade_warning_time"
 
-START_MOW_SCHEMA = {
+START_MOW_SCHEMA: VolDictType = {
     vol.Optional("modify", default=False): cv.boolean,
     vol.Optional("plan_only", default=False): cv.boolean,
     vol.Optional("is_mow", default=True): cv.boolean,
@@ -82,19 +83,19 @@ START_MOW_SCHEMA = {
     vol.Optional("areas", default=[]): vol.All(cv.ensure_list, [cv.entity_id]),
 }
 
-START_STOP_BLADES_SCHEMA = {
+START_STOP_BLADES_SCHEMA: VolDictType = {
     vol.Required("start_stop", default=True): cv.boolean,
     vol.Optional("blade_height", default=30): vol.All(
         vol.Coerce(int), vol.Range(min=15, max=100)
     ),
 }
 
-SET_NON_WORK_HOURS_SCHEMA = {
+SET_NON_WORK_HOURS_SCHEMA: VolDictType = {
     vol.Required("start_time"): cv.time,
     vol.Required("end_time"): cv.time,
 }
 
-SET_BLADE_WARNING_TIME_SCHEMA = {
+SET_BLADE_WARNING_TIME_SCHEMA: VolDictType = {
     vol.Required("hours"): vol.All(vol.Coerce(int), vol.Range(min=1, max=9999)),
 }
 
@@ -134,7 +135,7 @@ async def async_setup_entry(
         DOMAIN,
         SERVICE_START_MOWING,
         entity_domain=LAWN_MOWER_DOMAIN,
-        schema=vol.Schema(START_MOW_SCHEMA),
+        schema=START_MOW_SCHEMA,
         func="async_start_mowing",
     )
     service.async_register_platform_entity_service(
@@ -150,7 +151,7 @@ async def async_setup_entry(
         DOMAIN,
         SERVICE_START_STOP_BLADES,
         entity_domain=LAWN_MOWER_DOMAIN,
-        schema=vol.Schema(START_STOP_BLADES_SCHEMA),
+        schema=START_STOP_BLADES_SCHEMA,
         func="async_start_stop_blades",
     )
     service.async_register_platform_entity_service(
@@ -158,7 +159,7 @@ async def async_setup_entry(
         DOMAIN,
         SERVICE_SET_NON_WORK_HOURS,
         entity_domain=LAWN_MOWER_DOMAIN,
-        schema=vol.Schema(SET_NON_WORK_HOURS_SCHEMA),
+        schema=SET_NON_WORK_HOURS_SCHEMA,
         func="async_set_non_work_hours",
     )
     service.async_register_platform_entity_service(
@@ -174,7 +175,7 @@ async def async_setup_entry(
         DOMAIN,
         SERVICE_SET_BLADE_WARNING_TIME,
         entity_domain=LAWN_MOWER_DOMAIN,
-        schema=vol.Schema(SET_BLADE_WARNING_TIME_SCHEMA),
+        schema=SET_BLADE_WARNING_TIME_SCHEMA,
         func="async_set_blade_warning_time",
     )
 
