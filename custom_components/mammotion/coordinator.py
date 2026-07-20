@@ -98,6 +98,16 @@ from .const import (
 if TYPE_CHECKING:
     from . import MammotionConfigEntry
 
+# Upper bound on the opportunistic BLE reconnect attempted during a report
+# update. ``BLETransport.connect()`` is not bounded overall: it can run a
+# self-managed scan (scan_timeout 10s) and then ``establish_connection`` retries
+# up to MAX_CONNECT_ATTEMPTS (4) with backoff, so a bad link can block for tens
+# of seconds. This runs inline in ``_async_update_data``, so an unbounded call
+# stalls the coordinator tick and every entity update behind it (a BLE call was
+# observed hanging 32.7s on this hardware, 2026-07-14). Reconnecting is
+# best-effort -- cloud transport still serves the update -- so cap it and move on.
+_BLE_RECONNECT_TIMEOUT_SECONDS = 15.0
+
 MAINTENANCE_INTERVAL = timedelta(minutes=60)
 DEFAULT_INTERVAL = timedelta(minutes=30)
 REPORT_INTERVAL = timedelta(minutes=5)
@@ -1867,6 +1877,49 @@ class MammotionReportUpdateCoordinator(MammotionBaseUpdateCoordinator[MowingDevi
         """Get coordinator data."""
         return device
 
+    async def _async_opportunistic_ble_reconnect(self) -> None:
+        """Re-establish BLE during a report update when the link is usable again.
+
+        pymammotion routes over MQTT while the BLE transport reports itself
+        unusable (missing BLEDevice, RSSI under ``min_rssi``, or an armed connect
+        cooldown). Once a cooldown lapses ``is_usable`` flips back but nothing
+        reconnects until an advertisement happens to trigger ``_add_ble_device``,
+        so the mower can sit on cloud transport long after BLE became viable --
+        and real motion is gated on BLE (live 2026-07-19: repeatedly stuck on
+        ``cloud_aliyun`` at healthy RSSI with the cooldown long expired).
+
+        Best-effort and bounded: the update is already served by cloud transport,
+        so a slow or failing connect must not stall the coordinator tick.
+        """
+        handle = self.manager.mower(self.device_name)
+        if handle is None:
+            return
+        ble = handle.get_transport(TransportType.BLE)
+        if ble is None:
+            return
+        if not (
+            handle.prefer_ble
+            and ble.is_usable
+            and not ble.is_connected
+            and self._bluetooth_enabled
+        ):
+            return
+        try:
+            async with asyncio.timeout(_BLE_RECONNECT_TIMEOUT_SECONDS):
+                await ble.connect()
+        except BLEUnavailableError as exc:
+            LOGGER.debug(
+                "BLE unavailable for %s during update — continuing via cloud: %s",
+                self.device_name,
+                exc,
+            )
+        except TimeoutError:
+            LOGGER.debug(
+                "BLE reconnect for %s exceeded %.0fs — continuing via cloud",
+                self.device_name,
+                _BLE_RECONNECT_TIMEOUT_SECONDS,
+            )
+
     async def _async_update_data(self) -> MowingDevice:
         """Get data from the device."""
         if data := await super()._async_update_data():
@@ -1893,22 +1946,7 @@ class MammotionReportUpdateCoordinator(MammotionBaseUpdateCoordinator[MowingDevi
                 )
             )
 
-        if handle := self.manager.mower(self.device_name):
-            if ble := handle.get_transport(TransportType.BLE):
-                if (
-                    handle.prefer_ble
-                    and ble.is_usable
-                    and not ble.is_connected
-                    and self._bluetooth_enabled
-                ):
-                    try:
-                        await ble.connect()
-                    except BLEUnavailableError as exc:
-                        LOGGER.debug(
-                            "BLE unavailable for %s during update — continuing via cloud: %s",
-                            self.device_name,
-                            exc,
-                        )
+        await self._async_opportunistic_ble_reconnect()
 
         return device
 

@@ -6,7 +6,7 @@ import datetime
 import json
 import pathlib
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import voluptuous as vol
@@ -18,6 +18,7 @@ from pymammotion.data.model.hash_list import Plan
 from pymammotion.transport.base import TransportType
 from pymammotion.transport.ble import BLETransport, BLETransportConfig
 
+from custom_components.mammotion import coordinator as mammotion_coordinator
 from custom_components.mammotion import lawn_mower as mammotion_lawn_mower
 from custom_components.mammotion import services as mammotion_services
 from custom_components.mammotion.button import BUTTON_LUBA_PRO_YUKA
@@ -7417,3 +7418,106 @@ def test_lawn_mower_platform_schemas_are_entity_service_schemas(
     schema = getattr(mammotion_lawn_mower, schema_name)
     validated = _validate_entity_service_schema(schema, f"mammotion.{schema_name}")
     assert cv.is_entity_service_schema(validated)
+
+
+# Unbound so the coordinator's private reconnect helper can be exercised without
+# standing up a full HA instance; bound once here rather than per call site.
+_OPPORTUNISTIC_BLE_RECONNECT = (
+    mammotion_coordinator.MammotionReportUpdateCoordinator._async_opportunistic_ble_reconnect  # noqa: SLF001
+)
+
+
+def _reconnect_self(
+    *,
+    is_usable: bool = True,
+    is_connected: bool = False,
+    prefer_ble: bool = True,
+    bluetooth_enabled: bool = True,
+    connect: object = None,
+    handle_present: bool = True,
+) -> SimpleNamespace:
+    """Build a minimal stand-in for the report coordinator."""
+    if connect is None:
+
+        async def connect() -> None:  # noqa: RUF029
+            return None
+
+    ble = SimpleNamespace(
+        is_usable=is_usable, is_connected=is_connected, connect=connect
+    )
+    handle = SimpleNamespace(prefer_ble=prefer_ble, get_transport=lambda _t: ble)
+    return SimpleNamespace(
+        manager=SimpleNamespace(mower=lambda _name: handle if handle_present else None),
+        device_name="Luba-Test",
+        _bluetooth_enabled=bluetooth_enabled,
+    )
+
+
+@pytest.mark.asyncio
+async def test_opportunistic_ble_reconnect_is_bounded_and_best_effort() -> None:
+    """A hanging BLE reconnect must not stall the coordinator update.
+
+    ``BLETransport.connect()`` is unbounded overall (self-managed scan at
+    scan_timeout 10s, then establish_connection retries up to 4 times with
+    backoff), and it runs inline in ``_async_update_data``. An unbounded call
+    blocks the tick and every entity update behind it. The update is already
+    served by cloud transport, so reconnecting is best-effort.
+    """
+    started = asyncio.Event()
+
+    async def hanging_connect() -> None:
+        started.set()
+        await asyncio.sleep(3600)
+
+    fake_self = _reconnect_self(connect=hanging_connect)
+
+    with patch.object(mammotion_coordinator, "_BLE_RECONNECT_TIMEOUT_SECONDS", 0.05):
+        # Must return rather than hang, and must not raise.
+        await asyncio.wait_for(_OPPORTUNISTIC_BLE_RECONNECT(fake_self), timeout=5)
+
+    assert started.is_set()
+
+
+@pytest.mark.asyncio
+async def test_opportunistic_ble_reconnect_skips_when_not_applicable() -> None:
+    """No connect attempt when BLE is unusable, already connected, or disabled."""
+    calls: list[str] = []
+
+    async def record_connect() -> None:
+        calls.append("connect")
+
+    # Unusable transport (e.g. armed connect cooldown) -> leave it alone.
+    await _OPPORTUNISTIC_BLE_RECONNECT(
+        _reconnect_self(is_usable=False, connect=record_connect)
+    )
+    # Already connected -> nothing to do.
+    await _OPPORTUNISTIC_BLE_RECONNECT(
+        _reconnect_self(is_connected=True, connect=record_connect)
+    )
+    # Bluetooth switched off by the user -> respect it.
+    await _OPPORTUNISTIC_BLE_RECONNECT(
+        _reconnect_self(bluetooth_enabled=False, connect=record_connect)
+    )
+    # prefer_ble off -> user opted out of BLE routing.
+    await _OPPORTUNISTIC_BLE_RECONNECT(
+        _reconnect_self(prefer_ble=False, connect=record_connect)
+    )
+    # No handle at all.
+    await _OPPORTUNISTIC_BLE_RECONNECT(
+        _reconnect_self(handle_present=False, connect=record_connect)
+    )
+
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_opportunistic_ble_reconnect_connects_when_usable() -> None:
+    """The whole point: a usable-but-disconnected transport gets reconnected."""
+    calls: list[str] = []
+
+    async def record_connect() -> None:
+        calls.append("connect")
+
+    await _OPPORTUNISTIC_BLE_RECONNECT(_reconnect_self(connect=record_connect))
+
+    assert calls == ["connect"]
