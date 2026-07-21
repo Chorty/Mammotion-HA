@@ -3021,3 +3021,54 @@ shipped in the dependency.
 - **No code review this cycle.** Two xhigh passes already ran; 305 tests, mypy + ruff
   clean. Nothing blocking is a code-quality problem.
 - PR #10 stays open for human review; no merge.
+
+## Wrap-up 2026-07-20 (late): Phase A implemented off-mower (`b91de636`)
+
+A1-A4 all landed in one commit. **NOT deployed** — the cadence change is opt-in and
+gated on the B1 tape A/B. Tests 282 -> 293 in the motion file (323 across the suite);
+ruff + mypy clean.
+
+**A1 — app-parity motion cadence.** New `_motion_refresh_window()` holds a pulse open
+the way the app does: it calls a `resend` callable every interval for the pulse
+duration, then the caller runs its existing mandatory stop. Opt-in via a new
+`motion_refresh_interval_ms` parameter (0 = the proven single-shot path) on
+`manual_velocity_pulse_test`, `raw_pymammotion_execute_vector_segment` and
+`raw_pymammotion_execute_multi_segment` (schemas + handlers + services.yaml).
+
+Design decisions worth remembering:
+- **Refresh sends are counted separately from pulses** (`motion_refresh_commands_sent`,
+  never `linear_commands_sent`). Folding them together would have silently broken the
+  pulse ceilings that bound a run.
+- **The loop is bounded by a computed command count as well as by wall clock.** A
+  wall-clock-only loop spins forever when sleeps do not advance the clock (virtual-clock
+  tests), and the count doubles as a hard ceiling if a bad interval slips through.
+- **A refresh is never sent with no window left**, so the final command is always
+  followed by real motion time rather than an immediate stop.
+- **A failed refresh does not raise** — it records `refresh_error` and stops refreshing,
+  leaving the caller's stop intact. A half-refreshed window is a shorter drive, never a
+  runaway one.
+- Interval is clamped to 50-1000 ms.
+
+**A2 — app speed scale.** `_app_scale_speeds()` / `_app_speed_scale_report()` mirror the
+app's rocker transform (15% deadband, x10 linear, x4.5 angular). Implemented locally so
+the numbers stay deterministic across dependency bumps, with
+`test_app_speed_scale_matches_pymammotion` pinning them to
+`pymammotion.utility.movement`. The report is read-only and rides along in results; it
+flags that our angular 500 is above the app's 382 ceiling and our linear 400 is ~47%
+throttle. Note `manual_velocity_pulse_test`'s `speed` is ALREADY app-scale 0.0-1.0 (it
+routes through the coordinator's directional helpers), unlike the executors' raw values.
+
+**A3 — arrived segments no longer fail.** `_raw_multi_segment_phase_passed` required
+EVERY per-pulse progress diagnostic to clear `min_progress_distance`. Final-approach
+pulses necessarily move less than that, so a segment could reach its target and still be
+marked `passed: False`, stopping the run so later segments never executed. Arrival now
+decides (`target_reached` + valid + unblocked); the genuinely-stuck case is still caught
+by the executor's consecutive-no-progress abort, which never reports `target_reached`.
+
+**Deliberately left alone:** `_raw_pymammotion_execute_segment` (the legacy executor)
+still runs single-shot. It now has the same shape as the vector executor so wiring it is
+mechanical, but it is not on the card path and the diff should not widen before B1.
+
+**Next session is B1** — see the Phase B section above and `docs/NEXT-SESSION.md` for the
+exact service call. Everything downstream (throughput re-derivation, turn tolerance,
+joystick card) waits on that one measurement.
