@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import dataclasses
+import functools
 import math
 import time
 from collections.abc import Callable, Coroutine, Mapping, Sequence
@@ -317,6 +318,12 @@ MANUAL_VELOCITY_PULSE_TEST_SCHEMA = vol.Schema(
         vol.Optional("post_command_sample_delays", default=[0, 2, 10, 30, 60]): vol.All(
             cv.ensure_list,
             [vol.All(vol.Coerce(float), vol.Range(min=0.0, max=120.0))],
+        ),
+        # App-parity motion cadence (see RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA).
+        # This service is the bare-pulse A/B harness for it: same action and
+        # duration, 0 vs 200, tape-measured.
+        vol.Optional("motion_refresh_interval_ms", default=0): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=1000)
         ),
         vol.Optional("use_wifi", default=DEFAULT_EXPERIMENTAL_SEGMENT_USE_WIFI): cv.boolean,
         vol.Optional("dry_run", default=True): cv.boolean,
@@ -891,6 +898,12 @@ RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("linear_pulse_duration_ms", default=3500.0): vol.All(
             vol.Coerce(float), vol.Range(min=50.0, max=4000.0)
         ),
+        # App-parity motion cadence. 0 = proven single-shot behaviour; a positive
+        # value re-sends the movement command every N ms for the pulse duration,
+        # mirroring the app's 200 ms timer (2026-07-20 APK decompile).
+        vol.Optional("motion_refresh_interval_ms", default=0): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=1000)
+        ),
         vol.Optional("turn_mode", default="vio"): vol.In(["vio", "legacy"]),
         vol.Optional("vio_heading_offset_degrees"): vol.All(
             vol.Coerce(float), vol.Range(min=-180.0, max=360.0)
@@ -994,6 +1007,12 @@ RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA = vol.Schema(
         ),
         vol.Optional("linear_pulse_duration_ms", default=3500.0): vol.All(
             vol.Coerce(float), vol.Range(min=50.0, max=4000.0)
+        ),
+        # App-parity motion cadence. 0 = proven single-shot behaviour; a positive
+        # value re-sends the movement command every N ms for the pulse duration,
+        # mirroring the app's 200 ms timer (2026-07-20 APK decompile).
+        vol.Optional("motion_refresh_interval_ms", default=0): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=1000)
         ),
         vol.Optional("turn_mode", default="vio"): vol.In(["vio", "legacy"]),
         vol.Optional("vio_heading_offset_degrees"): vol.All(
@@ -3575,6 +3594,168 @@ async def _motion_open_sleep(
         raise
 
 
+# --- App-parity motion cadence (2026-07-20 APK decompile) -------------------
+#
+# `com.agilexrobotics.command.CarRemoteControlManage2` (Mammotion 2.3.8.19)
+# drives the mower from the on-screen stick like this:
+#
+#     public static float frequency = 0.2f;            // 200 ms
+#     timer.schedule(countDownTask, 0L, 200);          // fire now, then every 200 ms
+#         -> maCommandHelper.sendControl(linear, angular)
+#     if (linearSpeed == 0 && angularSpeed == 0) cancelTimer();
+#
+# and `MACommandApiHelper.sendControl` builds exactly
+# `DrvMotionCtrl(setLinearSpeed, setAngularSpeed)` -- byte-identical to
+# pymammotion's `send_movement`, sent with needAck=false. So the app uses the
+# same command we do; the only difference is that it RE-SENDS on a fixed timer
+# for as long as motion should continue, and stops by sending zero speeds first.
+#
+# Our executors historically sent ONE command and slept out the pulse. That is
+# the leading explanation for the tape-measured behaviour of 2026-07-15: a fixed
+# ~4in step regardless of pulse duration (2s -> 0", 4s -> 4", 6s -> 4"). Kept
+# OPT-IN (interval 0 == legacy single-shot) until a daylight tape A/B confirms
+# it against the proven path -- see plan item B1.
+_MOTION_REFRESH_INTERVAL_MS_APP = 200
+_MOTION_REFRESH_INTERVAL_MS_MIN = 50
+_MOTION_REFRESH_INTERVAL_MS_MAX = 1000
+
+
+async def _motion_refresh_window(
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    resend: Callable[[], Coroutine[Any, Any, Any]],
+    duration_seconds: float,
+    refresh_interval_ms: int,
+) -> dict[str, Any]:
+    """Hold a movement command open for ``duration_seconds``.
+
+    With ``refresh_interval_ms <= 0`` this is exactly the legacy behaviour: sleep
+    out the window while a single already-sent command is open. With a positive
+    interval it mirrors the app, calling ``resend`` (which must re-issue the
+    identical movement command) every interval until the window closes.
+
+    The caller is responsible for the initial command (so a failed first send
+    still aborts before any waiting) and for the explicit stop afterwards; this
+    only owns the refreshes in between. A refresh is never sent when no window
+    remains, so the last command is always followed by real motion time rather
+    than an immediate stop.
+    """
+    report: dict[str, Any] = {
+        "refresh_enabled": refresh_interval_ms > 0,
+        "refresh_interval_ms": max(int(refresh_interval_ms), 0),
+        "refresh_commands_sent": 0,
+    }
+    if refresh_interval_ms <= 0:
+        await _motion_open_sleep(coordinator, duration_seconds)
+        return report
+
+    interval_ms = min(
+        max(int(refresh_interval_ms), _MOTION_REFRESH_INTERVAL_MS_MIN),
+        _MOTION_REFRESH_INTERVAL_MS_MAX,
+    )
+    report["refresh_interval_ms"] = interval_ms
+    interval_seconds = interval_ms / 1000
+    deadline = time.monotonic() + duration_seconds
+    # Bound the refresh count as well as the deadline. A wall-clock-only loop
+    # spins forever if sleeps do not advance the clock (no-op sleeps in tests),
+    # and this doubles as a hard ceiling on commands per pulse.
+    max_refreshes = max(int(duration_seconds / interval_seconds), 0)
+    report["max_refresh_commands"] = max_refreshes
+    while report["refresh_commands_sent"] < max_refreshes:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        await _motion_open_sleep(coordinator, min(interval_seconds, remaining))
+        if time.monotonic() >= deadline:
+            break
+        try:
+            await resend()
+        except Exception as err:  # noqa: BLE001
+            # Stop refreshing but let the caller run its mandatory stop: a
+            # half-refreshed window is a shorter drive, never a runaway one.
+            report["refresh_error"] = f"{type(err).__name__}: {err}"
+            break
+        report["refresh_commands_sent"] += 1
+    return report
+
+
+# --- App speed scale (2026-07-20 APK decompile) -----------------------------
+#
+# Mirrors `RockerControlUtil.transfrom3` + `getPercent` as shipped in the app
+# (and re-implemented in `pymammotion.utility.movement.transform_both_speeds`).
+# Implemented locally so the numbers are deterministic and testable regardless
+# of the pinned pymammotion version; `test_app_speed_scale_matches_pymammotion`
+# guards the two against drifting apart.
+#
+# For a pure axis the transform collapses to sin/cos of 90/270 (linear) or
+# 0/180 (angular), i.e. +/-1, leaving magnitude scaling only:
+#     linear  = int(percent) * 10
+#     angular = int(int(percent) * 4.5)
+# with a 15% stick deadband applied first. Full deflection therefore yields
+# 85 percent -> 850 linear / 382 angular, which are the real ceilings.
+_APP_SPEED_DEADBAND_PERCENT = 15.0
+_APP_LINEAR_SPEED_SCALE = 10
+_APP_ANGULAR_SPEED_SCALE = 4.5
+_APP_MAX_LINEAR_SPEED = 850
+_APP_MAX_ANGULAR_SPEED = 382
+
+
+def _app_speed_percent(deflection_percent: float) -> float:
+    """Apply the app's 15% stick deadband to a 0-100 deflection."""
+    if deflection_percent <= _APP_SPEED_DEADBAND_PERCENT:
+        return 0.0
+    return deflection_percent - _APP_SPEED_DEADBAND_PERCENT
+
+
+def _app_scale_speeds(
+    linear_fraction: float = 0.0, angular_fraction: float = 0.0
+) -> tuple[int, int]:
+    """Convert app-scale stick fractions (-1.0..1.0) to raw movement speeds."""
+    linear_component = int(_app_speed_percent(abs(linear_fraction) * 100))
+    angular_component = int(_app_speed_percent(abs(angular_fraction) * 100))
+    linear_speed = linear_component * _APP_LINEAR_SPEED_SCALE
+    angular_speed = int(angular_component * _APP_ANGULAR_SPEED_SCALE)
+    if linear_fraction < 0:
+        linear_speed = -linear_speed
+    if angular_fraction < 0:
+        angular_speed = -angular_speed
+    return linear_speed, angular_speed
+
+
+def _app_speed_scale_report(linear_speed: Any, angular_speed: Any) -> dict[str, Any]:
+    """Describe raw speeds against the app's own scale (read-only diagnostic).
+
+    Flags values the on-screen control can never produce: our long-standing
+    angular default of 500 is above the app's 382 ceiling and may simply be
+    clamped by firmware, which would make the "angular is weak" calibration an
+    artefact rather than a property of the mower.
+    """
+    try:
+        linear = int(linear_speed)
+        angular = int(angular_speed)
+    except (TypeError, ValueError):
+        return {"available": False}
+    return {
+        "available": True,
+        "linear_speed": linear,
+        "angular_speed": angular,
+        "app_max_linear_speed": _APP_MAX_LINEAR_SPEED,
+        "app_max_angular_speed": _APP_MAX_ANGULAR_SPEED,
+        "linear_fraction_of_app_max": (
+            round(abs(linear) / _APP_MAX_LINEAR_SPEED, 3)
+            if _APP_MAX_LINEAR_SPEED
+            else None
+        ),
+        "angular_fraction_of_app_max": (
+            round(abs(angular) / _APP_MAX_ANGULAR_SPEED, 3)
+            if _APP_MAX_ANGULAR_SPEED
+            else None
+        ),
+        "linear_above_app_max": abs(linear) > _APP_MAX_LINEAR_SPEED,
+        "angular_above_app_max": abs(angular) > _APP_MAX_ANGULAR_SPEED,
+    }
+
+
 # Per-mower registry of the manual-motion service run currently in flight,
 # keyed by id(coordinator). HA service calls can overlap; two motion loops
 # interleaving movement and stop commands would defeat every bounded-pulse
@@ -3673,6 +3854,7 @@ async def _manual_velocity_pulse_test(
     confirm_clear_area: bool = False,
     followup_samples: int = 4,
     followup_interval_seconds: float = 0.5,
+    motion_refresh_interval_ms: int = 0,
 ) -> dict[str, Any]:
     """Run or simulate one tiny manual-velocity pulse with telemetry sampling."""
     if post_command_sample_delays is None:
@@ -3709,6 +3891,18 @@ async def _manual_velocity_pulse_test(
         "stop_delay_ms": stop_delay_ms,
         "post_command_sample_delays": list(post_command_sample_delays),
         "use_wifi": use_wifi,
+        "motion_refresh_interval_ms": motion_refresh_interval_ms,
+        # `speed` here is the app-scale 0.0-1.0 stick fraction (the coordinator's
+        # directional helpers run it through the same transform the app uses), so
+        # report the raw speeds it resolves to. Turn actions drive the angular
+        # axis, forward/backward the linear one.
+        "app_speed_scale": _app_speed_scale_report(
+            *(
+                _app_scale_speeds(speed, 0.0)
+                if action in {"forward", "backward"}
+                else _app_scale_speeds(0.0, speed)
+            )
+        ),
         "confirm_blades_off": confirm_blades_off,
         "confirm_clear_area": confirm_clear_area,
         "would_send": not dry_run and not blockers,
@@ -3739,7 +3933,21 @@ async def _manual_velocity_pulse_test(
         use_wifi=use_wifi,
     )
     command_ok = result["command_result"]["ok"] is True
-    await _motion_open_sleep(coordinator, duration_ms / 1000)
+    # Bare bounded pulse -- this is the A/B harness for the app-parity cadence
+    # question (plan item B1): same action and duration, run once with
+    # motion_refresh_interval_ms=0 and once with 200, tape-measure both.
+    result["motion_refresh"] = await _motion_refresh_window(
+        coordinator,
+        resend=functools.partial(
+            _manual_velocity_command_attempt,
+            coordinator,
+            action=action,
+            speed=speed,
+            use_wifi=use_wifi,
+        ),
+        duration_seconds=duration_ms / 1000,
+        refresh_interval_ms=motion_refresh_interval_ms,
+    )
     after_command = _custom_path_telemetry_snapshot(coordinator)
     result["samples"].append({"label": "after_command_window", "telemetry": after_command})
     if stop_mode == "delayed" and stop_delay_ms > 0:
@@ -7697,6 +7905,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     vio_realign_threshold_degrees: float = 15.0,
     vio_max_realignments: int = 3,
     sample_delays: list[float] | tuple[float, ...] = (0, 5, 10, 20, 30, 45, 60),
+    motion_refresh_interval_ms: int = 0,
     ha_state: str | None = None,
     active_route: dict[str, Any] | None = None,
     refetch_runtime_context: (
@@ -7964,6 +8173,13 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         "commands_sent": 0,
         "turn_commands_sent": 0,
         "linear_commands_sent": 0,
+        # App-parity cadence (opt-in). Echoed so a run's numbers can be read back
+        # without guessing which motion model produced them.
+        "motion_refresh_interval_ms": motion_refresh_interval_ms,
+        "motion_refresh_commands_sent": 0,
+        "app_speed_scale": _app_speed_scale_report(
+            linear_speed_fast, vio_angular_speed
+        ),
         "calibration_commands_sent": 0,
         "realignments": [],
         "command_results": [],
@@ -8302,7 +8518,26 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         if command_result["ok"] is not True:
             result["stop_reason"] = "command_failed"
             return result
-        await _motion_open_sleep(coordinator, linear_pulse_duration_ms / 1000)
+        # Hold the pulse open the way the app does. With the default interval of
+        # 0 this is the proven single-shot behaviour; with a positive interval the
+        # movement command is re-sent every interval for the pulse duration.
+        # Refreshes are counted separately from pulses on purpose: they must not
+        # inflate `linear_commands_sent`, which drives the pulse ceilings.
+        command_result["motion_refresh"] = await _motion_refresh_window(
+            coordinator,
+            resend=functools.partial(
+                _send_manager_command_with_args,
+                coordinator,
+                "send_movement",
+                prefer_ble=prefer_ble,
+                command_kwargs=command_result["kwargs"],
+            ),
+            duration_seconds=linear_pulse_duration_ms / 1000,
+            refresh_interval_ms=motion_refresh_interval_ms,
+        )
+        result["motion_refresh_commands_sent"] += command_result["motion_refresh"][
+            "refresh_commands_sent"
+        ]
         command_result["stop_result"] = await _manual_velocity_stop_attempt(
             coordinator, use_wifi=not prefer_ble
         )
@@ -8550,16 +8785,26 @@ def _raw_multi_segment_phase_passed(
     *,
     real_segment: bool,
 ) -> bool:
-    """Return whether a guarded multi-segment phase passed."""
+    """Return whether a guarded multi-segment phase passed.
+
+    A real segment passes when it *arrived*: ``target_reached`` with a valid,
+    unblocked run. It deliberately does NOT require every per-pulse progress
+    diagnostic to have cleared ``min_progress_distance``.
+
+    Requiring that was a real bug. As the mower closes on a waypoint the
+    remaining distance shrinks below one pulse, so the final approach pulses
+    legitimately move less than the per-pulse threshold. A segment could
+    therefore land on its target and still be marked ``passed: False``, which
+    stopped the multi-segment run and meant later segments never executed. The
+    genuinely-stuck case is already handled inside the executor by the
+    consecutive-no-progress abort, which never reports ``target_reached``.
+    Per-pulse diagnostics remain in the result for forensics.
+    """
     if real_segment:
         return (
             segment_result.get("stop_reason") == "target_reached"
             and segment_result.get("valid") is True
             and not segment_result.get("blockers")
-            and all(
-                diagnostic.get("passed")
-                for diagnostic in segment_result.get("progress_diagnostics", [])
-            )
         )
     phases = segment_result.get("phases") or []
     return (
@@ -8609,6 +8854,7 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
     vio_realign_threshold_degrees: float = 15.0,
     vio_max_realignments: int = 3,
     sample_delays: list[float] | tuple[float, ...] = (0, 5, 10, 20, 30, 45, 60),
+    motion_refresh_interval_ms: int = 0,
     ha_state: str | None = None,
     active_route: dict[str, Any] | None = None,
     refetch_runtime_context: (
@@ -8864,6 +9110,7 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
             ),
             turn_pulse_duration_ms=turn_pulse_duration_ms,
             linear_pulse_duration_ms=linear_pulse_duration_ms,
+            motion_refresh_interval_ms=motion_refresh_interval_ms,
             turn_mode=turn_mode,
             vio_heading_offset_degrees=carried_vio_offset,
             vio_turn_max_commands=vio_turn_max_commands,
@@ -10802,6 +11049,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             stop_mode=call.data["stop_mode"],
             stop_delay_ms=call.data["stop_delay_ms"],
             post_command_sample_delays=tuple(call.data["post_command_sample_delays"]),
+            motion_refresh_interval_ms=call.data["motion_refresh_interval_ms"],
             use_wifi=call.data["use_wifi"],
             dry_run=call.data["dry_run"],
             confirm_blades_off=call.data["confirm_blades_off"],
@@ -11142,6 +11390,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             ],
             turn_pulse_duration_ms=call.data["turn_pulse_duration_ms"],
             linear_pulse_duration_ms=call.data["linear_pulse_duration_ms"],
+            motion_refresh_interval_ms=call.data["motion_refresh_interval_ms"],
             turn_mode=call.data["turn_mode"],
             vio_heading_offset_degrees=call.data.get("vio_heading_offset_degrees"),
             vio_turn_max_commands=call.data["vio_turn_max_commands"],
@@ -11204,6 +11453,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             ],
             turn_pulse_duration_ms=call.data["turn_pulse_duration_ms"],
             linear_pulse_duration_ms=call.data["linear_pulse_duration_ms"],
+            motion_refresh_interval_ms=call.data["motion_refresh_interval_ms"],
             turn_mode=call.data["turn_mode"],
             vio_heading_offset_degrees=call.data.get("vio_heading_offset_degrees"),
             vio_turn_max_commands=call.data["vio_turn_max_commands"],

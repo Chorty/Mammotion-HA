@@ -2858,3 +2858,166 @@ this firmware, so the deferred phantom detector (#3) has only ONE live input.
 
 Session end state: mower docked 01:06Z, `Dark`, 0 tracked features, transport back to
 `cloud_aliyun`, blade OFF.
+
+## PLAN 2026-07-20: app-parity motion (control.py / rocker_util.py finding)
+
+### The discovery
+
+Two pymammotion files nobody on this project had opened describe how the phone app
+actually drives the mower:
+
+- **`pymammotion/mammotion/control.py`** (`JoystickControl`) — a working reference
+  driver. Its critical line is `PeriodicThread(0.2, self.run_movement)`: it **re-sends
+  `send_movement` every 200 ms, continuously, while the control is held**, and it does
+  NOT dedupe on unchanged values — it fires every tick regardless.
+- **`pymammotion/utility/rocker_util.py`** (`RockerControlUtil`) — the app's on-screen
+  thumbstick math, carrying `"""generated source for class ..."""` docstrings (the
+  fingerprint of automated Java->Python decompiler output, i.e. the upstream authors'
+  decompile of the app, not ours).
+
+**Our motion model is the opposite.** Every motion site in `services.py` sends ONE
+`send_movement`, then `_motion_open_sleep(duration)`, then a stop — the helper's name
+encodes the assumption that the command stays "open" and the mower keeps moving.
+
+**HYPOTHESIS (H-WATCHDOG):** `send_movement` grants motion for a short window and the
+mower self-halts unless refreshed. The app never notices because it refreshes at 5 Hz.
+This would explain every taped anomaly at once: the fixed ~4in step independent of
+duration (2s->0", 4s->4", 6s->4"), the marginal/no-op 2s pulses, the ~8-15 degree
+rotation quantum that makes the 3.0 degree turn deadband oscillate, and why 3.5m needs
+~35 pulses at ~14s cadence (which outlives the BLE link).
+
+### ✅ CONFIRMED BY APK DECOMPILE (2026-07-20, see Phase C below)
+
+The app-side half of H-WATCHDOG is now **proven from the app's own source**, not inferred.
+`com.agilexrobotics.command.CarRemoteControlManage2` (decompiled from
+`Mammotion_2.3.8.19_APKPure.xapk`, `classes2.dex`):
+
+```java
+public static float frequency = 0.2f;          // 200 ms — also DeviceDeployModule.frequency
+private long delay = 200;
+...
+long j = (long) (frequency * 1000.0f);         // 200
+timer.schedule(this.countDownTask, 0L, j);     // fire now, then EVERY 200 ms
+    -> run() { ... send(3); ... }              // -> maCommandHelper.sendControl(linear, angular)
+    -> if (linearSpeed == 0 && angularSpeed == 0) cancelTimer();   // stops only when stick released
+```
+
+And `MACommandApiHelper.sendControl(int,int)` builds:
+
+```java
+MctlDriver.newBuilder().setTodevDevmotionCtrl(
+    DrvMotionCtrl.newBuilder().setSetLinearSpeed(i).setSetAngularSpeed(i2))   // subtype 51, needAck=false
+```
+
+That is **byte-identical to pymammotion's `send_movement`**. So the app uses the exact
+command we already use — the ONLY difference is that it re-sends it on a fixed 200 ms
+timer for the entire time the stick is held, and stops by sending zeros then cancelling.
+`CarRemoteControlManage` (v1) is the same design via `DeviceDeployConstants.frequency1`.
+
+Corroborating detail: the app ships a **debug HUD** (`text_frequency`, `text_linear`,
+`text_angular`) that displays the send interval in ms live — they exposed the send rate
+as a tunable diagnostic, which is only worth doing if the rate is load-bearing.
+
+Still strictly unproven: that the *firmware* enforces a timeout (the app would look the
+same if it re-sent purely to track stick movement). But the timer is fixed-rate with no
+dedupe on unchanged values, and our tape data shows a fixed distance quantum that the
+duration parameter cannot influence. B1 settles it in one taped run.
+
+**Also confirmed: `needAck=false`.** The app fires movement commands without waiting for
+an ack. Our per-pulse `command_ok`/ack accounting is therefore not evidence of delivery —
+consistent with the 2026-07-19 e-stop finding, where every health indicator read green
+while five real motion commands were silently no-op'd.
+
+### Speed-scale finding (independent of H-WATCHDOG)
+
+`transform_both_speeds(theta_linear, theta_angular, pct_linear, pct_angular)` computes
+`linear_speed = sin(rad)*pct*10` and `angular_speed = int(cos(rad)*pct*4.5)`, where
+`get_percent()` applies a **15% deadband** (`pct<=15 -> 0`, else `pct-15`), so a
+full-deflection input of 100 yields 85.
+
+| | app full scale | ours today | note |
+|---|---|---|---|
+| linear | +/-850 (`control.py` comments say 1000) | **400** | we run at ~47% throttle |
+| angular | +/-382 (comments say 450) | **500** | **above** the app's ceiling; may be clamped |
+
+`mammotion_command.py` already exposes `move_forward/back/left/right(0.0-1.0)` which run
+this transform properly — and the integration's directional-movement services use them.
+Only our VIO/click-to-path code bypasses it with raw `send_movement(400, 0)`. The
+"angular is weak, needs ~500" calibration may be an artifact of fighting the watchdog
+and/or of exceeding the valid range, not a property of the machine.
+
+### Phase A — off-mower, tonight (code + tests, NO deploy)
+
+- **A1. Repeat-pulse primitive.** New helper that re-sends `send_movement` every
+  `refresh_interval_ms` for the pulse duration, then the existing explicit stop.
+  **Default 200 ms — matches the app exactly** (`CarRemoteControlManage2.frequency = 0.2f`,
+  confirmed by decompile, not guessed). Mirror the app's stop semantics too: send
+  `(0, 0)` and then cancel, rather than only cancelling. Add as an **opt-in parameter**
+  (`motion_refresh_interval_ms`, 0 = current single-shot behaviour) so a single live run
+  can A/B it against today's proven path without a rollback. Record per-pulse
+  `commands_sent` in the result for forensics.
+- **A2. Speed-scale plumbing.** Accept speed as the app's 0.0-1.0 scale and run it
+  through pymammotion's `transform_both_speeds`/`get_percent`, so we stop guessing raw
+  units. Add a read-only diagnostic that reports the resolved raw values (and flags
+  anything above the +/-850 / +/-382 ceilings) WITHOUT moving the mower.
+- **A3. `passed:False` bug** (standing TOP BUG): a segment that reaches its target is
+  marked `passed:False` because short final-approach pulses fail `min_progress_distance`,
+  so later segments never run. Fix + regression test.
+- **A4.** Tests for A1-A3; ruff + mypy + full pytest. Deploy queued for daylight only.
+
+### Phase B — daylight, supervised, tape measure (needs a fresh "go" per pulse)
+
+Run in this order; each answers one question and gates the next.
+
+- **B1. THE decisive A/B.** Forward 4s single-shot (today's behaviour), taped. Then
+  forward 4s with 200 ms refresh, taped. **If repeat-mode travels several times further,
+  H-WATCHDOG is confirmed** and the whole pulse/throughput model changes.
+- **B2. Speed sweep** (only if B1 confirms): repeat-mode at 0.4 vs 1.0 app-scale, taped.
+- **B3. Angular:** repeat-mode at our 500 vs the in-range 382, taped rotation.
+- **B4.** Re-derive throughput, then revisit `turn tolerance 18`, `min_progress_distance`,
+  pulse cadence and `sample_delays` against the new numbers.
+
+### Phase C — protocol discovery (off-mower, parallel to A/B)
+
+**Correction to the record: we never decompiled the APK.** `docs/custom-path-execution-research.md`
+documents a lightweight **string scan** of the local `2.3.8.19` XAPK and explicitly says
+"This scan is not as strong as a JADX decompile". The decompiled artefacts we have
+(`rocker_util.py`, `bluetooth/data/notifydata.py`) are the pymammotion authors' work,
+shipped in the dependency.
+
+- **C1. Real JADX decompile — ✅ DONE 2026-07-20.** `brew install jadx` (1.5.6), unzipped
+  the XAPK (base APK `com.agilexrobotics.apk`, 9 dex files), decompiled `classes2.dex`
+  (3233 classes) to scratch. Findings are in the CONFIRMED section above: 200 ms
+  fixed-rate re-send, identical `DrvMotionCtrl` wire command, `needAck=false`, debug HUD
+  for the send interval. **No firmware-side timeout constant is visible in app code** (it
+  would live in mower firmware, not the APK) — so B1 remains the decisive test, but the
+  app-side cadence question is closed.
+  Key classes for future reference: `com.agilexrobotics.command.CarRemoteControlManage2`,
+  `com.agilexrobotics.command.app.MACommandApiHelper#sendControl`,
+  `com.agilexrobotics.base_module.utils.RockerControlUtil`,
+  `com.agilexrobotics.map.view.RockerTouchView{,2,3}`.
+- **C2. Manual-mode entry — ✅ RESOLVED, not needed for driving.** `DrvMowCtrlByHand` is
+  sent by `MACommandApiHelper#OperateOnDevice(main_ctrl, cut_knife_ctrl, cut_knife_height,
+  max_run_speed, position)`, and its only callers are in `map/ManualLawnMowingManager`
+  — i.e. it belongs to the manual **mowing** flow (blade + speed cap), not to driving.
+  `CarRemoteControlManage2` is self-contained: it calls `sendControl` and nothing else, so
+  **no mode-entry command precedes joystick movement**. Our raw `send_movement` is the
+  correct and complete command; the only thing we were missing is the repeat.
+  (One related detail worth keeping: when `deviceState == MODE_MANUAL_MOWING`, the app
+  auto-raises the blade whenever both speeds hit zero — a blade-safety pattern, not a
+  movement prerequisite. Irrelevant to us: we run blades OFF.)
+- **C3. Ground truth (NOT needed).** An Android HCI snoop log would only re-confirm what
+  C1 established from source. Skip unless B1 contradicts the decompile.
+
+### Phase D — dependent on B1
+
+- **D1.** If continuous drive works: the **hold-to-drive joystick card** (user-approved
+  2026-07-15, deferred) becomes a thin wrapper over A1 — build it.
+- **D2.** Re-test the BLE wall: a 3.5m path that takes ~30s instead of ~10min may simply
+  dodge the coverage problem that has been killing runs.
+
+### Explicitly NOT doing
+
+- **No code review this cycle.** Two xhigh passes already ran; 305 tests, mypy + ruff
+  clean. Nothing blocking is a code-quality problem.
+- PR #10 stays open for human review; no merge.

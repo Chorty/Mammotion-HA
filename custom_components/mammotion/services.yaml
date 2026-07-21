@@ -531,6 +531,15 @@ manual_velocity_pulse_test:
         - 60
       selector:
         object:
+    motion_refresh_interval_ms:
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 1000
+          step: 50
+          unit_of_measurement: ms
     use_wifi:
       required: false
       default: false
@@ -1849,6 +1858,15 @@ raw_pymammotion_execute_vector_segment:
           max: 4000
           step: 50
           unit_of_measurement: ms
+    motion_refresh_interval_ms:
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 1000
+          step: 50
+          unit_of_measurement: ms
     sample_delays:
       required: false
       default:
@@ -2077,6 +2095,15 @@ raw_pymammotion_execute_multi_segment:
         number:
           min: 50
           max: 4000
+          step: 50
+          unit_of_measurement: ms
+    motion_refresh_interval_ms:
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 1000
           step: 50
           unit_of_measurement: ms
     sample_delays:

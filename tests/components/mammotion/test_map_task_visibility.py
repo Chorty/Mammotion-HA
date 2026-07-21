@@ -47,6 +47,8 @@ from custom_components.mammotion.services import (
     RAW_PYMAMMOTION_MOTION_PROBE_SCHEMA,
     RAW_PYMAMMOTION_TURN_TO_HEADING_SCHEMA,
     RAW_VECTOR_READINESS_TEST_SCHEMA,
+    _app_scale_speeds,
+    _app_speed_scale_report,
     _ble_connect_cooldown_active,
     _ble_ready_for_motion,
     _ble_transport_usable,
@@ -67,12 +69,14 @@ from custom_components.mammotion.services import (
     _manual_velocity_pulse_test,
     _manual_velocity_segment_test,
     _motion_open_sleep,
+    _motion_refresh_window,
     _normalize_mower_areas,
     _normalize_mower_tasks,
     _position_feedback_diagnostic,
     _position_source_comparison,
     _preview_custom_path,
     _raw_motion_readiness_test,
+    _raw_multi_segment_phase_passed,
     _raw_pymammotion_angular_calibration,
     _raw_pymammotion_execute_multi_segment,
     _raw_pymammotion_execute_segment,
@@ -7521,3 +7525,255 @@ async def test_opportunistic_ble_reconnect_connects_when_usable() -> None:
     await _OPPORTUNISTIC_BLE_RECONNECT(_reconnect_self(connect=record_connect))
 
     assert calls == ["connect"]
+
+
+# ---------------------------------------------------------------------------
+# App-parity motion cadence (2026-07-20 APK decompile).
+#
+# The Mammotion app re-sends the identical movement command every 200 ms for as
+# long as the on-screen stick is held; our executors sent it once and slept out
+# the pulse. These cover the opt-in refresh window that closes that gap.
+# ---------------------------------------------------------------------------
+
+
+def _install_virtual_clock(
+    monkeypatch: pytest.MonkeyPatch, start: float = 100.0
+) -> dict[str, float]:
+    """Replace monotonic/sleep with a virtual clock that advances on sleep."""
+    clock = {"now": start}
+
+    def fake_monotonic() -> float:
+        return clock["now"]
+
+    async def fake_sleep(delay: float) -> None:
+        clock["now"] += delay
+
+    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+    return clock
+
+
+def test_motion_refresh_interval_matches_decompiled_app_constant() -> None:
+    """Our app-parity default is the app's own timer period, not a guess.
+
+    `CarRemoteControlManage2.frequency = 0.2f` -> 200 ms (Mammotion 2.3.8.19).
+    """
+    assert mammotion_services._MOTION_REFRESH_INTERVAL_MS_APP == 200  # noqa: SLF001
+
+
+@pytest.mark.asyncio
+async def test_motion_refresh_window_disabled_keeps_single_shot_behaviour(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Interval 0 is the proven path: wait out the pulse, never re-send."""
+    coordinator = _pulse_coordinator()
+    clock = _install_virtual_clock(monkeypatch)
+    sends: list[float] = []
+
+    async def resend() -> None:
+        sends.append(clock["now"])
+
+    report = await _motion_refresh_window(
+        coordinator,
+        resend=resend,
+        duration_seconds=4.0,
+        refresh_interval_ms=0,
+    )
+
+    assert report["refresh_enabled"] is False
+    assert report["refresh_commands_sent"] == 0
+    assert sends == []
+    # The full pulse window is still waited out.
+    assert clock["now"] == pytest.approx(104.0)
+
+
+@pytest.mark.asyncio
+async def test_motion_refresh_window_resends_for_whole_pulse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A positive interval re-sends across the pulse, never past its end."""
+    coordinator = _pulse_coordinator()
+    clock = _install_virtual_clock(monkeypatch)
+    sends: list[float] = []
+
+    async def resend() -> None:
+        sends.append(clock["now"])
+
+    # 250 ms divides 4.0 s exactly in binary floating point, so the count is
+    # deterministic rather than sensitive to accumulated rounding.
+    report = await _motion_refresh_window(
+        coordinator,
+        resend=resend,
+        duration_seconds=4.0,
+        refresh_interval_ms=250,
+    )
+
+    assert report["refresh_enabled"] is True
+    assert report["refresh_interval_ms"] == 250
+    assert report["max_refresh_commands"] == 16
+    # 16 slots fit the window; the one landing exactly on the deadline is
+    # skipped so the last command is always followed by real motion time.
+    assert report["refresh_commands_sent"] == 15
+    assert len(sends) == 15
+    assert clock["now"] == pytest.approx(104.0)
+    assert max(sends) < 104.0
+    # Evenly spaced at the requested cadence.
+    assert sends[0] == pytest.approx(100.25)
+    assert sends[1] - sends[0] == pytest.approx(0.25)
+
+
+@pytest.mark.asyncio
+async def test_motion_refresh_window_clamps_interval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Absurd intervals are clamped, so a bad param cannot flood the BLE queue."""
+    coordinator = _pulse_coordinator()
+    _install_virtual_clock(monkeypatch)
+
+    async def resend() -> None:
+        return None
+
+    too_fast = await _motion_refresh_window(
+        coordinator, resend=resend, duration_seconds=1.0, refresh_interval_ms=1
+    )
+    too_slow = await _motion_refresh_window(
+        coordinator, resend=resend, duration_seconds=1.0, refresh_interval_ms=99999
+    )
+
+    assert too_fast["refresh_interval_ms"] == 50
+    assert too_slow["refresh_interval_ms"] == 1000
+
+
+@pytest.mark.asyncio
+async def test_motion_refresh_window_survives_a_failed_resend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed refresh stops refreshing and reports why, but never raises.
+
+    The caller still owns the mandatory stop, so a half-refreshed window is a
+    shorter drive -- never a runaway one.
+    """
+    coordinator = _pulse_coordinator()
+    _install_virtual_clock(monkeypatch)
+    attempts: list[int] = []
+
+    async def resend() -> None:
+        attempts.append(1)
+        if len(attempts) == 2:
+            raise RuntimeError("ble dropped")
+
+    report = await _motion_refresh_window(
+        coordinator,
+        resend=resend,
+        duration_seconds=4.0,
+        refresh_interval_ms=250,
+    )
+
+    assert report["refresh_commands_sent"] == 1
+    assert "ble dropped" in report["refresh_error"]
+    assert len(attempts) == 2
+
+
+# --- App speed scale -------------------------------------------------------
+
+
+def test_app_scale_speeds_applies_deadband_and_ceilings() -> None:
+    """Stick fractions convert exactly as the app's rocker transform does."""
+    # 15% deadband: anything at or below it is a dead stick.
+    assert _app_scale_speeds(0.15, 0.0) == (0, 0)
+    assert _app_scale_speeds(0.10, 0.0) == (0, 0)
+    # Full deflection lands on the real ceilings, not the round numbers in the
+    # app's own comments (1000/450), because the deadband is applied first.
+    assert _app_scale_speeds(1.0, 0.0) == (850, 0)
+    assert _app_scale_speeds(0.0, 1.0) == (0, 382)
+    # Sign selects direction: negative is backward / left.
+    assert _app_scale_speeds(-1.0, 0.0) == (-850, 0)
+    assert _app_scale_speeds(0.0, -1.0) == (0, -382)
+
+
+def test_app_speed_scale_report_flags_our_angular_default() -> None:
+    """Our long-standing angular 500 is above anything the app can produce."""
+    report = _app_speed_scale_report(400, 500)
+
+    assert report["available"] is True
+    assert report["app_max_linear_speed"] == 850
+    assert report["app_max_angular_speed"] == 382
+    assert report["linear_above_app_max"] is False
+    assert report["angular_above_app_max"] is True
+    # Our linear default is under half the app's full-scale throttle.
+    assert report["linear_fraction_of_app_max"] == pytest.approx(0.471, abs=0.001)
+
+
+def test_app_speed_scale_report_handles_missing_values() -> None:
+    """A non-numeric speed degrades to unavailable instead of raising."""
+    assert _app_speed_scale_report(None, 0) == {"available": False}
+
+
+def test_app_speed_scale_matches_pymammotion() -> None:
+    """Our local transform agrees with pymammotion's, which mirrors the app.
+
+    Implemented locally so the numbers stay deterministic across dependency
+    bumps; this pins the two together so a silent upstream change is caught.
+    """
+    movement = pytest.importorskip("pymammotion.utility.movement")
+
+    for fraction in (0.0, 0.1, 0.15, 0.4, 0.55, 1.0):
+        percent = movement.get_percent(abs(fraction) * 100)
+        # 90 degrees == forward (linear axis), 0 degrees == right (angular axis).
+        upstream_linear, _ = movement.transform_both_speeds(90.0, 0.0, percent, 0.0)
+        _, upstream_angular = movement.transform_both_speeds(0.0, 0.0, 0.0, percent)
+        ours_linear, _ = _app_scale_speeds(fraction, 0.0)
+        _, ours_angular = _app_scale_speeds(0.0, fraction)
+        assert ours_linear == upstream_linear
+        assert ours_angular == upstream_angular
+
+
+# --- Multi-segment pass criteria -------------------------------------------
+
+
+def test_multi_segment_segment_that_reached_target_passes() -> None:
+    """Reaching the target is success even if the final pulse crept.
+
+    Regression: requiring every per-pulse diagnostic to clear
+    `min_progress_distance` marked arrived segments as failed, because the
+    final approach necessarily moves less than a full pulse -- which stopped
+    the run and meant later segments never executed.
+    """
+    segment_result = {
+        "stop_reason": "target_reached",
+        "valid": True,
+        "blockers": [],
+        "progress_diagnostics": [
+            {"passed": True, "path_progress_distance": 0.31},
+            # Short final approach: real motion, below the per-pulse threshold.
+            {"passed": False, "path_progress_distance": 0.02},
+        ],
+    }
+
+    assert _raw_multi_segment_phase_passed(segment_result, real_segment=True) is True
+
+
+def test_multi_segment_segment_that_did_not_arrive_fails() -> None:
+    """A run that aborted short of the target is still a failure."""
+    aborted = {
+        "stop_reason": "no_target_progress",
+        "valid": True,
+        "blockers": [],
+        "progress_diagnostics": [{"passed": True}],
+    }
+    blocked = {
+        "stop_reason": "target_reached",
+        "valid": True,
+        "blockers": ["ble_transport_required"],
+        "progress_diagnostics": [{"passed": True}],
+    }
+    invalid = {
+        "stop_reason": "target_reached",
+        "valid": False,
+        "blockers": [],
+        "progress_diagnostics": [{"passed": True}],
+    }
+
+    assert _raw_multi_segment_phase_passed(aborted, real_segment=True) is False
+    assert _raw_multi_segment_phase_passed(blocked, real_segment=True) is False
+    assert _raw_multi_segment_phase_passed(invalid, real_segment=True) is False
