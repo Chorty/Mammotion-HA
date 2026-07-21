@@ -154,6 +154,75 @@
           "SIGNAL_UNKNOWN": "Neznano"
         }
       },
+      "vio_heading": {
+        "name": "Smer VIO"
+      },
+      "vio_tracked_features": {
+        "name": "Sledene značilnice VIO"
+      },
+      "vio_detected_features": {
+        "name": "Zaznane značilnice VIO"
+      },
+      "vio_brightness_raw": {
+        "name": "Svetlost VIO"
+      },
+      "vio_survival_distance": {
+        "name": "Razdalja preživetja VIO"
+      },
+      "fpv_status": {
+        "name": "Stanje FPV",
+        "state": {
+          "inactive": "Neaktivno",
+          "streaming": "Pretakanje",
+          "error": "Napaka"
+        }
+      },
+      "bumper_status": {
+        "name": "Stanje odbijača",
+        "state": {
+          "ok": "OK",
+          "warning": "Opozorilo",
+          "error": "Napaka"
+        }
+      },
+      "ultrasonic_left_status": {
+        "name": "Stanje ultrazvočnega senzorja levo",
+        "state": {
+          "ok": "OK",
+          "warning": "Opozorilo",
+          "error": "Napaka"
+        }
+      },
+      "ultrasonic_left_front_status": {
+        "name": "Stanje ultrazvočnega senzorja levo spredaj",
+        "state": {
+          "ok": "OK",
+          "warning": "Opozorilo",
+          "error": "Napaka"
+        }
+      },
+      "ultrasonic_right_front_status": {
+        "name": "Stanje ultrazvočnega senzorja desno spredaj",
+        "state": {
+          "ok": "OK",
+          "warning": "Opozorilo",
+          "error": "Napaka"
+        }
+      },
+      "ultrasonic_right_status": {
+        "name": "Stanje ultrazvočnega senzorja desno",
+        "state": {
+          "ok": "OK",
+          "warning": "Opozorilo",
+          "error": "Napaka"
+        }
+      },
+      "fuse_status": {
+        "name": "Stanje varovalke"
+      },
+      "lock_state": {
+        "name": "Stanje zaklepa"
+      },
       "activity_mode": {
         "name": "Vrsta dejavnosti",
         "state": {

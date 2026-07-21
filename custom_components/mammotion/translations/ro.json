@@ -154,6 +154,75 @@
           "SIGNAL_UNKNOWN": "Necunoscut"
         }
       },
+      "vio_heading": {
+        "name": "Direcție VIO"
+      },
+      "vio_tracked_features": {
+        "name": "Caracteristici urmărite VIO"
+      },
+      "vio_detected_features": {
+        "name": "Caracteristici detectate VIO"
+      },
+      "vio_brightness_raw": {
+        "name": "Luminozitate VIO"
+      },
+      "vio_survival_distance": {
+        "name": "Distanță de supraviețuire VIO"
+      },
+      "fpv_status": {
+        "name": "Stare FPV",
+        "state": {
+          "inactive": "Inactiv",
+          "streaming": "Streaming",
+          "error": "Eroare"
+        }
+      },
+      "bumper_status": {
+        "name": "Stare bară de protecție",
+        "state": {
+          "ok": "OK",
+          "warning": "Avertisment",
+          "error": "Eroare"
+        }
+      },
+      "ultrasonic_left_status": {
+        "name": "Stare ultrasonic stânga",
+        "state": {
+          "ok": "OK",
+          "warning": "Avertisment",
+          "error": "Eroare"
+        }
+      },
+      "ultrasonic_left_front_status": {
+        "name": "Stare ultrasonic față stânga",
+        "state": {
+          "ok": "OK",
+          "warning": "Avertisment",
+          "error": "Eroare"
+        }
+      },
+      "ultrasonic_right_front_status": {
+        "name": "Stare ultrasonic față dreapta",
+        "state": {
+          "ok": "OK",
+          "warning": "Avertisment",
+          "error": "Eroare"
+        }
+      },
+      "ultrasonic_right_status": {
+        "name": "Stare ultrasonic dreapta",
+        "state": {
+          "ok": "OK",
+          "warning": "Avertisment",
+          "error": "Eroare"
+        }
+      },
+      "fuse_status": {
+        "name": "Stare siguranță"
+      },
+      "lock_state": {
+        "name": "Stare blocare"
+      },
       "activity_mode": {
         "name": "Tipul de activitate",
         "state": {

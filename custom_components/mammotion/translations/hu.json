@@ -154,6 +154,75 @@
           "SIGNAL_UNKNOWN": "Ismeretlen"
         }
       },
+      "vio_heading": {
+        "name": "VIO irány"
+      },
+      "vio_tracked_features": {
+        "name": "VIO követett jellemzők"
+      },
+      "vio_detected_features": {
+        "name": "VIO észlelt jellemzők"
+      },
+      "vio_brightness_raw": {
+        "name": "VIO fényerő"
+      },
+      "vio_survival_distance": {
+        "name": "VIO túlélési távolság"
+      },
+      "fpv_status": {
+        "name": "FPV állapot",
+        "state": {
+          "inactive": "Inaktív",
+          "streaming": "Streamelés",
+          "error": "Hiba"
+        }
+      },
+      "bumper_status": {
+        "name": "Ütköző állapota",
+        "state": {
+          "ok": "OK",
+          "warning": "Figyelmeztetés",
+          "error": "Hiba"
+        }
+      },
+      "ultrasonic_left_status": {
+        "name": "Bal ultrahang állapota",
+        "state": {
+          "ok": "OK",
+          "warning": "Figyelmeztetés",
+          "error": "Hiba"
+        }
+      },
+      "ultrasonic_left_front_status": {
+        "name": "Bal elülső ultrahang állapota",
+        "state": {
+          "ok": "OK",
+          "warning": "Figyelmeztetés",
+          "error": "Hiba"
+        }
+      },
+      "ultrasonic_right_front_status": {
+        "name": "Jobb elülső ultrahang állapota",
+        "state": {
+          "ok": "OK",
+          "warning": "Figyelmeztetés",
+          "error": "Hiba"
+        }
+      },
+      "ultrasonic_right_status": {
+        "name": "Jobb ultrahang állapota",
+        "state": {
+          "ok": "OK",
+          "warning": "Figyelmeztetés",
+          "error": "Hiba"
+        }
+      },
+      "fuse_status": {
+        "name": "Biztosíték állapota"
+      },
+      "lock_state": {
+        "name": "Zárolás állapota"
+      },
       "activity_mode": {
         "name": "Működési mód",
         "state": {

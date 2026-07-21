@@ -1,4 +1,13 @@
-const MAX_WAYPOINTS = 3;
+const MAX_WAYPOINTS = 7;
+// Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
+// which build the browser actually loaded.
+const CARD_VERSION = "2026.07.18b2";
+
+console.info(
+  `%c MAMMOTION-CUSTOM-PATH-CARD %c v${CARD_VERSION} `,
+  "background:#22c55e;color:#000;font-weight:bold;",
+  "background:#333;color:#fff;",
+);
 
 class MammotionCustomPathCard extends HTMLElement {
   constructor() {
@@ -8,6 +17,9 @@ class MammotionCustomPathCard extends HTMLElement {
     this._config = {};
     this._mapData = null;
     this._waypoints = [];
+    this._runTicker = null;
+    this._runStartedAt = null;
+    this._livePosition = null;
     this._runtimeState = null;
     this._areaHash = "";
     this._mapT = null;
@@ -24,6 +36,79 @@ class MammotionCustomPathCard extends HTMLElement {
     this._rendered = false;
   }
 
+  _renderHistoryHtml() {
+    const history = this._loadHistory();
+    if (!history.length) return "";
+    const rows = history
+      .map((entry) => {
+        const when = entry.at ? new Date(entry.at).toLocaleString() : "?";
+        const mins = Math.floor((entry.elapsed_seconds || 0) / 60);
+        const secs = String((entry.elapsed_seconds || 0) % 60).padStart(2, "0");
+        const segs = (entry.segments || [])
+          .map((seg) => `${seg.index}:${seg.passed ? "✓" : "✗"}${seg.stop_reason ? ` ${seg.stop_reason}` : ""}`)
+          .join(", ");
+        return `<div class="history-row"><span class="history-when">${this._escapeHtml(when)} (${mins}:${secs})</span> <span class="history-outcome">${this._escapeHtml(entry.stop_reason || "?")}</span>${segs ? `<div class="history-segs">${this._escapeHtml(segs)}</div>` : ""}</div>`;
+      })
+      .join("");
+    return `<details><summary>Run history (${history.length})</summary>${rows}<button id="clear-history" class="history-clear">Clear history</button></details>`;
+  }
+
+  _historyKey() {
+    return `mammotion-path-card-history:${this._config.entity || "unknown"}`;
+  }
+
+  _lastRunKey() {
+    return `mammotion-path-card-last-run:${this._config.entity || "unknown"}`;
+  }
+
+  _loadHistory() {
+    try {
+      const raw = localStorage.getItem(this._historyKey());
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+      return [];
+    }
+  }
+
+  _saveRunToHistory(entry) {
+    try {
+      const history = this._loadHistory();
+      history.unshift(entry);
+      localStorage.setItem(this._historyKey(), JSON.stringify(history.slice(0, 10)));
+    } catch (err) {
+      // History is best-effort; never let persistence break the run flow.
+    }
+  }
+
+  _persistLastRun(result) {
+    try {
+      localStorage.setItem(this._lastRunKey(), JSON.stringify(result));
+    } catch (err) {
+      // Full results can be large; ignore quota failures.
+    }
+  }
+
+  _restoreLastRun() {
+    try {
+      const raw = localStorage.getItem(this._lastRunKey());
+      return raw ? JSON.parse(raw) : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  _clearHistory() {
+    try {
+      localStorage.removeItem(this._historyKey());
+      localStorage.removeItem(this._lastRunKey());
+    } catch (err) {
+      // best-effort
+    }
+    this._status = "Run history cleared.";
+    this._render();
+  }
+
   setConfig(config) {
     if (!config.entity) {
       throw new Error("entity is required");
@@ -33,21 +118,34 @@ class MammotionCustomPathCard extends HTMLElement {
       blade_mode: "off",
       prefer_ble: true,
       max_turn_commands: 1,
-      max_linear_commands: 1,
+      max_linear_commands: 3,
       // Loop-to-tolerance: keep pulsing forward until the waypoint is reached
       // rather than quitting at a tiny fixed pulse budget.
       max_linear_pulse_ceiling: 30,
       max_no_progress_pulses: 3,
-      // Wider heading tolerance avoids unreliable micro-turns from real-motion
-      // scatter on near-straight paths (validated live at ~8 deg).
-      heading_tolerance_degrees: 8,
+      // Rotation has a FIXED minimum quantum of ~8-15 deg per pulse (taped live
+      // 2026-07-18: a 700ms pulse swung 8.2 deg then 15.5 deg), so the deadband
+      // MUST sit above it or every correction overshoots, reverses and diverges.
+      // A 3 deg tolerance aborted no_heading_progress on a 4.8 deg error; 18 deg
+      // converged an 83 deg turn in 5 pulses and reached both segment targets.
+      heading_tolerance_degrees: 18,
       // Forward-heading offset default; a per-run measured value replaces this
       // once live calibration lands (Phase 2).
       calibrated_forward_heading_offset_degrees: 116.5,
-      sample_delays: [0, 5, 10],
+      // Map-local position carries a ~2-6cm absolute noise floor (taped live
+      // 2026-07-18 at both 10cm and 3m scales), so a 1cm progress threshold is
+      // reading noise. 6cm sits above the floor.
+      min_progress_distance: 0.06,
+      turn_pulse_duration_ms: 1500,
+      sample_delays: [0, 3],
       ...config,
     };
     this._height = Number(this._config.card_height || 520);
+    // Survive Lovelace element rebuilds (tab switches, app backgrounding):
+    // restore the last completed run so its result stays visible.
+    if (!this._realRun) {
+      this._realRun = this._restoreLastRun();
+    }
   }
 
   set hass(hass) {
@@ -453,16 +551,27 @@ class MammotionCustomPathCard extends HTMLElement {
       confirm_clear_area: dryRun ? false : this._confirmClearArea,
       prefer_ble: Boolean(this._config.prefer_ble ?? true),
       max_turn_commands: Number(this._config.max_turn_commands || 1),
-      max_linear_commands: Number(this._config.max_linear_commands || 1),
+      max_linear_commands: Number(this._config.max_linear_commands || 3),
       max_linear_pulse_ceiling: Number(this._config.max_linear_pulse_ceiling || 30),
-      max_no_progress_pulses: Number(this._config.max_no_progress_pulses || 3),
-      heading_tolerance_degrees: Number(this._config.heading_tolerance_degrees || 8),
+      max_no_progress_pulses: Number(this._config.max_no_progress_pulses || 4),
+      heading_tolerance_degrees: Number(this._config.heading_tolerance_degrees || 18),
+      min_progress_distance: Number(this._config.min_progress_distance || 0.06),
       calibrated_forward_heading_offset_degrees: Number(
         this._config.calibrated_forward_heading_offset_degrees ?? 116.5,
       ),
+      // VIO turn-mode config proven live 2026-07-18 (multi-segment L-path, both
+      // segments target_reached, 83deg turn in 5 pulses, 6.5cm final landing):
+      // 16 turn pulses covers ~180deg; forward motion is a FIXED ~4in (10cm)
+      // step per pulse regardless of duration, but needs >=3s to trigger at all
+      // (2s pulses tape as physical no-ops), so 3500ms; 15cm waypoint tolerance.
+      turn_mode: String(this._config.turn_mode || "vio"),
+      vio_turn_max_commands: Number(this._config.vio_turn_max_commands || 16),
+      turn_pulse_duration_ms: Number(this._config.turn_pulse_duration_ms || 1500),
+      linear_pulse_duration_ms: Number(this._config.linear_pulse_duration_ms || 3500),
+      waypoint_tolerance: Number(this._config.waypoint_tolerance || 0.15),
       sample_delays: Array.isArray(this._config.sample_delays)
         ? this._config.sample_delays
-        : [0, 5, 10],
+        : [0, 3],
     };
     if (this._areaHash) {
       payload.area_hash = String(this._areaHash);
@@ -472,7 +581,7 @@ class MammotionCustomPathCard extends HTMLElement {
         service: "raw_pymammotion_execute_multi_segment",
         payload: {
           ...payload,
-          max_real_segments: Math.min(points.length - 1, 3),
+          max_real_segments: Math.min(points.length - 1, 7),
         },
       };
     }
@@ -611,6 +720,39 @@ class MammotionCustomPathCard extends HTMLElement {
     }
   }
 
+  _startRunTicker(segmentCount) {
+    this._runStartedAt = Date.now();
+    this._livePosition = null;
+    const tick = async () => {
+      const elapsed = Math.round((Date.now() - this._runStartedAt) / 1000);
+      const mins = Math.floor(elapsed / 60);
+      const secs = String(elapsed % 60).padStart(2, "0");
+      let posText = "";
+      try {
+        const runtime = await this._callService("export_runtime_state", {});
+        const pos = runtime?.position;
+        if (pos && pos.x != null) {
+          this._livePosition = pos;
+          posText = ` — pos (${Number(pos.x).toFixed(2)}, ${Number(pos.y).toFixed(2)})${pos.toward != null ? ` hdg ${Number(pos.toward).toFixed(0)}°` : ""}`;
+        }
+      } catch (err) {
+        // Read-only poll; ignore transient failures while the run is in flight.
+      }
+      this._status = `Running Real Go (${segmentCount} segment${segmentCount === 1 ? "" : "s"})… ${mins}:${secs}${posText}`;
+      this._render();
+    };
+    this._runTicker = setInterval(tick, 5000);
+    tick();
+  }
+
+  _stopRunTicker() {
+    if (this._runTicker) {
+      clearInterval(this._runTicker);
+      this._runTicker = null;
+    }
+    this._runStartedAt = null;
+  }
+
   async _runRealGo() {
     const preflight = this._preflight();
     const motion = this._motionPayload(false);
@@ -630,17 +772,48 @@ class MammotionCustomPathCard extends HTMLElement {
       return;
     }
     const segmentCount = this._segmentCount();
-    this._status = `Running guarded Real Go (${segmentCount} segment${segmentCount === 1 ? "" : "s"})…`;
-    this._render();
+    const startedAt = new Date();
+    this._startRunTicker(segmentCount);
     try {
       this._realRun = await this._callService(motion.service, motion.payload);
+      this._stopRunTicker();
       this._status = `Real Go complete: ${this._segmentProgressText(this._realRun)}`;
+      this._persistLastRun(this._realRun);
+      this._saveRunToHistory({
+        at: startedAt.toISOString(),
+        elapsed_seconds: Math.round((Date.now() - startedAt.getTime()) / 1000),
+        service: motion.service,
+        waypoints: this._waypoints.length,
+        stop_reason: this._realRun?.stop_reason ?? null,
+        failed_segment_index: this._realRun?.failed_segment_index ?? null,
+        segments: (this._realRun?.segments || []).map((seg) => ({
+          index: seg.index,
+          passed: seg.passed,
+          stop_reason: seg.result?.stop_reason ?? null,
+        })),
+        summary: this._segmentProgressText(this._realRun),
+      });
       await this._loadRuntimeState();
       this._render();
     } catch (err) {
+      this._stopRunTicker();
       this._status = `Real Go failed: ${err?.message || err}`;
+      this._saveRunToHistory({
+        at: startedAt.toISOString(),
+        elapsed_seconds: Math.round((Date.now() - startedAt.getTime()) / 1000),
+        service: motion.service,
+        waypoints: this._waypoints.length,
+        stop_reason: `call_failed: ${err?.message || err}`,
+        failed_segment_index: null,
+        segments: [],
+        summary: String(err?.message || err),
+      });
       this._render();
     }
+  }
+
+  disconnectedCallback() {
+    this._stopRunTicker();
   }
 
   async _abortMotion() {
@@ -815,9 +988,15 @@ class MammotionCustomPathCard extends HTMLElement {
     const segmentCount = this._segmentCount();
     this.shadowRoot.innerHTML = `
       <style>
-        ha-card { overflow: hidden; }
+        ha-card { overflow: hidden; user-select: text; -webkit-user-select: text; }
         .toolbar { display: flex; gap: 8px; align-items: center; padding: 12px; flex-wrap: wrap; }
         .status { padding: 0 12px 12px; color: var(--secondary-text-color); font-size: 13px; }
+        .card-version { padding: 4px 12px 10px; color: var(--secondary-text-color); font-size: 11px; opacity: 0.6; text-align: right; }
+        .history-row { padding: 4px 0; border-bottom: 1px solid rgba(127,127,127,0.2); font-size: 12px; }
+        .history-when { color: var(--secondary-text-color); }
+        .history-outcome { font-weight: 600; }
+        .history-segs { color: var(--secondary-text-color); font-size: 11px; padding-left: 8px; }
+        .history-clear { margin-top: 8px; font-size: 11px; }
         .warnings { padding: 0 12px 12px; color: #f59e0b; font-size: 12px; }
         .waypoint-counter { font-size: 12px; color: var(--secondary-text-color); margin-left: auto; }
         .map-caption { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 0 12px 10px; font-size: 12px; color: var(--secondary-text-color); }
@@ -830,8 +1009,9 @@ class MammotionCustomPathCard extends HTMLElement {
         .preflight-row .value { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; text-align: right; }
         details { padding: 0 12px 12px; color: var(--secondary-text-color); font-size: 12px; }
         summary { cursor: pointer; }
-        pre { overflow: auto; max-height: 220px; padding: 8px; background: rgba(127,127,127,0.12); border-radius: 4px; }
-        svg { display: block; width: 100%; height: ${this._height}px; background: #0d1117; touch-action: none; cursor: crosshair; }
+        pre { overflow: auto; max-height: 220px; padding: 8px; background: rgba(127,127,127,0.12); border-radius: 4px; user-select: text; -webkit-user-select: text; }
+        .copy-result { margin: 6px 0; font-size: 11px; }
+        svg { display: block; width: 100%; height: ${this._height}px; background: #0d1117; touch-action: none; cursor: crosshair; user-select: none; -webkit-user-select: none; }
         select, button { font: inherit; }
       </style>
       <ha-card header="Mammotion click/go (guarded segment chain)">
@@ -875,8 +1055,10 @@ class MammotionCustomPathCard extends HTMLElement {
         ${(this._validation?.warnings || []).length ? `<div class="warnings">Warnings: ${this._escapeHtml(this._validation.warnings.join(", "))}</div>` : ""}
         ${pathSet ? `<details><summary>Preview service YAML</summary><pre>${this._escapeHtml(this._payloadYaml())}</pre></details>` : ""}
         ${pathSet ? `<details><summary>Dry-run service YAML</summary><pre>${this._escapeHtml(this._dryRunYaml())}</pre></details>` : ""}
-        ${this._dryRun ? `<details><summary>Last dry-run result</summary><pre>${this._escapeHtml(JSON.stringify(this._dryRun, null, 2))}</pre></details>` : ""}
-        ${this._realRun ? `<details><summary>Last Real Go result</summary><pre>${this._escapeHtml(JSON.stringify(this._realRun, null, 2))}</pre></details>` : ""}
+        ${this._dryRun ? `<details><summary>Last dry-run result</summary><button id="copy-dry-result" class="copy-result">Copy dry-run JSON</button><pre>${this._escapeHtml(JSON.stringify(this._dryRun, null, 2))}</pre></details>` : ""}
+        ${this._realRun ? `<details><summary>Last Real Go result</summary><button id="copy-real-result" class="copy-result">Copy result JSON</button><pre>${this._escapeHtml(JSON.stringify(this._realRun, null, 2))}</pre></details>` : ""}
+        ${this._renderHistoryHtml()}
+        <div class="card-version">card v${CARD_VERSION}</div>
       </ha-card>
     `;
     this._q("#reload")?.addEventListener("click", async () => {
@@ -890,6 +1072,11 @@ class MammotionCustomPathCard extends HTMLElement {
     this._q("#copy-dry-run-yaml")?.addEventListener("click", () => this._copyDryRunYaml());
     this._q("#dry-run")?.addEventListener("click", () => this._runDryRun());
     this._q("#real-go")?.addEventListener("click", () => this._runRealGo());
+    this._q("#clear-history")?.addEventListener("click", () => this._clearHistory());
+    this._q("#copy-dry-result")?.addEventListener("click", () =>
+      this._copyText(`${JSON.stringify(this._dryRun, null, 2)}\n`, "Dry-run result JSON"));
+    this._q("#copy-real-result")?.addEventListener("click", () =>
+      this._copyText(`${JSON.stringify(this._realRun, null, 2)}\n`, "Real Go result JSON"));
     this._q("#abort")?.addEventListener("click", () => this._abortMotion());
     this._q("#confirm-blades-off")?.addEventListener("change", (event) => {
       this._confirmBladesOff = Boolean(event.target.checked);
@@ -912,7 +1099,11 @@ class MammotionCustomPathCard extends HTMLElement {
   }
 }
 
-customElements.define("mammotion-custom-path-card", MammotionCustomPathCard);
+// The card is served at two URLs (/mammotion/ and /hacsfiles/); if both end up
+// registered as dashboard resources the second define() throws. Guard it.
+if (!customElements.get("mammotion-custom-path-card")) {
+  customElements.define("mammotion-custom-path-card", MammotionCustomPathCard);
+}
 
 window.customCards = window.customCards || [];
 window.customCards.push({

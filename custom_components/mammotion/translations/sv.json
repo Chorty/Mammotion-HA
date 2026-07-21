@@ -154,6 +154,75 @@
           "SIGNAL_UNKNOWN": "Okänd"
         }
       },
+      "vio_heading": {
+        "name": "VIO-kurs"
+      },
+      "vio_tracked_features": {
+        "name": "VIO spårade särdrag"
+      },
+      "vio_detected_features": {
+        "name": "VIO upptäckta särdrag"
+      },
+      "vio_brightness_raw": {
+        "name": "VIO-ljusstyrka"
+      },
+      "vio_survival_distance": {
+        "name": "VIO-överlevnadsavstånd"
+      },
+      "fpv_status": {
+        "name": "FPV-status",
+        "state": {
+          "inactive": "Inaktiv",
+          "streaming": "Strömmar",
+          "error": "Fel"
+        }
+      },
+      "bumper_status": {
+        "name": "Stötfångarstatus",
+        "state": {
+          "ok": "OK",
+          "warning": "Varning",
+          "error": "Fel"
+        }
+      },
+      "ultrasonic_left_status": {
+        "name": "Ultraljudsstatus vänster",
+        "state": {
+          "ok": "OK",
+          "warning": "Varning",
+          "error": "Fel"
+        }
+      },
+      "ultrasonic_left_front_status": {
+        "name": "Ultraljudsstatus vänster fram",
+        "state": {
+          "ok": "OK",
+          "warning": "Varning",
+          "error": "Fel"
+        }
+      },
+      "ultrasonic_right_front_status": {
+        "name": "Ultraljudsstatus höger fram",
+        "state": {
+          "ok": "OK",
+          "warning": "Varning",
+          "error": "Fel"
+        }
+      },
+      "ultrasonic_right_status": {
+        "name": "Ultraljudsstatus höger",
+        "state": {
+          "ok": "OK",
+          "warning": "Varning",
+          "error": "Fel"
+        }
+      },
+      "fuse_status": {
+        "name": "Säkringsstatus"
+      },
+      "lock_state": {
+        "name": "Låsstatus"
+      },
       "activity_mode": {
         "name": "Aktivitetsläge",
         "state": {

@@ -24,9 +24,6 @@ from homeassistant.components.web_rtc import (
 )
 from homeassistant.core import (
     HomeAssistant,
-    ServiceCall,
-    ServiceResponse,
-    SupportsResponse,
     callback,
 )
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -42,7 +39,6 @@ from .agora_api import AgoraResponse
 from .agora_websocket import AgoraWebSocketHandler
 from .coordinator import MammotionBaseUpdateCoordinator
 from .entity import MammotionCameraBaseEntity
-from .models import MammotionMowerData
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -74,16 +70,16 @@ async def async_setup_entry(
 ) -> None:
     """Set up the Mammotion camera entities."""
     mowers = entry.runtime_data.mowers
-    entities = []
+    entities: list[MammotionWebRTCCamera] = []
 
     for mower in mowers:
         if not DeviceType.is_luba1(mower.device.device_name):
-            for entity_description in CAMERAS:
-                entities.append(
-                    MammotionWebRTCCamera(
-                        mower.reporting_coordinator, entity_description, hass
-                    )
+            entities.extend(
+                MammotionWebRTCCamera(
+                    mower.reporting_coordinator, entity_description, hass
                 )
+                for entity_description in CAMERAS
+            )
     async_add_entities(entities)
 
 
@@ -281,198 +277,3 @@ class MammotionWebRTCCamera(MammotionCameraBaseEntity):
         self._attr_is_streaming = streaming
         if self.hass is not None:
             self.async_write_ha_state()
-
-
-# Global
-async def async_setup_platform_services(
-    hass: HomeAssistant, entry: MammotionConfigEntry
-) -> None:
-    """Register custom services for streaming."""
-
-    def _get_mower_by_entity_id(entity_id: str) -> MammotionMowerData | None:
-        state = hass.states.get(entity_id)
-        if state is None:
-            return None
-        name = state.attributes.get("model_name")
-        return next(
-            (
-                mower
-                for mower in entry.runtime_data.mowers
-                if mower.device.device_name == name
-            ),
-            None,
-        )
-
-    async def handle_refresh_stream(call: ServiceCall) -> None:
-        entity_id = call.data["entity_id"]
-        mower = _get_mower_by_entity_id(entity_id)
-        if mower:
-            stream_data = await mower.api.get_stream_subscription(
-                mower.device.device_name, mower.device.iot_id
-            )
-            _LOGGER.debug("Camera stream refresh completed")
-
-            mower.reporting_coordinator.set_stream_data(stream_data)
-            mower.reporting_coordinator.async_update_listeners()
-
-    async def handle_start_video(call) -> None:
-        entity_id = call.data["entity_id"]
-        mower = _get_mower_by_entity_id(entity_id)
-        if mower:
-            await mower.reporting_coordinator.join_webrtc_channel()
-
-    async def handle_stop_video(call) -> None:
-        entity_id = call.data["entity_id"]
-        mower = _get_mower_by_entity_id(entity_id)
-        if mower:
-            await mower.reporting_coordinator.leave_webrtc_channel()
-
-    async def handle_get_tokens(call: ServiceCall) -> ServiceResponse:
-        entity_id = call.data["entity_id"]
-        mower = _get_mower_by_entity_id(entity_id)
-        if mower is not None:
-            stream_data = mower.reporting_coordinator.get_stream_data()
-
-            if not stream_data or stream_data.data is None:
-                return {}
-            # Return all the data needed for the Agora SDK
-            return stream_data.data.to_dict()
-        return {}
-
-    async def handle_move_forward(call: ServiceCall) -> None:
-        entity_id = call.data["entity_id"]
-
-        # Check if speed parameter exists and validate it
-        speed = 0.4  # Default speed
-        raw_speed = call.data["speed"]
-        use_wifi = call.data["use_wifi"]
-        if raw_speed is not None:
-            try:
-                speed_value = float(raw_speed)
-                if 0.1 <= speed_value <= 1:
-                    speed = speed_value
-                else:
-                    _LOGGER.warning(
-                        "Invalid speed value for %s: %s. Must be between 0 and 1. Using default.",
-                        entity_id,
-                        speed_value,
-                    )
-            except (ValueError, TypeError):
-                _LOGGER.warning(
-                    "Invalid speed format for %s: %s. Must be a number. Using default.",
-                    entity_id,
-                    raw_speed,
-                )
-
-        mower = _get_mower_by_entity_id(entity_id)
-        if mower:
-            await mower.reporting_coordinator.async_move_forward(
-                speed=speed, use_wifi=use_wifi
-            )
-
-    async def handle_move_left(call: ServiceCall) -> None:
-        entity_id = call.data["entity_id"]
-
-        # Check if speed parameter exists and validate it
-        speed = 0.4  # Default speed
-        raw_speed = call.data["speed"]
-        use_wifi = call.data["use_wifi"]
-        if raw_speed is not None:
-            try:
-                speed_value = float(raw_speed)
-                if 0.1 <= speed_value <= 1:
-                    speed = speed_value
-                else:
-                    _LOGGER.warning(
-                        "Invalid speed value for %s: %s. Must be between 0 and 1. Using default.",
-                        entity_id,
-                        speed_value,
-                    )
-            except (ValueError, TypeError):
-                _LOGGER.warning(
-                    "Invalid speed format for %s: %s. Must be a number. Using default.",
-                    entity_id,
-                    raw_speed,
-                )
-
-        mower = _get_mower_by_entity_id(entity_id)
-        if mower:
-            await mower.reporting_coordinator.async_move_left(
-                speed=speed, use_wifi=use_wifi
-            )
-
-    async def handle_move_right(call: ServiceCall) -> None:
-        entity_id = call.data["entity_id"]
-
-        # Check if speed parameter exists and validate it
-        speed = 0.4  # Default speed
-        raw_speed = call.data["speed"]
-        use_wifi = call.data["use_wifi"]
-        if raw_speed is not None:
-            try:
-                speed_value = float(raw_speed)
-                if 0.1 <= speed_value <= 1:
-                    speed = speed_value
-                else:
-                    _LOGGER.warning(
-                        "Invalid speed value for %s: %s. Must be between 0 and 1. Using default.",
-                        entity_id,
-                        speed_value,
-                    )
-            except (ValueError, TypeError):
-                _LOGGER.warning(
-                    "Invalid speed format for %s: %s. Must be a number. Using default.",
-                    entity_id,
-                    raw_speed,
-                )
-
-        mower = _get_mower_by_entity_id(entity_id)
-        if mower:
-            await mower.reporting_coordinator.async_move_right(
-                speed=speed, use_wifi=use_wifi
-            )
-
-    async def handle_move_backward(call: ServiceCall) -> None:
-        entity_id = call.data["entity_id"]
-
-        # Check if speed parameter exists and validate it
-        speed = 0.4  # Default speed
-        raw_speed = call.data["speed"]
-        use_wifi = call.data["use_wifi"]
-        if raw_speed is not None:
-            try:
-                speed_value = float(raw_speed)
-                if 0.1 <= speed_value <= 1:
-                    speed = speed_value
-                else:
-                    _LOGGER.warning(
-                        "Invalid speed value for %s: %s. Must be between 0 and 1. Using default.",
-                        entity_id,
-                        speed_value,
-                    )
-            except (ValueError, TypeError):
-                _LOGGER.warning(
-                    "Invalid speed format for %s: %s. Must be a number. Using default.",
-                    entity_id,
-                    raw_speed,
-                )
-
-        mower = _get_mower_by_entity_id(entity_id)
-        if mower:
-            await mower.reporting_coordinator.async_move_back(
-                speed=speed, use_wifi=use_wifi
-            )
-
-    hass.services.async_register("mammotion", "refresh_stream", handle_refresh_stream)
-    hass.services.async_register("mammotion", "start_video", handle_start_video)
-    hass.services.async_register("mammotion", "stop_video", handle_stop_video)
-    hass.services.async_register(
-        "mammotion",
-        "get_tokens",
-        handle_get_tokens,
-        supports_response=SupportsResponse.ONLY,
-    )
-    hass.services.async_register("mammotion", "move_forward", handle_move_forward)
-    hass.services.async_register("mammotion", "move_left", handle_move_left)
-    hass.services.async_register("mammotion", "move_right", handle_move_right)
-    hass.services.async_register("mammotion", "move_backward", handle_move_backward)

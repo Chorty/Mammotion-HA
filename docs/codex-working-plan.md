@@ -1,8 +1,48 @@
 # Codex working plan / handoff memory
 
-Last updated: 2026-07-06
+Last updated: 2026-07-11
 
 This file is the repo-local memory index for Codex work on this branch. Use it as the source of truth when a new chat needs context. It intentionally avoids secrets, HA tokens, passwords, and live mower credentials.
+
+## GOALS / CURRENT STATE (read this first)
+
+**What this integration is for:** a Home Assistant integration for Mammotion mowers (test
+unit: Luba-VSPLV397) that goes beyond status/telemetry toward **"click-to-path"** — let a
+user draw a path on the map and have the mower drive it safely. Delivered in gated phases:
+1. Read-only map/task visibility + custom-path planning/preview — **DONE**.
+2. Guarded manual motion: forward/linear — **DONE, live-proven**; in-place turning — **turn
+   primitive built + gated, awaiting daylight live-validation**.
+3. Multi-segment executor chaining turn+drive under safety gates — **NOT STARTED**.
+4. Full arbitrary drawn-path execution — **intentionally still disabled**.
+
+**Where things stand (2026-07-11):**
+- Branch `feat/vio-turn-to-heading` @ `cb349b3e` (pushed to origin). **Actual version is
+  `0.6.4-beta11`** in `manifest.json` + `pyproject.toml`. IGNORE the "beta65" references
+  later in this file — that is stale Codex text; a GitHub bot regresses the version, and
+  deploy is by file copy + md5, not by the version string (see `reference-ha-host` memory).
+- **Turning is UNBLOCKED:** `report_data.vision_info.heading` (VIO body heading) tracks
+  in-place rotation. The closed-loop `mammotion.vio_turn_to_heading` primitive is built,
+  gated to require an active VIO track (`vio_state==2`), and deployed — **but not yet
+  live-validated end-to-end.**
+- **VIO needs DAYLIGHT:** it will not initialize in the dark / from manual motion when
+  `camera_brightness=Dark`; warm it with a FORWARD drive (`vio_motion_probe`), not a pivot.
+- **12 diagnostic sensors added + live:** 5 VIO (heading, tracked/detected features,
+  brightness, survival distance) + 7 safety (bumper, 4 ultrasonics, fuse, lock).
+
+**Remaining to finish (full detail in the 2026-07-11 sections at the END of this file):**
+1. Deferred read-only re-probes (FPV while camera streaming; RTK accuracy + base-station
+   info when docked with a fix) → expose any that populate as sensors.
+2. Daylight supervised live-validation of `vio_turn_to_heading` (warm VIO → real turn →
+   confirm it converges and stops within tolerance).
+3. Wire `vio_turn_to_heading` into the multi-segment/click-to-path executor as the turn
+   phase (replacing the course-over-ground primitive); prove one combined turn+drive
+   segment live; keep multi-point execution gated until proven.
+
+**Live-test essentials:** BLE is required for real motion (gate refuses cloud); every
+real-motion command needs a fresh explicit user "go" while they watch; deploy via scp + md5;
+a changed service or new entity needs a full HA Core restart the user triggers. Gate every
+code change with `.venv/bin/pytest` + `mypy` + `ruff` (`uv` is not on PATH). Full procedure
+in the `mower-live-testing-workflow` and `reference-ha-host` memories.
 
 ## Current operating rule
 
@@ -2100,3 +2140,935 @@ primitive on it; or (B) **arc-based turns** — execute turns as curved motion
 (linear + angular together) so course-over-ground (`orientation`, the one live
 signal) updates and can serve as feedback, at the cost of turns needing room to
 arc rather than pivoting in place. Decision deferred to next session.
+
+## Phase 2 turning UNBLOCKED — VIO heading tracks rotation (2026-07-10, beta9-11)
+
+Took Path (A) and it worked. Current local + deployed version: **`0.6.4-beta11`**
+(scp-deployed to HA, md5-verified, HA restarted, all services registered).
+
+**Breakthrough:** `report_data.vision_info.heading` (VIO body heading) is a live,
+directional rotation-feedback signal on this unit — the Phase-2 blocker is lifted.
+Supervised live proof (operator watched the mower physically pivot):
+- Right turn `send_movement(0, +500)` 6s → `vision_heading` net **-9.0°**.
+- Left turn `send_movement(0, -500)` 6s → `vision_heading` net **+13.6°**.
+- It **reverses with turn direction**, `vio_state=2` throughout, ~1.5cm translation.
+
+**Calibration (critical, encoded in the new services):**
+- **Angular is weak — use `angular_speed` ~500. `180` produces NO physical rotation.**
+- **Sign: +angular DECREASES `vision_heading`, -angular INCREASES it** → turn the
+  opposite sign of the heading error.
+- **VIO latches: `vision_heading` refreshes ~1.5s into a command then freezes.** Drive
+  turns as **bounded ~1.5s pulses + explicit stop + `request_reports` refresh +
+  re-measure**, not one long continuous spin.
+
+**New services (all dry-run default, BLE-active pre-flight, mandatory explicit stop,
+reuse `_manual_velocity_pulse_gates`; allowlisted in the services.yaml/strings test):**
+- `mammotion.vio_motion_probe` (beta9) — forward drive + during-motion VIO sampling.
+- `mammotion.vio_turn_probe` (beta10) — in-place rotation; VIO-vs-course-over-ground verdict.
+- `mammotion.vio_turn_to_heading` (beta11) — **closed-loop turn-to-heading primitive**
+  on `vision_heading`. Built + gated (166 tests pass, mypy/ruff clean). **NOT yet
+  live-tested end-to-end** — that is the immediate next step.
+
+Also fixed/found this session: at-rest telemetry is frozen (even forced coordinator
+refresh won't unfreeze — fresh VIO needs motion + `request_reports`); an idle mower
+(~1h) stops advertising BLE (`ble_rssi`→0) — **wake it** to restore BLE before testing.
+
+**Next steps:**
+1. Supervised live validation of `vio_turn_to_heading` (dry-run first, then a real
+   "turn to `vision_heading` X°" with confirmations + watching). Verify it converges
+   and stops within tolerance.
+2. Then rebuild the multi-segment/click-to-path executor to call `vio_turn_to_heading`
+   for the turn phase (replacing the course-over-ground turn primitive) + the proven
+   forward linear phase. Keep multi-point execution gated until the combined
+   turn+drive segment is proven live.
+3. Consider committing beta9-11 (currently uncommitted working tree).
+
+## VIO night-blocker + hardening + telemetry-exposure survey (2026-07-11)
+
+### Live finding: VIO needs daylight; won't init from manual motion in the dark
+Supervised session on branch `feat/vio-turn-to-heading` (services already committed at
+`5a854a9e`). Undocked, gate GREEN (`allowed_for_manual_motion: true`, blade OFF,
+MODE_READY, transport `ble` at rssi -88..-90). VIO was cold (`vio_state=0`,
+`vision_heading=0.0`). Two real fires each failed to wake VIO:
+- `vio_turn_probe` (0,+500, 6s): mower physically pivoted (course-over-ground `toward`
+  swung ~11.7°, ~0.6cm translation) but `vio_state` stayed 0 / heading 0.0.
+- `vio_motion_probe` (200, 6s): `motion_confirmed:true` but `vio_activated_any:false`,
+  `max_vio_state:0`.
+Root cause: `sensor.<mower>_camera_brightness = Dark` (fresh, ~01:00 UTC = night). VIO is
+*visual* odometry — it can't bootstrap a feature track in the dark. The 07-10 proof only
+worked because VIO was already `SIGNAL_GOOD`, warmed by that morning's daylight mowing.
+**Pre-flight gate for any VIO turn test: `camera_brightness` must not be `Dark`.**
+Position telemetry is also frozen at rest / not refreshed mid-drive, so probe x/y looked
+static even though the mower moved.
+
+### Code hardening shipped (deployed, awaiting HA restart to activate)
+`vio_turn_to_heading` now refuses to start a real turn unless VIO is actively tracking:
+- New module const `_VIO_STATE_ACTIVE = 2` (`VioState.SIGNAL_GOOD`).
+- New initial safety gate `vio_active` (blocks real start when `initial_vio_state != 2`;
+  still passes in dry-run so cold planning works). A cold VIO reports `heading=0.0` as a
+  *valid* float, so without this the loop would turn against a meaningless 0.0 and abort
+  iteration 1 on `no_heading_progress`.
+- New per-iteration guard: if `vio_state` drops out of GOOD mid-turn, stop with
+  `stop_reason="vio_inactive"` instead of chasing a stale heading.
+- Tests added (`test_map_task_visibility.py`): cold VIO still dry-runs; real turn refused
+  when cold (`vio_active` blocker); mid-turn dropout → `vio_inactive`. Gates: `199 passed`,
+  ruff clean, mypy clean on `services.py`. Deployed via scp, md5
+  `d70e1e058ff0044e01065b7d790eb50f` verified both sides. **Needs a full HA Core restart.**
+
+### VioState enum (report_data.vision_info.vio_state)
+`-1 UNKNOWN` (also 172 = camera pipeline initialising), `0 SIGNAL_NONE` (cold, what we
+saw at night), `1 SIGNAL_INIT`, `2 SIGNAL_GOOD` (active/trustworthy — required to turn),
+`3 SIGNAL_BAD`.
+
+### Telemetry-exposure survey — VIO fields available but NOT surfaced in HA
+`report_data.vision_info` (pymammotion `VisionInfo` / `vio_to_app_info_msg`, fully parsed)
+carries more than we expose. Currently surfaced in `sensor.py` (Luba2/Yuka-only):
+- `camera_brightness` → `vision_info.brightness` via `camera_brightness()` enum
+  (numeric; `>45` = "Light", else "Dark").
+- `visual_positioning_status` → `VioState(vision_info.vio_state).name`.
+
+Recommended new DIAGNOSTIC sensors (high value for making VIO legible + explaining
+failures at a glance — all Luba2/Yuka-only, same pattern):
+1. **VIO heading** — `vision_info.heading` (deg). The proven body-heading signal that
+   Phase-2 turning rides on; worth surfacing for visibility/automations.
+2. **VIO tracked features** — `vision_info.track_feature_num`. The single best "can VIO
+   lock right now" number; ~0 = featureless/dark ⇒ VIO unusable.
+3. **VIO detected features** — `vision_info.detect_feature_num`.
+4. **VIO brightness (raw)** — `vision_info.brightness` (int; finer than the Dark/Light
+   enum, threshold >45).
+5. **VIO survival distance** — `device.vio_survival_info.vio_survival_distance` (m); how
+   far VIO can dead-reckon since last reliable fix.
+
+Also present/unexposed and possibly useful later: `vision_info.x`/`.y` (VIO-local position
+estimate, alt position source), `report_data.device.vslam_status` with `vision_distance`
+and `vision_state` sub-bytes (report_info.py:228/239), `vision_point_info` (3-D detected
+points) and `vision_statistic_info` (mean/var stats), `fpv_info.fpv_flag`.
+
+NOTE: adding entities requires the full translations sync per CLAUDE.md (strings.json +
+every locale under `translations/` + `icons.json`).
+
+### UPDATE 2026-07-11 — 5 VIO sensors implemented + wider field probe + 7 safety sensors
+The 5 VIO sensors above were implemented (see commit `e035f3fa`). Then a read-only
+shortlist probe was added to `position_feedback_diagnostic` (`_RAW_POSITION_PATHS`, kept
+for future re-probes) and run live on this Luba (undocked, paused, night, camera idle, not
+on RTK base). Probe results:
+- **Populated + meaningful:** `dev.self_check_status`=10, `dev.fuse_status`=1,
+  `dev.sensor_status` group (bumper + `ult_left/left_front/right_front/right` all `OK`=0 at
+  rest), `dev.lock_state.lock_state`=0, `dev.fpv_info.fpv_flag`=0 (0 because camera idle),
+  `connect.wifi_is_available`=1.
+- **State-dependent zero (re-probe before building):** `rtk.lat_std/lon_std/top4_total_mean`
+  =0 (undocked/night), `basestation_info.*`=0 (not connected to base), `rtk.dis_status`=a
+  packed int needing decode.
+- **Absent on this hardware (skip):** `dev.mnet_info.*` / `connect.mnet_inet` (no 4G),
+  `dev.collector_status`=0 (Luba has no collector).
+
+Implemented from the populated set (this commit): obstacle/safety group as ENUM sensors
+(`bumper_status`, `ultrasonic_left/left_front/right_front/right_status`; OK/Warning/Error
+from `SensorCheckState`) + numeric `fuse_status` + numeric `lock_state`. Full translations
+(names + enum states) across all 12 locales + icons. All 7 registered live (all `OK` / fuse
+1 / lock 0). Entity_ids are name-slugged (e.g. `..._left_ultrasonic_status`); unique_ids
+use the entity keys.
+
+Deferred re-probes (probe paths remain in place, no redeploy needed): FPV status with the
+camera **streaming** (expect fpv_flag→1); RTK accuracy (`lat_std/lon_std`) + base-station
+info when **docked with a solid fix**; `self_check_status` bit-layout decode.
+
+## VIO turn wired into the click-to-path executor (2026-07-11, later session — CODE DONE, NOT DEPLOYED)
+
+The turn phase of `raw_pymammotion_execute_vector_segment` / `_multi_segment` (the two
+services the custom-path card `www/mammotion-custom-path-card.js` drives) was rebuilt on
+VIO. **Uncommitted working tree; gates green (205 passed, mypy/ruff clean); NOT yet
+deployed to HA.**
+
+Design (all in `services.py`):
+- New `turn_mode` param, default **"vio"** (old model available via `"legacy"`). Legacy
+  course-over-ground turning is disproven live: `angular_speed=180` does not rotate, and
+  the fixed `calibrated_forward_heading_offset_degrees=116.5` was coincidental.
+- **`_vio_segment_calibration_drive()`** — VIO frame is re-anchored per initialisation, so
+  the map→VIO offset is derived live: short forward pulses (speed-200 profile, explicit
+  stop + `request_reports` refresh), then `offset = atan2(dy,dx) map-motion heading −
+  fresh vision_heading`. Doubles as the VIO warm-up/refresh. Needs ≥0.02 m displacement +
+  `vio_state==2` to pass; else `vio_calibration_failed`.
+- Vector segment vio flow: `vio_active` gate (refuses real motion when `vio_state != 2`;
+  dry-run still plans) → calibration drive (skipped when `vio_heading_offset_degrees`
+  provided) → **re-anchor position/target heading on post-calibration telemetry** (the
+  drive moved the mower; may even complete tiny segments) → `target_vision_heading =
+  target_map_heading − offset` → the proven `_vio_turn_to_heading` primitive (angular 500,
+  bounded pulses) → unchanged proven linear phase. Fresh post-turn snapshot baselines the
+  linear phase (the VIO primitive reports headings, not telemetry).
+- Multi-segment carries segment 1's derived offset to later segments (no recalibration);
+  new params threaded; result exposes `turn_mode` + a `vio` block (offset, source, target,
+  calibration detail).
+- Schemas/handlers: new optional `turn_mode`, `vio_heading_offset_degrees`,
+  `vio_turn_max_commands` (8), `vio_angular_speed` (500), `vio_calibration_pulse_count`
+  (2). The card's existing payloads work unchanged (defaults apply; its legacy knobs are
+  ignored in vio mode). `_raw_vector_readiness_test` pins `turn_mode="legacy"` (it
+  validates the legacy pipeline).
+- Tests: legacy tests pinned with `turn_mode="legacy"`; 6 new vio tests (dry-run plan,
+  cold-VIO refusal, calibrate→turn→drive flow incl. offset math, failed-calibration halt,
+  calibration-drive offset unit test, multi-segment offset carry).
+
+**Daylight status this session:** `camera_brightness=Light`, `vio_state=2`,
+`vision_heading=90.23°` latched — VIO warm. Blockers for live work: `ble_rssi=0` (mower
+stopped advertising; needs user wake) and `active_transport=cloud`. FPV re-probe
+inconclusive (fpv_flag stayed 0; camera entity idle — needs a real WebRTC viewer, curl
+can't consume it; RTK/basestation re-probe still awaits docked+fix).
+
+**Next:** deploy `services.py` (scp+md5) → user "restart HA" → dry-run vector segment in
+vio mode (card payload shape) → supervised live combined turn+drive segment (daylight,
+BLE, per-fire "go"): expect calibration drive ~2 pulses → VIO turn to target → forward to
+waypoint, `stop_reason=target_reached`. Then commit + offer PR.
+
+## LIVE: VIO turn phase PROVEN in executor; v2 steering fixes (2026-07-11 continued)
+
+Supervised daylight session. Committed `9b0c5fb2` (wiring) + `94777ff4` (v2 fixes), both
+deployed (final md5 `3ece4fb51b07476261d66ce0f2c57274`), **HA restart pending** for v2.
+
+**Live results (3 real runs, per-fire user go):**
+- Dry-run in vio mode: sane (`turn_mode: vio`, planned calibration + vio turn @500).
+- Run 1 (169° required turn): calibration 1 pulse/2.0cm → offset 191.1°; **8 VIO turn
+  pulses, error 159.7°→80.4°, perfectly monotonic ~11°/pulse**; hit 8-pulse cap →
+  correctly refused linear (`turn_phase_incomplete`).
+- Run 2 ("turn 90° right, drive 1 m"): facing probe (`vio_motion_probe` 4s) → facing
+  341.3°, offset 161.84; **turn phase `target_heading_reached` (8 pulses, → −6.5°),
+  operator-confirmed clean 90° right turn**; linear 12×1500ms pulses moved only ~0.34 m
+  net (~3 cm/pulse — firmware ramp eats short pulses).
+- Run 3 (continuation, 2000ms pulses): turn again perfect (7 pulses → −1.0°); linear
+  moved **~1.0 m real** but **~25° off-bearing**, guard stopped it (`no_target_progress`).
+
+**Root cause of off-bearing drive:** offset from a 2 cm calibration baseline carries
+~25° noise; forward pulses can't steer. **v2 fixes (committed `94777ff4`):** calibration
+baseline min 2→6 cm; continuous offset refresh from each passing linear pulse
+(`offset_source: linear_refresh`); mid-drive re-aim via bounded VIO turn when facing
+drifts >15° off bearing (≤3 realignments, `realignments` reported in result). New params:
+`vio_realign_threshold_degrees`, `vio_max_realignments`.
+
+**Operational discoveries:** mower restart (iOS app) → fresh BLE advertising → prompt
+promotion (vs. 10+ min of failed toggles at rssi −90); VIO **self-initializes in
+daylight** after mower restart (no warm-up drive needed). Linear reality: ~3 cm/pulse at
+1500 ms, ~8 cm/pulse at 2000 ms (speed 200/400 mix).
+
+**Next:** user "restart HA" → one clean run (fresh 6cm calibration → turn → steered
+drive) expecting `target_reached` → then multi-segment click-to-path proof + PR.
+
+## ✅ MILESTONE: combined turn+drive segment PROVEN LIVE — target_reached (2026-07-11 evening)
+
+**The v2 executor completed a full closed-loop segment on VIO**: from (3.693, −0.997) to
+target (4.41, 0.06): turn phase 4 pulses (error −41.7°→+2.7°, `target_heading_reached`),
+linear phase 12×2s pulses all on-bearing (~10cm each, ~1.2m), continuous offset refresh
+active (`offset_source: linear_refresh`, 108.54°→106.56°), zero re-aims needed, landed
+**~7cm from target** (tolerance 15cm), `stop_reason: target_reached`, `complete: true`.
+Artifact: scratchpad `live_vio_segment_9.json`. Commits `9b0c5fb2`+`94777ff4`+`76de94e4`+
+`03d8d09e` all pushed.
+
+**Working parameter set (proven):** `heading_tolerance_degrees: 8`,
+`vio_turn_max_commands: 16` (MUST pass — default 8 only covers ~100° of turn),
+`linear_pulse_duration_ms: 2000`, `max_linear_pulse_ceiling: 20`,
+`max_no_progress_pulses: 4`, `waypoint_tolerance: 0.15`, `sample_delays: [0,3,6]`;
+`vio_heading_offset_degrees` reusable across runs in-session (pose-independent
+frame-to-frame offset; each run's result reports the refreshed value).
+
+**Hard-won operational playbook (all live-verified today):**
+1. **iOS app holds the mower's single BLE slot** — force-close it before testing;
+   promotion then lands in ~20-120s (vs never while app open).
+2. **Every mower restart kills the device-side report stream** → position telemetry
+   freezes/lags minutes. Fix: `position_feedback_diagnostic` real-mode `pulse_count: 0`
+   (zero motion, runs the full re-init arsenal: report snapshot/stream, iot sync, BLE
+   sync) → position feed goes live again (visible ±3cm jitter = healthy).
+3. **The re-init's iot-sync window flaps BLE to cloud** → one toggle after re-init
+   re-promotes (~20s when mower freshly booted).
+4. Speed-200 pulses barely move this unit (~1-2cm real per 2s; firmware ramp); speed-400
+   ≈ 8-10cm per 2s pulse. Calibration now runs at fast speed (`03d8d09e`).
+5. Idle mower stops advertising within ~30min → wake via mower restart or button.
+6. User has full-area UniFi camera coverage of the mower's reachable area (supervision).
+
+**Remaining to finish:** (1) multi-segment click-to-path proof (2-3 points through
+`raw_pymammotion_execute_multi_segment`, offset carries across segments — code ready,
+needs one supervised run); (2) then consider ungating multi-point + PR to main; (3)
+deferred re-probes (FPV while streaming; RTK accuracy when docked).
+
+## 🏆 PHASE 2 COMPLETE: multi-segment click-to-path PROVEN LIVE (2026-07-11 evening)
+
+Supervised L-path run (`raw_pymammotion_execute_multi_segment`, 3 points, 2 real
+segments, artifact `live_multi_segment_1.json`): **both segments `target_reached`,
+`ready_for_multi_segment: true`**, landed ~11cm from the final point.
+- Seg 1 (0.75m −y): turn 12 pulses −126.5°→−1.0°; drive 8 pulses; **mid-drive re-aim
+  triggered live and worked** (21.9° drift after pulse 1 → corrected → clean drive).
+- Seg 2 (0.70m −x): **carried offset, zero recalibration**; turn 5 pulses −50.7°→−1.1°;
+  drive 8 pulses all on-bearing.
+- Offset self-refined 106.56→108.28→109.63 (`linear_refresh`) across the whole path.
+
+Every executor feature validated in one run: VIO turn phase, fast-speed live
+calibration, offset carry across segments, continuous offset refresh, mid-drive re-aim,
+per-segment safety re-checks, waypoint completion. The card→multi-segment→turn+drive
+pipeline is functional end-to-end.
+
+**Next session:** decide whether to lift point-count/segment caps (currently 4 points /
+max_real_segments) + surface `turn_mode`/`vio_turn_max_commands: 16` as card defaults;
+open the PR to main; deferred FPV/RTK re-probes; consider exposing exact per-command UTC
+timestamps in command_results (user request for camera-footage correlation).
+
+## Wrap-up 2026-07-11 late evening: PR open, card tested to the VIO gate, dusk ended play
+
+All four follow-ups landed (commits pushed through `2c1dd028`, **PR #10 open**:
+https://github.com/Chorty/Mammotion-HA/pull/10):
+- Multi-segment caps lifted to 2-8 points / 7 real segments (5-point dry-run verified live
+  post-restart); card `MAX_WAYPOINTS` raised to 7.
+- Card sends proven VIO defaults (`turn_mode: vio`, `vio_turn_max_commands: 16`, 2s linear
+  pulses, 0.15 tolerance, `[0,3,6]` delays, ≤7 segments).
+- `sent_at_utc` on every calibration/turn/linear command result.
+- Probes: **`fpv_flag` confirmed 1 while streaming → `fpv_status` sensor shipped**
+  (inactive/streaming/error, all locales); RTK `lat/lon_std` + `basestation_info.*`
+  stayed 0 even docked with a fix → **dead on this firmware, intentionally not exposed**.
+
+**First card-driven run** (user clicking the map): front-end works end-to-end — service
+fired, full JSON returned. It correctly stopped at `vio_active` (VIO cold: mower
+stationary since undock + dusk; `camera_brightness=Dark` ended the day). TWO gotchas for
+the next card session:
+1. **Browser cache fingerprint**: if a card response shows `sample_delays: [0,5,10]` /
+   `waypoint_tolerance: 0.08`, the browser is running the OLD card — cache-bust via
+   Settings→Dashboards→Resources, append `?v=N` to the card URL. New card sends
+   `[0,3,6]` / `0.15`.
+2. Old-card params make long segments fail (300ms default pulses ≈ 2-3cm → ceiling).
+
+**Daylight card-session recipe:** cache-bust card → undock (release_from_dock button,
+avoids app) → app closed → BLE toggle if needed → warm VIO (`vio_motion_probe` 4s forward,
+needs go) → card dry-run (expect `[0,3,6]` fingerprint) → Real Go with 2 waypoints ~1-2m
+first, then scale to multi-waypoint paths.
+
+## Wrap-up 2026-07-13/14: code review of the stale-heading + BLE-recovery work, 5 hardening fixes
+
+The 07-12 session's work (stale-VIO poll fix + BLE auto-recovery) is committed as
+`71d2c8d8`. A high-effort /code-review over it (8 finder angles + verification) produced
+10 findings; the 5 blocking ones are FIXED in the working tree (+72/−35 in services.py,
+**uncommitted, not deployed**; 187 tests pass, ruff clean):
+1. Both executors now run BLE recovery BEFORE the `initial_telemetry` snapshot — safety
+   gates/target math previously judged state up to ~93s stale after the recovery wait.
+2. The recovery cooldown guard was DEAD: `availability.ble_in_cooldown` doesn't exist in
+   pymammotion (test fixtures fabricate it!). New `_ble_connect_cooldown_active()` reads
+   `get_transport(TransportType.BLE)._connect_cooldown_until`; the mid-budget toggle now
+   defers while cooldown is active.
+3. No-progress-streak pulses in `_vio_turn_to_heading` use `slow_pulse_duration_ms`
+   (blind rotation was unbounded — `max_displacement_m` only caps translation).
+4. Fresh-heading poll sleep floored at `max(refresh_wait_seconds, 0.5)` —
+   `refresh_wait_seconds: 0` used to hammer request_reports on the BLE queue.
+5. `ble_auto_recover` wiring: dead schema key removed from execute_segment; multi-segment
+   forwards the flag per segment (explicit false was being overridden); readiness probe
+   pinned to `ble_auto_recover=False` (keeps the diagnostic fast-fail).
+
+Deferred findings (known, unfixed): calibration drive + `linear_refresh` still consume
+single possibly-stale VIO samples (silently wrong offset); standalone `vio_turn_to_heading`
+gets no auto-recovery; `ble_auto_recover` missing from strings.json; recovery runs before
+the cheap confirmation gates; sleeping mower burns the full 90s budget.
+
+Also set up **subagent model routing** (`.claude/agents/finder.md`=sonnet,
+`verifier.md`=opus, rule in CLAUDE.md) so review fan-out runs on cheaper models.
+
+**Re-review of the fix diff is IN PROGRESS** (session ended near limit): 5/8 angles done.
+Top candidate (2 independent finders): pymammotion's connect cooldown default (120s)
+outlasts recovery's 90s budget → a cooldown-blocked recovery never toggles and the final
+`reason` misdirects to check_phone_app/needs_wake instead of naming the cooldown; also
+`_ble_connect_cooldown_active` has zero direct test coverage (fixture handle lacks
+`get_transport`). **Next session:** finish the 3 remaining angles (removed-behavior,
+efficiency, altitude), opus-verify, apply the cooldown-reason fix + a real cooldown test,
+then commit the fixes and deploy via scp for a supervised daylight run.
+
+## Wrap-up 2026-07-14/15 evening: fixes deployed + first live runs on review-hardened code
+
+Deployed the 9 review fixes to HA (scp, md5 2303a2691d…, confirmed live via the new
+`effective_poll_interval_seconds` field in a dry run). Map-blank-after-restart fixed by
+the documented recipe (mower awake → config-entry reload). Two supervised card runs:
+
+- **Run 1 (3.58m):** calibration 1 pulse; VIO turn PERFECT (one 700ms pulse, error
+  9.0°→2.6°, fresh-heading poll working); 18 linear pulses dead on bearing (~1.02m);
+  ended when BLE hit its 120s cooldown — stop hung 32.7s → `stop_failed_aborting`
+  (hardening worked). Throughput facts: ~8cm per 2s speed-400 pulse; 14s/pulse cadence
+  (10s of it card `sample_delays [0,5,10]`) → card config now `[0,3]`.
+- **Run 2 (176° U-turn):** calibration ✓; turn pulses 1-3 textbook (~12.5°/pulse);
+  then SUNSET killed VIO mid-turn (features 80→0, `vio_state` stayed 2!) — heading
+  latched bit-identical, new streak logic capped blind pulse to 700ms and aborted
+  `no_heading_progress` at streak 2. Blind rotation bounded (~29° toward-swing).
+  Live-confirmed review finding: a 0.0018° noise wiggle passed the float-inequality
+  freshness check.
+
+**Next session (Opus prompt prepared):** commit the fixes; freshness epsilon (~0.1°,
+wrap-aware); VIO liveness gate on brightness/tracked-features (vio_state alone lies at
+dusk); `linear_pulse_duration_ms` schema cap 2000→4000 (+services.yaml selectors);
+slow-streak cap only when sample stale; review backlog (cooldown test coverage, dead
+`ble_in_cooldown` diagnostic+fixtures, ha_state refetch-after-recovery). Joystick card
+idea DEFERRED (interim: grid card of emergency_nudge buttons). Mower parked ~(6.09,
+−2.80) facing ~−94°; card config carries `sample_delays [0,3]`.
+
+## Wrap-up 2026-07-15: dusk-latch hardening (epsilon + VIO liveness gate) + review backlog
+
+All six queued items landed (198 tests, was 187; ruff clean on touched files;
+NOT deployed — deploy checklist below):
+
+1. **Committed** the 9 review fixes as `1c196843` (were live on HA but uncommitted).
+2. **Freshness epsilon:** the vio_turn poll now requires
+   `abs(_heading_error_degrees(before, after)) > _VIO_HEADING_FRESH_EPSILON_DEGREES`
+   (0.1°) instead of float inequality — run 2's 0.0018° noise wiggle no longer counts
+   as fresh. Both stale-poll tests now jitter sub-epsilon; new regression test
+   `sub_epsilon_wiggle_is_not_fresh`.
+3. **VIO liveness gate:** new `_vio_feed_liveness()` reads
+   `vision_info.track_feature_num` (< `_VIO_MIN_TRACKED_FEATURES`=5 → degraded; missing
+   field → live, so non-reporting devices aren't blocked) + brightness label. Wired:
+   vio_turn entry gate `vio_feed_live` + per-pulse `stop_reason: vio_feed_degraded`;
+   vector-executor gate (only when vio_state==2 — cold-start warm-up path untouched);
+   calibration drive refuses the offset (`vio_feed_degraded`) when the post-drive feed
+   is blind. Feed dicts surfaced in results (`initial_vio_feed`, `final_vio_feed`,
+   `vio_feed`).
+4. **Pulse cap:** `linear_pulse_duration_ms` max 2000→4000 in both schemas +
+   both services.yaml selectors (user wants 4s-pulse throughput tests).
+5. **Streak refinement:** slow-pulse cap during a no-progress streak now applies only
+   when the last sample was stale (`last_heading_went_fresh` False); fresh-but-stalled
+   streaks keep the full pulse. Docstring + tests updated.
+6. **Review backlog:** cooldown helper direct tests (deadline read, API-drift
+   fallback, pinned-pymammotion attr contract); dead `availability.ble_in_cooldown`
+   diagnostic replaced with live `ble_connect_cooldown_active` (fixtures de-fabricated,
+   `get_transport` added); `refetch_runtime_context` callback threaded handler→both
+   executors (and multi→per-segment) so post-recovery gates judge fresh
+   ha_state/active_route — test proves "started mowing during the 90s recovery" blocks.
+
+**Deploy checklist (user deploys via scp):** `custom_components/mammotion/services.py`
++ `custom_components/mammotion/services.yaml` → HA, restart, verify via a dry run that
+the result carries `initial_vio_feed`. Next live objectives: daylight multi-segment run
+with 4000ms pulses; confirm `vio_feed_degraded` fires at dusk instead of
+`no_heading_progress`.
+
+## Wrap-up 2026-07-15 (later): deploy + first daylight live run + position-settle fix
+
+Deployed the dusk-latch hardening (services.py md5 15c06373…, services.yaml bc23b1f8…)
+via scp, restarted HA Core, verified live: dry runs carry `initial_vio_feed` and the
+4000ms pulse is accepted. BLE promoted instantly on a single switch-reassert-ON
+(rssi −76→−68). Mower entity is `lawn_mower.back_yard_clip_skywalker`.
+
+**First daylight real motion (2 × `vio_motion_probe` 4s @ speed 400):** VIO stayed
+healthy (state 2, 80 features, Light) so the new liveness gate correctly stayed green
+with zero false aborts. BUT telemetry claimed ~11cm + ~9cm while the mower physically
+moved **< 6 inches total** (user-observed). Root cause: the map-local x/y feed lags ~4s
+and updates in JUMPS, so pulse 2's "displacement" was pulse 1's delayed registration —
+`motion_confirmed`/`displacement_m` over-attributed across back-to-back pulses. Finding:
+**4s pulses are not a throughput win (~2–3" each); the 4000 cap won't speed up path
+runs.** The dusk-degradation code paths remain unverified live (can't trigger in
+daylight).
+
+**Fix authored (committed, NOT deployed — needs daylight tape-measure validation):** the
+linear phase now runs a bounded position-SETTLE poll after each pulse's stop
+(`_settle_linear_position_feed`), mirroring the turn phase's fresh-heading poll. Settling
+requires the feed to both move off the pre-pulse position AND stop jumping, so per-pulse
+displacement is attributed to the right pulse; a blocked pulse times out `settled=False`
+→ existing no-progress logic handles it. Module constants
+`_LINEAR_POSITION_SETTLE_EPSILON_M` (0.01) / `_LINEAR_POSITION_SETTLE_TIMEOUT_SECONDS`
+(6.0); poll bounded by count so no-op-sleep tests don't spin. Applied to the vector
+executor (the click-to-go path) only; `_raw_pymammotion_execute_segment` + the other
+legacy linear loop share the bug and are NOT yet patched. 200 tests (was 187). NEXT:
+deploy in daylight, tape-measure a single pulse to confirm `position_settled` improves
+attribution, then decide whether to extend the settle poll to the other executors and
+whether to shorten pulses back to ~2s given the throughput finding.
+
+## Wrap-up 2026-07-16: 4 motion-reliability issues + self-review
+
+Implemented the approved 4-issue plan off-mower (branch feat/vio-turn-to-heading,
+commits 0684bf54 + the review-fix commit below). NOT deployed -- needs daylight tape
+validation.
+
+- #1 (extend settle poll to legacy linear executor): the review found the premise was
+  wrong -- `_raw_pymammotion_execute_segment` issues NO software stop (relies on firmware
+  auto-stop), so a settle wait there only prolongs blind motion. REVERTED the settle poll
+  from that executor; kept the dual-source instrumentation. The vector executor (the card
+  path, which does stop) keeps its settle poll from a35afdd3.
+- #2 (vio_motion_probe honesty): judge motion_confirmed + final_displacement_m across
+  post_stop samples (where the lagged real move lands); add displacement_source. Done.
+- #3 (phantom instrumentation): `_position_source_comparison` (read-only) logs both
+  position sources + RTK quality per pulse in both executors and both VIO probes. Detector
+  deferred until a daylight run yields phantom-vs-real data.
+- #4 self-review (high, 5 findings): FIXED #1-revert (finding 2), settle-poll docstring now
+  states the phantom limitation (finding 1), extracted the duplicated
+  `_make_refetch_runtime_context` factory (finding 5).
+
+**Deferred review findings (noted, not fixed -- decide during daylight validation):**
+- The position-settle poll can settle on a PHANTOM feed-jump (epsilon 1cm << the ~9cm
+  phantom seen live), so over-attribution persists on no-op pulses -- only the #3 detector
+  can fix this; the settle poll only handles LAG.
+- `_VIO_MIN_TRACKED_FEATURES=5` is re-checked EVERY pulse in `_vio_turn_to_heading`, so a
+  single transient feature dip (occlusion) aborts an otherwise-healthy turn with
+  vio_feed_degraded -- same single-sample-abort class we fixed for heading; consider a
+  consecutive-degraded streak before aborting.
+- The settle poll's wait is ADDITIVE to the card's sample_delays window (~+4s/pulse), a
+  throughput cost; once validated, trim sample_delays (the settle poll already waits out
+  the feed) or have the executor use the settle telemetry as `after` instead of re-sampling.
+
+Tests 200 -> 203; ruff clean. Deploy checklist unchanged (services.py only; daylight scp +
+restart + tape validation, collect position_source_comparison data).
+
+## Wrap-up 2026-07-16: resolve xhigh-review findings (2 hardening + cleanups)
+
+Worked through the resolvable xhigh-review findings off-mower. 2 hardening + cleanups
+(commit below). NOT deployed.
+
+Hardening (correctness):
+- H1 (transient feed-dip tolerance): the per-pulse vio_feed_live check in
+  _vio_turn_to_heading now re-confirms a degraded read with a bounded read-only poll
+  (_reconfirm_vio_feed_degraded, _VIO_FEED_RECONFIRM_POLLS=2) before aborting, so a
+  single transient feature dip no longer kills a good turn while sustained dusk
+  blindness still aborts. No motion during the wait (mower already stopped).
+- H2 (wrong-direction slow-cap): the no-progress slow-pulse cap now also fires when the
+  last pulse made NEGATIVE progress (moved away from target, e.g. sign miscalibration),
+  not only when the sample was stale -- bounds wrong-way full-power rotation. Safe
+  (only shortens pulses). Split the streak test into wrong-direction (slow-capped) vs
+  creeping-toward-target (full pulse kept).
+
+Cleanups:
+- C1 _vio_feed_live_gate() helper shared by both executors (unifies the drifted detail
+  strings). C2 _vio_scene_brightness() shared by _vio_scene_is_bright + _vio_feed_liveness.
+  C7 pulse-1 reuses initial_feed (entry gate already proved it live). C8 added the
+  vio_feed_live gate to the multi-segment ENTRY (was only per-segment). C3 documented the
+  settle-poll `telemetry` return field as the reserved hook for the deferred throughput fix.
+
+Deferred (with rationale, NOT done): the settle-poll phantom limitation (needs the #3
+detector + daylight data); max_displacement_m-can't-fire-mid-drive and the sub-epsilon
+slow-turn timing (change proven motion, want live confirmation); the additive-settle-wait
+throughput fix (changes the progress-`after` source; validate first). Reuse findings C4
+(agreement_m hypot) / C5 (settle refresh helper) / C6 (source-comparison on raw_sources)
+skipped: the reuse would add coupling/clunkiness for marginal benefit (verified
+_telemetry_position_delta wants dict-shaped inputs, not the 2-tuples).
+
+Tests 204 -> 207; ruff clean. Deploy checklist unchanged (services.py only).
+
+## Wrap-up 2026-07-18: off-mower session — schema parity sweep, hassfest fix, PR prep, segment stop, telemetry research
+
+Off-mower (mower unavailable, night). Commits `0ebdf7c1`..`8271f02f`, all pushed to
+PR #10. Tests 207 -> 260; mypy + ruff clean throughout. NOTHING deployed.
+
+1. **Schema/handler key-parity audit (the KeyError->500 class).** AST audit of all 50
+   service registrations found ONE more real gap beyond the multi-segment
+   `ble_auto_recover` bug: `manual_velocity_segment_test`'s handler reads
+   `stop_mode`/`stop_delay_ms` but the schema declared neither -> every call omitting
+   them 500'd. Fixed (defaults immediate/0 matching the pulse-test sibling + executor
+   signature; yaml selectors added). svg_add/update x_move/y_move flagged but safely
+   membership-guarded. NEW generic regression sweep in the test file: parses
+   services.py's AST, extracts each handler's unguarded `call.data[...]` reads
+   (following one level of call-passing helpers, e.g. handle_movement), and asserts
+   every key resolves after applying the real schema to a minimal required-keys
+   payload. 47 parametrized cases + a discovery meta-test. Kills the bug class.
+
+2. **Hygiene.** `mypy custom_components/` (repo config): clean. pre-commit: applied the
+   one scoped codespell fix (unparseable->unparsable in services.py); did NOT apply the
+   ruff-format/prettier churn on pre-existing drift (17 files reverted per-file);
+   pre-commit's mypy --strict hook fails on ~170 pre-existing environmental errors
+   (isolated env without HA) across entity platforms — out of scope, repo mypy is the
+   real gate.
+
+3. **PR #10 prepped.** Branch 31 commits ahead of main, 0 behind — no rebase needed;
+   version beta11 > main's beta8 kept per the standing rule. CI triage: `python` check
+   = requirements_test.txt pip conflict (pre-existing), `hacs` = repo settings
+   (license/issues/topics, not code), `hassfest` = uppercase translation state keys +
+   http/web_rtc deps (pre-existing on main) PLUS uppercase `OK/WARNING/ERROR` states
+   the branch itself added — FIXED: the 5 safety sensors now emit
+   `SensorCheckState(...).name.lower()` and the state keys are lowercased across
+   strings.json + all 12 locales (values kept translated; no per-state icons). NOTE:
+   sensor.py + translations now differ from what's deployed on HA — include them in
+   the next deploy (previously services.py-only). PR description rewritten
+   (hardening-since-open section + validation state). MERGEABLE; left unmerged for
+   human review.
+
+4. **C4/C5/C6 reuse findings re-judged — all three skips stand.** C4: the comparison
+   is two same-instant xy tuples; `_telemetry_position_delta` wants start/end telemetry
+   dicts + availability gating — reuse means fabricating fake telemetry shapes.
+   C5: `_position_feedback_refresh_attempt` is a diagnostic multiplexer with its own
+   pacing sleep (double-sleep risk) and attempt-report shape; the settle loop's bare
+   `async_get_reports(count=5)` is the file-wide idiom. C6: `_position_feedback_raw_sources`
+   is a heavyweight raw dump (3 locations + transport/handle probing) — per-pulse reuse
+   costs more and still needs all the scaling/filtering; the real shared layer is
+   `_safe_attr_path`/`_scale_report_position`/`_latest_location`.
+
+5. **`_raw_pymammotion_execute_segment` got its software stop (+ settle poll).** Now
+   mirrors the vector executor per pulse: bounded `linear_pulse_duration_ms` (new
+   param/schema/yaml, default 300ms, range 50-4000) -> `_manual_velocity_stop_attempt`
+   -> abort `stop_failed_aborting` on undeliverable stop -> `_settle_linear_position_feed`
+   (settled/moved/wait per command). 2 new tests + no-progress test asserts the settle
+   fields. **DO NOT DEPLOY until a supervised daylight run validates it** — suggest
+   passing `linear_pulse_duration_ms: 3000-4000` on that run (taped model: sub-2s
+   pulses risk physical no-ops; default 300 mirrors the sibling schema, not the
+   proven pulse length).
+
+6. **Dormant obstacle/report telemetry during autonomous mowing — ROOT CAUSE FOUND
+   (research only, no code).** The report coordinator's `_async_update_data` NEVER
+   solicits reports — it re-reads pymammotion's in-memory state (REPORT_INTERVAL=5min
+   tick is a cache read; that's why `homeassistant.update_entity` does nothing).
+   Freshness while mowing comes entirely from pymammotion's own cadence loops:
+   - **BLE connected:** `ble_polling_loop` maintains a continuous count=0 report
+     stream in ACTIVE mode (renew 8s, stale watchdog 15s, ~1 report/s). The
+     "subscribe to DEV_STA push" idea ALREADY EXISTS on the BLE path.
+   - **Cloud only:** `mqtt_activity_loop` polls count=1 every 10-15 MINUTES in
+     ACTIVE mode (quota protection; env-overridable `MAMMOTION_POLL_ACTIVE_SECS`).
+   - `NO_REQUEST_MODES` does NOT include MODE_WORKING — not deliberately blocked.
+   Tonight's dormancy signature (only advertisement-derived ble_rssi live) means the
+   BLE connection was NOT held during the mow (app slot theft and/or range) and the
+   user runs BLE-only (cloud switch off) -> no fallback stream at all. HA already
+   auto-retries BLE on every advertisement (debounced 60s, `_add_ble_device` ->
+   `ble.connect()`), so mid-mow re-latch SHOULD happen with the app closed.
+   **Recommended next steps:** (a) live diagnosis next daylight mow, app force-closed:
+   watch `active_transport`/`ble_stream_active` — if BLE re-latches, sensors go live
+   at ~1s cadence with zero code changes; (b) if cloud-side coverage is wanted, the
+   cheap HA change is in `MammotionReportUpdateCoordinator._async_update_data`: when
+   device_mode ACTIVE and not `handle.ble_stream_active`, call
+   `async_start_report_stream(duration_ms=330_000)` per 5-min tick — RPT_START goes
+   via best transport (verified `_send_report_stream_start` uses `send_raw`), repeat
+   calls send RPT_KEEP, pushes damped by no_change_period=4000; bounded cloud cost,
+   config-gate it. Deferred: needs the user's call on cloud quota + a live mow to
+   validate; useless for the current BLE-only setup until cloud is re-enabled.
+
+**Deploy checklist changed:** next scp must include `services.py`, `services.yaml`
+(segment-test + execute-segment selectors), `sensor.py`, `strings.json`, and ALL
+`translations/*.json` (lowercase ENUM states) — then restart + re-run a multi-segment
+dry-run and check the 5 safety sensors show translated states.
+
+## Wrap-up 2026-07-18 (on-mower, daylight): expanded deploy verified, software stop proven, turn-tolerance bug found+fixed, card corrected
+
+Live supervised session on `feat/vio-turn-to-heading` @ `330117ce`. Working tree was
+clean, so everything deployed was the committed branch state. Blade OFF for the entire
+session (see the scope note in item 8).
+
+### 1. Expanded deploy + post-restart verification (all green)
+
+scp'd the full 16-file set (`services.py` `e72343fa`, `services.yaml` `ad427ffc`,
+`sensor.py` `b900684a`, `strings.json` `62ee44bd`, all 12 `translations/*.json`),
+md5-matched both sides, restarted HA Core (~105s). All four checks passed:
+
+- safety sensors now emit lowercase `ok` (were `OK` pre-restart) — the hassfest fix live
+- multi-segment dry-run HTTP 200 with `initial_vio_feed {live, 80 features, Light}`
+- `manual_velocity_segment_test` omitting `stop_mode`/`stop_delay_ms` returns **200**
+  (the KeyError->500 fix confirmed on hardware)
+- `execute_segment` accepts `linear_pulse_duration_ms: 3500` and echoes it back
+
+BLE promoted to `ble` on its own through the restart — no toggle needed.
+
+### 2. `_raw_pymammotion_execute_segment` software stop: VALIDATED (tape)
+
+Two real single pulses (`max_commands: 1`, 3500ms, speed 400). Both stops delivered and
+**dual-axis ACKed (`linear_ok`/`angular_ok`) in 0.83ms / 1.06ms** — versus the 07-14 run
+where a stop hung **32.7s** then threw `BLEUnavailableError`. No `stop_failed_aborting`.
+`position_settled: true` + `position_moved: true` on both.
+
+**Settle poll fixes cross-pulse bleed (the 07-15 bug):** pulse 1 ended (4.3864, 2.0409),
+pulse 2 started (4.3874, 2.0400) — pulse 1's travel had fully registered before pulse 2
+began. **Consecutive-pulse no-op did NOT reproduce** (2/2 executed back-to-back).
+
+### 3. Position feed has a ~2-6cm ABSOLUTE noise floor (not a % error)
+
+Both pulses taped **exactly 4in (10.16cm)**; telemetry said 11.97cm then 14.52cm. First
+read as "+18%/+43% inflation" — **corrected by the operator's 10-foot hand-push**: feed
+said 3.107m vs 3.048m actual (**+5.9cm**). Absolute error is ~2-6cm at BOTH 10cm and 3m
+scales => constant noise floor, not scaling.
+
+Consequences: (a) per-pulse displacement is hopeless (noise ≈ signal at 10cm/pulse);
+(b) segment-scale distance-to-target is reliable (~2% at 3m); (c) **`min_progress_distance`
+defaults of 0.01/0.003m sit an order of magnitude INSIDE the floor** — the no-progress
+detector is largely reading noise.
+
+### 4. TURN-TOLERANCE BUG: deadband below the physical rotation quantum
+
+First L-path attempt died `turn_phase_incomplete` on segment 1 with only a **−4.8°**
+error: pulse 1 (+500, 700ms) swung **8.2°** through zero to +3.42°; pulse 2 (−500,
+700ms) swung **15.5°** to −12.11° — *worse than it started*; abort at 2 no-progress.
+
+**Root cause: rotation has a fixed minimum quantum of ~8-15° per pulse (700ms gave 8.2°
+and 15.5°; 1500ms gives ~12.5° — angular yield is NOT proportional to duration, same as
+the linear step), but `heading_tolerance_degrees` defaults to 3.0°.** The controller
+cannot land inside its own deadband, so any error smaller than the step oscillates and
+diverges. When initial error < step size, turning is strictly counterproductive.
+H2 wrong-direction slow-cap + the 2-pulse abort worked exactly as designed and bounded
+the damage — the safety layer is sound, the SETPOINT was wrong.
+
+### 5. Multi-segment L-path PROVEN with `heading_tolerance_degrees: 18` (one param)
+
+Retry succeeded: **both segments `target_reached`, 2/2 real, `path_complete`.**
+seg1 turn −18.4°->−11.2° (1 pulse) + 4 linear, landed 13.6cm; **seg2 turn +83.4°->+9.6°
+in 5 pulses (~14.8°/pulse) + 7 linear, landed 6.5cm from target** — the ~90° VIO turn
+phase proven again (broken since the 07-15 sunset abort). 2m22s at ble_rssi −94.
+**Cross-validation of the tape: 11 linear pulses moved 1.072m = 9.75cm = 3.84in/pulse.**
+
+### 6. Card fixed (`v2026.07.18b1`) — its own defaults were the failure modes
+
+The card was sending `linear_pulse_duration_ms: 2000` (**a taped PHYSICAL NO-OP**),
+`heading_tolerance_degrees: 8` (inside the 8-15° step band), no `min_progress_distance`
+(-> schema 0.01, inside the noise floor), no `turn_pulse_duration_ms` (-> 300ms), and
+`sample_delays [0,5,10]`. All corrected to the proven config (3500 / 18 / 0.06 / 1500 /
+[0,3], `max_linear_commands` 3); stale "2s pulses move ~8-10cm" comment replaced with
+the taped findings. Dry-run confirmed every value lands.
+
+**⚠️ THE CARD LIVES IN TWO PLACES.** The dashboard resource is
+`/hacsfiles/mammotion/mammotion-custom-path-card.js?v=N` ->
+`/config/www/community/mammotion/`, **NOT** the integration's
+`/config/custom_components/mammotion/www/` (served at `/mammotion/`). Deploying to only
+the integration path md5-verifies GREEN while the browser loads the old card — a silent
+failure. Deploy to BOTH. Also: bump `CARD_VERSION` + `?v=N` every deploy, and HA's
+frontend **service worker** can still serve stale JS afterwards (reset frontend cache).
+
+**Blank card map fixed** by the documented config-entry reload *while the mower was
+awake* — containment then passed (`valid: true`, no `no_area_geometry` warning) and BLE
+survived the reload.
+
+### 7. ❗ OPEN: card run stalled in the turn, and the feed may under-report ~5x
+
+Real card run needed −67.7°. Pulses yielded **9.5°, 9.4°, 5.7°, 0.001° (poll timed out
+8.07s, `heading_went_fresh` FALSE), 0.49°** -> `no_heading_progress`, final error −42.6°,
+`linear_commands_sent: 0`. **VIO was HEALTHY throughout (live, 80 features, Light)** — not
+a dusk path. VIO heading (−25.05°) and course-over-ground `toward` (+26.0°) INDEPENDENTLY
+agree it rotated ~25-30° then stopped. Yield was ~9.5°/pulse vs **14.8° in the successful
+run 90 min earlier at identical params** — location/moment-specific, not parameter-driven.
+
+**UNRESOLVED, TOP PRIORITY:** the run logged **15-16cm** total displacement; the operator
+observed **~1ft forward + ~2.5ft left ≈ 82cm** — a **~5x UNDER-report**, on pulses
+commanded at `linear_speed: 0`. (`displacement_m` did climb 1.7->7.1cm across those
+pulses, so some translation registered, just far too little.) If real, the mower converts
+commanded rotation into forward/lateral lurch AND the feed misses most of it — which
+would undermine the linear phase's progress logic and cast doubt on prior "landed Xcm
+from target" claims. **Caveat: the operator figure is a recollection, not a tape, and
+could NOT be verified — the mower auto-docked at 01:06Z before a check was possible.**
+
+**NEXT DAYLIGHT SESSION, FIRST TEST (~2 min): mark the ground, fire ONE rotation pulse,
+tape BOTH the rotation and any translation.** Do not redesign progress logic before this.
+
+### 8. Scope correction (operator)
+
+An "autonomous-mow telemetry test" was queued from the 07-18 plan; the operator stopped
+it — the goal is **point-and-click map movement with the blade OFF**, not mowing/blade
+automation. That telemetry item is a separate side-quest, already root-caused off-mower.
+An item appearing on a queue is not sufficient reason to run it.
+
+### Defaults to fix off-mower (each with live evidence)
+
+1. `heading_tolerance_degrees` **3.0 -> ~18** — strongest; proven necessary AND sufficient
+   in back-to-back runs an hour apart.
+2. `execute_segment.linear_pulse_duration_ms` **300 -> ~3500** — 300ms is below the no-op
+   threshold, so any caller taking the default gets stop-validated pulses that never move.
+3. `min_progress_distance` **0.01/0.003 -> ~0.06** — inside the measured noise floor.
+   **Handle with care**: changes abort behaviour in proven motion loops; wants tests.
+4. Minor: the multi-segment result does NOT echo `linear_pulse_duration_ms`/
+   `turn_pulse_duration_ms`/`vio_turn_max_commands`/`vio_angular_speed`/
+   `max_linear_pulse_ceiling` (the handler DOES forward them — verified). Echo-only gap,
+   but it blocks post-run forensics on the numbers that matter most.
+
+Also noted: `position_source_comparison`'s `mowing_state_xy` is flat **[0.0, 0.0]** with
+`rtk_status` dropping 4(`Fix`)->0 during motion — the second position source is dead on
+this firmware, so the deferred phantom detector (#3) has only ONE live input.
+
+Session end state: mower docked 01:06Z, `Dark`, 0 tracked features, transport back to
+`cloud_aliyun`, blade OFF.
+
+## PLAN 2026-07-20: app-parity motion (control.py / rocker_util.py finding)
+
+### The discovery
+
+Two pymammotion files nobody on this project had opened describe how the phone app
+actually drives the mower:
+
+- **`pymammotion/mammotion/control.py`** (`JoystickControl`) — a working reference
+  driver. Its critical line is `PeriodicThread(0.2, self.run_movement)`: it **re-sends
+  `send_movement` every 200 ms, continuously, while the control is held**, and it does
+  NOT dedupe on unchanged values — it fires every tick regardless.
+- **`pymammotion/utility/rocker_util.py`** (`RockerControlUtil`) — the app's on-screen
+  thumbstick math, carrying `"""generated source for class ..."""` docstrings (the
+  fingerprint of automated Java->Python decompiler output, i.e. the upstream authors'
+  decompile of the app, not ours).
+
+**Our motion model is the opposite.** Every motion site in `services.py` sends ONE
+`send_movement`, then `_motion_open_sleep(duration)`, then a stop — the helper's name
+encodes the assumption that the command stays "open" and the mower keeps moving.
+
+**HYPOTHESIS (H-WATCHDOG):** `send_movement` grants motion for a short window and the
+mower self-halts unless refreshed. The app never notices because it refreshes at 5 Hz.
+This would explain every taped anomaly at once: the fixed ~4in step independent of
+duration (2s->0", 4s->4", 6s->4"), the marginal/no-op 2s pulses, the ~8-15 degree
+rotation quantum that makes the 3.0 degree turn deadband oscillate, and why 3.5m needs
+~35 pulses at ~14s cadence (which outlives the BLE link).
+
+### ✅ CONFIRMED BY APK DECOMPILE (2026-07-20, see Phase C below)
+
+The app-side half of H-WATCHDOG is now **proven from the app's own source**, not inferred.
+`com.agilexrobotics.command.CarRemoteControlManage2` (decompiled from
+`Mammotion_2.3.8.19_APKPure.xapk`, `classes2.dex`):
+
+```java
+public static float frequency = 0.2f;          // 200 ms — also DeviceDeployModule.frequency
+private long delay = 200;
+...
+long j = (long) (frequency * 1000.0f);         // 200
+timer.schedule(this.countDownTask, 0L, j);     // fire now, then EVERY 200 ms
+    -> run() { ... send(3); ... }              // -> maCommandHelper.sendControl(linear, angular)
+    -> if (linearSpeed == 0 && angularSpeed == 0) cancelTimer();   // stops only when stick released
+```
+
+And `MACommandApiHelper.sendControl(int,int)` builds:
+
+```java
+MctlDriver.newBuilder().setTodevDevmotionCtrl(
+    DrvMotionCtrl.newBuilder().setSetLinearSpeed(i).setSetAngularSpeed(i2))   // subtype 51, needAck=false
+```
+
+That is **byte-identical to pymammotion's `send_movement`**. So the app uses the exact
+command we already use — the ONLY difference is that it re-sends it on a fixed 200 ms
+timer for the entire time the stick is held, and stops by sending zeros then cancelling.
+`CarRemoteControlManage` (v1) is the same design via `DeviceDeployConstants.frequency1`.
+
+Corroborating detail: the app ships a **debug HUD** (`text_frequency`, `text_linear`,
+`text_angular`) that displays the send interval in ms live — they exposed the send rate
+as a tunable diagnostic, which is only worth doing if the rate is load-bearing.
+
+Still strictly unproven: that the *firmware* enforces a timeout (the app would look the
+same if it re-sent purely to track stick movement). But the timer is fixed-rate with no
+dedupe on unchanged values, and our tape data shows a fixed distance quantum that the
+duration parameter cannot influence. B1 settles it in one taped run.
+
+**Also confirmed: `needAck=false`.** The app fires movement commands without waiting for
+an ack. Our per-pulse `command_ok`/ack accounting is therefore not evidence of delivery —
+consistent with the 2026-07-19 e-stop finding, where every health indicator read green
+while five real motion commands were silently no-op'd.
+
+### Speed-scale finding (independent of H-WATCHDOG)
+
+`transform_both_speeds(theta_linear, theta_angular, pct_linear, pct_angular)` computes
+`linear_speed = sin(rad)*pct*10` and `angular_speed = int(cos(rad)*pct*4.5)`, where
+`get_percent()` applies a **15% deadband** (`pct<=15 -> 0`, else `pct-15`), so a
+full-deflection input of 100 yields 85.
+
+| | app full scale | ours today | note |
+|---|---|---|---|
+| linear | +/-850 (`control.py` comments say 1000) | **400** | we run at ~47% throttle |
+| angular | +/-382 (comments say 450) | **500** | **above** the app's ceiling; may be clamped |
+
+`mammotion_command.py` already exposes `move_forward/back/left/right(0.0-1.0)` which run
+this transform properly — and the integration's directional-movement services use them.
+Only our VIO/click-to-path code bypasses it with raw `send_movement(400, 0)`. The
+"angular is weak, needs ~500" calibration may be an artifact of fighting the watchdog
+and/or of exceeding the valid range, not a property of the machine.
+
+### Phase A — off-mower, tonight (code + tests, NO deploy)
+
+- **A1. Repeat-pulse primitive.** New helper that re-sends `send_movement` every
+  `refresh_interval_ms` for the pulse duration, then the existing explicit stop.
+  **Default 200 ms — matches the app exactly** (`CarRemoteControlManage2.frequency = 0.2f`,
+  confirmed by decompile, not guessed). Mirror the app's stop semantics too: send
+  `(0, 0)` and then cancel, rather than only cancelling. Add as an **opt-in parameter**
+  (`motion_refresh_interval_ms`, 0 = current single-shot behaviour) so a single live run
+  can A/B it against today's proven path without a rollback. Record per-pulse
+  `commands_sent` in the result for forensics.
+- **A2. Speed-scale plumbing.** Accept speed as the app's 0.0-1.0 scale and run it
+  through pymammotion's `transform_both_speeds`/`get_percent`, so we stop guessing raw
+  units. Add a read-only diagnostic that reports the resolved raw values (and flags
+  anything above the +/-850 / +/-382 ceilings) WITHOUT moving the mower.
+- **A3. `passed:False` bug** (standing TOP BUG): a segment that reaches its target is
+  marked `passed:False` because short final-approach pulses fail `min_progress_distance`,
+  so later segments never run. Fix + regression test.
+- **A4.** Tests for A1-A3; ruff + mypy + full pytest. Deploy queued for daylight only.
+
+### Phase B — daylight, supervised, tape measure (needs a fresh "go" per pulse)
+
+Run in this order; each answers one question and gates the next.
+
+- **B1. THE decisive A/B.** Forward 4s single-shot (today's behaviour), taped. Then
+  forward 4s with 200 ms refresh, taped. **If repeat-mode travels several times further,
+  H-WATCHDOG is confirmed** and the whole pulse/throughput model changes.
+- **B2. Speed sweep** (only if B1 confirms): repeat-mode at 0.4 vs 1.0 app-scale, taped.
+- **B3. Angular:** repeat-mode at our 500 vs the in-range 382, taped rotation.
+- **B4.** Re-derive throughput, then revisit `turn tolerance 18`, `min_progress_distance`,
+  pulse cadence and `sample_delays` against the new numbers.
+
+### Phase C — protocol discovery (off-mower, parallel to A/B)
+
+**Correction to the record: we never decompiled the APK.** `docs/custom-path-execution-research.md`
+documents a lightweight **string scan** of the local `2.3.8.19` XAPK and explicitly says
+"This scan is not as strong as a JADX decompile". The decompiled artefacts we have
+(`rocker_util.py`, `bluetooth/data/notifydata.py`) are the pymammotion authors' work,
+shipped in the dependency.
+
+- **C1. Real JADX decompile — ✅ DONE 2026-07-20.** `brew install jadx` (1.5.6), unzipped
+  the XAPK (base APK `com.agilexrobotics.apk`, 9 dex files), decompiled `classes2.dex`
+  (3233 classes) to scratch. Findings are in the CONFIRMED section above: 200 ms
+  fixed-rate re-send, identical `DrvMotionCtrl` wire command, `needAck=false`, debug HUD
+  for the send interval. **No firmware-side timeout constant is visible in app code** (it
+  would live in mower firmware, not the APK) — so B1 remains the decisive test, but the
+  app-side cadence question is closed.
+  Key classes for future reference: `com.agilexrobotics.command.CarRemoteControlManage2`,
+  `com.agilexrobotics.command.app.MACommandApiHelper#sendControl`,
+  `com.agilexrobotics.base_module.utils.RockerControlUtil`,
+  `com.agilexrobotics.map.view.RockerTouchView{,2,3}`.
+- **C2. Manual-mode entry — ✅ RESOLVED, not needed for driving.** `DrvMowCtrlByHand` is
+  sent by `MACommandApiHelper#OperateOnDevice(main_ctrl, cut_knife_ctrl, cut_knife_height,
+  max_run_speed, position)`, and its only callers are in `map/ManualLawnMowingManager`
+  — i.e. it belongs to the manual **mowing** flow (blade + speed cap), not to driving.
+  `CarRemoteControlManage2` is self-contained: it calls `sendControl` and nothing else, so
+  **no mode-entry command precedes joystick movement**. Our raw `send_movement` is the
+  correct and complete command; the only thing we were missing is the repeat.
+  (One related detail worth keeping: when `deviceState == MODE_MANUAL_MOWING`, the app
+  auto-raises the blade whenever both speeds hit zero — a blade-safety pattern, not a
+  movement prerequisite. Irrelevant to us: we run blades OFF.)
+- **C3. Ground truth (NOT needed).** An Android HCI snoop log would only re-confirm what
+  C1 established from source. Skip unless B1 contradicts the decompile.
+
+### Phase D — dependent on B1
+
+- **D1.** If continuous drive works: the **hold-to-drive joystick card** (user-approved
+  2026-07-15, deferred) becomes a thin wrapper over A1 — build it.
+- **D2.** Re-test the BLE wall: a 3.5m path that takes ~30s instead of ~10min may simply
+  dodge the coverage problem that has been killing runs.
+
+### Explicitly NOT doing
+
+- **No code review this cycle.** Two xhigh passes already ran; 305 tests, mypy + ruff
+  clean. Nothing blocking is a code-quality problem.
+- PR #10 stays open for human review; no merge.
+
+## Wrap-up 2026-07-20 (late): Phase A implemented off-mower (`b91de636`)
+
+A1-A4 all landed in one commit. **NOT deployed** — the cadence change is opt-in and
+gated on the B1 tape A/B. Tests 282 -> 293 in the motion file (323 across the suite);
+ruff + mypy clean.
+
+**A1 — app-parity motion cadence.** New `_motion_refresh_window()` holds a pulse open
+the way the app does: it calls a `resend` callable every interval for the pulse
+duration, then the caller runs its existing mandatory stop. Opt-in via a new
+`motion_refresh_interval_ms` parameter (0 = the proven single-shot path) on
+`manual_velocity_pulse_test`, `raw_pymammotion_execute_vector_segment` and
+`raw_pymammotion_execute_multi_segment` (schemas + handlers + services.yaml).
+
+Design decisions worth remembering:
+- **Refresh sends are counted separately from pulses** (`motion_refresh_commands_sent`,
+  never `linear_commands_sent`). Folding them together would have silently broken the
+  pulse ceilings that bound a run.
+- **The loop is bounded by a computed command count as well as by wall clock.** A
+  wall-clock-only loop spins forever when sleeps do not advance the clock (virtual-clock
+  tests), and the count doubles as a hard ceiling if a bad interval slips through.
+- **A refresh is never sent with no window left**, so the final command is always
+  followed by real motion time rather than an immediate stop.
+- **A failed refresh does not raise** — it records `refresh_error` and stops refreshing,
+  leaving the caller's stop intact. A half-refreshed window is a shorter drive, never a
+  runaway one.
+- Interval is clamped to 50-1000 ms.
+
+**A2 — app speed scale.** `_app_scale_speeds()` / `_app_speed_scale_report()` mirror the
+app's rocker transform (15% deadband, x10 linear, x4.5 angular). Implemented locally so
+the numbers stay deterministic across dependency bumps, with
+`test_app_speed_scale_matches_pymammotion` pinning them to
+`pymammotion.utility.movement`. The report is read-only and rides along in results; it
+flags that our angular 500 is above the app's 382 ceiling and our linear 400 is ~47%
+throttle. Note `manual_velocity_pulse_test`'s `speed` is ALREADY app-scale 0.0-1.0 (it
+routes through the coordinator's directional helpers), unlike the executors' raw values.
+
+**A3 — arrived segments no longer fail.** `_raw_multi_segment_phase_passed` required
+EVERY per-pulse progress diagnostic to clear `min_progress_distance`. Final-approach
+pulses necessarily move less than that, so a segment could reach its target and still be
+marked `passed: False`, stopping the run so later segments never executed. Arrival now
+decides (`target_reached` + valid + unblocked); the genuinely-stuck case is still caught
+by the executor's consecutive-no-progress abort, which never reports `target_reached`.
+
+**Deliberately left alone:** `_raw_pymammotion_execute_segment` (the legacy executor)
+still runs single-shot. It now has the same shape as the vector executor so wiring it is
+mechanical, but it is not on the card path and the diff should not widen before B1.
+
+**Next session is B1** — see the Phase B section above and `docs/NEXT-SESSION.md` for the
+exact service call. Everything downstream (throughput re-derivation, turn tolerance,
+joystick card) waits on that one measurement.

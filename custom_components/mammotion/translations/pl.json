@@ -154,6 +154,75 @@
           "SIGNAL_UNKNOWN": "Nieznany"
         }
       },
+      "vio_heading": {
+        "name": "Kurs VIO"
+      },
+      "vio_tracked_features": {
+        "name": "Śledzone cechy VIO"
+      },
+      "vio_detected_features": {
+        "name": "Wykryte cechy VIO"
+      },
+      "vio_brightness_raw": {
+        "name": "Jasność VIO"
+      },
+      "vio_survival_distance": {
+        "name": "Dystans przetrwania VIO"
+      },
+      "fpv_status": {
+        "name": "Stan FPV",
+        "state": {
+          "inactive": "Nieaktywny",
+          "streaming": "Przesyłanie strumienia",
+          "error": "Błąd"
+        }
+      },
+      "bumper_status": {
+        "name": "Stan zderzaka",
+        "state": {
+          "ok": "OK",
+          "warning": "Ostrzeżenie",
+          "error": "Błąd"
+        }
+      },
+      "ultrasonic_left_status": {
+        "name": "Stan czujnika ultradźwiękowego lewego",
+        "state": {
+          "ok": "OK",
+          "warning": "Ostrzeżenie",
+          "error": "Błąd"
+        }
+      },
+      "ultrasonic_left_front_status": {
+        "name": "Stan czujnika ultradźwiękowego lewego przedniego",
+        "state": {
+          "ok": "OK",
+          "warning": "Ostrzeżenie",
+          "error": "Błąd"
+        }
+      },
+      "ultrasonic_right_front_status": {
+        "name": "Stan czujnika ultradźwiękowego prawego przedniego",
+        "state": {
+          "ok": "OK",
+          "warning": "Ostrzeżenie",
+          "error": "Błąd"
+        }
+      },
+      "ultrasonic_right_status": {
+        "name": "Stan czujnika ultradźwiękowego prawego",
+        "state": {
+          "ok": "OK",
+          "warning": "Ostrzeżenie",
+          "error": "Błąd"
+        }
+      },
+      "fuse_status": {
+        "name": "Stan bezpiecznika"
+      },
+      "lock_state": {
+        "name": "Stan blokady"
+      },
       "activity_mode": {
         "name": "Stan pracy",
         "state": {

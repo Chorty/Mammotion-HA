@@ -154,6 +154,75 @@
           "SIGNAL_UNKNOWN": "Inconnu"
         }
       },
+      "vio_heading": {
+        "name": "Cap VIO"
+      },
+      "vio_tracked_features": {
+        "name": "Caractéristiques suivies VIO"
+      },
+      "vio_detected_features": {
+        "name": "Caractéristiques détectées VIO"
+      },
+      "vio_brightness_raw": {
+        "name": "Luminosité VIO"
+      },
+      "vio_survival_distance": {
+        "name": "Distance de survie VIO"
+      },
+      "fpv_status": {
+        "name": "État FPV",
+        "state": {
+          "inactive": "Inactif",
+          "streaming": "Diffusion en cours",
+          "error": "Erreur"
+        }
+      },
+      "bumper_status": {
+        "name": "État du pare-chocs",
+        "state": {
+          "ok": "OK",
+          "warning": "Avertissement",
+          "error": "Erreur"
+        }
+      },
+      "ultrasonic_left_status": {
+        "name": "État ultrason gauche",
+        "state": {
+          "ok": "OK",
+          "warning": "Avertissement",
+          "error": "Erreur"
+        }
+      },
+      "ultrasonic_left_front_status": {
+        "name": "État ultrason avant gauche",
+        "state": {
+          "ok": "OK",
+          "warning": "Avertissement",
+          "error": "Erreur"
+        }
+      },
+      "ultrasonic_right_front_status": {
+        "name": "État ultrason avant droit",
+        "state": {
+          "ok": "OK",
+          "warning": "Avertissement",
+          "error": "Erreur"
+        }
+      },
+      "ultrasonic_right_status": {
+        "name": "État ultrason droit",
+        "state": {
+          "ok": "OK",
+          "warning": "Avertissement",
+          "error": "Erreur"
+        }
+      },
+      "fuse_status": {
+        "name": "État du fusible"
+      },
+      "lock_state": {
+        "name": "État de verrouillage"
+      },
       "activity_mode": {
         "name": "Mode activité",
         "state": {

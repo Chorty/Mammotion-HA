@@ -154,6 +154,75 @@
           "SIGNAL_UNKNOWN": "Onbekend"
         }
       },
+      "vio_heading": {
+        "name": "VIO-koers"
+      },
+      "vio_tracked_features": {
+        "name": "VIO gevolgde kenmerken"
+      },
+      "vio_detected_features": {
+        "name": "VIO gedetecteerde kenmerken"
+      },
+      "vio_brightness_raw": {
+        "name": "VIO-helderheid"
+      },
+      "vio_survival_distance": {
+        "name": "VIO-overlevingsafstand"
+      },
+      "fpv_status": {
+        "name": "FPV-status",
+        "state": {
+          "inactive": "Inactief",
+          "streaming": "Streamen",
+          "error": "Fout"
+        }
+      },
+      "bumper_status": {
+        "name": "Bumperstatus",
+        "state": {
+          "ok": "OK",
+          "warning": "Waarschuwing",
+          "error": "Fout"
+        }
+      },
+      "ultrasonic_left_status": {
+        "name": "Status ultrasoon links",
+        "state": {
+          "ok": "OK",
+          "warning": "Waarschuwing",
+          "error": "Fout"
+        }
+      },
+      "ultrasonic_left_front_status": {
+        "name": "Status ultrasoon linksvoor",
+        "state": {
+          "ok": "OK",
+          "warning": "Waarschuwing",
+          "error": "Fout"
+        }
+      },
+      "ultrasonic_right_front_status": {
+        "name": "Status ultrasoon rechtsvoor",
+        "state": {
+          "ok": "OK",
+          "warning": "Waarschuwing",
+          "error": "Fout"
+        }
+      },
+      "ultrasonic_right_status": {
+        "name": "Status ultrasoon rechts",
+        "state": {
+          "ok": "OK",
+          "warning": "Waarschuwing",
+          "error": "Fout"
+        }
+      },
+      "fuse_status": {
+        "name": "Zekeringstatus"
+      },
+      "lock_state": {
+        "name": "Vergrendelingsstatus"
+      },
       "activity_mode": {
         "name": "Activiteitsmodus",
         "state": {

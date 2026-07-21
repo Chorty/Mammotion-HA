@@ -154,6 +154,75 @@
           "SIGNAL_UNKNOWN": "Neznámý"
         }
       },
+      "vio_heading": {
+        "name": "Kurz VIO"
+      },
+      "vio_tracked_features": {
+        "name": "Sledované prvky VIO"
+      },
+      "vio_detected_features": {
+        "name": "Detekované prvky VIO"
+      },
+      "vio_brightness_raw": {
+        "name": "Jas VIO"
+      },
+      "vio_survival_distance": {
+        "name": "Přežitá vzdálenost VIO"
+      },
+      "fpv_status": {
+        "name": "Stav FPV",
+        "state": {
+          "inactive": "Neaktivní",
+          "streaming": "Streamování",
+          "error": "Chyba"
+        }
+      },
+      "bumper_status": {
+        "name": "Stav nárazníku",
+        "state": {
+          "ok": "OK",
+          "warning": "Varování",
+          "error": "Chyba"
+        }
+      },
+      "ultrasonic_left_status": {
+        "name": "Stav ultrazvukového snímače vlevo",
+        "state": {
+          "ok": "OK",
+          "warning": "Varování",
+          "error": "Chyba"
+        }
+      },
+      "ultrasonic_left_front_status": {
+        "name": "Stav ultrazvukového snímače vlevo vpředu",
+        "state": {
+          "ok": "OK",
+          "warning": "Varování",
+          "error": "Chyba"
+        }
+      },
+      "ultrasonic_right_front_status": {
+        "name": "Stav ultrazvukového snímače vpravo vpředu",
+        "state": {
+          "ok": "OK",
+          "warning": "Varování",
+          "error": "Chyba"
+        }
+      },
+      "ultrasonic_right_status": {
+        "name": "Stav ultrazvukového snímače vpravo",
+        "state": {
+          "ok": "OK",
+          "warning": "Varování",
+          "error": "Chyba"
+        }
+      },
+      "fuse_status": {
+        "name": "Stav pojistky"
+      },
+      "lock_state": {
+        "name": "Stav zámku"
+      },
       "activity_mode": {
         "name": "Režim činnosti",
         "state": {

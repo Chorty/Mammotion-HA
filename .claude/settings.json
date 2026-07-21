@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(export PATH=\"$PWD/.venv/bin:$PATH\")",
+      "Bash(source .env)",
+      "Bash(set -a)",
+      "Bash(set +a)",
+      "Bash(uv run pytest *)",
+      "Bash(uv run mypy custom_components/ *)",
+      "Bash(uv run ruff check --statistics *)"
+    ]
+  }
+}
