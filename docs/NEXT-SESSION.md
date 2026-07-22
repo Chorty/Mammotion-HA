@@ -103,8 +103,17 @@ resolved to.
   (paused, blade OFF, BLE, valid-for-motion) right before each fire.
 - **Keep the mower in open space, clear of the dock** — dock obstruction masks
   motion and looks like frozen telemetry.
-- **Trust the tape, not the telemetry, for distance.** The map-local feed lags
-  ~4 s, updates in jumps, and has a ~2-6 cm absolute noise floor.
+- **Trust the tape, not the telemetry, for distance *when pulsing*.** During our
+  bounded-pulse motion the map-local feed lags ~4 s, updates in jumps, and shows a
+  ~2-6 cm absolute error. **But that is a property of pulsed measurement, not of the
+  feed** — measured during a real autonomous mow on 2026-07-21, under known-continuous
+  motion the same feed is **sub-centimetre** (0.70 cm cross-track RMS over 8 straight
+  5-10 m runs) and **never froze once** in 86 consecutive samples. Treat the 2-6 cm
+  figure as the pulsed-motion budget and the sub-cm figure as the feed's real
+  precision; if B1 shows refresh-mode produces continuous motion, re-derive
+  `min_progress_distance` against the sub-cm number rather than the 6 cm one.
+- **The position feed is BLE-only.** On `cloud_aliyun` it is stone dead — 20 of 21
+  consecutive polls bit-identical during a live mow, vs 74 of 74 moving on `ble`.
 - Gate every change: `uv run pytest`, `uv run mypy custom_components/`,
   `uv run ruff check`.
 

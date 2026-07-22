@@ -3072,3 +3072,136 @@ mechanical, but it is not on the card path and the diff should not widen before 
 **Next session is B1** — see the Phase B section above and `docs/NEXT-SESSION.md` for the
 exact service call. Everything downstream (throughput re-derivation, turn tolerance,
 joystick card) waits on that one measurement.
+
+## Wrap-up 2026-07-21/22: read-only observation of a live autonomous mow + full-APK decompile
+
+Off-mower, read-only session (operator away from the mower). Nothing deployed during the
+observation, no motion command sent, the mow was not disturbed. Three standing beliefs
+were overturned by data.
+
+### 1. ❌ REFUTED: "obstacle/report telemetry goes dormant during autonomous mowing"
+
+The channel is **live**; the field is simply always zero.
+
+- `sensor.fuse_status` reads `report_data.dev.fuse_status` and has **no writer anywhere in
+  pymammotion's `device/state_reducer.py`**, so it can only be set by the wholesale
+  `device.update_report_data()` on `toapp_report_data` (the binary RptDevStatus).
+  It **toggled 1↔2 at 23:21:37/41/47 and again at 23:49:33/35 — mid-mow.**
+- `sensor_status` — which packs bumper (bits 0-2) and all four ultrasonics (bits 12-23) —
+  lives in that **same `DeviceData` struct** (`report_info.py:147`). It was refreshed on
+  those same ingests and decoded to all-zeros.
+
+**Why it is always zero (full-APK decompile):** `sensor_status` is a hardware
+**self-check** readout, not a live obstacle channel. `SelfCheckFragment.checkResult()` is an
+explicit **pre-work checklist** (battery >15%, RTK lock, bumper presence, vision) driven by a
+500 ms poll and run *before* a job starts — not a live-mowing overlay. `DeviceUltEvent` (fired
+when an ultrasonic bit changes) is consumed only by an internal engineering screen. Our bit
+decode is structurally correct and matches the app's own decode.
+
+**Consequence: obstacle-based HA automations cannot work — and a "keep the report stream
+alive" coordinator fix would change nothing.** The previously-designed cloud keepalive is
+therefore **withdrawn**, not deferred. HA history over 11 days / 27 mow sessions: the five
+safety sensors changed value **zero** times (only `OK`↔`unavailable` restart gaps and the
+07-18 case rename).
+
+**⚠️ Method trap — this cost two wrong conclusions before the right one.** In this HA,
+`last_reported` never advances without `last_updated` (0 same-value writes observed across 42
+polls). **A frozen `last_reported` proves only that the value never changed — it is not
+evidence of a dead channel.** Also, `battery_val` and `sys_status` are MQTT-fed
+(`state_reducer.py:701,703,766,767`), so their movement proves nothing about the binary
+report. `fuse_status` and `vio_survival_info` are the clean binary-report witnesses.
+
+### 2. 🏆 Continuous-motion baseline: the position feed is ~10x better than documented
+
+First characterization under *known-continuous* movement (154.6 m of BLE-tracked mowing path;
+118 samples at 6 s plus a 100-sample 0.77 s burst). Previously we had only ever measured it
+during our own pulsed motion.
+
+| metric | pulsed motion (prior) | continuous motion (measured 07-21) |
+|---|---|---|
+| position error | ~2-6 cm absolute floor | **0.70 cm cross-track RMS** (median 0.42, max 2.00) |
+| update behaviour | "jumps", frequent freezes | **0 of 86 consecutive samples bit-identical** |
+| update interval | ~4 s lag | ~0.77 s median between distinct positions (max gap 5.33 s) |
+
+Cross-track RMS is measured as the perpendicular residual about each run's own best-fit
+principal axis, over 8 straight runs of 5-10 m. It bounds *random* position noise; it does not
+bound along-track error, which is where feed latency shows up. The feed tracked the mower
+faithfully from 0.2 to 0.65 m/s, cross-checked against `work.man_run_speed`.
+
+**So the documented "2-6 cm noise floor + jumpy updates" is an artifact of pulsed measurement
+(start/stop transients, ~4 s lag, single-sample reads), not a property of the feed.**
+If B1 confirms app-parity refresh yields continuous motion, `min_progress_distance: 0.06` —
+chosen to clear a floor that largely is not there — can likely be tightened substantially.
+
+**Throughput gap, now quantified:** autonomous cruise is 0.2-0.65 m/s; our pulsed model yields
+~10 cm per ~4 s pulse ≈ **0.025 m/s, i.e. ~25x slower than the machine's own cruise.**
+Independent support for H-WATCHDOG and for keeping B1 as the top priority.
+
+### 3. 🔌 The position feed is BLE-only; on cloud it is stone dead
+
+Live, mid-mow: **20 of 21 consecutive `cloud_aliyun` polls were bit-identical frozen; 74 of 74
+`ble` polls moved.** Transport flapped `ble`↔`cloud_aliyun` repeatedly within one mow as the
+mower drove out of proxy range (rssi -64 → -98). Same proxy-coverage wall as before, now
+measured from the data side rather than the log side.
+
+### 4. 📡 The app's report-subscription path (full 9-dex decompile)
+
+Full decompile at `/Users/mattjoslin/mammotion-apk-decompile/src` (415 MB, 30 867 `.java`,
+**outside the repo**; `*.xapk` is gitignored). The previous session had decompiled only
+`classes2.dex` — one ninth of the app.
+
+The app's BLE "start streaming" message is `MctlSys.todev_report_cfg` (field 38), built by
+`MACarDataManager.requestMapLocationBTData()` → `MACommandApiHelper.requestMapLocationBTorIOTData()`
+(`MACommandApiHelper.java:1373-1378`):
+
+```
+act=RPT_START, timeout=10000ms, period=2000ms, no_change_period=4000ms, count=0 (continuous),
+sub=[RIT_CONNECT, RIT_RTK, RIT_DEV_LOCAL, RIT_WORK, RIT_DEV_STA, RIT_VISION_POINT,
+     RIT_VIO, RIT_VISION_STATISTIC, RIT_BASESTATION_INFO, RIT_CUTTER_INFO]
+```
+
+`DeviceUtils.setCountKeep(0)` is forced immediately before every BT send
+(`MACarDataManager.java:8432`). **The app never sends RPT_STOP over BLE** —
+`stopMapIotMessage()` early-returns when the link is Bluetooth
+(`MACarDataManager.java:9019-9036`); it is an IOT-only path.
+
+Two divergences in our stack (**not acted on** — see below): pymammotion's `get_report_cfg()`
+(`commands/messages/system.py:354-416`) defaults **`count=1` (one-shot)** where the app forces
+**`count=0`**, and substitutes `RIT_FW_INFO` for `RIT_CUTTER_INFO`; period 1000 vs 2000.
+`mower_api.py:44,107-109` calls it argless on a ~5 s throttle, i.e. we re-poll one-shot reports
+rather than opening one continuous stream. **Deliberately not changed:** this was only ever
+interesting as a dormancy fix, and dormancy is disproven — on BLE the feed already streams
+fine, and on cloud a subscribe will not fix a dead link. Low value, real regression risk on a
+proven path.
+
+Also: the boolean on `sendOrderMsg_Sys` is a **BLE-vs-IOT routing hint, not an ack flag**.
+
+### 5. ✅ Task-2 re-verification against the full tree: prior conclusion HOLDS
+
+"`DrvMowCtrlByHand` / `OperateOnDevice` is only called from `ManualLawnMowingManager`, so no
+manual-mode entry precedes joystick driving" was derived from `classes2.dex` alone. Re-tested
+exhaustively across all nine dex files: **called from exactly one class,
+`ManualLawnMowingManager`, and nowhere else.** Confirmed, unchanged.
+
+### 6. 🔎 The e-stop may not be fully invisible after all
+
+HA history shows `sensor.last_error` = **`mcu: STOP button triggered`** at 2026-07-19T18:35:12
+(`last_error_time` 18:31:27) — the forgotten-e-stop incident. The 07-19 raw-field snapshot
+checked `lock_state` / `self_check_status` / `sys_status` / `sensor_status` / `bumper_state`
+but **never looked at the error channel.**
+
+**Caveat: it surfaced ~40 min after the press, at the end of the incident**, so on this single
+datapoint it is a confirmatory signal, not a real-time detector. **Queued for the next on-mower
+session (cheap):** press the e-stop deliberately and watch `sensor.last_error`. That
+distinction decides whether it is worth wiring into `no_actuation_detected`'s hint.
+
+### Honest limits of this session
+
+The APK analysis workflow **hit the account's monthly spend limit mid-run** — 9 of 60 agents
+completed; the adversarial verify pass and the final synthesis never ran. The Task-1
+conclusions above are from live data gathered directly and are independently reproducible from
+HA history. The report-subscription numbers in §4 are high-confidence quotes with file:line
+evidence but only two claims received adversarial verification — **re-check before acting on
+them.** §5 rests on an exhaustive `rg` sweep of the full tree, which is self-verifying.
+
+**B1 remains the next mower action, unchanged.** Nothing in this session moves it.
