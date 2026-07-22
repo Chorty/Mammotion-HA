@@ -1130,26 +1130,55 @@ def test_manual_velocity_controller_stops_without_live_position() -> None:
     assert decision["command_not_sent"] is None
 
 
-def test_manual_velocity_pulse_schema_allows_emergency_nudge_speed() -> None:
-    """Pulse probe allows the existing emergency nudge speed but no higher."""
+def test_manual_velocity_pulse_schema_allows_up_to_executor_pulse_speed() -> None:
+    """Pulse probe allows up to the click-to-path executor pulse (raw 400) but caps at 0.6.
+
+    The default 0.55 resolves to raw linear 400 -- the exact speed the vector and
+    multi-segment executors send -- so the B1 A/B measures the pulse click-to-path
+    actually drives. 0.6 (raw 450) is the ceiling; anything above is rejected.
+    """
     parsed = MANUAL_VELOCITY_PULSE_TEST_SCHEMA(
         {
             "entity_id": "lawn_mower.test",
             "action": "forward",
-            "speed": 0.4,
+            "speed": 0.55,
         }
     )
-    assert parsed["speed"] == 0.4
+    assert parsed["speed"] == 0.55
     assert parsed["stop_mode"] == "immediate"
     assert parsed["post_command_sample_delays"] == [0.0, 2.0, 10.0, 30.0, 60.0]
+    # The old emergency-nudge-tied ceiling of 0.4 is lifted; 0.45 now passes.
+    assert MANUAL_VELOCITY_PULSE_TEST_SCHEMA(
+        {"entity_id": "lawn_mower.test", "action": "forward", "speed": 0.45}
+    )["speed"] == 0.45
     with pytest.raises(Exception):  # noqa: B017
         MANUAL_VELOCITY_PULSE_TEST_SCHEMA(
             {
                 "entity_id": "lawn_mower.test",
                 "action": "forward",
-                "speed": 0.45,
+                "speed": 0.65,
             }
         )
+
+
+def test_manual_velocity_pulse_defaults_match_executor_pulse() -> None:
+    """Schema defaults reproduce the proven executor pulse (raw 400, ~4s window).
+
+    Regression guard for the B1 harness bug: the old defaults (speed 0.1 -> raw 0,
+    duration 250ms -> below the ~3s move threshold) made every default pulse a
+    physical no-op, and the 750ms cap rejected the documented 4000ms B1 call.
+    """
+    parsed = MANUAL_VELOCITY_PULSE_TEST_SCHEMA({"entity_id": "lawn_mower.test"})
+    assert parsed["speed"] == 0.55
+    assert parsed["duration_ms"] == 3500
+    # Default speed resolves to the raw linear speed the executors send.
+    linear_speed, angular_speed = _app_scale_speeds(parsed["speed"], 0.0)
+    assert linear_speed == 400
+    assert angular_speed == 0
+    # The documented B1 call (4000ms) is now accepted rather than HTTP 400.
+    assert MANUAL_VELOCITY_PULSE_TEST_SCHEMA(
+        {"entity_id": "lawn_mower.test", "duration_ms": 4000}
+    )["duration_ms"] == 4000
 
 
 @pytest.mark.parametrize(
@@ -5615,7 +5644,7 @@ async def test_manual_velocity_pulse_test_defaults_to_dry_run() -> None:
     assert result["reason"] == "dry_run"
     assert result["command_not_sent"] == {
         "service": "mammotion.move_forward",
-        "data": {"speed": 0.1, "use_wifi": False},
+        "data": {"speed": 0.55, "use_wifi": False},
     }
     coordinator.async_move_forward.assert_not_called()
     coordinator.async_stop_manual_motion.assert_not_called()
@@ -5720,6 +5749,7 @@ async def test_manual_velocity_pulse_test_allows_paused_work_mode() -> None:
 
     result = await _manual_velocity_pulse_test(
         coordinator,
+        duration_ms=50,
         dry_run=False,
         confirm_blades_off=True,
         confirm_clear_area=True,
@@ -5799,6 +5829,7 @@ async def test_manual_velocity_pulse_test_allows_turn_area_inside() -> None:
 
     result = await _manual_velocity_pulse_test(
         coordinator,
+        duration_ms=50,
         dry_run=False,
         confirm_blades_off=True,
         confirm_clear_area=True,
@@ -5823,6 +5854,7 @@ async def test_manual_velocity_pulse_test_allows_channel_area_overlap() -> None:
 
     result = await _manual_velocity_pulse_test(
         coordinator,
+        duration_ms=50,
         dry_run=False,
         confirm_blades_off=True,
         confirm_clear_area=True,

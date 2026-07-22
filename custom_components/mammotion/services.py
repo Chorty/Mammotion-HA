@@ -303,11 +303,23 @@ MANUAL_VELOCITY_PULSE_TEST_SCHEMA = vol.Schema(
         vol.Optional("action", default="forward"): vol.In(
             ["forward", "backward", "turn_left", "turn_right"]
         ),
-        vol.Optional("speed", default=0.1): vol.All(
-            vol.Coerce(float), vol.Range(min=0.05, max=0.4)
+        # `speed` is an app-scale stick fraction; the coordinator runs it through
+        # the app's rocker transform (15% deadband, x10), so a forward pulse
+        # resolves to raw ``(speed*100 - 15) * 10``. The default 0.55 -> raw 400,
+        # matching the linear speed the click-to-path executors send, so the B1
+        # A/B measures the same pulse click-to-path actually drives. The cap 0.6
+        # (raw 450) keeps a diagnostic service from commanding more than a small
+        # margin over that. Below ~0.16 the deadband yields raw 0 (a no-op) --
+        # the old 0.1 default silently produced zero motion.
+        vol.Optional("speed", default=0.55): vol.All(
+            vol.Coerce(float), vol.Range(min=0.05, max=0.6)
         ),
-        vol.Optional("duration_ms", default=250): vol.All(
-            vol.Coerce(int), vol.Range(min=50, max=750)
+        # Duration must reach the taped ~3s minimum that actually moves this
+        # hardware (2s -> 0", 4s -> 4"); the max mirrors the vector/multi
+        # executors (4000). The old 750 cap made every pulse a physical no-op and
+        # rejected the documented 4000ms B1 call outright.
+        vol.Optional("duration_ms", default=3500): vol.All(
+            vol.Coerce(int), vol.Range(min=50, max=4000)
         ),
         vol.Optional("stop_mode", default="immediate"): vol.In(
             ["immediate", "delayed", "firmware"]
@@ -3843,8 +3855,8 @@ async def _manual_velocity_pulse_test(
     coordinator: MammotionReportUpdateCoordinator,
     *,
     action: str = "forward",
-    speed: float = 0.1,
-    duration_ms: int = 250,
+    speed: float = 0.55,
+    duration_ms: int = 3500,
     stop_mode: str = "immediate",
     stop_delay_ms: int = 0,
     post_command_sample_delays: list[float] | tuple[float, ...] | None = None,

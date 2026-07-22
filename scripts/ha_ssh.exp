@@ -1,0 +1,24 @@
+#!/usr/bin/expect -f
+# Run a command on the Home Assistant host at 192.168.1.106:2224.
+#
+# Usage:  scripts/ha_ssh.exp '<remote command>'
+# Requires HA_SSH_PASS in the environment:  set -a && source .env && set +a
+#
+# The password is read from the environment and never echoed (log_user is 0
+# until after it is sent). sshpass is not installed on this machine, hence expect.
+set timeout 120
+log_user 0
+if {![info exists env(HA_SSH_PASS)]} {
+    puts stderr "ha_ssh.exp: HA_SSH_PASS is not set (run: set -a && source .env && set +a)"
+    exit 2
+}
+set pw $env(HA_SSH_PASS)
+set cmd [lindex $argv 0]
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2224 root@192.168.1.106 $cmd
+expect {
+    -re "(P|p)assword:" { send -- "$pw\r"; log_user 1; exp_continue }
+    "Are you sure you want to continue connecting" { send -- "yes\r"; exp_continue }
+    eof
+}
+catch wait result
+exit [lindex $result 3]

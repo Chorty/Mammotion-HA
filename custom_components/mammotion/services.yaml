@@ -488,19 +488,19 @@ manual_velocity_pulse_test:
             - "turn_right"
     speed:
       required: false
-      default: 0.1
+      default: 0.55
       selector:
         number:
           min: 0.05
-          max: 0.4
+          max: 0.6
           step: 0.05
     duration_ms:
       required: false
-      default: 250
+      default: 3500
       selector:
         number:
           min: 50
-          max: 750
+          max: 4000
           step: 50
           unit_of_measurement: ms
     stop_mode:
