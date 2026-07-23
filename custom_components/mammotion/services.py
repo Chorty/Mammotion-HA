@@ -671,6 +671,15 @@ VIO_TURN_PROBE_SCHEMA = vol.Schema(
         vol.Optional("min_heading_change_degrees", default=3.0): vol.All(
             vol.Coerce(float), vol.Range(min=0.5, max=45.0)
         ),
+        # App-parity motion cadence for the turn A/B. B1 (2026-07-22) proved
+        # refresh is SPEED-GATED: re-sending every 200 ms gave linear an 11x
+        # continuous drive but did nothing to a turn at angular 180, which is
+        # below this mower's rotation threshold. This probe's ``angular_speed``
+        # reaches 500 (unlike manual_velocity_pulse_test, capped ~202), so it is
+        # the tool to answer whether refresh unlocks a *properly-powered* turn.
+        vol.Optional("motion_refresh_interval_ms", default=0): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=1000)
+        ),
         vol.Optional("prefer_ble", default=True): cv.boolean,
         vol.Optional("dry_run", default=True): cv.boolean,
         vol.Optional("confirm_blades_off", default=False): cv.boolean,
@@ -5129,6 +5138,7 @@ async def _vio_turn_probe(  # noqa: C901, PLR0912, PLR0913, PLR0915
     post_stop_samples: int = 3,
     max_displacement_m: float = 0.5,
     min_heading_change_degrees: float = 3.0,
+    motion_refresh_interval_ms: int = 0,
     prefer_ble: bool = True,
     dry_run: bool = True,
     confirm_blades_off: bool = False,
@@ -5194,6 +5204,8 @@ async def _vio_turn_probe(  # noqa: C901, PLR0912, PLR0913, PLR0915
         "post_stop_samples": post_stop_samples,
         "max_displacement_m": max_displacement_m,
         "min_heading_change_degrees": min_heading_change_degrees,
+        "motion_refresh_interval_ms": motion_refresh_interval_ms,
+        "motion_refresh_commands_sent": 0,
         "prefer_ble": prefer_ble,
         "confirm_blades_off": confirm_blades_off,
         "confirm_clear_area": confirm_clear_area,
@@ -5230,6 +5242,18 @@ async def _vio_turn_probe(  # noqa: C901, PLR0912, PLR0913, PLR0915
     aborted_reason: str | None = None
     prev_telemetry = initial_telemetry
     command_started = False
+    refresh_commands_sent = 0
+    # App-parity re-send: re-issue the identical rotation command during the gaps
+    # between samples. Bounded by the same drive_seconds/displacement caps and the
+    # mandatory stop below, so it can only ever mean "kept the turn going", never
+    # "ran longer". motion_refresh_interval_ms=0 is the proven single-shot path.
+    refresh_turn_command = functools.partial(
+        _send_manager_command_with_args,
+        coordinator,
+        "send_movement",
+        prefer_ble=prefer_ble,
+        command_kwargs=command_args,
+    )
     try:
         await _send_manager_command_with_args(
             coordinator,
@@ -5271,7 +5295,13 @@ async def _vio_turn_probe(  # noqa: C901, PLR0912, PLR0913, PLR0915
             if displacement is not None and displacement > max_displacement_m:
                 aborted_reason = "aborted_displacement_cap"
                 break
-            await asyncio.sleep(sample_interval_seconds)
+            refresh_report = await _motion_refresh_window(
+                coordinator,
+                resend=refresh_turn_command,
+                duration_seconds=sample_interval_seconds,
+                refresh_interval_ms=motion_refresh_interval_ms,
+            )
+            refresh_commands_sent += refresh_report["refresh_commands_sent"]
     except Exception as err:  # noqa: BLE001
         aborted_reason = "command_failed"
         result["command_ok"] = command_started
@@ -5300,6 +5330,7 @@ async def _vio_turn_probe(  # noqa: C901, PLR0912, PLR0913, PLR0915
 
     result["samples"] = samples
     result["post_stop"] = post_stop
+    result["motion_refresh_commands_sent"] = refresh_commands_sent
 
     # VIO heading refreshes ~1.5s into the command and the position feed lags ~4s,
     # so on a short pulse the ONLY sample taken during the command is the t=0 one
@@ -11596,6 +11627,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             post_stop_samples=call.data["post_stop_samples"],
             max_displacement_m=call.data["max_displacement_m"],
             min_heading_change_degrees=call.data["min_heading_change_degrees"],
+            motion_refresh_interval_ms=call.data["motion_refresh_interval_ms"],
             prefer_ble=call.data["prefer_ble"],
             dry_run=call.data["dry_run"],
             confirm_blades_off=call.data["confirm_blades_off"],

@@ -2043,6 +2043,61 @@ async def test_vio_turn_probe_detects_heading_tracking_rotation(
 
 
 @pytest.mark.asyncio
+async def test_vio_turn_probe_app_parity_refresh_resends_the_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """motion_refresh_interval_ms re-sends the rotation command app-style (B1 turn A/B).
+
+    B1 proved refresh is speed-gated (it unlocked linear but did nothing at angular
+    180, below this mower's rotation threshold). This probe reaches angular 500, so
+    it is the tool to test refresh on a properly-powered turn -- which first requires
+    that the refresh actually re-issues the command during the drive.
+    """
+    coordinator = _pulse_coordinator()
+    clock = {"now": 100.0}
+
+    def fake_monotonic() -> float:
+        return clock["now"]
+
+    async def fake_sleep(delay: float) -> None:
+        clock["now"] += delay
+
+    async def fake_get_reports(count: int = 5) -> None:
+        heading = (clock["now"] - 100.0) * 10.0
+        coordinator.data.report_data.vision_info = SimpleNamespace(
+            heading=heading,
+            vio_state=2,
+        )
+
+    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+    coordinator.async_get_reports.side_effect = fake_get_reports
+
+    result = await _vio_turn_probe(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        angular_speed=500,
+        drive_seconds=3.0,
+        sample_interval_seconds=1.0,
+        post_stop_samples=0,
+        motion_refresh_interval_ms=200,
+    )
+
+    # The command is re-issued during the drive, not sent once.
+    refreshes = result["motion_refresh_commands_sent"]
+    assert result["motion_refresh_interval_ms"] == 200
+    assert refreshes > 0
+    # Every send is the initial one plus one per refresh; all identical turn commands.
+    assert (
+        coordinator.manager.send_command_with_args.await_count == refreshes + 1
+    )
+    assert result["command"]["kwargs"] == {"linear_speed": 0, "angular_speed": 500}
+    coordinator.async_stop_manual_motion.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_vio_turn_probe_counts_rotation_that_lands_after_the_stop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
