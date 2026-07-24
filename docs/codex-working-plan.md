@@ -3405,3 +3405,22 @@ post-onboarding Wi-Fi/4G radio + APN controls.
 server-controlled, firmware-gated, RN-hotfix/H5-delivered feature and not authorization to
 implement hazardous commands. Packet capture, representative hardware, test accounts, and
 newer-APK diffs remain explicitly queued in report 12.
+
+## Deploy 2026-07-23: Task 2 refresh defaults + Task 3 map recovery live-loaded
+
+Deployed the committed `1b22da7a` versions of `coordinator.py`, `services.py`, and
+`services.yaml` to `/config/custom_components/mammotion/`; SHA-256 matched local/host for all
+three. HA Core restart was explicitly authorized and returned HTTP 200. API was healthy after
+41 s; Mammotion reached 121 entities after 129 s.
+
+Post-restart read-only verification:
+
+- 59 Mammotion services registered;
+- `force_map_resync`, `vio_turn_probe`, vector executor, and multi executor present;
+- deployed service defaults: vector refresh 200, multi refresh 200, turn-probe refresh 0;
+- startup logs: normal Mammotion domain/platform setup, no import/setup exception;
+- only pre-existing warnings: custom integration not HA-tested and
+  `MammotionTracker.battery_level` deprecation for HA 2027.7.
+
+No mower-motion service was called. `force_map_resync` was not fired; its first live use still
+belongs to the good-BLE, read-before/read-after map-recovery workflow in `NEXT-SESSION.md`.

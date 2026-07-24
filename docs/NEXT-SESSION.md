@@ -27,6 +27,15 @@ records.
   `12-coverage-and-open-questions.md` for limits/live-verification work, and
   `13-model-capability-matrix.md` for model gates. This is a complete static
   sweep, not proof of server/RN/H5-delivered behavior or hardware safety.
+- **Deploy state (2026-07-23): current through `1b22da7a`.** Deployed
+  `coordinator.py`, `services.py`, and `services.yaml`, checksum-matched all
+  three, and restarted HA Core. API returned after 41 s; Mammotion returned
+  with 121 entities after 129 s. Verified all 59 Mammotion services registered,
+  including `force_map_resync`; deployed refresh defaults are vector=200,
+  multi=200, and `vio_turn_probe`=0. Startup logs show no Mammotion import/setup
+  failure (only the existing custom-integration and deprecated tracker-property
+  warnings). `lawn_mower.py` was unchanged and remains at the previously
+  deployed `0a5bc4ab` level.
 - **VIO needs daylight.** It will not initialize in a dark scene; the gates
   refuse rather than drive blind. Check `camera_brightness` is not `Dark` and
   `track_feature_num` is healthy before any VIO run.
