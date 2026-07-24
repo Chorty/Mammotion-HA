@@ -3205,3 +3205,203 @@ evidence but only two claims received adversarial verification — **re-check be
 them.** §5 rests on an exhaustive `rg` sweep of the full tree, which is self-verifying.
 
 **B1 remains the next mower action, unchanged.** Nothing in this session moves it.
+
+## Wrap-up 2026-07-22 (later, off-mower): executors default to app-parity refresh (Task 2, code half)
+
+**What changed (code, NOT deployed):** the two click-to-path executors —
+`raw_pymammotion_execute_vector_segment` and `raw_pymammotion_execute_multi_segment` —
+now default `motion_refresh_interval_ms` to **200** (was 0) in their **voluptuous schemas**
+(`services.py` ~928 / ~1041) and `services.yaml` (the two executor field blocks). B1
+(2026-07-22) proved refresh-200 drives ~11x further than a single shot, so the services the
+card actually drives now get continuous linear motion by default.
+
+**Deliberately left single-shot (default 0):** `manual_velocity_pulse_test` (the bare-pulse
+A/B harness) and `vio_turn_probe` (the turn probe). They exist to compare 0 vs 200 *explicitly*;
+defaulting them on would corrupt the experiment. Refresh is also proven **speed-gated** — it did
+nothing for the under-powered angular-180 turn — so a defaulted-on turn probe would be
+actively misleading.
+
+**Convention followed:** as with the prior "proven live config" changes
+(`linear_pulse_duration_ms` 300→3500, `heading_tolerance_degrees` 3.0→18,
+`min_progress_distance` 0.01/0.005→0.06), only the **schema + yaml** defaults moved. The
+executor **function signatures keep their conservative primitive defaults** (`= 0` here, like
+`linear_pulse_duration_ms: float = 300.0`). The readiness probe (`services.py` ~6963) passes its
+diagnostic values explicitly, so it is unaffected. Refresh is consumed **only** in the linear
+pulse loop (`_motion_refresh_window` at ~8569); the calibration drive and VIO turn phase never
+call it — verified by grep (the only three `_motion_refresh_window` call sites are the linear
+loop, the manual-pulse harness, and the turn probe).
+
+**Tests:** the parametrized schema-defaults guard now pins both executors at 200; a new
+`test_motion_refresh_default_split_executors_on_harnesses_off` locks the whole invariant
+(executors 200, harnesses 0) so a future edit can't silently flip either side. **326 tests pass,
+mypy clean, ruff clean, services.yaml parses (58 services).**
+
+### Re-derivation plan (Task 2, second half — needs the supervised segment run)
+
+The default flip changes the *physics* of a linear pulse, so three tuned constants that were
+derived against the old single-shot ~4in step must be re-derived against continuous drive.
+**None of these can be re-derived from the desk** — they need one supervised segment run of the
+executor with refresh on, which is currently blocked by the map-sync bug (Task 3). What follows
+is the model to test and the measurements to take.
+
+**The number that changed.** One linear pulse used to be a fixed ~4in step regardless of
+duration; with refresh it is genuine continuous velocity. B1 measured **~28 cm/s** (112 cm taped
+over a 4 s window; the ~1.3 m glide corroborates ~32 cm/s). So a `linear_pulse_duration_ms=3500`
+pulse now covers **~1.0 m**, not ~4 in — a ~10x jump in per-pulse distance. A 3.5 m path is now
+**~3–4 pulses / ~12 s of drive**, vs ~35 pulses / 10+ min that always outlived the BLE link.
+
+1. **Pulse geometry — `max_linear_commands` / `max_linear_pulse_ceiling` /
+   `linear_distance_ceiling_factor`.** At ~1 m/pulse a 3.5 m segment needs ~4 loop iterations,
+   not ~35. The ceiling logic (derived assuming ~10 cm/pulse) will now let the loop overshoot
+   badly if left as-is — a single default-ceiling run could drive several metres past target
+   before the pulse count trips. **Re-derive the ceiling from `segment_length / ~1.0 m` plus a
+   small margin, and re-check `linear_distance_ceiling_factor` (the distance-based cap) against
+   the new per-pulse distance.** Also decide: the schema caps `linear_pulse_duration_ms` at
+   4000 ms (~1.1 m); keeping ~3.5 s pulses gives a re-aim/progress check every ~1 m (good for
+   tracking), which is probably right — do **not** raise the cap chasing fewer stops until the
+   veer behaviour (below) is re-measured.
+
+2. **`min_progress_distance`** (currently 0.06, chosen to clear the *pulsed* 2–6 cm noise
+   floor). Two competing facts from the mow-observation session: during **steady continuous**
+   motion the feed is **sub-cm** (0.70 cm RMS, zero frozen samples), which argues for tightening
+   0.06 → ~0.02; **but** during **fast/pulsed** motion the feed **lags ~4 s and under-reports**
+   (B1 pulse B read 3.98 cm for a taped 112 cm). The executor judges progress *after*
+   stop+settle, so the governing question is **whether the settle poll fully absorbs the ~4 s lag
+   before the progress read.** Re-derivation: on the segment run, log per-pulse
+   `settle_polls` / `observed_jitter` and the settled displacement vs a tape, and only tighten
+   `min_progress_distance` once the settled read is proven to reflect the true ~1 m pulse. If the
+   settle does **not** fully catch up at ~28 cm/s, the fix is a longer/settle-until-quiescent
+   poll, **not** a smaller `min_progress_distance`.
+
+3. **Cadence / BLE exposure.** Wall-clock per pulse = drive (~3.5 s) + stop (~ms) + settle
+   (1–2 s, maybe more to absorb lag) + `sample_delays`. `sample_delays` is **forensic, not
+   control** — during a real run it should be trimmed to near-zero so BLE exposure ≈ drive +
+   settle. Target budget for a 3.5 m path: ~4 × (3.5 + ~2) ≈ **~22 s**, comfortably inside the
+   BLE window that killed the old ~10 min runs. The hypothesis to confirm on the run: **faster
+   drive dodges the −70 BLE coverage wall on its own.**
+
+**Validation run (gated on Task 3 map-sync fix, then a fresh operator "go"):** one supervised
+`raw_pymammotion_execute_vector_segment` of ~2–3 m with refresh at its new default. Capture
+per-pulse: commanded vs taped distance, `settle_polls`/`observed_jitter`, settled displacement,
+`distance_to_target` trajectory, aim-error realignments, and the BLE rssi trace. Then set the
+three constants from that data. **Do not ship new values for (1)–(3) before this run** — they
+are currently *hypotheses* from bare-pulse (B1) and autonomous-mow (read-only) data, neither of
+which exercised the executor's own settle/sample/progress loop under refresh.
+
+**Also queued by the same finding (not Task 2, tracked here so it isn't lost):** the veer —
+the 07-19 run needed 15–19° realignments and tracked off the ideal line; re-measure
+straight-line tracking under continuous drive *after* the throughput constants are set, and the
+D1 hold-to-drive joystick card is now unblocked (thin wrapper over `_motion_refresh_window`).
+
+## Wrap-up 2026-07-22 (later, off-mower): map-sync bug diagnosed + two recovery fixes (Task 3)
+
+**Symptom.** After a reload/restart the zone polygon geometry never re-projects for an idle
+mower: `get_geojson` returns points + a line but no Polygon, `map_sync_status: out_of_sync`,
+and `raw_pymammotion_execute_vector_segment` dry-run fails `path_validation` /
+`area_hash_not_found`. Two config-entry reloads + a mower restart did not fix it.
+
+**Root cause — `coordinator.data.map.area` (the polygon vertex frames) is empty; both symptoms
+follow from that.** Traced the dependency chain:
+
+- Containment does **not** read the geojson. `_validate_custom_path` → `_area_polygons`
+  (`services.py:1407`) reads `map.area[hash].data[].data_couple[]` frames directly.
+  `area_hash_not_found` fires only when the hash isn't a key in `map.area` (`services.py:2025`).
+- The geojson (`generated_geojson`) is *derived* from those same frames via
+  `generate_geojson(RTK, dock)`. Empty `map.area` → points (dock/RTK) + a line, no polygons.
+- So "never re-projects" = "the map-sync saga never populated `map.area`, and nothing recovers
+  it for an idle mower."
+
+**Why it doesn't self-heal — contributors, ranked:**
+
+- **A (transport/convergence, likely dominant).** `_async_update_data` fires `start_map_sync`
+  whenever `not is_map_synced` (`coordinator.py:2332`), but: restore silently falls back to an
+  **empty `MowingDevice`** on `InvalidFieldValue` (`coordinator.py:1552`); and if the saga can't
+  complete over the current transport, `saga.result is None` → on-complete skips restoring
+  `root_hash_lists` (`client.py:2115`) → `update_hash_lists` filters `map.area` down to nothing
+  (`hash_list.py:475`) after `invalidate_maps` cleared the area hashes. Repeated reports →
+  repeated invalidation → never converges. This is transport-sensitive: a mower restart drops
+  BLE to cloud (the −76 wall), exactly when the saga is least likely to finish — which is why
+  "reload while awake" failed that night.
+- **B (geojson regen gaps, genuine code bugs).** Even with frames present the geojson has no
+  idle-time regen path: the triggers are the saga on-complete (**skipped when
+  `RTK.latitude == 0.0`**, `client.py:2120`) and two `state_reducer` paths that only fire on the
+  mowing report hot path (`state_reducer.py:338,487`). And pymammotion ships
+  `regenerate_stale_geojson()` whose docstring says *"call after `restore_device()` in the HA
+  coordinator"* (`client.py:730`) — **our integration never called it** (grep: zero hits).
+
+**Fixes shipped (code, NOT deployed, NOT committed; gated 330 tests + mypy + ruff clean):**
+
+1. **`coordinator.async_restore_data` now calls `self.manager.regenerate_stale_geojson(self.device_name)`**
+   right after `handle.restore_device(mower_state)` — closes the documented-contract gap so a
+   restored `map.area` re-projects at startup instead of waiting for a mow. pymammotion guards it
+   (no-op when `map.area` is empty or the yaw/hashes are unchanged), so it's safe.
+2. **New `mammotion.force_map_resync` service** (`SERVICE_FORCE_MAP_RESYNC`, entity-scoped,
+   `SupportsResponse.ONLY`, allowlisted in the test's `known_undocumented`). Coordinator method
+   `async_force_map_resync()` runs a **non-destructive** recovery: refresh RTK/dock (so the
+   on-complete rebuild isn't skipped) → fetch the area-name list (some cloud sessions never push
+   `toapp_all_hash_name`) → run the saga (its on-complete restores `root_hash_lists`, the
+   convergence fix) → `regenerate_stale_geojson`. Returns a step-by-step result
+   (`map_sync_status_before`/`after`, `steps`, `error`, `last_map_task_error`) for the card to
+   surface. Non-destructive on purpose: the existing cache is left intact until the saga replaces
+   it, so a failed resync never leaves the map worse off. Deliberately **not** a new button entity
+   (would need all 12 locale translations); a dashboard button can bind to the service.
+
+**Still open — one live read decides A vs B (can't from the desk).** If an active mow re-projects
+the map but idle never does → **B** (the two fixes resolve it). If even a mow leaves `map.area`
+empty → **A** (a BLE-coverage/transport problem, not a code bug; the fixes only aid recovery).
+Read without motion via `get_map_data` / `_export_mower_map` (does `map.area` have keys?
+computed vs reported `bol_hash`? RTK/dock latitude?), `sensor.<mower>_last_map_task_error`, and
+`map_sync_status`. Then, on a good-BLE moment, call `mammotion.force_map_resync` and re-check.
+This unblocks the Task-2 validation segment run.
+
+## Wrap-up 2026-07-22/23 (off-mower): full APK 2.3.8.19 multi-agent feature sweep
+
+**Goal:** preserve the entire app's discoverable feature surface for later use, not only the
+motion findings that originally motivated the decompile.
+
+**Scope and output.** Swept the complete nine-dex JADX tree (30,867 Java files, ~415 MB,
+177 first-party `com.agilexrobotics.*` manifest components). The durable catalog lives in
+`docs/apk-feature-catalog/`:
+
+- `00-overview` — snapshot, method, package census and reading cautions;
+- `01`–`09` — onboarding/connectivity, mapping/deployment, work planning/execution,
+  manual control/safety, device settings/maintenance, camera/video/vision,
+  account/sharing/cloud, SPINO pool cleaner, and hidden diagnostics/testing;
+- `10-protocol-report-index` — reachable commands, reports, topics, APIs, routing and ack
+  semantics;
+- `11-ha-opportunity-index` — future HA backlog classified by reversibility, transport,
+  safety/security risk and confidence;
+- `12-coverage-and-open-questions` — honest coverage statement, audit history and runtime
+  verification queue;
+- `13-model-capability-matrix` — product codes, LUBA/YUKA/mini/SPINO/RTK/dock gates,
+  firmware/server/runtime capability checks and identity collisions;
+- `14-architecture-glossary` — startup, device abstraction, BLE/BLUFI/cloud/MQTT,
+  command/report/cache/map flows, native/H5/RN boundaries, persistence and terminology.
+
+**Quality passes.** After the subsystem reports landed, separate agents ran:
+
+1. an omission audit against manifest activities/services, all first-party package owners,
+   resource strings, API interfaces and command-manager methods;
+2. an adversarial exact-claim pass over motion cadence/scaling, routing boolean and ack
+   semantics, report-subscription configurations, map ordering, SPINO plan wire fields and
+   Agora stream encryption;
+3. a mechanical citation/table audit (1,580 citations in its first pass; 76 optimistic or
+   invalid ranges found), followed by disjoint repair passes; and
+4. a final whole-catalog validation including the later synthesis reports.
+
+**Material corrections caught by the audits:** SPINO `PlanJobSet` uses `fixed32` for
+`start_time`/`day`/`weeks`/`enable` (with inverted enable polarity), Agora explicitly uses
+`AES_256_GCM2`, `requestIOTMessage` differs by helper generation (nine vs ten report types),
+Wi-Fi closure only adopts an existing BLE link in that call path, the blade RSSI ten-sample
+rule governs automatic shutdown rather than reliably gating initial start, and the misleading
+`AudoBackwashPop` class is a generic 4G-disable warning—not a pool backwash feature.
+
+**Omissions added after independent discovery:** SIM/iNavi Shopify purchase/renewal links,
+server-driven tips/show/read tracking, RTK positioning-optimization guidance, Mammotion's own
+behavioral telemetry endpoint, downloaded/versioned localized error-code catalogs, and
+post-onboarding Wi-Fi/4G radio + APN controls.
+
+**Honest limit:** this is a full static decompile sweep/catalog, not proof of every
+server-controlled, firmware-gated, RN-hotfix/H5-delivered feature and not authorization to
+implement hazardous commands. Packet capture, representative hardware, test accounts, and
+newer-APK diffs remain explicitly queued in report 12.

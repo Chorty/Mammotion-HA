@@ -17,6 +17,16 @@ records.
   course-over-ground and stays frozen during a pivot — do not use it for turns.
 - **Multi-segment click-to-path: proven live** (L-path, both segments
   `target_reached`). PR #10 is open against main and mergeable.
+- **Full APK 2.3.8.19 feature sweep: complete (off-mower, 2026-07-22).**
+  The complete 9-dex/30,867-Java-file decompile was split across parallel
+  subsystem passes, then independently checked for omissions, exact protocol
+  claims, model gates, and citation integrity. The durable catalog starts at
+  `docs/apk-feature-catalog/00-overview.md`; use
+  `10-protocol-report-index.md` for commands/reports,
+  `11-ha-opportunity-index.md` for future integration backlog,
+  `12-coverage-and-open-questions.md` for limits/live-verification work, and
+  `13-model-capability-matrix.md` for model gates. This is a complete static
+  sweep, not proof of server/RN/H5-delivered behavior or hardware safety.
 - **VIO needs daylight.** It will not initialize in a dark scene; the gates
   refuse rather than drive blind. Check `camera_brightness` is not `Dark` and
   `track_feature_num` is healthy before any VIO run.
@@ -68,17 +78,43 @@ tape A/B settled it live:
    during a fast or dark turn — do not trust it). If refresh-500 turns
    continuously, `heading_tolerance_degrees` can drop far below 18.
 
-2. **Default the executors' linear refresh 0 → 200** (`raw_pymammotion_execute_
-   vector_segment` / `_multi_segment`), then re-derive throughput (~28 cm/s
-   continuous vs ~0.025 m/s pulsed), `min_progress_distance`, and pulse cadence
-   against continuous drive. A 3.5 m path becomes ~12 s of driving, which should
-   dodge the BLE-coverage wall — verify with one supervised segment run.
+2. **✅ DONE (code, 2026-07-22, NOT deployed): the executors' linear refresh now
+   defaults to 200** (`raw_pymammotion_execute_vector_segment` / `_multi_segment`
+   schema + yaml; the `manual_velocity_pulse_test` / `vio_turn_probe` harnesses
+   stay single-shot at 0; 326 tests, mypy+ruff clean). **Still open — re-derive
+   the three constants that assumed the old ~4in step: pulse-geometry ceilings,
+   `min_progress_distance`, and cadence, against continuous drive** (a 3.5 m path
+   is now ~1 m/pulse → ~3–4 pulses / ~12 s, which should dodge the BLE wall). The
+   re-derivation is a *plan only* until one supervised segment run exercises the
+   executor's settle/sample/progress loop under refresh — full model + the
+   measurements to take are in `docs/codex-working-plan.md` (2026-07-22 "later"
+   wrap-up). **That run is gated on the Task-3 map-sync fix** (containment can't
+   validate a segment while the zone polygon is missing).
 
-3. **Diagnose the map-sync bug** blocking the real click-to-path executor: after a
-   reload/restart the zone *polygon* geometry never re-projects (geojson has only
-   points + a line, `map_sync_status: out_of_sync`, containment fails
-   `area_hash_not_found`). Two config-entry reloads + a mower restart did NOT fix
-   it. Suspect the RTK/dock reference or `geojson_needs_regeneration` not firing.
+3. **✅ DIAGNOSED + two fixes shipped (code, 2026-07-22, NOT deployed).** The
+   map-sync bug: after a reload/restart the zone *polygon* geometry never
+   re-projects (geojson points+line only, `map_sync_status: out_of_sync`,
+   containment `area_hash_not_found`). **Root cause:** `coordinator.data.map.area`
+   (the polygon frames) is empty — containment reads those frames *directly*
+   (`_area_polygons`), and the geojson is derived from them, so both symptoms are
+   one state. The map-sync saga isn't populating/re-projecting the frames for an
+   idle mower, and nothing recovers it (the only geojson-regen triggers fire on
+   the mowing report hot path; the saga's on-complete rebuild is skipped when
+   `RTK.latitude == 0.0`; and — confirmed gap — our integration never called
+   pymammotion's `regenerate_stale_geojson()` after `restore_device()`, contrary
+   to its docstring). **Fixes:** (a) call `regenerate_stale_geojson()` after
+   restore in `coordinator.async_restore_data`; (b) new `mammotion.force_map_resync`
+   service (non-destructive recovery: refresh RTK/dock → fetch area names → run
+   the saga → re-project; returns step-by-step result). Full analysis in
+   `docs/codex-working-plan.md` (2026-07-22 map-sync section).
+   **STILL OPEN — one live read confirms A-vs-B** (I can't from the desk): if an
+   active mow re-projects the map but idle never does → contributor **B**
+   (frames present, geojson stale) and the two fixes resolve it. If even a mow
+   leaves `map.area` empty → contributor **A** (saga can't populate over the
+   transport — a BLE-coverage problem, not code) and the fixes only aid recovery.
+   Read via `get_map_data`/`_export_mower_map` (does `map.area` have keys?),
+   `sensor.<mower>_last_map_task_error`, `map_sync_status`, and RTK/dock latitude.
+   Then, on a good-BLE moment, call `mammotion.force_map_resync` and re-check.
 
 Note `manual_velocity_pulse_test`'s `speed` is on the app's 0.0–1.0 scale
 (default **0.55** → raw linear 400, matching the executors); its `duration_ms`
