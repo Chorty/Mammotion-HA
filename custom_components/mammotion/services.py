@@ -38,6 +38,7 @@ from .geojson_utils import apply_geojson_offset
 from .models import MammotionMowerData
 
 SERVICE_GET_GEOJSON = "get_geojson"
+SERVICE_FORCE_MAP_RESYNC = "force_map_resync"
 SERVICE_GET_MOW_PATH_GEOJSON = "get_mow_path_geojson"
 SERVICE_GET_MOW_PROGRESS_GEOJSON = "get_mow_progress_geojson"
 SERVICE_GET_MAP_DATA = "get_map_data"
@@ -919,10 +920,13 @@ RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("linear_pulse_duration_ms", default=3500.0): vol.All(
             vol.Coerce(float), vol.Range(min=50.0, max=4000.0)
         ),
-        # App-parity motion cadence. 0 = proven single-shot behaviour; a positive
-        # value re-sends the movement command every N ms for the pulse duration,
-        # mirroring the app's 200 ms timer (2026-07-20 APK decompile).
-        vol.Optional("motion_refresh_interval_ms", default=0): vol.All(
+        # App-parity motion cadence. Defaults to 200 ms, the app's own timer:
+        # B1 (2026-07-22) proved re-sending the movement command every 200 ms
+        # for the pulse duration drives ~11x further than a single shot (the
+        # mower self-halts after ~one ~4 in step otherwise). 0 restores the
+        # legacy single-shot. Scoped to the linear phase only; the calibration
+        # drive and VIO turn phase never consult it.
+        vol.Optional("motion_refresh_interval_ms", default=200): vol.All(
             vol.Coerce(int), vol.Range(min=0, max=1000)
         ),
         vol.Optional("turn_mode", default="vio"): vol.In(["vio", "legacy"]),
@@ -1029,10 +1033,13 @@ RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("linear_pulse_duration_ms", default=3500.0): vol.All(
             vol.Coerce(float), vol.Range(min=50.0, max=4000.0)
         ),
-        # App-parity motion cadence. 0 = proven single-shot behaviour; a positive
-        # value re-sends the movement command every N ms for the pulse duration,
-        # mirroring the app's 200 ms timer (2026-07-20 APK decompile).
-        vol.Optional("motion_refresh_interval_ms", default=0): vol.All(
+        # App-parity motion cadence. Defaults to 200 ms, the app's own timer:
+        # B1 (2026-07-22) proved re-sending the movement command every 200 ms
+        # for the pulse duration drives ~11x further than a single shot (the
+        # mower self-halts after ~one ~4 in step otherwise). 0 restores the
+        # legacy single-shot. Scoped to the linear phase only; the calibration
+        # drive and VIO turn phase never consult it.
+        vol.Optional("motion_refresh_interval_ms", default=200): vol.All(
             vol.Coerce(int), vol.Range(min=0, max=1000)
         ),
         vol.Optional("turn_mode", default="vio"): vol.In(["vio", "legacy"]),
@@ -10907,6 +10914,20 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             schema=MOVEMENT_SCHEMA,
         )
 
+    async def handle_force_map_resync(call: ServiceCall) -> dict[str, Any]:
+        """Force a full map re-fetch + GeoJSON re-projection (recovery lever).
+
+        For the "map stuck out_of_sync after a reload/restart" state where
+        click-to-path containment fails ``area_hash_not_found`` and the GeoJSON
+        has no Polygon features.  A config-entry reload does not fix it; this
+        does. Returns the coordinator's step-by-step recovery result.
+        """
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        return await mower.reporting_coordinator.async_force_map_resync()
+
     async def handle_get_geojson(call: ServiceCall) -> dict[str, Any]:
         mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
         if mower is None:
@@ -10949,6 +10970,13 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             geojson, coordinator.map_offset_lat, coordinator.map_offset_lon
         )
 
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_FORCE_MAP_RESYNC,
+        handle_force_map_resync,
+        schema=GEOJSON_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
     hass.services.async_register(
         DOMAIN,
         SERVICE_GET_GEOJSON,

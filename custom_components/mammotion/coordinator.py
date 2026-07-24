@@ -828,6 +828,60 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
             self.last_map_task_error = f"map_sync: {type(exc).__name__}"
             raise
 
+    async def async_force_map_resync(self) -> dict[str, Any]:
+        """Force a full map re-fetch and GeoJSON re-projection (recovery lever).
+
+        Recovery for the "map stuck ``out_of_sync`` after a reload/restart"
+        state, where the zone polygons never reload so click-to-path
+        containment fails ``area_hash_not_found`` and the GeoJSON has no
+        Polygon features.  A plain config-entry reload does not fix it — it
+        restores the same cached map and never re-fetches the area frames.
+
+        The sequence, in order, addresses each contributor found in the code:
+
+        1. Refresh the RTK/dock reference — the map-sync saga's on-complete
+           GeoJSON rebuild is skipped entirely when ``RTK.latitude == 0.0``.
+        2. Fetch the area-name list — some cloud sessions never push
+           ``toapp_all_hash_name`` on their own.
+        3. Run the map-sync saga to (re)fetch the area frames.  Its on-complete
+           handler restores ``root_hash_lists`` from the saga result, which is
+           what lets a churning ``invalidate_maps`` cycle finally converge.
+        4. Re-project the GeoJSON from the freshly-fetched frames.
+
+        Non-destructive: the existing cache is left intact until the saga
+        replaces it, so a failed resync never leaves the map worse off than it
+        started.  Returns a step-by-step result for the caller/card to surface.
+        """
+        result: dict[str, Any] = {
+            "map_sync_status_before": self.map_sync_status,
+            "steps": [],
+            "error": None,
+        }
+        try:
+            await self.async_rtk_dock_location()
+            result["steps"].append("rtk_dock_refreshed")
+            try:
+                await self.async_get_area_list()
+                result["steps"].append("area_names_fetched")
+            except (
+                DeviceOfflineException,
+                GatewayTimeoutException,
+                NoTransportAvailableError,
+                ConcurrentRequestError,
+            ):
+                # Non-fatal: the saga can still populate the area frames without
+                # the name list; zones just fall back to generic labels.
+                result["steps"].append("area_names_skipped")
+            await self.async_sync_maps()
+            result["steps"].append("map_synced")
+            self.manager.regenerate_stale_geojson(self.device_name)
+            result["steps"].append("geojson_regenerated")
+        except Exception as exc:  # noqa: BLE001 - surface any failure as a field
+            result["error"] = f"{type(exc).__name__}: {exc}"
+        result["map_sync_status_after"] = self.map_sync_status
+        result["last_map_task_error"] = self.last_map_task_error
+        return result
+
     async def async_sync_schedule(self) -> None:
         """Sync all scheduled mowing plans from the device via PlanFetchSaga."""
         try:
@@ -1551,6 +1605,16 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
                 if handle is not None:
                     handle.restore_device(mower_state)
                     self.data = cast(DataT, mower_state)
+                    # Re-project any restored map geometry now.  The cached
+                    # GeoJSON is tied to the RTK yaw it was built with; after a
+                    # restart the live heading may differ (or the cached GeoJSON
+                    # may be stale/absent).  The only other regeneration triggers
+                    # fire on the mowing report hot path, so an idle mower being
+                    # repositioned would otherwise never re-project.  pymammotion
+                    # guards this internally (skips when map.area is empty or the
+                    # yaw/hashes are unchanged), matching its documented contract
+                    # to call this after ``restore_device``.
+                    self.manager.regenerate_stale_geojson(self.device_name)
         except InvalidFieldValue:
             empty = MowingDevice()
             self.data = cast(DataT, empty)

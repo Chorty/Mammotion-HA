@@ -6,7 +6,7 @@ import datetime
 import json
 import pathlib
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import voluptuous as vol
@@ -15,7 +15,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.service import _validate_entity_service_schema
 from pymammotion.data.model.hash_list import Plan
-from pymammotion.transport.base import TransportType
+from pymammotion.transport.base import NoTransportAvailableError, TransportType
 from pymammotion.transport.ble import BLETransport, BLETransportConfig
 
 from custom_components.mammotion import coordinator as mammotion_coordinator
@@ -47,6 +47,7 @@ from custom_components.mammotion.services import (
     RAW_PYMAMMOTION_MOTION_PROBE_SCHEMA,
     RAW_PYMAMMOTION_TURN_TO_HEADING_SCHEMA,
     RAW_VECTOR_READINESS_TEST_SCHEMA,
+    VIO_TURN_PROBE_SCHEMA,
     _app_scale_speeds,
     _app_speed_scale_report,
     _ble_connect_cooldown_active,
@@ -1304,6 +1305,9 @@ def test_manual_velocity_pulse_defaults_match_executor_pulse() -> None:
                 "calibrated_forward_heading_offset_degrees": 116.5,
                 "max_turn_commands": 3,
                 "max_linear_commands": 1,
+                # App-parity refresh defaults ON for the executors (B1 2026-07-22);
+                # the manual-pulse / turn-probe harnesses stay single-shot (0).
+                "motion_refresh_interval_ms": 200,
             },
         ),
         (
@@ -1326,6 +1330,8 @@ def test_manual_velocity_pulse_defaults_match_executor_pulse() -> None:
                 "max_turn_commands": 4,
                 "max_linear_commands": 2,
                 "calibrated_forward_heading_offset_degrees": 116.5,
+                # App-parity refresh defaults ON for the executors (B1 2026-07-22).
+                "motion_refresh_interval_ms": 200,
             },
         ),
         (
@@ -1353,6 +1359,37 @@ def test_motion_and_vector_schema_defaults_parameterized(
     parsed = schema(payload)
     for key, value in expected.items():
         assert parsed[key] == value
+
+
+def test_motion_refresh_default_split_executors_on_harnesses_off() -> None:
+    """The path executors default to app-parity refresh; the diagnostic harnesses stay single-shot.
+
+    B1 (2026-07-22) proved re-sending the movement command every 200 ms drives
+    ~11x further than a single shot, so the vector and multi-segment executors --
+    the services the click-to-path card drives -- now default
+    ``motion_refresh_interval_ms`` to 200. The bare-pulse A/B harness
+    (``manual_velocity_pulse_test``) and the turn probe (``vio_turn_probe``) must
+    stay at 0: they exist to compare 0 vs 200 explicitly, and refresh was proven
+    speed-gated (it did nothing for the under-powered turn), so a defaulted-on
+    turn would silently change the very experiment they run.
+    """
+    minimal_points = [{"x": 1, "y": 1}, {"x": 1.1, "y": 1}]
+    vector = RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA(
+        {"entity_id": "lawn_mower.test", "points": minimal_points}
+    )
+    multi = RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA(
+        {
+            "entity_id": "lawn_mower.test",
+            "points": [*minimal_points, {"x": 1.2, "y": 1.1}],
+        }
+    )
+    assert vector["motion_refresh_interval_ms"] == 200
+    assert multi["motion_refresh_interval_ms"] == 200
+
+    pulse = MANUAL_VELOCITY_PULSE_TEST_SCHEMA({"entity_id": "lawn_mower.test"})
+    turn = VIO_TURN_PROBE_SCHEMA({"entity_id": "lawn_mower.test"})
+    assert pulse["motion_refresh_interval_ms"] == 0
+    assert turn["motion_refresh_interval_ms"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -7230,6 +7267,7 @@ def test_services_yaml_has_matching_strings_entries() -> None:
     strings_keys = set(strings_json["services"].keys())
 
     known_undocumented = {
+        "force_map_resync",
         "forward_two_pulse_latency_test",
         "get_geojson",
         "get_mow_path_geojson",
@@ -7864,3 +7902,87 @@ def test_multi_segment_segment_that_did_not_arrive_fails() -> None:
     assert _raw_multi_segment_phase_passed(aborted, real_segment=True) is False
     assert _raw_multi_segment_phase_passed(blocked, real_segment=True) is False
     assert _raw_multi_segment_phase_passed(invalid, real_segment=True) is False
+
+
+# ---------------------------------------------------------------------------
+# force_map_resync recovery (map stuck out_of_sync after reload/restart)
+# ---------------------------------------------------------------------------
+
+
+def _force_resync_self(**overrides: object) -> SimpleNamespace:
+    """Build a minimal coordinator-shaped self for async_force_map_resync."""
+    fake = SimpleNamespace(
+        device_name="Test mower",
+        manager=SimpleNamespace(regenerate_stale_geojson=MagicMock()),
+        map_sync_status="out_of_sync",
+        last_map_task_error=None,
+        async_rtk_dock_location=AsyncMock(),
+        async_get_area_list=AsyncMock(),
+        async_sync_maps=AsyncMock(),
+    )
+    for key, value in overrides.items():
+        setattr(fake, key, value)
+    return fake
+
+
+@pytest.mark.asyncio
+async def test_force_map_resync_happy_path_runs_full_sequence() -> None:
+    """Recovery runs RTK/dock -> area names -> saga -> regen and reports steps."""
+    fake = _force_resync_self()
+
+    async def _sync() -> None:
+        fake.map_sync_status = "synced"
+
+    fake.async_sync_maps = AsyncMock(side_effect=_sync)
+
+    result = await MammotionBaseUpdateCoordinator.async_force_map_resync(fake)
+
+    assert result["error"] is None
+    assert result["steps"] == [
+        "rtk_dock_refreshed",
+        "area_names_fetched",
+        "map_synced",
+        "geojson_regenerated",
+    ]
+    assert result["map_sync_status_before"] == "out_of_sync"
+    assert result["map_sync_status_after"] == "synced"
+    fake.async_rtk_dock_location.assert_awaited_once()
+    fake.async_sync_maps.assert_awaited_once()
+    fake.manager.regenerate_stale_geojson.assert_called_once_with("Test mower")
+
+
+@pytest.mark.asyncio
+async def test_force_map_resync_tolerates_missing_area_names() -> None:
+    """A transient area-name fetch failure is non-fatal; the saga still runs.
+
+    Mirrors the cloud-session case where ``toapp_all_hash_name`` never arrives.
+    """
+    fake = _force_resync_self(
+        async_get_area_list=AsyncMock(side_effect=NoTransportAvailableError())
+    )
+
+    result = await MammotionBaseUpdateCoordinator.async_force_map_resync(fake)
+
+    assert result["error"] is None
+    assert "area_names_skipped" in result["steps"]
+    assert "area_names_fetched" not in result["steps"]
+    assert result["steps"][-1] == "geojson_regenerated"
+    fake.async_sync_maps.assert_awaited_once()
+    fake.manager.regenerate_stale_geojson.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_force_map_resync_reports_sync_failure_without_regen() -> None:
+    """A saga failure surfaces as error and never regenerates against a dead sync."""
+    fake = _force_resync_self(
+        async_sync_maps=AsyncMock(side_effect=RuntimeError("boom")),
+        last_map_task_error="map_sync: RuntimeError",
+    )
+
+    result = await MammotionBaseUpdateCoordinator.async_force_map_resync(fake)
+
+    assert result["error"] is not None
+    assert "RuntimeError" in result["error"]
+    assert "geojson_regenerated" not in result["steps"]
+    fake.manager.regenerate_stale_geojson.assert_not_called()
+    assert result["last_map_task_error"] == "map_sync: RuntimeError"
