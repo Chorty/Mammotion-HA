@@ -36,9 +36,20 @@ records.
   failure (only the existing custom-integration and deprecated tracker-property
   warnings). `lawn_mower.py` was unchanged and remains at the previously
   deployed `0a5bc4ab` level.
+  **Host is now BEHIND the branch by `services.py` + `coordinator.py`**, which
+  carry the 2026-07-24 `zone_hash` fix and `map_sync_diagnostics` (below). They
+  deploy together; nothing else changed.
 - **VIO needs daylight.** It will not initialize in a dark scene; the gates
   refuse rather than drive blind. Check `camera_brightness` is not `Dark` and
   `track_feature_num` is healthy before any VIO run.
+- **The map is HEALTHY again (read-only check, 2026-07-24 night).** `map.area`
+  holds all 4 areas with full polygon frames (60–72 vertices each), `area_name`
+  has 4 entries, and the GeoJSON carries 7 Polygons. `validate_custom_path`
+  passes for real paths, and passes with an explicit `area_hash` of a real area.
+  **So the Task-3 blocker on the Task-2 validation segment run is CLEAR** — the
+  segment run no longer waits on a map fix. What recovered it (the deployed
+  `regenerate_stale_geojson` fix, the 07-23 restart, or an intervening mow) was
+  not determined. `force_map_resync` has still never been fired.
 
 ## The big result — app-parity refresh cadence PROVEN (B1, 2026-07-22)
 
@@ -64,6 +75,54 @@ tape A/B settled it live:
 - Confirmed off the mower: refresh in the executors is scoped to the **linear
   phase only** (calibration drive + VIO turn are untouched), so wiring it in is
   safe. `needAck=false` also means per-pulse `command_ok` never proved delivery.
+
+## 🐛 zone_hash was reading the map checksum (fixed 2026-07-24, NOT deployed)
+
+`rpt_dev_location` carries **two** distinct fields: `zone_hash` (proto field 5 —
+the mowing zone the mower is currently inside) and `bol_hash` (field 6 — a
+MurMur checksum of the device's entire area set). `services.py` read `bol_hash`
+wherever it meant `zone_hash`.
+
+Because a map checksum is non-zero whenever the device has *any* map, the
+substituted value was never 0 and never changed during a run. That silently
+disabled **five** guards at once:
+
+1. `_is_stale_zero_area_out_pose` — the (0,0)/AREA_OUT stale-dock-pose
+   rejection could never fire (needs `pos_type == 0` **and** `zone_hash == 0`);
+2. the `location_metadata` overlay that corrects a stale pose;
+3. `zone_hash_unavailable` in `_manual_velocity_quality_degradation`;
+4. `zone_hash_changed` — leaving one zone mid-run was undetectable, since the
+   checksum is constant across a run;
+5. the zone half of `_is_valid_motion_position` / `_position_has_known_area`,
+   leaving `pos_type_label` doing all the work.
+
+Evidence: the APK proto declares `ZONE_HASH_FIELD_NUMBER = 5` and
+`BOL_HASH_FIELD_NUMBER = 6` on the same message
+(`sources/com/agilexrobotics/proto/MctrlSys.java:60136-60143`); the app reads
+`locationsList.get(0).getZoneHash()` for the live zone
+(`MACarDataManager.java:4821`) and logs `bolHash` against its own locally
+computed hash as a **map** comparison (`HashDataManager.java:303`);
+pymammotion's `RptDevLocation` has both fields with the same numbering. Live
+confirmation on the docked mower: the same message reported `zone_hash = 0`
+(via `location.work_zone`) and `bol_hash = 8311072749804434520`.
+
+Fixed in both read sites; the checksum is still reported, now as
+`position.map_bol_hash`, and raw diagnostics list `zone_hash` and `bol_hash`
+side by side. 4 regression tests, each verified to fail against the old read.
+
+**⚠️ PRE-FLIGHT BEFORE THE NEXT REAL MOTION RUN — this fix makes the gate
+strictly stricter.** If the firmware reports `zone_hash: 0` while `pos_type` is
+`AREA_INSIDE`, motion that used to run will now be refused (fail-safe, but
+blocking). Undock into a mapped area and check read-only *before* any real
+command — no motion involved:
+
+```yaml
+service: mammotion.position_feedback_diagnostic
+data: {entity_id: lawn_mower.back_yard_clip_skywalker, pulse_count: 0, dry_run: true}
+```
+Look at `raw_sources."report_data.locations"[0]`: `zone_hash` must be non-zero
+while `pos_type` is 1 (`AREA_INSIDE`). It read 0 while docked (`pos_type: 5`,
+`CHARGE_ON`), which is correct — the docked case proves nothing either way.
 
 ## Immediate next steps (all doable off-mower)
 
@@ -97,8 +156,8 @@ tape A/B settled it live:
    re-derivation is a *plan only* until one supervised segment run exercises the
    executor's settle/sample/progress loop under refresh — full model + the
    measurements to take are in `docs/codex-working-plan.md` (2026-07-22 "later"
-   wrap-up). **That run is gated on the Task-3 map-sync fix** (containment can't
-   validate a segment while the zone polygon is missing).
+   wrap-up). **NO LONGER GATED on the map** — containment now validates (see
+   Task 3 below); the run just needs daylight, an operator, and good BLE.
 
 3. **✅ DIAGNOSED + two fixes shipped (code, 2026-07-22, NOT deployed).** The
    map-sync bug: after a reload/restart the zone *polygon* geometry never
@@ -116,14 +175,31 @@ tape A/B settled it live:
    service (non-destructive recovery: refresh RTK/dock → fetch area names → run
    the saga → re-project; returns step-by-step result). Full analysis in
    `docs/codex-working-plan.md` (2026-07-22 map-sync section).
-   **STILL OPEN — one live read confirms A-vs-B** (I can't from the desk): if an
-   active mow re-projects the map but idle never does → contributor **B**
-   (frames present, geojson stale) and the two fixes resolve it. If even a mow
-   leaves `map.area` empty → contributor **A** (saga can't populate over the
-   transport — a BLE-coverage problem, not code) and the fixes only aid recovery.
-   Read via `get_map_data`/`_export_mower_map` (does `map.area` have keys?),
-   `sensor.<mower>_last_map_task_error`, `map_sync_status`, and RTK/dock latitude.
-   Then, on a good-BLE moment, call `mammotion.force_map_resync` and re-check.
+   **UPDATE 2026-07-24 — the empty-map symptom is GONE and containment passes.**
+   Read-only check on the idle/docked mower found `map.area` populated with all
+   4 areas (full polygon frames), `area_name` complete, GeoJSON with 7 Polygons,
+   and `validate_custom_path` returning `valid: true` — including with an
+   explicit `area_hash` of a real area. `area_hash_not_found` still fires
+   correctly for a hash that is not an area, which is what the mower's *dock*
+   position hashes to. A-vs-B was therefore **not** decided: the symptom
+   resolved before it could be attributed. `force_map_resync` remains unfired.
+
+   **What is still wrong: `map_sync_status` reads `out_of_sync` on a map that is
+   complete and usable.** That is not cosmetic — `coordinator.py:2396` fires
+   `start_map_sync` on *every* coordinator tick while that holds, so an
+   exclusive saga keeps taking the device command queue for no reason.
+   `is_map_synced()` folds three conditions into one boolean (bol-hash match /
+   no incomplete areas / area names covered), so the failing one was invisible.
+   **New (2026-07-24, NOT deployed): `coordinator.map_sync_diagnostics()`**
+   breaks them out and is surfaced read-only in `get_map_data` under `map_sync`,
+   plus as `map_sync_diagnostics_before`/`_after` in the `force_map_resync`
+   result. **Next session, one read decides it** — call `get_map_data` and look
+   at `map_sync.bol_hash_matches`, `.incomplete_area_hashes`,
+   `.area_names_covered`. (I could not settle it from the desk: the reported
+   `bol_hash` is `8311072749804434520` and no permutation of the 4 *area-frame*
+   hashes MurMurs to it, but `computed_bol_hash` is built from
+   `root_hash_lists`, which I cannot read remotely — so a mismatch is likely but
+   unproven.)
 
 Note `manual_velocity_pulse_test`'s `speed` is on the app's 0.0–1.0 scale
 (default **0.55** → raw linear 400, matching the executors); its `duration_ms`

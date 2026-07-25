@@ -68,6 +68,7 @@ from custom_components.mammotion.services import (
     _manual_velocity_heading_calibration,
     _manual_velocity_path_progress_diagnostic,
     _manual_velocity_pulse_test,
+    _manual_velocity_quality_degradation,
     _manual_velocity_segment_test,
     _motion_open_sleep,
     _motion_refresh_window,
@@ -6939,6 +6940,8 @@ def test_custom_path_telemetry_uses_mowing_state_position() -> None:
         "pos_type": 1,
         "pos_type_label": "AREA_INSIDE",
         "zone_hash": str(LARGE_HASH),
+        # No report_data.locations here, so there is no map checksum to report.
+        "map_bol_hash": None,
         "area_name": None,
         "valid_for_motion": True,
     }
@@ -6988,6 +6991,119 @@ def test_custom_path_telemetry_overlays_location_metadata_on_stale_zero_pose() -
     assert position["pos_type_label"] == "AREA_INSIDE"
     assert position["zone_hash"] == 123
     assert position["area_name"] == "Backyard Right"
+    assert position["valid_for_motion"] is False
+
+
+def _report_location_coordinator(
+    *, zone_hash: int, bol_hash: int, pos_type: int = 1
+) -> SimpleNamespace:
+    """Build a coordinator whose only position source is report_data.locations[0]."""
+    return SimpleNamespace(
+        is_online=lambda: True,
+        data=SimpleNamespace(
+            # location.* is unset so nothing can mask which field the snapshot
+            # actually read off the report message.
+            location=SimpleNamespace(
+                orientation=None, position_type=None, work_zone=None
+            ),
+            report_data=SimpleNamespace(
+                dev=SimpleNamespace(sys_status=11, charge_state=2, blade_state=0),
+                rtk=SimpleNamespace(status=4, pos_level=0),
+                locations=[
+                    SimpleNamespace(
+                        real_pos_x=12_345,
+                        real_pos_y=-67_890,
+                        real_toward=900_000,
+                        pos_type=pos_type,
+                        zone_hash=zone_hash,
+                        bol_hash=bol_hash,
+                    )
+                ],
+                cutter_work_mode_info=SimpleNamespace(
+                    current_cutter_mode=0,
+                    current_cutter_rpm=0,
+                ),
+                connect=None,
+            ),
+        ),
+    )
+
+
+def test_report_location_zone_hash_is_field_5_not_the_map_checksum() -> None:
+    """``zone_hash`` comes from proto field 5, never from ``bol_hash`` (field 6).
+
+    ``rpt_dev_location`` reports both.  Reading the checksum as the zone made
+    every zone-based guard inert, because a map checksum is non-zero whenever
+    the device has any map at all.  Live proof (2026-07-24, docked mower):
+    ``zone_hash`` 0 and ``bol_hash`` 8311072749804434520 in the same message.
+    """
+    position = _custom_path_telemetry_snapshot(
+        _report_location_coordinator(zone_hash=456, bol_hash=8311072749804434520)
+    )["position"]
+
+    assert position["source"] == "report_data.locations[0]"
+    assert position["zone_hash"] == 456
+    # The checksum stays visible for map-sync forensics, under its own name.
+    assert position["map_bol_hash"] == "8311072749804434520"
+
+
+def test_zone_hash_zero_is_not_masked_by_a_nonzero_map_checksum() -> None:
+    """A mower outside any zone reads zone_hash 0 even with a map loaded.
+
+    This is the live docked case.  While the snapshot read ``bol_hash`` the
+    position looked zone-tagged, so ``_is_valid_motion_position`` and the
+    ``zone_hash_unavailable`` degradation reason could never trip.
+    """
+    position = _custom_path_telemetry_snapshot(
+        _report_location_coordinator(zone_hash=0, bol_hash=8311072749804434520)
+    )["position"]
+
+    assert position["zone_hash"] == 0
+    assert position["map_bol_hash"] == "8311072749804434520"
+    # AREA_INSIDE alone must not be enough once the zone is genuinely unknown.
+    assert position["valid_for_motion"] is False
+
+    degradation = _manual_velocity_quality_degradation(
+        baseline={"position": {"zone_hash": 789, "pos_type_label": "AREA_INSIDE"}},
+        current={"position": position},
+    )
+    assert "zone_hash_unavailable" in degradation["reasons"]
+    assert degradation["degraded"] is True
+
+
+def test_zone_hash_change_mid_run_is_detected() -> None:
+    """Leaving one zone for another is a real degradation signal.
+
+    The map checksum is constant across a run, so this could never fire before.
+    """
+    baseline = _custom_path_telemetry_snapshot(
+        _report_location_coordinator(zone_hash=111, bol_hash=8311072749804434520)
+    )
+    current = _custom_path_telemetry_snapshot(
+        _report_location_coordinator(zone_hash=222, bol_hash=8311072749804434520)
+    )
+
+    degradation = _manual_velocity_quality_degradation(
+        baseline=baseline, current=current
+    )
+    assert "zone_hash_changed" in degradation["reasons"]
+
+
+def test_stale_dock_pose_is_rejected_when_zone_hash_is_zero() -> None:
+    """The (0,0)/AREA_OUT stale pose must not be accepted as a real position.
+
+    ``_is_stale_zero_area_out_pose`` needs pos_type 0 *and* zone_hash 0.  Fed
+    the map checksum it never saw a zero, so the guard was dead code.
+    """
+    coordinator = _report_location_coordinator(
+        zone_hash=0, bol_hash=8311072749804434520, pos_type=0
+    )
+    coordinator.data.report_data.locations[0].real_pos_x = 0
+    coordinator.data.report_data.locations[0].real_pos_y = 0
+
+    position = _custom_path_telemetry_snapshot(coordinator)["position"]
+
+    assert position["source"] != "report_data.locations[0]"
     assert position["valid_for_motion"] is False
 
 
@@ -7915,6 +8031,7 @@ def _force_resync_self(**overrides: object) -> SimpleNamespace:
         device_name="Test mower",
         manager=SimpleNamespace(regenerate_stale_geojson=MagicMock()),
         map_sync_status="out_of_sync",
+        map_sync_diagnostics=lambda: {"status": "out_of_sync"},
         last_map_task_error=None,
         async_rtk_dock_location=AsyncMock(),
         async_get_area_list=AsyncMock(),
@@ -7923,6 +8040,61 @@ def _force_resync_self(**overrides: object) -> SimpleNamespace:
     for key, value in overrides.items():
         setattr(fake, key, value)
     return fake
+
+
+def test_map_sync_diagnostics_explains_a_usable_but_out_of_sync_map() -> None:
+    """A complete, containment-usable map can still report ``out_of_sync``.
+
+    Live 2026-07-24: four areas with full polygon frames and containment
+    passing, yet ``map_sync_status`` read ``out_of_sync`` — which also re-runs
+    the sync saga on every coordinator tick.  ``is_map_synced()`` folds three
+    conditions into one boolean; this breaks them back out so the failing one
+    is identifiable from a read-only call.
+    """
+    device_map = SimpleNamespace(
+        computed_bol_hash=5553341678865748256,
+        find_incomplete_hashes=lambda _sub_cmd: [],
+        area_name=[SimpleNamespace(hash=1343645155037768237, name="Backyard Right")],
+        area_root_hashlist=[1343645155037768237],
+        area={1343645155037768237: SimpleNamespace(data=[SimpleNamespace()])},
+    )
+    fake = SimpleNamespace(
+        map_sync_status="out_of_sync",
+        data=SimpleNamespace(
+            map=device_map,
+            report_data=SimpleNamespace(
+                locations=[SimpleNamespace(bol_hash=8311072749804434520)]
+            ),
+        ),
+    )
+
+    diagnostics = MammotionBaseUpdateCoordinator.map_sync_diagnostics(fake)
+
+    assert diagnostics["status"] == "out_of_sync"
+    assert diagnostics["reported_bol_hash"] == "8311072749804434520"
+    assert diagnostics["computed_bol_hash"] == "5553341678865748256"
+    # The isolated culprit: the two other conditions are healthy.
+    assert diagnostics["bol_hash_matches"] is False
+    assert diagnostics["incomplete_area_hashes"] == []
+    assert diagnostics["area_names_covered"] is True
+    assert diagnostics["area_frame_counts"] == {"1343645155037768237": 1}
+    assert "error" not in diagnostics
+
+
+def test_map_sync_diagnostics_never_raises_on_a_broken_map() -> None:
+    """Diagnostics degrade to an ``error`` field rather than breaking callers."""
+    fake = SimpleNamespace(
+        map_sync_status="out_of_sync",
+        data=SimpleNamespace(
+            map=SimpleNamespace(),  # missing every hash-list attribute
+            report_data=SimpleNamespace(locations=[]),
+        ),
+    )
+
+    diagnostics = MammotionBaseUpdateCoordinator.map_sync_diagnostics(fake)
+
+    assert diagnostics["status"] == "out_of_sync"
+    assert "error" in diagnostics
 
 
 @pytest.mark.asyncio

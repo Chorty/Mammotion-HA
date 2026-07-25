@@ -2311,6 +2311,7 @@ def _custom_path_position_snapshot(
     location_pos_type = _safe_attr_path(data, "location.position_type")
     location_zone_hash = _safe_attr_path(data, "location.work_zone")
     location_toward = _safe_attr_path(data, "location.orientation")
+    map_bol_hash = _safe_attr_path(report_location, "bol_hash")
 
     source = "unavailable"
     x = y = toward = None
@@ -2327,7 +2328,15 @@ def _custom_path_position_snapshot(
             _safe_attr_path(report_location, "real_pos_y")
         )
         candidate_pos_type = _safe_attr_path(report_location, "pos_type")
-        candidate_zone_hash = _safe_attr_path(report_location, "bol_hash")
+        # ``rpt_dev_location`` carries BOTH ``zone_hash`` (proto field 5, the
+        # mowing zone the mower is currently inside) and ``bol_hash`` (field 6,
+        # a MurMur checksum of the device's whole area set).  This used to read
+        # ``bol_hash``, which silently disabled every zone-based guard: a map
+        # checksum is non-zero whenever a map exists, so the stale-dock-pose
+        # rejection, the ``location_metadata`` overlay and the
+        # ``zone_hash_unavailable``/``zone_hash_changed`` degradation reasons
+        # could never fire.  Field 5 is the zone; keep the checksum separate.
+        candidate_zone_hash = _safe_attr_path(report_location, "zone_hash")
         if not _is_stale_zero_area_out_pose(
             candidate_x, candidate_y, candidate_pos_type, candidate_zone_hash
         ):
@@ -2415,6 +2424,12 @@ def _custom_path_position_snapshot(
         "pos_type": pos_type,
         "pos_type_label": _pos_type_label(pos_type),
         "zone_hash": safe_zone_hash,
+        # The device's whole-map checksum, reported alongside the zone in the
+        # same message.  Not a position field — exposed only so map-sync
+        # forensics can compare it against our locally computed bol_hash.
+        "map_bol_hash": (
+            _json_safe_int(map_bol_hash) if map_bol_hash is not None else None
+        ),
         "area_name": area_name,
         "valid_for_motion": _is_valid_motion_position(
             {
@@ -2580,7 +2595,9 @@ def _custom_path_position_candidates(
                     _safe_attr_path(report_location, "real_toward")
                 ),
                 pos_type=_safe_attr_path(report_location, "pos_type"),
-                zone_hash=_safe_attr_path(report_location, "bol_hash"),
+                # Field 5 (zone), not field 6 (map checksum) — see
+                # _custom_path_position_snapshot.
+                zone_hash=_safe_attr_path(report_location, "zone_hash"),
             )
         )
 
@@ -4306,6 +4323,11 @@ def _position_feedback_raw_sources(
             safe_bol_hash: Any = _json_safe_int(int(bol_hash or 0))
         except (TypeError, ValueError):
             safe_bol_hash = str(bol_hash) if bol_hash is not None else None
+        zone_hash = _safe_attr_path(location, "zone_hash")
+        try:
+            safe_zone_hash: Any = _json_safe_int(int(zone_hash or 0))
+        except (TypeError, ValueError):
+            safe_zone_hash = str(zone_hash) if zone_hash is not None else None
         sources["report_data.locations"].append(
             {
                 "index": index,
@@ -4313,6 +4335,9 @@ def _position_feedback_raw_sources(
                 "real_pos_y": _safe_attr_path(location, "real_pos_y"),
                 "real_toward": _safe_attr_path(location, "real_toward"),
                 "pos_type": _enum_value(_safe_attr_path(location, "pos_type")),
+                # Distinct proto fields: zone_hash is field 5 (current mowing
+                # zone), bol_hash is field 6 (whole-map checksum).
+                "zone_hash": safe_zone_hash,
                 "bol_hash": safe_bol_hash,
             }
         )
@@ -11013,6 +11038,9 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
                     "area": map_dict.get("area", {}),
                     "svg": map_dict.get("svg", {}),
                     "area_name": map_dict.get("area_name", []),
+                    # Why map_sync_status reads what it reads, without having
+                    # to fire force_map_resync to find out.
+                    "map_sync": mower.reporting_coordinator.map_sync_diagnostics(),
                 }
             ),
         )

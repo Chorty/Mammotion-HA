@@ -854,6 +854,7 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         """
         result: dict[str, Any] = {
             "map_sync_status_before": self.map_sync_status,
+            "map_sync_diagnostics_before": self.map_sync_diagnostics(),
             "steps": [],
             "error": None,
         }
@@ -879,6 +880,7 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         except Exception as exc:  # noqa: BLE001 - surface any failure as a field
             result["error"] = f"{type(exc).__name__}: {exc}"
         result["map_sync_status_after"] = self.map_sync_status
+        result["map_sync_diagnostics_after"] = self.map_sync_diagnostics()
         result["last_map_task_error"] = self.last_map_task_error
         return result
 
@@ -1831,6 +1833,57 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         if mower_data.map.is_map_synced(bol_hash):
             return "synced"
         return "out_of_sync"
+
+    def map_sync_diagnostics(self) -> dict[str, Any]:
+        """Return why :attr:`map_sync_status` reads what it reads.
+
+        ``is_map_synced()`` collapses three independent conditions into one
+        boolean, so a mower can sit on ``out_of_sync`` indefinitely — re-running
+        the sync saga on every coordinator tick — while its map is complete and
+        perfectly usable for containment.  Observed live 2026-07-24: four areas
+        with full polygon frames, containment passing, still ``out_of_sync``.
+
+        Read-only; sends nothing to the device.
+        """
+        diagnostics: dict[str, Any] = {
+            "status": self.map_sync_status,
+            "reported_bol_hash": None,
+            "computed_bol_hash": None,
+            "bol_hash_matches": None,
+            "incomplete_area_hashes": None,
+            "area_names_covered": None,
+            "area_frame_counts": None,
+        }
+        if self.data is None:
+            return diagnostics
+
+        mower_data = cast(MowingDevice, self.data)
+        device_map = mower_data.map
+        locations = mower_data.report_data.locations
+        reported = locations[0].bol_hash if locations else 0
+        try:
+            computed = int(device_map.computed_bol_hash)
+            incomplete = [str(h) for h in device_map.find_incomplete_hashes(0)]
+            name_hashes = {a.hash for a in device_map.area_name}
+            root_hashes = set(device_map.area_root_hashlist)
+            diagnostics.update(
+                {
+                    "reported_bol_hash": str(reported),
+                    "computed_bol_hash": str(computed),
+                    "bol_hash_matches": bool(reported) and computed == reported,
+                    "incomplete_area_hashes": incomplete,
+                    "area_names_covered": (
+                        not name_hashes or name_hashes.issubset(root_hashes)
+                    ),
+                    "area_frame_counts": {
+                        str(area_hash): len(getattr(frames, "data", []) or [])
+                        for area_hash, frames in device_map.area.items()
+                    },
+                }
+            )
+        except Exception as exc:  # noqa: BLE001 - diagnostics must never raise
+            diagnostics["error"] = f"{type(exc).__name__}: {exc}"
+        return diagnostics
 
 
 class MammotionReportUpdateCoordinator(MammotionBaseUpdateCoordinator[MowingDevice]):
