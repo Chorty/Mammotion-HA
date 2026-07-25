@@ -3801,12 +3801,18 @@ def _app_speed_scale_report(linear_speed: Any, angular_speed: Any) -> dict[str, 
     }
 
 
-# Per-mower registry of the manual-motion service run currently in flight,
-# keyed by id(coordinator). HA service calls can overlap; two motion loops
-# interleaving movement and stop commands would defeat every bounded-pulse
-# guarantee, so a second start is strictly rejected (never queued -- a queued
-# motion run would fire unattended after the owner finishes).
-_ACTIVE_MANUAL_MOTION_RUNS: dict[int, str] = {}
+# The manual-motion claim lives on the coordinator itself
+# (``MammotionBaseUpdateCoordinator.manual_motion_owner``) rather than in a
+# module-level registry here, because the coordinator also has to read it: it
+# must not start an exclusive map-fetch saga while a guarded motion run is in
+# flight (the saga blocks the mower's command queue and stalls the run's
+# pulses).  ``services`` imports ``coordinator``, so the flag cannot live here
+# and still be visible there.
+#
+# HA service calls can overlap; two motion loops interleaving movement and stop
+# commands would defeat every bounded-pulse guarantee, so a second start is
+# strictly rejected (never queued -- a queued motion run would fire unattended
+# after the owner finishes).
 
 
 def _manual_motion_busy_result(service: str, owner: str) -> dict[str, Any]:
@@ -3871,15 +3877,17 @@ def _wrap_exclusive_manual_motion(
         if mower is None:
             # The wrapped handler logs the unknown entity and returns {}.
             return await handler(call)
-        key = id(mower.reporting_coordinator)
-        owner = _ACTIVE_MANUAL_MOTION_RUNS.get(key)
+        coordinator = mower.reporting_coordinator
+        # Claim atomically on the event loop: no await between the read and the
+        # write, so two overlapping calls cannot both see it free.
+        owner = getattr(coordinator, "manual_motion_owner", None)
         if owner is not None:
             return _manual_motion_busy_result(service, owner)
-        _ACTIVE_MANUAL_MOTION_RUNS[key] = service
+        coordinator.manual_motion_owner = service
         try:
             return await handler(call)
         finally:
-            _ACTIVE_MANUAL_MOTION_RUNS.pop(key, None)
+            coordinator.manual_motion_owner = None
 
     return wrapped
 

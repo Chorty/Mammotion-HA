@@ -7330,6 +7330,116 @@ async def test_refresh_cloud_session_calls_refresh_login() -> None:
     coordinator.async_refresh_login.assert_awaited_once_with()
 
 
+def _map_sync_gate_self(**overrides: object) -> SimpleNamespace:
+    """Build a coordinator-shaped self for the _should_start_map_sync gate."""
+    fake = SimpleNamespace(
+        manual_motion_owner=None,
+        last_map_sync=None,
+        last_map_sync_bol_hash=None,
+    )
+    for key, value in overrides.items():
+        setattr(fake, key, value)
+    return fake
+
+
+def _should_sync(fake: SimpleNamespace, bol_hash: int) -> bool:
+    """Call the real gate against a coordinator-shaped stub."""
+    return MammotionBaseUpdateCoordinator._should_start_map_sync(fake, bol_hash)  # noqa: SLF001
+
+
+def test_map_sync_gate_allows_the_first_attempt() -> None:
+    """With no prior attempt recorded, a needed sync runs."""
+    assert _should_sync(_map_sync_gate_self(), 8311072749804434520) is True
+
+
+def test_map_sync_gate_backs_off_a_non_converging_retry() -> None:
+    """A repeat attempt against the same bol_hash waits out MAP_INTERVAL.
+
+    ``is_map_synced()`` can stay False indefinitely on a map that is complete
+    and containment-usable (live 2026-07-24), which otherwise re-ran the
+    exclusive saga every REPORT_INTERVAL (5 min) forever.
+    """
+    now = datetime.datetime.now(datetime.UTC)
+    recent = _map_sync_gate_self(
+        last_map_sync=now - datetime.timedelta(minutes=5),
+        last_map_sync_bol_hash=8311072749804434520,
+    )
+    assert _should_sync(recent, 8311072749804434520) is False
+
+    stale = _map_sync_gate_self(
+        last_map_sync=now - mammotion_coordinator.MAP_INTERVAL,
+        last_map_sync_bol_hash=8311072749804434520,
+    )
+    assert _should_sync(stale, 8311072749804434520) is True
+
+
+def test_map_sync_gate_never_delays_a_real_map_edit() -> None:
+    """A changed bol_hash means a device-side map edit — sync immediately."""
+    fake = _map_sync_gate_self(
+        last_map_sync=datetime.datetime.now(datetime.UTC),
+        last_map_sync_bol_hash=8311072749804434520,
+    )
+    assert _should_sync(fake, 1234567890123456789) is True
+
+
+def test_map_sync_gate_yields_to_a_guarded_motion_run() -> None:
+    """No exclusive saga while a motion run owns the mower.
+
+    ``MapFetchSaga`` holds the command queue exclusively and regular commands
+    are ``Priority.NORMAL``, so a saga starting mid-run blocks the run's pulses
+    and collapses the 200 ms refresh cadence the mower needs to keep driving.
+    """
+    fake = _map_sync_gate_self(
+        manual_motion_owner="raw_pymammotion_execute_vector_segment"
+    )
+    # Even the otherwise-unconditional first-attempt case must yield.
+    assert _should_sync(fake, 8311072749804434520) is False
+
+    fake.manual_motion_owner = None
+    assert _should_sync(fake, 8311072749804434520) is True
+
+
+def test_update_loop_only_starts_a_map_sync_through_the_gate() -> None:
+    """The per-tick sync in _async_update_data must go through the gate.
+
+    ``_async_update_data`` needs a full HA instance to exercise, so the gate
+    logic lives in ``_should_start_map_sync`` (unit-tested above) and this
+    pins the wiring — mirroring how ``_async_opportunistic_ble_reconnect`` was
+    extracted for the same reason.  Without the guard the exclusive saga runs
+    every REPORT_INTERVAL forever whenever ``is_map_synced()`` stays False.
+    """
+    source = pathlib.Path(mammotion_coordinator.__file__).read_text()
+    tree = ast.parse(source)
+
+    update_loops = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "_async_update_data"
+    ]
+    assert update_loops, "no _async_update_data found"
+
+    guarded = 0
+    for loop in update_loops:
+        for node in ast.walk(loop):
+            if not isinstance(node, ast.If):
+                continue
+            calls_sync = any(
+                isinstance(inner, ast.Attribute) and inner.attr == "start_map_sync"
+                for inner in ast.walk(node)
+            )
+            if not calls_sync:
+                continue
+            gated = any(
+                isinstance(inner, ast.Attribute)
+                and inner.attr == "_should_start_map_sync"
+                for inner in ast.walk(node.test)
+            )
+            assert gated, "start_map_sync in _async_update_data is not gated"
+            guarded += 1
+
+    assert guarded == 1, f"expected exactly one gated map sync, found {guarded}"
+
+
 @pytest.mark.asyncio
 async def test_sync_success_updates_last_sync_metadata() -> None:
     """Map/task sync success records timestamps and clears stale errors."""
@@ -7337,11 +7447,21 @@ async def test_sync_success_updates_last_sync_metadata() -> None:
         manager=SimpleNamespace(
             start_map_sync=AsyncMock(),
             start_plan_sync=AsyncMock(),
+            get_device_by_name=MagicMock(return_value=None),
         ),
         device_name="Luba-Test",
         last_map_sync=None,
+        last_map_sync_bol_hash=None,
         last_task_sync=None,
         last_map_task_error="old error",
+    )
+    coordinator._reported_bol_hash = (  # noqa: SLF001
+        lambda: MammotionBaseUpdateCoordinator._reported_bol_hash(coordinator)  # noqa: SLF001
+    )
+    coordinator._record_map_sync_attempt = (  # noqa: SLF001
+        lambda bol_hash=None: MammotionBaseUpdateCoordinator._record_map_sync_attempt(  # noqa: SLF001
+            coordinator, bol_hash
+        )
     )
 
     await MammotionReportUpdateCoordinator.async_sync_maps(coordinator)

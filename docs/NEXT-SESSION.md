@@ -36,9 +36,12 @@ records.
   failure (only the existing custom-integration and deprecated tracker-property
   warnings). `lawn_mower.py` was unchanged and remains at the previously
   deployed `0a5bc4ab` level.
-  **Host is now BEHIND the branch by `services.py` + `coordinator.py`**, which
-  carry the 2026-07-24 `zone_hash` fix and `map_sync_diagnostics` (below). They
-  deploy together; nothing else changed.
+  **Deploy 2026-07-24: `f2074722` (`services.py` + `coordinator.py`) is LIVE** —
+  scp'd and md5-matched both sides, then loaded by the operator's own HA update
+  restart. Verified on hardware: `get_map_data` returns the new `map_sync`
+  block, 122 Mammotion entities. **Host is now behind again by the same two
+  files**, carrying the map-saga fix below; they deploy together and need a
+  restart.
 - **VIO needs daylight.** It will not initialize in a dark scene; the gates
   refuse rather than drive blind. Check `camera_brightness` is not `Dark` and
   `track_feature_num` is healthy before any VIO run.
@@ -124,6 +127,46 @@ Look at `raw_sources."report_data.locations"[0]`: `zone_hash` must be non-zero
 while `pos_type` is 1 (`AREA_INSIDE`). It read 0 while docked (`pos_type: 5`,
 `CHARGE_ON`), which is correct — the docked case proves nothing either way.
 
+## 🚨 The exclusive map saga could stall a motion run (fixed 2026-07-24, NOT deployed)
+
+Found while investigating the `zone_hash` bug, and it outranks it. Because
+`is_map_synced()` is permanently false on this mower (checksum mismatch above),
+`_async_update_data` enqueued a **`MapFetchSaga` every `REPORT_INTERVAL` (5 min),
+forever**. That is not free:
+
+- `MapFetchSaga` runs at `Priority.EXCLUSIVE` and **holds the mower's command
+  queue** until it completes;
+- motion commands go out at `Priority.NORMAL` with `skip_if_saga_active=False`,
+  and `_process` does `await self._exclusive_active.wait()` — they **block**
+  behind the saga;
+- `_COMMAND_TTL = 120.0` **silently drops** anything undispatched for 2 minutes
+  (only `EMERGENCY` is exempt);
+- nothing in the motion path consulted `is_saga_active` — the only caller was
+  the `map_sync_status` sensor label.
+
+A saga landing mid-run therefore stalls pulses and collapses the 200 ms refresh
+cadence, which makes the mower self-halt (the H-watchdog). **This is a plausible
+candidate for the still-open 2026-07-18 rotation decay** (9.5°, 9.4°, 5.7°,
+0.001°, 0.49° — "location/moment-specific, not parameter-driven", 90 min after a
+clean run at identical params). **Candidate, not a diagnosis — do not record it
+as the cause without evidence.**
+
+Two fixes in `coordinator.py`, both behind `_should_start_map_sync()`:
+
+1. **Back-off** — a repeat attempt against the same `bol_hash` waits out
+   `MAP_INTERVAL` (60 min) instead of retrying every 5 min. A *changed*
+   `bol_hash` still syncs immediately, so a real device-side map edit is never
+   delayed. Uses the previously-unread `last_map_sync` plus a new
+   `last_map_sync_bol_hash`.
+2. **Motion-aware** — no saga starts while a guarded motion run holds the mower.
+   The manual-motion claim moved from the `_ACTIVE_MANUAL_MOTION_RUNS` module
+   dict in `services.py` onto `coordinator.manual_motion_owner`, because
+   `services` imports `coordinator` and the flag has to be readable from both.
+   Atomic check-and-set semantics preserved.
+
+Deliberately **no new motion gate**: refusing a command the operator just issued
+is worse than the wait, and these two make a mid-run saga rare.
+
 ## Immediate next steps (all doable off-mower)
 
 1. **Test refresh on a *properly-powered* turn.** `manual_velocity_pulse_test`
@@ -190,16 +233,27 @@ while `pos_type` is 1 (`AREA_INSIDE`). It read 0 while docked (`pos_type: 5`,
    exclusive saga keeps taking the device command queue for no reason.
    `is_map_synced()` folds three conditions into one boolean (bol-hash match /
    no incomplete areas / area names covered), so the failing one was invisible.
-   **New (2026-07-24, NOT deployed): `coordinator.map_sync_diagnostics()`**
-   breaks them out and is surfaced read-only in `get_map_data` under `map_sync`,
-   plus as `map_sync_diagnostics_before`/`_after` in the `force_map_resync`
-   result. **Next session, one read decides it** — call `get_map_data` and look
-   at `map_sync.bol_hash_matches`, `.incomplete_area_hashes`,
-   `.area_names_covered`. (I could not settle it from the desk: the reported
-   `bol_hash` is `8311072749804434520` and no permutation of the 4 *area-frame*
-   hashes MurMurs to it, but `computed_bol_hash` is built from
-   `root_hash_lists`, which I cannot read remotely — so a mismatch is likely but
-   unproven.)
+   **✅ ANSWERED 2026-07-24 (live, read-only, after the fix went in):** the
+   **bol-hash match is the sole failing condition.**
+
+   | condition | value |
+   |---|---|
+   | `bol_hash_matches` | **False** — reported `8311072749804434520` vs computed `3951449155367542529` |
+   | `incomplete_area_hashes` | `[]` — every declared area has its frames |
+   | `area_names_covered` | `True` |
+   | `area_frame_counts` | all 4 areas, 1 frame each |
+
+   So the map is complete and correctly named; only the checksum disagrees.
+   Sharpening it further: `computed_bol_hash` is **not** any permutation of the
+   4 `map.area` hashes (all 24 checked), so `root_hash_lists` — which
+   `computed_bol_hash` is actually built from — holds a **different set** than
+   the areas we hold (extra entries, duplicates, or a stale manifest). The
+   reported value isn't any ordered subset of the 4 either.
+
+   **Root fix deferred by design** — it likely belongs in pymammotion's
+   `is_map_synced()` / `area_root_hashlist`, and the local churn is now
+   harmless (below). Next step when picked up: dump `root_hash_lists` on the
+   host to see what it actually contains versus `map.area`.
 
 Note `manual_velocity_pulse_test`'s `speed` is on the app's 0.0–1.0 scale
 (default **0.55** → raw linear 400, matching the executors); its `duration_ms`

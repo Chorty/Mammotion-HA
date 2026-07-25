@@ -182,6 +182,15 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         self._bluetooth_enabled: bool = True
         self._cloud_enabled: bool = True
         self.last_map_sync: datetime.datetime | None = None
+        #: ``bol_hash`` the last map-sync attempt was made against.  Used to
+        #: back off a sync that is not converging — see ``_should_start_map_sync``.
+        self.last_map_sync_bol_hash: int | None = None
+        #: Name of the motion service currently holding this mower's manual-motion
+        #: claim, or ``None``.  Set by ``services._wrap_exclusive_manual_motion``;
+        #: read here so the coordinator never starts an exclusive map saga in the
+        #: middle of a guarded motion run (the saga would block the mower's command
+        #: queue and stall the run's pulses).
+        self.manual_motion_owner: str | None = None
         self.last_task_sync: datetime.datetime | None = None
         self.last_map_task_error: str | None = None
         self.last_cloud_login_success: datetime.datetime | None = None
@@ -811,11 +820,56 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         if http is not None:
             await http.start_ota_upgrade(handle.iot_id, version)
 
+    def _reported_bol_hash(self) -> int:
+        """Return the device's currently reported map checksum, or 0."""
+        device = self.manager.get_device_by_name(self.device_name)
+        locations = getattr(
+            getattr(device, "report_data", None), "locations", None
+        )
+        if not locations:
+            return 0
+        return int(getattr(locations[0], "bol_hash", 0) or 0)
+
+    def _record_map_sync_attempt(self, bol_hash: int | None = None) -> None:
+        """Stamp when a map sync ran and which checksum it targeted."""
+        self.last_map_sync = datetime.datetime.now(datetime.UTC)
+        self.last_map_sync_bol_hash = (
+            self._reported_bol_hash() if bol_hash is None else bol_hash
+        )
+
+    def _should_start_map_sync(self, bol_hash: int) -> bool:
+        """Return True when a background map sync is worth starting now.
+
+        ``MapFetchSaga`` runs *exclusively* on the mower's command queue, and
+        regular commands are ``Priority.NORMAL`` — they block on the exclusive
+        slot until it finishes, and anything undispatched for ``_COMMAND_TTL``
+        (120 s) is silently dropped.  So an unnecessary sync is not free: it can
+        stall a guarded motion run's pulses and collapse the 200 ms refresh
+        cadence the mower needs to keep driving.
+
+        Two conditions suppress it:
+
+        * a guarded motion run currently holds this mower — never contend with it;
+        * the previous attempt targeted the same ``bol_hash`` and was recent.
+          ``is_map_synced()`` can stay False indefinitely on a map that is
+          complete and perfectly usable (observed live 2026-07-24), which
+          otherwise re-runs the saga every ``REPORT_INTERVAL`` forever.
+
+        A *changed* ``bol_hash`` always syncs immediately — that is a real
+        device-side map edit and must not be delayed by the back-off.
+        """
+        if self.manual_motion_owner is not None:
+            return False
+        if self.last_map_sync is None or self.last_map_sync_bol_hash != bol_hash:
+            return True
+        elapsed = datetime.datetime.now(datetime.UTC) - self.last_map_sync
+        return elapsed >= MAP_INTERVAL
+
     async def async_sync_maps(self) -> None:
         """Get map data from the device."""
         try:
             await self.manager.start_map_sync(self.device_name)
-            self.last_map_sync = datetime.datetime.now(datetime.UTC)
+            self._record_map_sync_attempt()
             self.last_map_task_error = None
 
         except EXPIRED_CREDENTIAL_EXCEPTIONS as exc:
@@ -2446,7 +2500,10 @@ class MammotionMapUpdateCoordinator(MammotionBaseUpdateCoordinator[MowerInfo]):
                 if device.report_data.locations
                 else 0
             )
-            if not device.map.is_map_synced(bol_hash):
+            if not device.map.is_map_synced(bol_hash) and self._should_start_map_sync(
+                bol_hash
+            ):
+                self._record_map_sync_attempt(bol_hash)
                 await self.manager.start_map_sync(self.device_name)
 
         except DeviceOfflineException as ex:

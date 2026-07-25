@@ -3512,3 +3512,88 @@ proves nothing either way. Pre-flight check, read-only, before the next real com
 response, not nested under a `raw` key like `export_map`/`_export_mower_map` does. Parsing
 it with the `export_map` shape yields empty results and reads exactly like an empty map —
 which is how this session initially, and wrongly, "confirmed" the map was still broken.
+
+## Wrap-up 2026-07-24 (later): map-sync root cause identified; the exclusive saga made motion-aware
+
+**Deploy.** `f2074722` (`services.py` + `coordinator.py`) scp'd and md5-matched both sides
+(`aa20e913…` / `2307dddf…`). The operator started an HA update mid-session, and that restart
+loaded it — no separate restart was needed. Verified live: `get_map_data` returns the new
+`map_sync` block; 122 Mammotion entities; API healthy.
+
+### Root cause of the permanent `out_of_sync`: the checksum, and only the checksum
+
+The new `map_sync_diagnostics()` answered it on the first read:
+
+| condition | value |
+|---|---|
+| `bol_hash_matches` | **False** — reported `8311072749804434520` vs computed `3951449155367542529` |
+| `incomplete_area_hashes` | `[]` |
+| `area_names_covered` | `True` |
+| `area_frame_counts` | 4 areas, 1 frame each |
+
+The map is complete and correctly named; only the hash disagrees. Sharpening it:
+`computed_bol_hash` is **not** any of the 24 permutations of the four `map.area` hashes, and
+the reported value is not any ordered subset of them either. Since `computed_bol_hash` is
+built from `root_hash_lists` (not `map.area` keys), the local root manifest holds a
+**different set** than the areas we actually have — extra entries, duplicates, or a stale
+manifest.
+
+Root fix deliberately **deferred**: it likely belongs in pymammotion's `is_map_synced()` /
+`area_root_hashlist`, and the local consequence is now harmless. Next step when picked up is
+to dump `root_hash_lists` on the host and compare it against `map.area`.
+
+*This also supersedes the desk-side guess in the previous section — the earlier note said a
+mismatch was "likely but unproven" because `computed_bol_hash` could not be read remotely.
+It is now measured, and the specific value rules out the simple "same four areas, different
+order" explanation.*
+
+### 🚨 The bigger find: an exclusive saga every 5 minutes, in a queue motion shares
+
+Because `is_map_synced()` is permanently false here, `_async_update_data` enqueued a
+`MapFetchSaga` every `REPORT_INTERVAL` (5 min), indefinitely. That is not free:
+
+- `MapFetchSaga` runs at `Priority.EXCLUSIVE` and holds the mower's command queue;
+- motion goes out at `Priority.NORMAL` with `skip_if_saga_active=False`
+  (`coordinator.async_send_command` → `client.send_command_with_args` →
+  `queue.enqueue(..., priority=Priority.NORMAL)`), and `_process` does
+  `await self._exclusive_active.wait()` — motion **blocks** behind the saga;
+- `_COMMAND_TTL = 120.0` **silently drops** anything undispatched for 2 minutes
+  (`EMERGENCY` exempt);
+- nothing in the motion path consulted `is_saga_active` — its only caller was the
+  `map_sync_status` sensor label.
+
+So a saga landing mid-run stalls pulses and collapses the 200 ms refresh cadence, which makes
+the mower self-halt. **Candidate explanation for the still-open 07-18 rotation decay** (9.5°,
+9.4°, 5.7°, 0.001°, 0.49°; "location/moment-specific, not parameter-driven", 90 min after a
+clean run at identical params). **Explicitly a candidate, not a diagnosis** — recorded as a
+hypothesis to test, not as the cause.
+
+**Checked and rejected:** the theory that a saga also freezes the report stream (which would
+have explained the 07-19 mid-run feed freeze). `queue.on_saga_start` is wired to a **no-op**
+in this pymammotion version (`device/handle.py:293`); poll items use
+`skip_if_saga_active=True` instead. Not a supported explanation.
+
+**Fixes** — both behind one testable predicate, `coordinator._should_start_map_sync()`:
+
+1. **Back-off.** A repeat attempt against the same `bol_hash` waits out `MAP_INTERVAL`
+   (60 min) rather than retrying every 5. A *changed* `bol_hash` syncs immediately, so a real
+   device-side map edit is never delayed. Uses `last_map_sync` — which already existed
+   (`coordinator.py:184`) and was **never read for gating**, only surfaced as a sensor — plus
+   a new `last_map_sync_bol_hash`. Both stamped through `_record_map_sync_attempt()`, which
+   also fixes a smaller gap: the per-tick path called `manager.start_map_sync()` directly and
+   never stamped `last_map_sync`, so the sensor under-reported syncs.
+2. **Motion-aware.** No saga starts while a guarded motion run holds the mower. The claim
+   moved from the `_ACTIVE_MANUAL_MOTION_RUNS` module dict (`services.py`) onto
+   `coordinator.manual_motion_owner`, because `services` imports `coordinator` and the flag
+   must be readable from both sides. Atomic check-and-set (no `await` between read and write)
+   and release-on-every-exit-path, including cancellation, are preserved.
+
+Per the decision taken: **no new motion gate.** Refusing a command the operator just issued
+is worse than the wait, and 1 + 2 make a mid-run saga rare.
+
+**Tests.** 341 pass (was 336), mypy + ruff clean on touched files. `_async_update_data` needs
+a full HA instance, so the logic lives in `_should_start_map_sync` (4 unit tests: first
+attempt, back-off vs elapsed `MAP_INTERVAL`, changed-hash-syncs-now, yields-to-motion) and the
+wiring is pinned by an AST test asserting the `start_map_sync` call inside `_async_update_data`
+is guarded — mirroring how `_async_opportunistic_ble_reconnect` was extracted for the same
+reason. Both the AST test and the motion-aware clause were verified to fail when reverted.
