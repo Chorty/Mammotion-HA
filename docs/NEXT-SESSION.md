@@ -177,9 +177,24 @@ around restarts and reloads — exactly when someone is likely to be testing —
 the guard is worth having; it is just a low-probability event, not the routine
 hazard first described.
 
-Two fixes in `coordinator.py`, both behind `_should_start_map_sync()`. Given the
-unreachable call site, **both are currently no-ops in practice** — defence in
-depth that becomes load-bearing the moment the early-return bug is fixed:
+**The guard was initially installed on the wrong call site.** `_should_start_map_sync`
+covers only the per-tick path, which never runs. The paths that *actually* start
+sagas are operator-triggered and were unguarded:
+
+- **`button.<mower>_sync_maps`** — pressable at any moment, including mid-run.
+  History shows a press at `23:49:09` followed by `syncing` at `23:49:10`, and a
+  deliberate press on 07-25 held the queue **12–17 s**. This is the real hazard:
+  not a background timer, but a dashboard button someone can hit while debugging
+  the very run it would stall.
+- **`force_map_resync`** — same, on demand, and *every* step it runs enqueues
+  device commands.
+
+Both now go through `_raise_if_manual_motion_in_progress()` on `async_sync_maps()`:
+the button raises `HomeAssistantError` naming the owning service, and
+`force_map_resync` refuses up front with `error: manual_motion_in_progress` +
+`busy_owner`, sending nothing. The `_should_start_map_sync` back-off stays where
+it is as defence in depth — a currently-inert guard that becomes load-bearing the
+moment the tick path is made reachable:
 
 1. **Back-off** — a repeat attempt against the same `bol_hash` waits out
    `MAP_INTERVAL` (60 min) instead of retrying every 5 min. A *changed*
@@ -278,10 +293,19 @@ is worse than the wait, and these two make a mid-run saga rare.
    the areas we hold (extra entries, duplicates, or a stale manifest). The
    reported value isn't any ordered subset of the 4 either.
 
-   **Root fix deferred by design** — it likely belongs in pymammotion's
-   `is_map_synced()` / `area_root_hashlist`, and the local churn is now
-   harmless (below). Next step when picked up: dump `root_hash_lists` on the
-   host to see what it actually contains versus `map.area`.
+   **✅ RESOLVED the same night — and there is nothing wrong with
+   `is_map_synced()`.** Pressing `button.<mower>_sync_maps` once converged it in
+   **17 s**: `computed_bol_hash` `3951449155367542529` → `8311072749804434520`,
+   `bol_hash_matches` → **True**, `map_sync_status` → **`synced`**. The saga's
+   on-complete handler restores `root_hash_lists` from the saga result, which is
+   exactly the documented convergence fix.
+
+   So the stale local `root_hash_lists` was the whole story, and **~25 h of
+   `out_of_sync` was resolved by one button press.** No pymammotion change is
+   needed. Withdraw the earlier framing that `is_map_synced()` is "permanently
+   false on this mower" — it was false only because **nothing was ever running a
+   sync automatically** (see the unreachable-block bug below). That is the real
+   defect, and it is still open.
 
 Note `manual_velocity_pulse_test`'s `speed` is on the app's 0.0–1.0 scale
 (default **0.55** → raw linear 400, matching the executors); its `duration_ms`

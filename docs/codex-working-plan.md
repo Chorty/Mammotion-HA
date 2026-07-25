@@ -3649,3 +3649,68 @@ for the effect (`syncing` episodes in sensor history) rather than re-reading the
 attempt at verification — grepping `docker logs` for `enqueuing MapFetchSaga` — returned 0 and
 was *worthless*, because pymammotion DEBUG logging is off on this host (0 debug lines in 20 min);
 a zero there means nothing. Prefer a signal the system records independently of log level.
+
+## Wrap-up 2026-07-24/25: the guard was on the wrong call site; map-sync converges on demand
+
+Follow-up to the correction above, prompted by challenging the claim that the saga guard was
+"no longer needed". It is needed — it was simply installed where nothing happens.
+
+### Three saga entry points; the guard covered only the dead one
+
+| Entry point | Guarded before | Actually fires? |
+|---|---|---|
+| `coordinator.py` per-tick bol_hash check | yes (`_should_start_map_sync`) | **no** — unreachable in steady state |
+| `async_sync_maps()` ← `button.<mower>_sync_maps` (`button.py:109`) | **no** | **yes**, whenever pressed |
+| `async_sync_maps()` ← `async_force_map_resync` | **no** | **yes**, on demand |
+
+The live history made the point: `button.back_yard_clip_skywalker_sync_maps` was last pressed
+`2026-07-22T23:49:09`, and `map_sync_status` went `out_of_sync → syncing` at `23:49:10`. The
+five saga episodes in three days were **operator-triggered, not background churn**.
+
+This inverts the risk picture rather than shrinking it. A background timer was never the
+threat; a dashboard button pressable at any moment — including mid-run, while diagnosing the
+kind of stalled run we have been chasing — is far more plausible, and it was entirely
+unguarded. A deliberate press on 07-25 held the queue **12–17 s**, which is a real stall
+window for a refreshed segment run.
+
+**Fix:** `_raise_if_manual_motion_in_progress()` on `async_sync_maps()`, so all operator paths
+inherit it. The button raises `HomeAssistantError` naming the owning service; `force_map_resync`
+refuses up front with `error: manual_motion_in_progress` + `busy_owner` and sends nothing (all
+of its steps enqueue device commands, so a partway bail is not good enough). `_should_start_map_sync`
+stays as documented defence in depth. 343 tests; both new guards verified to fail when removed.
+
+**Not live-tested:** the refusal itself needs a real motion run to hold the claim, which needs
+daylight and an operator. The unit tests cover it; the live test confirmed the *trigger* half
+(press → saga → 12–17 s exclusive hold), which was the load-bearing empirical claim.
+
+### The map-sync mismatch resolved itself in 17 seconds — `is_map_synced()` is fine
+
+The same button press converged the map completely:
+
+| | before | after |
+|---|---|---|
+| `computed_bol_hash` | `3951449155367542529` | `8311072749804434520` |
+| `bol_hash_matches` | False | **True** |
+| `map_sync_status` | `out_of_sync` | **`synced`** |
+
+The saga's on-complete handler restores `root_hash_lists` from the saga result — the documented
+convergence fix — so a stale local `root_hash_lists` was the entire cause. **~25 h of
+`out_of_sync` cleared by one press.**
+
+**Withdraw** the framing that `is_map_synced()` is "permanently false on this mower" and the
+plan's deferred item to fix it upstream in pymammotion. Nothing is wrong with `is_map_synced()`,
+`area_root_hashlist`, or the saga. The condition persisted only because **nothing ever ran a
+sync automatically** — the unreachable-block bug. That single defect explains the whole chain:
+stale `root_hash_lists` → `bol_hash` mismatch → `out_of_sync` forever → the map never
+re-projecting after a reload (the original Task-3 symptom, 2026-07-22).
+
+**So the one remaining fix in this area is to make the per-tick block reachable** — at which
+point `_should_start_map_sync`'s back-off and motion-awareness become the guards that keep it
+from being a contention problem. Make-it-reachable and keep-it-rate-limited are one change, as
+already noted.
+
+**Method note.** Each of the three claims corrected in this area (map empty → not empty;
+churn every 5 min → operator-triggered; `is_map_synced` broken → fine) came from reading code
+and inferring frequency or state, and each was overturned by looking at what the system
+actually recorded — service responses, sensor history, a deliberate button press. Code reading
+establishes mechanism; it does not establish whether, or how often, a path executes.

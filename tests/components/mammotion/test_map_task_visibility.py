@@ -7330,6 +7330,63 @@ async def test_refresh_cloud_session_calls_refresh_login() -> None:
     coordinator.async_refresh_login.assert_awaited_once_with()
 
 
+@pytest.mark.asyncio
+async def test_sync_maps_refuses_during_a_guarded_motion_run() -> None:
+    """The sync_maps button must not start a saga mid-run.
+
+    This is the path that actually fires sagas: ``button.<mower>_sync_maps`` is
+    pressable at any moment, including during a run (live history shows a press
+    at 2026-07-22T23:49:09 followed by ``syncing`` one second later).  A
+    ``MapFetchSaga`` holds the command queue exclusively, and motion commands
+    are ``Priority.NORMAL`` — they block on that slot — so a press mid-run
+    stalls the run's pulses.  Refuse loudly rather than queue behind it.
+    """
+    coordinator = SimpleNamespace(
+        manager=SimpleNamespace(start_map_sync=AsyncMock()),
+        device_name="Luba-Test",
+        last_map_sync=None,
+        last_map_task_error=None,
+        manual_motion_owner="raw_pymammotion_execute_vector_segment",
+    )
+    coordinator._raise_if_manual_motion_in_progress = (  # noqa: SLF001
+        lambda action: MammotionBaseUpdateCoordinator._raise_if_manual_motion_in_progress(  # noqa: SLF001
+            coordinator, action
+        )
+    )
+
+    with pytest.raises(HomeAssistantError) as excinfo:
+        await MammotionReportUpdateCoordinator.async_sync_maps(coordinator)
+
+    # The message must name the owner so the operator knows what to wait for.
+    assert "raw_pymammotion_execute_vector_segment" in str(excinfo.value)
+    coordinator.manager.start_map_sync.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_force_map_resync_refuses_during_a_guarded_motion_run() -> None:
+    """force_map_resync refuses up front and sends nothing.
+
+    Every step it runs (RTK/dock refresh, area-name fetch, the saga itself)
+    enqueues device commands, so it has to bail before the first one rather
+    than partway through.  Reported as a result, not raised — this is a
+    response service whose caller wants the diagnostics.
+    """
+    fake = _force_resync_self(
+        manual_motion_owner="raw_pymammotion_execute_multi_segment"
+    )
+
+    result = await MammotionBaseUpdateCoordinator.async_force_map_resync(fake)
+
+    assert result["error"] == "manual_motion_in_progress"
+    assert result["busy_owner"] == "raw_pymammotion_execute_multi_segment"
+    assert result["steps"] == ["refused_manual_motion_in_progress"]
+    # Nothing was sent to the device on any of the three command paths.
+    fake.async_rtk_dock_location.assert_not_awaited()
+    fake.async_get_area_list.assert_not_awaited()
+    fake.async_sync_maps.assert_not_awaited()
+    fake.manager.regenerate_stale_geojson.assert_not_called()
+
+
 def _map_sync_gate_self(**overrides: object) -> SimpleNamespace:
     """Build a coordinator-shaped self for the _should_start_map_sync gate."""
     fake = SimpleNamespace(
@@ -7454,6 +7511,12 @@ async def test_sync_success_updates_last_sync_metadata() -> None:
         last_map_sync_bol_hash=None,
         last_task_sync=None,
         last_map_task_error="old error",
+        manual_motion_owner=None,
+    )
+    coordinator._raise_if_manual_motion_in_progress = (  # noqa: SLF001
+        lambda action: MammotionBaseUpdateCoordinator._raise_if_manual_motion_in_progress(  # noqa: SLF001
+            coordinator, action
+        )
     )
     coordinator._reported_bol_hash = (  # noqa: SLF001
         lambda: MammotionBaseUpdateCoordinator._reported_bol_hash(coordinator)  # noqa: SLF001
@@ -7480,6 +7543,12 @@ async def test_sync_failure_updates_last_error() -> None:
         device_name="Luba-Test",
         last_map_sync=None,
         last_map_task_error=None,
+        manual_motion_owner=None,
+    )
+    coordinator._raise_if_manual_motion_in_progress = (  # noqa: SLF001
+        lambda action: MammotionBaseUpdateCoordinator._raise_if_manual_motion_in_progress(  # noqa: SLF001
+            coordinator, action
+        )
     )
 
     with pytest.raises(RuntimeError):
@@ -8152,6 +8221,7 @@ def _force_resync_self(**overrides: object) -> SimpleNamespace:
         manager=SimpleNamespace(regenerate_stale_geojson=MagicMock()),
         map_sync_status="out_of_sync",
         map_sync_diagnostics=lambda: {"status": "out_of_sync"},
+        manual_motion_owner=None,
         last_map_task_error=None,
         async_rtk_dock_location=AsyncMock(),
         async_get_area_list=AsyncMock(),

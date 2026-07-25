@@ -849,14 +849,26 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
 
         Two conditions suppress it:
 
-        * a guarded motion run currently holds this mower — never contend with it;
+        * a guarded motion run currently holds this mower — never contend with it
+          (see :meth:`_raise_if_manual_motion_in_progress`, which covers the
+          operator-triggered sync paths);
         * the previous attempt targeted the same ``bol_hash`` and was recent.
           ``is_map_synced()`` can stay False indefinitely on a map that is
-          complete and perfectly usable (observed live 2026-07-24), which
-          otherwise re-runs the saga every ``REPORT_INTERVAL`` forever.
+          complete and perfectly usable (observed live 2026-07-24).
 
         A *changed* ``bol_hash`` always syncs immediately — that is a real
         device-side map edit and must not be delayed by the back-off.
+
+        .. note::
+           This call site is currently **unreachable in steady state**:
+           ``MammotionReportUpdateCoordinator._async_update_data`` early-returns
+           on ``if data := await super()._async_update_data()``, and the base
+           method's final ``return self.data`` is an always-truthy
+           ``MowingDevice``.  So this predicate is defence in depth, not an
+           active guard — it becomes load-bearing if that block is ever made
+           reachable.  The paths that *do* start sagas today are the
+           ``sync_maps`` button and ``force_map_resync``, both guarded through
+           :meth:`async_sync_maps` instead.
         """
         if self.manual_motion_owner is not None:
             return False
@@ -865,8 +877,36 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         elapsed = datetime.datetime.now(datetime.UTC) - self.last_map_sync
         return elapsed >= MAP_INTERVAL
 
+    def _raise_if_manual_motion_in_progress(self, action: str) -> None:
+        """Refuse an exclusive device operation while a motion run owns the mower.
+
+        ``MapFetchSaga`` runs at ``Priority.EXCLUSIVE`` and holds the mower's
+        command queue until it completes.  Motion commands are
+        ``Priority.NORMAL`` with ``skip_if_saga_active=False``, so they *block*
+        on that slot rather than being dropped — and anything undispatched for
+        ``_COMMAND_TTL`` (120 s) is discarded silently.  A sync started midway
+        through a guarded run therefore stalls its pulses and collapses the
+        200 ms refresh cadence the mower needs to keep driving, which makes it
+        self-halt.
+
+        This is the operator-facing half of the guard: the ``sync_maps`` button
+        and ``force_map_resync`` are both reachable at any moment, including
+        during a run.  Refusing loudly is better than queueing behind the saga,
+        because the caller otherwise appears to succeed while the run degrades.
+        """
+        owner = self.manual_motion_owner
+        if owner is None:
+            return
+        msg = (
+            f"Cannot {action} while a guarded motion run is in progress "
+            f"({owner}). A map sync holds the mower's command queue "
+            "exclusively and would stall the run. Retry once it finishes."
+        )
+        raise HomeAssistantError(msg)
+
     async def async_sync_maps(self) -> None:
         """Get map data from the device."""
+        self._raise_if_manual_motion_in_progress("sync maps")
         try:
             await self.manager.start_map_sync(self.device_name)
             self._record_map_sync_attempt()
@@ -905,6 +945,12 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         Non-destructive: the existing cache is left intact until the saga
         replaces it, so a failed resync never leaves the map worse off than it
         started.  Returns a step-by-step result for the caller/card to surface.
+
+        Refused outright while a guarded motion run owns the mower — *every*
+        step here enqueues device commands, and step 3's saga takes the command
+        queue exclusively, so running this mid-run would stall the run's pulses.
+        The refusal is reported as a normal result rather than raised, because
+        this is a response service whose caller wants the diagnostics.
         """
         result: dict[str, Any] = {
             "map_sync_status_before": self.map_sync_status,
@@ -912,6 +958,16 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
             "steps": [],
             "error": None,
         }
+        if self.manual_motion_owner is not None:
+            result["error"] = "manual_motion_in_progress"
+            result["busy_owner"] = self.manual_motion_owner
+            result["steps"].append("refused_manual_motion_in_progress")
+            result["map_sync_status_after"] = self.map_sync_status
+            result["map_sync_diagnostics_after"] = result[
+                "map_sync_diagnostics_before"
+            ]
+            result["last_map_task_error"] = self.last_map_task_error
+            return result
         try:
             await self.async_rtk_dock_location()
             result["steps"].append("rtk_dock_refreshed")
