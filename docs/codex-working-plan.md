@@ -3597,3 +3597,55 @@ attempt, back-off vs elapsed `MAP_INTERVAL`, changed-hash-syncs-now, yields-to-m
 wiring is pinned by an AST test asserting the `start_map_sync` call inside `_async_update_data`
 is guarded — mirroring how `_async_opportunistic_ble_reconnect` was extracted for the same
 reason. Both the AST test and the motion-aware clause were verified to fail when reverted.
+
+## Correction 2026-07-24 (same session): the "saga every 5 minutes" claim was wrong
+
+The section immediately above claimed the exclusive `MapFetchSaga` fired every `REPORT_INTERVAL`
+(5 min) indefinitely, and floated it as a candidate for the open 07-18 rotation decay. **Both
+claims are withdrawn.** They came from reading the call site without checking how often it is
+actually reached, and the post-deploy verification refuted them within minutes.
+
+**The evidence.** `sensor.<mower>_map_sync_status` reports `syncing` while a saga holds the
+queue, so its history is a direct log of saga activity. Over 2026-07-22 → 07-25 it shows only
+**5 `syncing` episodes**, each **~8–12 s**, all clustered around restarts/reloads — and **zero**
+during the ~25 h of continuous `out_of_sync` since 07-24 01:40. The sensor also reached `synced`
+several times, so `is_map_synced()` has not been permanently false historically either.
+
+**The mechanism.** `MammotionReportUpdateCoordinator._async_update_data` opens with
+
+```python
+if data := await super()._async_update_data():
+    return data
+```
+
+and the base `_async_update_data` ends with `return self.data`. `MowingDevice` defines neither
+`__bool__` nor `__len__`, so it is **always truthy** — the early return fires on every healthy
+tick, and the RTK/dock + bol-hash/map-sync block after it is **unreachable in steady state**.
+It runs roughly once per HA start.
+
+**What this changes.**
+
+- The 5-minute churn does not occur; `_should_start_map_sync`'s back-off guards a currently
+  theoretical problem.
+- Motion-contention exposure is far smaller than stated: ~5 sagas in 3 days at ~10 s each,
+  rather than one every 5 minutes. The mechanism itself (exclusive slot, `Priority.NORMAL`
+  waiting, 120 s TTL drop) is code-verified and unchanged.
+- **The 07-18 rotation-decay hypothesis is withdrawn.** At that rate, a saga landing inside a
+  specific ~2-minute run window is improbable, and no evidence places one there. That failure
+  remains open and unexplained.
+- Both new guards are therefore **no-ops in practice today**. They are kept as defence in depth,
+  and become load-bearing the moment the call site is made reachable.
+
+**The genuine bug this uncovered, still open — and it points the other way.** Because that block
+is unreachable, a device-side map edit (a changed `bol_hash`) is **never picked up while HA is
+running**; the map only re-syncs on restart. `_map_callback`'s comment — "Map freshness is
+enforced in `_async_update_data()` via bol_hash checks" — does not hold. Fixing it would make
+the block execute on every tick, which is precisely the condition under which the back-off is
+required, so the two belong in one change: make the block reachable *and* keep it rate-limited
+and motion-aware.
+
+**Method lesson.** The deploy-time verification is what caught this, and only because it looked
+for the effect (`syncing` episodes in sensor history) rather than re-reading the code. The first
+attempt at verification — grepping `docker logs` for `enqueuing MapFetchSaga` — returned 0 and
+was *worthless*, because pymammotion DEBUG logging is off on this host (0 debug lines in 20 min);
+a zero there means nothing. Prefer a signal the system records independently of log level.

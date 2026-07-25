@@ -127,12 +127,39 @@ Look at `raw_sources."report_data.locations"[0]`: `zone_hash` must be non-zero
 while `pos_type` is 1 (`AREA_INSIDE`). It read 0 while docked (`pos_type: 5`,
 `CHARGE_ON`), which is correct — the docked case proves nothing either way.
 
-## 🚨 The exclusive map saga could stall a motion run (fixed 2026-07-24, NOT deployed)
+## The exclusive map saga vs. motion (fixed 2026-07-24, deployed)
 
-Found while investigating the `zone_hash` bug, and it outranks it. Because
-`is_map_synced()` is permanently false on this mower (checksum mismatch above),
-`_async_update_data` enqueued a **`MapFetchSaga` every `REPORT_INTERVAL` (5 min),
-forever**. That is not free:
+> **⚠️ CORRECTION — read this first.** This section originally claimed the saga
+> fired **every 5 minutes, forever**. That was **wrong**, and it was refuted the
+> same day by three days of `sensor.<mower>_map_sync_status` history: only **5
+> `syncing` episodes between 07-22 and 07-25**, each ~8–12 s, all clustered
+> around restarts/reloads — and **none at all** in the ~25 h of continuous
+> `out_of_sync` since 07-24 01:40.
+>
+> **Why:** `MammotionReportUpdateCoordinator._async_update_data` opens with
+> `if data := await super()._async_update_data(): return data`, and the base
+> method ends with `return self.data`. `MowingDevice` defines neither
+> `__bool__` nor `__len__`, so it is **always truthy** — the early return fires
+> on every healthy tick and **the bol-hash/map-sync block below it is
+> unreachable in steady state**. It runs about once per HA start.
+>
+> **Consequences:** (a) the "every 5 minutes" churn does not happen, so the
+> back-off below fixes a problem that is currently theoretical; (b) the
+> motion-contention exposure is far smaller than claimed — ~5 sagas in 3 days,
+> ~10 s each; (c) the "candidate for the 07-18 rotation decay" hypothesis is
+> **withdrawn** — at that rate a saga landing inside a specific ~2-minute run
+> window is improbable, and there is no evidence one did.
+>
+> **The real bug here is the opposite one**, and it is still open: because that
+> block is unreachable, a device-side map edit (`bol_hash` change) is **never
+> picked up while HA is running** — only on restart. `_map_callback`'s comment
+> ("Map freshness is enforced in `_async_update_data()` via bol_hash checks")
+> therefore does not hold. Fixing that would make the block live on every tick,
+> which is exactly when the back-off below becomes necessary — so the two belong
+> in the same change.
+
+The contention **mechanism** below is code-verified and still worth guarding;
+only its frequency was overstated:
 
 - `MapFetchSaga` runs at `Priority.EXCLUSIVE` and **holds the mower's command
   queue** until it completes;
@@ -145,13 +172,14 @@ forever**. That is not free:
   the `map_sync_status` sensor label.
 
 A saga landing mid-run therefore stalls pulses and collapses the 200 ms refresh
-cadence, which makes the mower self-halt (the H-watchdog). **This is a plausible
-candidate for the still-open 2026-07-18 rotation decay** (9.5°, 9.4°, 5.7°,
-0.001°, 0.49° — "location/moment-specific, not parameter-driven", 90 min after a
-clean run at identical params). **Candidate, not a diagnosis — do not record it
-as the cause without evidence.**
+cadence, which makes the mower self-halt (the H-watchdog). Sagas do still happen
+around restarts and reloads — exactly when someone is likely to be testing — so
+the guard is worth having; it is just a low-probability event, not the routine
+hazard first described.
 
-Two fixes in `coordinator.py`, both behind `_should_start_map_sync()`:
+Two fixes in `coordinator.py`, both behind `_should_start_map_sync()`. Given the
+unreachable call site, **both are currently no-ops in practice** — defence in
+depth that becomes load-bearing the moment the early-return bug is fixed:
 
 1. **Back-off** — a repeat attempt against the same `bol_hash` waits out
    `MAP_INTERVAL` (60 min) instead of retrying every 5 min. A *changed*
