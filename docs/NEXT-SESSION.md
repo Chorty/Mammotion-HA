@@ -456,10 +456,13 @@ stop_reason: vio_calibration_failed  (calibration reason: stop_failed_aborting)
 
 BLE dropped into a fresh connect cooldown **during** the stop attempt; it tried
 ~9 s, failed, and the run aborted rather than continuing. **The safety hardening
-worked as designed** — but we had no positive confirmation the mower stopped on
-command. Position afterwards was unchanged within ~2 mm, consistent with the
-documented single-shot self-halt. Treat this as the reference example of why
-`stop_failed_aborting` exists.
+worked as designed** — but there was no positive confirmation the mower stopped
+on command. Position afterwards was unchanged within ~2 mm, and the **operator
+visually confirmed the mower stopped and safe** — consistent with the documented
+single-shot self-halt holding even when the explicit stop cannot be delivered.
+Treat this as the reference example of why `stop_failed_aborting` exists: the
+undelivered stop was caught and escalated rather than silently ignored, and the
+bounded-pulse design meant an undeliverable stop was not a runaway.
 
 ### 🚨 The session's dominant problem: BLE was collapsing all evening
 
