@@ -3714,3 +3714,127 @@ churn every 5 min → operator-triggered; `is_map_synced` broken → fine) came 
 and inferring frequency or state, and each was overturned by looking at what the system
 actually recorded — service responses, sensor history, a deliberate button press. Code reading
 establishes mechanism; it does not establish whether, or how often, a path executes.
+
+## Wrap-up 2026-07-25 (on-mower, daylight): turn refresh proven ~7x; BLE collapsed; two real gaps found
+
+Supervised session. Step 4 (zone_hash pre-flight) passed, Step 5a (turn A/B) succeeded and is
+the headline result, Step 5b (segment run) failed twice on transport and remains unachieved.
+
+### Step 4 — the zone_hash fix does not over-block
+
+Off-dock in `Backyard Right`: `pos_type_label AREA_INSIDE`, `zone_hash 1343645155037768237`,
+`valid_for_motion true`, `blockers []`. The stricter gate from `f2074722` is validated on
+hardware. `position.map_bol_hash` reports separately and `area_name` resolves correctly rather
+than the old misleading `"path"`.
+
+### 🏆 Step 5a — refresh is worth ~7x on a properly-powered turn
+
+`vio_turn_probe`, angular 500, 4.0 s, compass flat on the deck as ground truth:
+
+| pulse | refresh | compass | VIO |
+|---|---|---|---|
+| A | 0 | 170° → 179° (**+9°**) | −8.75° |
+| B | 200 (21 re-sends) | 179° → 241° (**+62°**) | −62.92° |
+
+This closes the question left open 2026-07-22 (the turn half of B1 was inconclusive because
+`manual_velocity_pulse_test` caps angular at ~202). **Refresh is speed-gated**: nothing at
+angular 180, decisive at 500. Consistent with the linear result (~11x).
+
+Notable secondary result: **VIO tracked both turns to within ~1° of compass**, course-over-ground
+agreeing too. The standing assumption that VIO blinds on a fast turn did not reproduce in good
+daylight at 78–80 tracked features. One session; do not over-generalise, but it suggests the
+compass is a check rather than a necessity when the feed is healthy.
+
+Actionable: `heading_tolerance_degrees: 18` exists only because single-shot turning was quantised
+into ~8–15° steps. With continuous rotation it should come down substantially. Next code item is
+wiring `motion_refresh_interval_ms` into `vio_turn_to_heading` (still single-shot) and re-deriving
+the tolerance.
+
+### 🐛 GAP 1 — the turn phase has no stale-feed detector
+
+Step 5b attempt 1 aborted `no_actuation_detected` after two turn pulses that reported
+bit-identical `vision_heading` (90.29915121519771) *and* bit-identical `displacement_m`
+(0.006754257916307457). **The operator watched the mower move ~4 inches.** Server logs from the
+same window show corrupted frames being dropped outright:
+
+```
+dropping frame: malformed report data failed deserialization (249 bytes):
+  Field "pos_type" of type int has invalid value [76,117,98,97,45,86,83,80,76,86,51,57,55]
+```
+
+— ASCII `"Luba-VSPLV397"`, the device name, landing in an int field.
+
+`no_actuation_detected` was built (2026-07-19) for the e-stop case, where the discriminator is
+bit-identical heading *and* flat position. It cannot separate that from "the feed froze while the
+mower actuated normally", which is what happened here. The linear phase received
+`telemetry_stream_stale` for exactly this class of problem on 2026-07-19; **the turn phase never
+got the equivalent.**
+
+The discriminating signal was already present in the result and ignored: `heading_went_fresh:
+false` with `heading_poll_seconds: 8.01` (the full timeout) on *both* pulses. A live feed goes
+fresh; a dead one times out. Fix: when the freshness poll times out, report a stale-feed reason
+instead of blaming actuation. This is the fourth instance of the same underlying lesson —
+**always require positive evidence the sensor is live before concluding the mower is not moving.**
+
+### ⚠️ GAP 2 / safety event — a stop command that could not be delivered
+
+Attempt 2 sent the calibration pulse (linear 400) and then:
+
+```
+stop_result: { attempted: true, ok: false,
+  error: "BLEUnavailableError: BLE connect ... in cooldown (120s remaining)",
+  duration_ms: 8992.7 }
+stop_reason: vio_calibration_failed   (calibration reason: stop_failed_aborting)
+```
+
+BLE entered a fresh connect cooldown *during* the stop attempt. The run aborted rather than
+continuing to pulse — the hardening behaved exactly as designed — but there was no positive
+confirmation the mower halted on command. Position afterwards was unchanged within ~2 mm,
+consistent with the documented single-shot self-halt. Keep this as the reference example for why
+`stop_failed_aborting` exists.
+
+### The session's dominant problem was the radio, not the code
+
+- 4–5 transport flips to `cloud_aliyun` with repeatedly re-armed 120 s cooldowns.
+- `BleakOutOfConnectionSlotsError` while **all proxies were healthy**: `6 scanner(s) registered,
+  6 scanning, 6 connectable` but `last advertisement 613s ago`. The mower's radio had gone silent
+  — the ~10–13 min idle doze — not a proxy-capacity problem. It bit us repeatedly **because
+  diagnostics between commands take longer than the doze window.**
+- **`ble_rssi` is not a liveness signal.** It is self-reported by the mower
+  (`report_data.connect.ble_rssi`), so it holds a stale value once the mower stops reporting: it
+  read a healthy −64 while nothing had heard an advertisement in 10 minutes. Bit-identical rssi
+  across polls is the same stale-feed tell as everywhere else in this project.
+- **Cloud-routed restart does not work on this setup.** `button.<mower>_restart_mower` →
+  `remote_restart` returned HTTP 200, then
+  `WARNING [pymammotion.aliyun.cloud_gateway] Error in sending cloud command: 20056 -
+  gateway.hsf.invoke.timeout`. Nothing happened. The app-triggered restart works (10–20 s to
+  reconnect).
+- The click-to-path card caught a full blackout my polling missed:
+  `No transport available ... [cloud_aliyun=connected, ble=disconnected] (mqtt_reported_offline=True)`.
+- `switch.<mower>_bluetooth` `turn_on` returned **HTTP 500** once and silently failed to apply
+  another time. **Verify switch state after toggling; never trust the HTTP response.**
+
+### Smaller findings
+
+- **`toward` is unreliable after a restart**: read 97.06° against a compass 241° (~144° off),
+  stable within 0.002° across 6 polls, surviving two restarts (97.0647 → 97.0629 → 94.5699) while
+  position x/y re-converged correctly. **It does not affect the executor** — verified by code
+  read: calibration derives map heading itself via `atan2(dy, dx)` from a live position delta
+  (`services.py:7932`) and mid-drive re-aim uses `vision_heading` + that fresh offset
+  (`services.py:8762`). Neither consults `toward`.
+- **`max_linear_pulse_ceiling` is not echoed** by the vector executor (echoes `None` while being
+  correctly honoured at `services.py:8477`). Multi-segment had this fixed 2026-07-19; vector did
+  not. Cosmetic, but it blocks post-run forensics on the parameter that matters most.
+- **`max_linear_commands` defaults to 1** — a segment call stops after a single linear pulse
+  unless `max_linear_pulse_ceiling` is passed. With refresh covering ~1 m/pulse, always pass a
+  ceiling for a multi-metre segment.
+- The map emptied again after real motion and recovered via `force_map_resync`, consistent with
+  `invalidate_maps()` plus the unreachable-auto-resync bug. The new `map_sync` diagnostic made
+  this legible immediately.
+
+### Step 5b is still open
+
+Both attempts died in transport before reaching the linear phase, so **the Task-2 constants
+(pulse-geometry ceilings, `min_progress_distance`, cadence) remain un-re-derived hypotheses.**
+Retry needs a healthy BLE window: move the mower near a proxy, and fire promptly after a wake
+rather than spending the doze window on diagnostics.
