@@ -4731,3 +4731,73 @@ This is the fifth time on this project that a confident single-sample conclusion
 walked back by more data. The caveat was stated when the claim was made, which is why the
 correction is cheap — but the lesson stands: **one sample of a categorical code is a
 hypothesis, not a finding.**
+
+## 📊 2026-07-27 BASELINE: 8 h of BLE sessions at the shipped 5 s heartbeat
+
+Measured before changing anything, with `scripts/ble_session_report.py`. Mower docked
+and idle throughout, `_KEEP_ALIVE_BLE_INTERVAL = 5.0` (confirmed on the host).
+
+### Disconnect reasons — the most reliable statistic here
+
+31 disconnect events, independent of session pairing:
+
+| reason | count | share |
+|---|---|---|
+| `0x08` supervision timeout (starvation) | **13** | **42%** |
+| clean / none | 9 | 29% |
+| `0x13` peer user terminated (mower hung up) | 7 | 23% |
+| `0x100` unknown | 2 | 6% |
+
+### Session lifetime, and the reason predicts it
+
+17 paired sessions: min 17 s, **median 59 s**, max **5453 s (91 min)**. Clearly bimodal —
+11 short (17–93 s) and 6 long (212–5453 s). Crucially:
+
+| disconnect reason | median session length |
+|---|---|
+| `0x08` supervision timeout | **41 s** |
+| clean / none | 59 s |
+| `0x13` peer terminated | **699 s (~12 min)** |
+
+**Short sessions are supervision timeouts. When the mower deliberately hangs up, it does
+so after ~12 minutes.**
+
+*Caveat, stated because it biases the headline:* 56 connect events produced only 31
+disconnects, and 38 connects had no disconnect before the next connect. Those pairs are
+timed from the later connect, so the durations above are biased **downward**. The reason
+tally is unaffected.
+
+### 🔄 This reframes the heartbeat experiment — probably downward
+
+The planned change (`_KEEP_ALIVE_BLE_INTERVAL` 5 s → ~1.5 s) targets the *device's*
+keep-alive window: pymammotion's comment says the mower "drops out of its synced state
+after roughly its ~10 s keep-alive window". That is an **application-level** timeout, and
+the disconnect it would produce is the mower hanging up — `0x13`.
+
+But `0x13` sessions last a **median of 12 minutes**. They are not what kills a 2–3 minute
+path run. The sessions that die in 41 s die of `0x08`, a **link-layer** supervision
+timeout: the radio link itself stopped exchanging connection events. A faster application
+heartbeat does not obviously help that, and on a shared-radio ESP32 more airtime could
+plausibly make it worse.
+
+**So the heartbeat experiment is now a lower-value test than it looked**, and its
+hypothesis should be stated honestly before running: *"does more frequent traffic reduce
+supervision timeouts?"* — not *"this fixes the short sessions"*.
+
+**What the data points at instead is the radio environment**, which is also what the
+ESP32 coexistence hypothesis predicts. The zero-code actions are the ones to try first:
+a proxy nearer the dock, reducing what the (permanently one-slot-busy) `p1s-printer`
+proxy carries, and improving the mower's own Wi-Fi signal so its shared radio spends less
+time on retries.
+
+### Other results from the same window
+
+- **MTU: 22 fresh negotiations, all 517.** The 23/250 negotiations seen on 07-26 did
+  **not** recur, so MTU instability is intermittent rather than the current state.
+  (Connects logging `mtu=0` reused a cached value — they are not low-MTU negotiations;
+  an earlier version of the report script miscounted them as such.)
+- **Link quality: 720 sequence gaps (1.5/min), 193 unparseable frames, 10 dropped**
+  across 8 h — the same order as every previous sample, so packet loss is a stable
+  property of this link, not an episode.
+- A 91-minute session proves the link *can* hold for a long time; nothing here is a hard
+  ceiling.

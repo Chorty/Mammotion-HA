@@ -60,6 +60,8 @@ def main() -> None:  # noqa: C901
     sessions: list[tuple[float, int, int]] = []  # (seconds, mtu, reason)
     mtus: list[int] = []
     seq_gaps = parse_fails = drops = 0
+    connects = disconnects = unpaired_connects = 0
+    reasons: list[int] = []
     first = last = None
 
     for raw in sys.stdin:
@@ -83,19 +85,51 @@ def main() -> None:  # noqa: C901
             continue
         connected, mtu, error = state.groups()
         if connected == "True":
-            opened, opened_mtu = stamp, int(mtu)
-            mtus.append(int(mtu))
-        elif opened is not None:
-            sessions.append(
-                ((stamp - opened).total_seconds(), opened_mtu, int(error))
-            )
-            opened = None
+            connects += 1
+            if opened is not None:
+                # Two connects with no disconnect between them. bleak_esphome
+                # can log the state more than once per logical session, so the
+                # pair is measured from the LATEST connect -- which biases
+                # durations DOWN. Counted so the bias is visible rather than
+                # silently folded into the median.
+                unpaired_connects += 1
+            opened = stamp
+            # mtu=0 on a connect means "already cached", not a negotiated
+            # value -- bleak_esphome only reports a number on a fresh
+            # negotiation. Counting the zeros as an MTU would invent a
+            # low-MTU population that does not exist.
+            if int(mtu) > 0:
+                opened_mtu = int(mtu)
+                mtus.append(int(mtu))
+        else:
+            disconnects += 1
+            reasons.append(int(error))
+            if opened is not None:
+                sessions.append(
+                    ((stamp - opened).total_seconds(), opened_mtu, int(error))
+                )
+                opened = None
 
     window = (last - first).total_seconds() / 60 if first and last else 0.0
     emit("=" * 66)
-    emit(f"window: {window:.0f} min   completed sessions: {len(sessions)}")
+    emit(f"window: {window:.0f} min")
+    emit(f"connect events: {connects}   disconnect events: {disconnects}"
+         f"   paired sessions: {len(sessions)}")
+    if unpaired_connects:
+        emit(f"  NOTE: {unpaired_connects} connect(s) had no disconnect before the"
+             " next connect;")
+        emit("        those pairs are timed from the later connect, biasing"
+             " durations DOWN.")
     if opened is not None:
         emit("  (one session still open at end of log, excluded)")
+
+    if reasons:
+        emit("")
+        emit(f"ALL disconnect reasons ({len(reasons)} events, incl. unpaired):")
+        for reason in sorted(set(reasons), key=lambda r: -reasons.count(r)):
+            label = REASONS.get(reason, f"0x{reason:02X} unknown")
+            share = 100 * reasons.count(reason) / len(reasons)
+            emit(f"  {reasons.count(reason):>3}x  ({share:4.0f}%)  {label}")
 
     if sessions:
         durations = sorted(s[0] for s in sessions)
@@ -116,7 +150,8 @@ def main() -> None:  # noqa: C901
 
     if mtus:
         emit("")
-        emit("negotiated MTU:")
+        emit(f"negotiated MTU ({len(mtus)} fresh negotiations; connects logging"
+             " mtu=0 reused a cached value):")
         for value in sorted(set(mtus)):
             # A low MTU forces more BluFi fragments per report, and each extra
             # fragment is another chance to lose one and poison the reassembly
