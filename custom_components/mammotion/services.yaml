@@ -1201,6 +1201,15 @@ vio_turn_to_heading:
       default: false
       selector:
         boolean:
+    motion_refresh_interval_ms:
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 1000
+          step: 50
+          unit_of_measurement: ms
     prefer_ble:
       required: false
       default: true

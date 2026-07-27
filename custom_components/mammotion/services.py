@@ -727,6 +727,13 @@ VIO_TURN_TO_HEADING_SCHEMA = vol.Schema(
             vol.Coerce(float), vol.Range(min=0.1, max=2.0)
         ),
         vol.Optional("invert_direction", default=False): cv.boolean,
+        # 0 == the proven single-shot path. 200 mirrors the app and gave ~7x
+        # more rotation per pulse at angular 500 (live 2026-07-25); default is
+        # left at 0 until `heading_tolerance_degrees` is re-derived against
+        # continuous rotation.
+        vol.Optional("motion_refresh_interval_ms", default=0): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=1000)
+        ),
         vol.Optional("prefer_ble", default=True): cv.boolean,
         vol.Optional("dry_run", default=True): cv.boolean,
         vol.Optional("confirm_blades_off", default=False): cv.boolean,
@@ -3715,6 +3722,15 @@ async def _motion_refresh_window(
             break
         try:
             await resend()
+        except asyncio.CancelledError:
+            # Same trap `_motion_open_sleep` exists for, one await further in:
+            # CancelledError is a BaseException, so the `except Exception`
+            # below never sees it and it propagates past the caller's mandatory
+            # stop. A movement command is already open on the mower at this
+            # point, so exiting without stopping leaves it driving until its
+            # own device-side timeout. Deliver the stop first, then re-raise.
+            await _deliver_stop_despite_cancellation(coordinator)
+            raise
         except Exception as err:  # noqa: BLE001
             # Stop refreshing but let the caller run its mandatory stop: a
             # half-refreshed window is a shorter drive, never a runaway one.
@@ -3828,6 +3844,39 @@ def _manual_motion_busy_result(service: str, owner: str) -> dict[str, Any]:
     }
 
 
+def _exclusive_saga_active(coordinator: MammotionReportUpdateCoordinator) -> bool:
+    """Return True only when an exclusive saga demonstrably holds the queue.
+
+    ``MapFetchSaga`` runs at ``Priority.EXCLUSIVE``; motion goes out at
+    ``Priority.NORMAL`` with ``skip_if_saga_active=False``, so it *blocks* on
+    the exclusive slot rather than being skipped, and ``_COMMAND_TTL`` (120 s)
+    silently drops whatever is still undispatched.
+
+    That is why a queued motion command is not merely late. The executor's
+    guarantee is "send a bounded movement, sleep the pulse locally, then send
+    an explicit stop" -- but the sleep is local timing and cannot see that the
+    command is still queued. The pulse can therefore elapse before the mower
+    moves at all, and the movement and its stop can be separated (or either one
+    dropped at the TTL), which breaks the bounded-pulse guarantee the whole
+    safety model rests on.
+
+    ``coordinator.manual_motion_owner`` already stops a saga starting while
+    motion holds the mower. This is the other direction, which was previously
+    unguarded: the only ``is_saga_active`` consumer was the ``map_sync_status``
+    sensor label.
+
+    Positively-True-only: any unreadable piece degrades to False (motion
+    allowed), so pymammotion API drift can never block all motion.
+    """
+    try:
+        handle = coordinator.manager.mower(coordinator.device_name)
+        if handle is None:
+            return False
+        return bool(handle.queue.is_saga_active)
+    except Exception:  # noqa: BLE001 - never let a probe failure block motion
+        return False
+
+
 def _is_zero_motion_stop_nudge(
     command: str, linear_speed: int, angular_speed: int
 ) -> bool:
@@ -3879,10 +3928,24 @@ def _wrap_exclusive_manual_motion(
             return await handler(call)
         coordinator = mower.reporting_coordinator
         # Claim atomically on the event loop: no await between the read and the
-        # write, so two overlapping calls cannot both see it free.
+        # write, so two overlapping calls cannot both see it free. The saga
+        # probe is a synchronous read for the same reason -- check and claim
+        # stay one uninterrupted block, so a saga cannot slip in between them.
         owner = getattr(coordinator, "manual_motion_owner", None)
         if owner is not None:
             return _manual_motion_busy_result(service, owner)
+        if _exclusive_saga_active(coordinator):
+            # Refuse with a reason instead of queueing behind the exclusive
+            # slot. The earlier design deliberately had no gate here, on the
+            # grounds that "refusing a command the operator just issued is
+            # worse than the wait" -- but that assumed sagas were rare and
+            # operator-triggered, so the operator would know why. Since the
+            # per-tick map-sync path was made reachable (2026-07-25) they also
+            # fire automatically, and the "wait" was never benign anyway: it
+            # can separate a pulse from its stop (see _exclusive_saga_active).
+            # A *named* refusal answers the original objection -- the operator
+            # is told it is a map sync and can retry in seconds.
+            return _manual_motion_busy_result(service, "map_sync_saga")
         coordinator.manual_motion_owner = service
         try:
             return await handler(call)
@@ -5538,6 +5601,49 @@ def _streak_shows_no_actuation(
     return True
 
 
+def _streak_shows_dead_telemetry(
+    command_results: list[dict[str, Any]], streak: int
+) -> bool:
+    """Return True when the last ``streak`` pulses saw no live telemetry at all.
+
+    ``_streak_shows_no_actuation`` asserts something about the *mower* -- that it
+    accepted commands and did not move. That claim is only legitimate when the
+    sensors were demonstrably alive; otherwise "nothing changed" means "we went
+    blind", which needs the opposite response from the operator (fix the link,
+    do not go looking for a physical e-stop).
+
+    Liveness is judged on the same principle the linear phase uses
+    (``_settle_linear_position_feed``): a live feed is never perfectly still.
+    Position jitters ~2-4mm between consecutive reads even on a stationary
+    mower, and a VIO heading latched by dusk still emits sub-epsilon noise
+    (~0.0018 deg, live run 2 2026-07-15). A change in *either* channel proves
+    reports are arriving, so only pulses whose heading and position were both
+    bit-identical across every poll count as a dead stream. Requires at least
+    ``_STALE_FEED_MIN_POLLS`` polls in each pulse -- one or two unchanged reads
+    prove nothing.
+
+    This deliberately keeps the dusk-latch case (``no_heading_progress``) and the
+    live-link e-stop case (``no_actuation_detected``) out of the stale branch:
+    both have a demonstrably live feed.
+
+    Measured live 2026-07-25: two turn pulses reported bit-identical
+    ``vision_heading`` (90.29915121519771) *and* bit-identical ``displacement_m``
+    (0.006754257916307457) while the operator watched the mower turn ~4 inches.
+    The server log for that window shows BLE frames being discarded outright
+    (``dropping frame: malformed report data failed deserialization``), so the
+    telemetry really was dead while actuation was fine.
+    """
+    if streak <= 0 or len(command_results) < streak:
+        return False
+    for command in command_results[-streak:]:
+        polls = command.get("heading_poll_count")
+        if polls is None or int(polls) < _STALE_FEED_MIN_POLLS:
+            return False
+        if command.get("heading_poll_feed_alive") is not False:
+            return False
+    return True
+
+
 def _vio_reading(coordinator: MammotionReportUpdateCoordinator) -> dict[str, Any]:
     """Return the current VIO heading and state from live telemetry."""
     paths = _position_feedback_raw_sources(coordinator).get("paths", {})
@@ -5671,6 +5777,7 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
     max_no_progress_pulses: int = 2,
     max_displacement_m: float = 0.5,
     invert_direction: bool = False,
+    motion_refresh_interval_ms: int = 0,
     prefer_ble: bool = True,
     dry_run: bool = True,
     confirm_blades_off: bool = False,
@@ -5796,6 +5903,18 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         "max_no_progress_pulses": max_no_progress_pulses,
         "max_displacement_m": max_displacement_m,
         "invert_direction": invert_direction,
+        # App-parity refresh for the TURN phase. Proven live 2026-07-25 at
+        # angular 500: a 4s pulse turned +9 deg single-shot vs +62 deg at
+        # interval 200 (~7x, compass ground truth). Refresh is SPEED-GATED --
+        # it did nothing at angular 180, which is below this mower's rotation
+        # threshold -- so it only helps when the angular speed already actuates.
+        # Left opt-in (0 == the proven single-shot path) because
+        # `heading_tolerance_degrees: 18` was derived from the ~8-15 deg
+        # single-shot quantum and has NOT been re-derived against continuous
+        # rotation; turning refresh on without lowering the tolerance risks
+        # overshooting a deadband that is now far too wide.
+        "motion_refresh_interval_ms": motion_refresh_interval_ms,
+        "motion_refresh_commands_sent": 0,
         "prefer_ble": prefer_ble,
         "confirm_blades_off": confirm_blades_off,
         "confirm_clear_area": confirm_clear_area,
@@ -5930,6 +6049,7 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
             "displacement_m": None,
             "heading_poll_seconds": None,
             "heading_went_fresh": None,
+            "motion_refresh": None,
         }
         try:
             await _send_manager_command_with_args(
@@ -5947,8 +6067,27 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
             result["stop_reason"] = "command_failed"
             return result
         result["commands_sent"] += 1
-        # Bounded pulse, then a mandatory explicit stop before sampling.
-        await _motion_open_sleep(coordinator, pulse_ms / 1000)
+        # Bounded pulse, then a mandatory explicit stop before sampling. With a
+        # positive refresh interval the identical command is re-sent every
+        # interval for the length of the pulse (app parity); at 0 this is
+        # exactly the previous single-shot sleep. Refreshes are counted
+        # separately so they never inflate `commands_sent`, which drives
+        # `max_commands`.
+        command_result["motion_refresh"] = await _motion_refresh_window(
+            coordinator,
+            resend=functools.partial(
+                _send_manager_command_with_args,
+                coordinator,
+                "send_movement",
+                prefer_ble=prefer_ble,
+                command_kwargs={"linear_speed": 0, "angular_speed": angular},
+            ),
+            duration_seconds=pulse_ms / 1000,
+            refresh_interval_ms=motion_refresh_interval_ms,
+        )
+        result["motion_refresh_commands_sent"] += command_result["motion_refresh"][
+            "refresh_commands_sent"
+        ]
         try:
             command_result["stop_ack"] = await coordinator.async_stop_manual_motion()
         except Exception as err:  # noqa: BLE001
@@ -5968,6 +6107,24 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         after_telemetry = before_telemetry
         after_heading = before_heading
         heading_went_fresh = False
+        # Liveness evidence gathered DURING the poll. `heading_went_fresh` cannot
+        # serve as a stale-feed discriminator: it is True only when before/after
+        # differ by more than the epsilon, which is exactly when
+        # `_streak_shows_no_actuation` (bit-identical heading) is False -- the
+        # two are perfectly correlated, so gating on it would delete the
+        # no-actuation branch rather than refine it.
+        #
+        # The independent signal is "did ANY channel move at all". A live feed is
+        # never perfectly still: position jitters ~2-4mm between consecutive
+        # reads even on a stationary mower, and a VIO heading latched by dusk
+        # still emits sub-epsilon sensor noise (~0.0018 deg, live run 2
+        # 2026-07-15). Either one proves reports are still arriving. Only when
+        # heading AND position are bit-identical across every poll has the
+        # report stream itself stopped.
+        poll_count = 0
+        poll_feed_alive = False
+        previous_poll_telemetry = before_telemetry
+        previous_poll_heading = before_heading
         while True:
             try:
                 await coordinator.async_get_reports(count=5)
@@ -5978,7 +6135,23 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
             # to deliver motion stops.
             await asyncio.sleep(max(refresh_wait_seconds, 0.5))
             after_telemetry = _custom_path_telemetry_snapshot(coordinator)
+            poll_count += 1
+            poll_step = _telemetry_position_delta(
+                previous_poll_telemetry, after_telemetry
+            ).get("distance")
+            if poll_step is not None and float(poll_step) > 0.0:
+                poll_feed_alive = True
+            previous_poll_telemetry = after_telemetry
             after_heading = _vio_reading(coordinator)["vision_heading"]
+            # Any change at all -- including one far below the freshness epsilon
+            # -- means the heading channel is still being written to.
+            if (
+                after_heading is not None
+                and previous_poll_heading is not None
+                and float(after_heading) != float(previous_poll_heading)
+            ):
+                poll_feed_alive = True
+            previous_poll_heading = after_heading
             if after_heading is None:
                 break
             if (
@@ -5997,6 +6170,8 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
             time.monotonic() - poll_started, 2
         )
         command_result["heading_went_fresh"] = heading_went_fresh
+        command_result["heading_poll_count"] = poll_count
+        command_result["heading_poll_feed_alive"] = poll_feed_alive
         last_heading_went_fresh = heading_went_fresh
         command_result["after_vision_heading"] = after_heading
         if after_heading is None:
@@ -6034,7 +6209,25 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
             consecutive_no_progress += 1
             command_result["consecutive_no_progress"] = consecutive_no_progress
             if consecutive_no_progress >= max_no_progress_pulses:
-                if _streak_shows_no_actuation(
+                if _streak_shows_dead_telemetry(
+                    result["command_results"], max_no_progress_pulses
+                ):
+                    # No positive evidence the feed was alive, so we cannot say
+                    # anything about actuation. Name the blindness instead of
+                    # blaming the mower (live 2026-07-25: reported exactly this
+                    # signature while physically turning ~4 inches).
+                    result["stop_reason"] = "vio_telemetry_stream_stale"
+                    result["vio_telemetry_stream_stale_hint"] = (
+                        "Heading and position were bit-identical across every "
+                        "refresh poll of the last "
+                        f"{max_no_progress_pulses} pulses (a live feed jitters "
+                        "~2-4mm and the heading poll goes fresh). The report "
+                        "stream stopped updating, so whether the mower turned "
+                        "is unknown -- check BLE transport health and the "
+                        "server log for dropped/malformed frames rather than "
+                        "retuning the turn."
+                    )
+                elif _streak_shows_no_actuation(
                     result["command_results"], max_no_progress_pulses
                 ):
                     # Neither heading nor position moved: the commands were
@@ -8209,6 +8402,18 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         "calibrated_forward_heading_offset_degrees": (
             calibrated_forward_heading_offset_degrees
         ),
+        # Echoed for post-run forensics, matching the multi-segment executor
+        # (fixed there 2026-07-19, missed here). These are honoured but were
+        # reported as absent, so a stalled run gave no way to confirm the pulse
+        # geometry the mower was actually told to use -- `max_linear_pulse_ceiling`
+        # especially, since without it `max_linear_commands` defaults to 1 and a
+        # multi-metre segment stops after a single pulse (live 2026-07-25).
+        "max_linear_pulse_ceiling": max_linear_pulse_ceiling,
+        "turn_pulse_duration_ms": turn_pulse_duration_ms,
+        "linear_pulse_duration_ms": linear_pulse_duration_ms,
+        "vio_turn_max_commands": vio_turn_max_commands,
+        "vio_angular_speed": vio_angular_speed,
+        "vio_heading_offset_degrees": vio_heading_offset_degrees,
         "sample_delays": list(sample_delays),
         "confirm_blades_off": confirm_blades_off,
         "confirm_clear_area": confirm_clear_area,
@@ -11731,6 +11936,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             max_no_progress_pulses=call.data["max_no_progress_pulses"],
             max_displacement_m=call.data["max_displacement_m"],
             invert_direction=call.data["invert_direction"],
+            motion_refresh_interval_ms=call.data["motion_refresh_interval_ms"],
             prefer_ble=call.data["prefer_ble"],
             dry_run=call.data["dry_run"],
             confirm_blades_off=call.data["confirm_blades_off"],

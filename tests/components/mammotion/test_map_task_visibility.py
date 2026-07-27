@@ -17,6 +17,7 @@ from homeassistant.helpers.service import _validate_entity_service_schema
 from pymammotion.data.model.hash_list import Plan
 from pymammotion.transport.base import NoTransportAvailableError, TransportType
 from pymammotion.transport.ble import BLETransport, BLETransportConfig
+from pymammotion.utility.constant import WorkMode
 
 from custom_components.mammotion import coordinator as mammotion_coordinator
 from custom_components.mammotion import lawn_mower as mammotion_lawn_mower
@@ -48,6 +49,7 @@ from custom_components.mammotion.services import (
     RAW_PYMAMMOTION_TURN_TO_HEADING_SCHEMA,
     RAW_VECTOR_READINESS_TEST_SCHEMA,
     VIO_TURN_PROBE_SCHEMA,
+    VIO_TURN_TO_HEADING_SCHEMA,
     _app_scale_speeds,
     _app_speed_scale_report,
     _ble_connect_cooldown_active,
@@ -88,6 +90,7 @@ from custom_components.mammotion.services import (
     _raw_vector_readiness_phase_passed,
     _raw_vector_readiness_test,
     _settle_linear_position_feed,
+    _streak_shows_dead_telemetry,
     _streak_shows_no_actuation,
     _transport_is_ble,
     _validate_custom_path,
@@ -1391,6 +1394,27 @@ def test_motion_refresh_default_split_executors_on_harnesses_off() -> None:
     turn = VIO_TURN_PROBE_SCHEMA({"entity_id": "lawn_mower.test"})
     assert pulse["motion_refresh_interval_ms"] == 0
     assert turn["motion_refresh_interval_ms"] == 0
+
+    # The closed-loop turn accepts refresh (proven ~7x at angular 500 on
+    # 2026-07-25) but stays OPT-IN: `heading_tolerance_degrees` is still 18,
+    # derived from the single-shot ~8-15 deg quantum, so defaulting refresh on
+    # before re-deriving it would drive continuous rotation into a deadband
+    # sized for discrete steps.
+    closed_loop = VIO_TURN_TO_HEADING_SCHEMA(
+        {"entity_id": "lawn_mower.test", "target_vision_heading": 90.0}
+    )
+    assert closed_loop["motion_refresh_interval_ms"] == 0
+    assert closed_loop["heading_tolerance_degrees"] == 18.0
+    assert (
+        VIO_TURN_TO_HEADING_SCHEMA(
+            {
+                "entity_id": "lawn_mower.test",
+                "target_vision_heading": 90.0,
+                "motion_refresh_interval_ms": 200,
+            }
+        )["motion_refresh_interval_ms"]
+        == 200
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -4423,6 +4447,38 @@ async def test_vector_segment_reports_stale_stream_after_feed_dies_mid_run(
 
 
 @pytest.mark.asyncio
+async def test_vector_segment_echoes_pulse_geometry_params() -> None:
+    """The vector executor reports the pulse-geometry params it was given.
+
+    Regression for 2026-07-25: ``max_linear_pulse_ceiling`` was honoured but
+    echoed as absent, so a stalled run gave no way to confirm the numbers that
+    matter most. The multi-segment executor got this fixed on 2026-07-19; the
+    vector one was missed. A dry run is enough -- the echo must not depend on
+    the mower moving.
+    """
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.0, "y": 4.0}],
+        dry_run=True,
+        max_linear_pulse_ceiling=12,
+        turn_pulse_duration_ms=1500.0,
+        linear_pulse_duration_ms=3500.0,
+        vio_turn_max_commands=16,
+        vio_angular_speed=500,
+        vio_heading_offset_degrees=42.5,
+    )
+
+    assert result["max_linear_pulse_ceiling"] == 12
+    assert result["turn_pulse_duration_ms"] == 1500.0
+    assert result["linear_pulse_duration_ms"] == 3500.0
+    assert result["vio_turn_max_commands"] == 16
+    assert result["vio_angular_speed"] == 500
+    assert result["vio_heading_offset_degrees"] == 42.5
+
+
+@pytest.mark.asyncio
 async def test_vector_segment_vio_real_calibrates_turns_then_drives(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -5305,6 +5361,14 @@ async def test_vio_turn_reports_no_actuation_when_nothing_moves(
     every motion command for ~40 minutes while every health indicator read
     green. The turn loop blamed the turn (no_heading_progress) instead of
     surfacing that nothing actuated at all.
+
+    Note the feed is deliberately kept ALIVE here (jittering position). Since
+    2026-07-25 the claim "nothing actuated" requires positive evidence that the
+    sensors were live, because a frozen report stream produces an identical
+    before/after comparison while the mower turns normally. The 07-19 incident
+    itself had a frozen feed too (heading bit-identical for 45 minutes), so a
+    replay of that exact run now reports ``vio_telemetry_stream_stale`` -- which
+    is the honest answer: telemetry never saw the e-stop, the operator did.
     """
     coordinator = _pulse_coordinator()
     clock = {"now": 100.0}
@@ -5320,6 +5384,19 @@ async def test_vio_turn_reports_no_actuation_when_nothing_moves(
     coordinator.data.report_data.vision_info = SimpleNamespace(
         heading=91.38829636391407, vio_state=2
     )
+
+    # ...but the report stream is ALIVE: a live position feed jitters ~2mm
+    # between reads even on a stationary mower. That is what licenses the claim
+    # "the mower did not actuate" rather than "we went blind" -- without it the
+    # run is indistinguishable from a dead feed and must report
+    # vio_telemetry_stream_stale instead.
+    jitter = {"n": 0}
+
+    async def jittering_reports(*_args: object, **_kwargs: object) -> None:
+        jitter["n"] += 1
+        coordinator.data.mowing_state.pos_x = 1.0 + 0.002 * (jitter["n"] % 2)
+
+    coordinator.async_get_reports = AsyncMock(side_effect=jittering_reports)
 
     monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
     monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
@@ -5338,6 +5415,94 @@ async def test_vio_turn_reports_no_actuation_when_nothing_moves(
     assert "e-stop" in result["no_actuation_hint"]
     # Bounded exactly like the old path: it still stops after the streak.
     assert result["commands_sent"] == 2
+
+
+def test_streak_shows_dead_telemetry_requires_no_jitter_across_enough_polls() -> None:
+    """Only bit-identical position across enough polls counts as a dead feed."""
+    dead = [
+        {"heading_poll_count": 16, "heading_poll_feed_alive": False},
+        {"heading_poll_count": 16, "heading_poll_feed_alive": False},
+    ]
+    assert _streak_shows_dead_telemetry(dead, 2) is True
+
+    # A live feed moves in some channel -- the mower may be stopped, but we can
+    # see it, so the run must not be blamed on a dead link.
+    alive = [
+        {"heading_poll_count": 16, "heading_poll_feed_alive": False},
+        {"heading_poll_count": 16, "heading_poll_feed_alive": True},
+    ]
+    assert _streak_shows_dead_telemetry(alive, 2) is False
+
+    # One or two unchanged reads prove nothing (mirrors _STALE_FEED_MIN_POLLS).
+    too_few = [
+        {"heading_poll_count": 2, "heading_poll_feed_alive": False},
+        {"heading_poll_count": 2, "heading_poll_feed_alive": False},
+    ]
+    assert _streak_shows_dead_telemetry(too_few, 2) is False
+
+    # Pulses recorded before this instrumentation existed must not be read as
+    # evidence of a dead feed.
+    missing = [{"heading_poll_count": None}, {"heading_poll_count": None}]
+    assert _streak_shows_dead_telemetry(missing, 2) is False
+
+    assert _streak_shows_dead_telemetry(dead[:1], 2) is False
+    assert _streak_shows_dead_telemetry(dead, 0) is False
+
+
+@pytest.mark.asyncio
+async def test_vio_turn_reports_stale_stream_when_the_feed_is_frozen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A frozen report stream aborts as stale telemetry, not no_actuation_detected.
+
+    Regression for 2026-07-25: two turn pulses reported bit-identical
+    vision_heading (90.29915121519771) and bit-identical displacement_m
+    (0.006754257916307457) while the operator watched the mower turn ~4 inches.
+    The server log for that window shows BLE frames being dropped outright, so
+    the telemetry was dead while actuation was fine -- but the loop blamed the
+    mower with no_actuation_detected, which sends the operator to check a
+    physical e-stop that was not engaged.
+    """
+    coordinator = _pulse_coordinator()
+    clock = {"now": 100.0}
+
+    def fake_monotonic() -> float:
+        return clock["now"]
+
+    async def fake_sleep(delay: float) -> None:
+        clock["now"] += delay
+
+    # Heading frozen AND position frozen: nothing in the report stream updates,
+    # which is what a dropped-frame window looks like from here.
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=90.29915121519771, vio_state=2
+    )
+
+    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+
+    result = await _vio_turn_to_heading(
+        coordinator,
+        target_vision_heading=9.2,
+        heading_tolerance_degrees=18.0,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        max_commands=16,
+    )
+
+    assert result["stop_reason"] == "vio_telemetry_stream_stale"
+    assert "dropped/malformed frames" in result["vio_telemetry_stream_stale_hint"]
+    # It must NOT accuse the mower of failing to actuate.
+    assert "no_actuation_hint" not in result
+    # Still bounded by the same streak logic.
+    assert result["commands_sent"] == 2
+    # The evidence is recorded per pulse for post-run forensics.
+    assert all(
+        command["heading_poll_feed_alive"] is False
+        and command["heading_poll_count"] >= 3
+        for command in result["command_results"]
+    )
 
 
 def test_ble_transport_usable_reflects_transport_flag() -> None:
@@ -7497,6 +7662,142 @@ def test_update_loop_only_starts_a_map_sync_through_the_gate() -> None:
     assert guarded == 1, f"expected exactly one gated map sync, found {guarded}"
 
 
+def _short_circuit_self(
+    *,
+    online: bool = True,
+    enabled: bool = True,
+    sys_status: object = 11,
+    update_failures: int = 0,
+) -> SimpleNamespace:
+    """Duck-typed ``self`` for ``_async_short_circuit_update``.
+
+    ``ble_mac`` is deliberately empty so the bluetooth-scanner lookup is skipped
+    and the helper needs no HA instance.
+    """
+    device = SimpleNamespace(
+        enabled=enabled,
+        mower_state=SimpleNamespace(ble_mac=""),
+        report_data=SimpleNamespace(dev=SimpleNamespace(sys_status=sys_status)),
+    )
+    return SimpleNamespace(
+        manager=SimpleNamespace(
+            get_device_by_name=lambda _name: device,
+            mower=lambda _name: SimpleNamespace(),
+            update_ble_device=AsyncMock(),
+        ),
+        device_name="Luba-Test",
+        data=device,
+        update_failures=update_failures,
+        is_online=lambda: online,
+        get_coordinator_data=lambda dev: dev,
+        hass=SimpleNamespace(),
+        clear_update_failures=lambda: None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_short_circuit_update_returns_none_on_the_healthy_path() -> None:
+    """A healthy tick must signal "carry on" with None, not truthy data.
+
+    Regression for 2026-07-25. This helper used to be ``_async_update_data`` and
+    ended with ``return self.data``; every subclass opened with
+    ``if data := await super()._async_update_data(): return data``. Since
+    MowingDevice/MowerInfo/Maintain define neither ``__bool__`` nor ``__len__``,
+    that value was always truthy, so the early return fired on every healthy
+    tick and everything after it in all five subclasses was unreachable in
+    steady state -- it only ran once per HA start, while ``self.data`` was still
+    None.
+
+    That silently disabled the per-tick map-sync check (a device-side map edit
+    was never picked up until a restart) and the opportunistic BLE reconnect
+    (the mower could sit on cloud transport at healthy RSSI indefinitely).
+    Confirmed live with DEBUG on: HA logged "Finished fetching mammotion data in
+    0.000 seconds (success: True)" every tick while the LOGGER.debug three lines
+    past the early return never appeared once.
+    """
+    healthy = _short_circuit_self()
+
+    result = await MammotionBaseUpdateCoordinator._async_short_circuit_update(  # noqa: SLF001
+        healthy
+    )
+
+    assert result is None, (
+        "healthy tick returned data, so every subclass early-returns and the "
+        "map-sync / BLE-reconnect work after it never runs"
+    )
+    # The trap that made the bug invisible: the value it used to return is a
+    # perfectly ordinary truthy object, so `if data := ...` could never tell
+    # "carry on" from "stop here".
+    assert bool(healthy.data) is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("kwargs", "reason"),
+    [
+        ({"enabled": False}, "device disabled"),
+        ({"online": False}, "device offline"),
+        ({"sys_status": WorkMode.MODE_UPDATING}, "mid firmware update"),
+        ({"update_failures": 6}, "failing repeatedly"),
+    ],
+)
+async def test_short_circuit_update_still_stops_on_every_guard(
+    kwargs: dict[str, object], reason: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each real short-circuit still returns data so the caller stops there."""
+    # The repeated-failure guard schedules a real HA timer; this test is about
+    # the return contract, not the scheduler.
+    monkeypatch.setattr(
+        mammotion_coordinator, "async_call_later", lambda *_args, **_kw: None
+    )
+
+    result = await MammotionBaseUpdateCoordinator._async_short_circuit_update(  # noqa: SLF001
+        _short_circuit_self(**kwargs)  # type: ignore[arg-type]
+    )
+
+    assert result is not None, f"{reason} must stop the update"
+
+
+def test_every_coordinator_tests_short_circuit_with_is_not_none() -> None:
+    """No coordinator may go back to testing the short-circuit for truthiness.
+
+    Truthiness is exactly what broke this for months: a real payload that
+    happens to be falsy would be read as "carry on", and an always-truthy one
+    as "stop here". Pin the explicit ``is not None`` comparison at every call
+    site so the regression cannot be reintroduced by a later edit.
+    """
+    source = pathlib.Path(mammotion_coordinator.__file__).read_text()
+    tree = ast.parse(source)
+
+    call_sites = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "_async_short_circuit_update"
+    ]
+    assert len(call_sites) == 5, f"expected 5 call sites, found {len(call_sites)}"
+
+    compares = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Compare)
+        and any(isinstance(op, ast.IsNot) for op in node.ops)
+        and any(
+            isinstance(inner, ast.Attribute)
+            and inner.attr == "_async_short_circuit_update"
+            for inner in ast.walk(node.left)
+        )
+        and any(
+            isinstance(cmp, ast.Constant) and cmp.value is None
+            for cmp in node.comparators
+        )
+    ]
+    assert len(compares) == 5, (
+        f"expected all 5 call sites to use `is not None`, found {len(compares)}"
+    )
+
+
 @pytest.mark.asyncio
 async def test_sync_success_updates_last_sync_metadata() -> None:
     """Map/task sync success records timestamps and clears stale errors."""
@@ -7705,6 +8006,96 @@ async def test_exclusive_motion_wrapper_rejects_concurrent_real_runs(
     # Owner finished: the mower is claimable again.
     again = await fast(_motion_call())
     assert again == {"ran": "fast"}
+
+
+def _saga_motion_mower(
+    monkeypatch: pytest.MonkeyPatch, *, saga_active: bool | None
+) -> SimpleNamespace:
+    """Motion mower whose command queue reports an exclusive saga state.
+
+    ``saga_active=None`` omits the queue entirely, standing in for pymammotion
+    API drift.
+    """
+    handle = SimpleNamespace()
+    if saga_active is not None:
+        handle.queue = SimpleNamespace(is_saga_active=saga_active)
+    coordinator = SimpleNamespace(
+        async_stop_manual_motion=AsyncMock(),
+        device_name="Luba-Test",
+        manager=SimpleNamespace(mower=lambda _name: handle),
+    )
+    mower = SimpleNamespace(reporting_coordinator=coordinator)
+    monkeypatch.setattr(
+        mammotion_services,
+        "_get_mower_by_entity_id",
+        lambda _hass, _entity_id: mower,
+    )
+    return mower
+
+
+async def test_exclusive_motion_wrapper_rejects_motion_during_a_saga(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Motion is refused *by name* while an exclusive map saga holds the queue.
+
+    The reverse ordering of the guard that already exists: `manual_motion_owner`
+    stops a saga starting while motion runs, but nothing stopped motion when a
+    saga was already running. Motion is `Priority.NORMAL` with
+    `skip_if_saga_active=False`, so it blocks on the exclusive slot while the
+    executor sleeps out its pulse on local timing -- separating a movement from
+    its stop, or letting either be dropped at the 120 s `_COMMAND_TTL`.
+
+    The original design deliberately had no gate here ("refusing a command the
+    operator just issued is worse than the wait"), which assumed sagas were
+    rare and operator-triggered. They now also fire automatically, and the wait
+    was never benign. A *named* refusal answers the original objection.
+
+    Raised by adversarial review 2026-07-26.
+    """
+    _saga_motion_mower(monkeypatch, saga_active=True)
+
+    async def handler(call: object) -> dict[str, object]:
+        return {"ran": "yes"}
+
+    wrapped = _wrap_exclusive_manual_motion(object(), "svc_motion", handler)
+
+    busy = await wrapped(_motion_call())
+    assert busy["stop_reason"] == "manual_motion_in_progress"
+    assert busy["busy_owner"] == "map_sync_saga"
+    assert busy["would_send"] is False
+
+    # A dry run reads telemetry only and still passes through.
+    assert await wrapped(_motion_call(dry_run=True)) == {"ran": "yes"}
+
+
+async def test_exclusive_motion_wrapper_allows_motion_once_saga_clears(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Once the exclusive slot is free the mower is claimable again."""
+    _saga_motion_mower(monkeypatch, saga_active=False)
+
+    async def handler(call: object) -> dict[str, object]:
+        return {"ran": "yes"}
+
+    wrapped = _wrap_exclusive_manual_motion(object(), "svc_motion", handler)
+    assert await wrapped(_motion_call()) == {"ran": "yes"}
+
+
+async def test_exclusive_saga_probe_degrades_to_allowing_motion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unreadable queue must not block motion.
+
+    Positively-True-only: pymammotion API drift should lose the guard, never
+    refuse every motion command. Mirrors `_ble_transport_usable`'s convention.
+    """
+    _saga_motion_mower(monkeypatch, saga_active=None)
+
+    async def handler(call: object) -> dict[str, object]:
+        return {"ran": "yes"}
+
+    wrapped = _wrap_exclusive_manual_motion(object(), "svc_motion", handler)
+    assert await wrapped(_motion_call()) == {"ran": "yes"}
 
 
 async def test_exclusive_motion_wrapper_releases_on_handler_error(
@@ -8050,6 +8441,52 @@ async def test_motion_refresh_window_resends_for_whole_pulse(
     # Evenly spaced at the requested cadence.
     assert sends[0] == pytest.approx(100.25)
     assert sends[1] - sends[0] == pytest.approx(0.25)
+
+
+@pytest.mark.asyncio
+async def test_motion_refresh_window_stops_when_cancelled_inside_resend() -> None:
+    """Cancellation while a refresh send is in flight must still stop the mower.
+
+    ``_motion_open_sleep`` was added (commit abf65696) because
+    ``CancelledError`` is a ``BaseException``, so ``except Exception`` handlers
+    never see it and a cancel during the pulse sleep exited without the
+    mandatory stop. The refresh window reintroduced exactly that trap one await
+    further in: a cancel landing inside ``resend()`` fell straight past the
+    caller's stop. A movement command is already open on the mower at that
+    point, so it would keep driving until its own device-side timeout.
+
+    Found by adversarial review 2026-07-26 and reproduced against the real
+    helper before fixing: zero stop calls.
+    """
+    stops: list[str] = []
+    coordinator = SimpleNamespace(
+        async_stop_manual_motion=AsyncMock(
+            side_effect=lambda *a, **k: stops.append("stop")
+        )
+    )
+    resend_started = asyncio.Event()
+
+    async def blocking_resend() -> None:
+        resend_started.set()
+        await asyncio.sleep(3600)  # cancellation lands here, inside resend()
+
+    task = asyncio.create_task(
+        mammotion_services._motion_refresh_window(  # noqa: SLF001
+            coordinator,
+            resend=blocking_resend,
+            duration_seconds=4.0,
+            refresh_interval_ms=200,
+        )
+    )
+    await resend_started.wait()
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    # The stop must have been delivered, and the cancellation must still
+    # propagate so the caller's own teardown runs.
+    assert stops == ["stop"]
 
 
 @pytest.mark.asyncio

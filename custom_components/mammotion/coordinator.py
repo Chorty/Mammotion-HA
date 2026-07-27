@@ -860,15 +860,16 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         device-side map edit and must not be delayed by the back-off.
 
         .. note::
-           This call site is currently **unreachable in steady state**:
-           ``MammotionReportUpdateCoordinator._async_update_data`` early-returns
-           on ``if data := await super()._async_update_data()``, and the base
-           method's final ``return self.data`` is an always-truthy
-           ``MowingDevice``.  So this predicate is defence in depth, not an
-           active guard — it becomes load-bearing if that block is ever made
-           reachable.  The paths that *do* start sagas today are the
-           ``sync_maps`` button and ``force_map_resync``, both guarded through
-           :meth:`async_sync_maps` instead.
+           This predicate is **load-bearing as of 2026-07-25**.  Its call site
+           in ``MammotionMapUpdateCoordinator._async_update_data`` was
+           unreachable in steady state until
+           :meth:`_async_short_circuit_update` stopped signalling "carry on"
+           with an always-truthy value; it now runs on every map-coordinator
+           tick (``MAP_INTERVAL``), which is exactly when the back-off below
+           stops an unconverged ``is_map_synced()`` from re-running the
+           exclusive saga forever.  The operator-triggered paths (the
+           ``sync_maps`` button and ``force_map_resync``) remain guarded
+           separately through :meth:`async_sync_maps`.
         """
         if self.manual_motion_owner is not None:
             return False
@@ -1747,8 +1748,35 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         )
         await store.async_remove()
 
-    async def _async_update_data(self) -> DataT:
-        """Update data from the device."""
+    async def _async_short_circuit_update(self) -> DataT | None:
+        """Run the checks shared by every coordinator's update.
+
+        Returns the data to publish when the update must **stop here** (device
+        gone, disabled, offline, mid-map-edit, or failing repeatedly), and
+        ``None`` when the caller should carry on with its own update work.
+
+        The ``None`` is load-bearing. This used to be ``_async_update_data`` and
+        ended with ``return self.data``, and every subclass began with
+        ``if data := await super()._async_update_data(): return data``. Because
+        ``MowingDevice``/``MowerInfo``/``Maintain`` define neither ``__bool__``
+        nor ``__len__``, that value was **always truthy**, so the early return
+        fired on every healthy tick and everything after it in all five
+        subclasses was unreachable in steady state -- it only ran once per HA
+        start, while ``self.data`` was still ``None``.
+
+        That silently disabled the per-tick map-sync check (so a device-side map
+        edit was never picked up until a restart) and
+        :meth:`MammotionReportUpdateCoordinator._async_opportunistic_ble_reconnect`
+        (so the mower could sit on cloud transport indefinitely at healthy RSSI
+        with its connect cooldown long expired -- the exact symptom that function
+        was written for). Measured 2026-07-25: with DEBUG on, HA logged
+        ``Finished fetching mammotion data in 0.000 seconds (success: True)``
+        every tick while the ``LOGGER.debug`` three lines past the early return
+        never appeared once.
+
+        Callers must test ``is not None`` rather than truthiness, so a falsy but
+        real payload can never be mistaken for "carry on".
+        """
         device = self.manager.get_device_by_name(self.device_name)
         if device is None:
             return self.data
@@ -1780,7 +1808,8 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
             )
             return self.get_coordinator_data(device)
 
-        return self.data
+        # Nothing short-circuited: the caller does its own update work.
+        return None
 
     async def _async_update_notification(self, res: tuple[str, Any | None]) -> None:
         """Update data from incoming messages."""
@@ -2117,6 +2146,18 @@ class MammotionReportUpdateCoordinator(MammotionBaseUpdateCoordinator[MowingDevi
 
         Best-effort and bounded: the update is already served by cloud transport,
         so a slow or failing connect must not stall the coordinator tick.
+
+        .. note::
+           This ran **only once per HA start** until 2026-07-25 -- it sits past
+           the early return in :meth:`_async_update_data`, which fired on every
+           healthy tick while :meth:`_async_short_circuit_update` still signalled
+           "carry on" with an always-truthy value.  Measured the same day: the
+           mower emits roughly one BLE advertisement burst per ~10 minutes, and
+           although HA does push the fresh ``BLEDevice`` immediately on each one
+           (``poll_debouncer`` -> ``_add_ble_device`` -> ``set_ble_device``),
+           nothing then called ``connect()`` -- an advertisement at 18:56:56 was
+           only followed by ``active_transport: ble`` at 19:04:47.  It now runs
+           on every ``REPORT_INTERVAL`` tick, which is what closes that gap.
         """
         handle = self.manager.mower(self.device_name)
         if handle is None:
@@ -2149,7 +2190,7 @@ class MammotionReportUpdateCoordinator(MammotionBaseUpdateCoordinator[MowingDevi
 
     async def _async_update_data(self) -> MowingDevice:
         """Get data from the device."""
-        if data := await super()._async_update_data():
+        if (data := await self._async_short_circuit_update()) is not None:
             return data
 
         device = self.manager.get_device_by_name(self.device_name)
@@ -2326,7 +2367,7 @@ class MammotionMaintenanceUpdateCoordinator(MammotionBaseUpdateCoordinator[Maint
 
     async def _async_update_data(self) -> Maintain:
         """Get data from the device."""
-        if data := await super()._async_update_data():
+        if (data := await self._async_short_circuit_update()) is not None:
             return data
 
         _dev = self.manager.get_device_by_name(self.device.device_name)
@@ -2385,7 +2426,7 @@ class MammotionDeviceVersionUpdateCoordinator(
 
     async def _async_update_data(self) -> MowingDevice:
         """Get data from the device."""
-        if data := await super()._async_update_data():
+        if (data := await self._async_short_circuit_update()) is not None:
             return data
         device = self.manager.get_device_by_name(self.device_name)
         assert device is not None
@@ -2536,7 +2577,7 @@ class MammotionMapUpdateCoordinator(MammotionBaseUpdateCoordinator[MowerInfo]):
 
     async def _async_update_data(self) -> MowerInfo:
         """Get data from the device."""
-        if data := await super()._async_update_data():
+        if (data := await self._async_short_circuit_update()) is not None:
             return data
         device = self.manager.get_device_by_name(self.device_name)
         assert device is not None
@@ -2762,7 +2803,7 @@ class MammotionDeviceErrorUpdateCoordinator(
 
     async def _async_update_data(self) -> MowingDevice:
         """Get data from the device."""
-        if data := await super()._async_update_data():
+        if (data := await self._async_short_circuit_update()) is not None:
             return data
         device = self.manager.get_device_by_name(self.device_name)
         assert device is not None
