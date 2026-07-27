@@ -36,6 +36,18 @@ records.
   failure (only the existing custom-integration and deprecated tracker-property
   warnings). `lawn_mower.py` was unchanged and remains at the previously
   deployed `0a5bc4ab` level.
+  **✅ Deploy 2026-07-25 (late): `services.py`, `services.yaml` and
+  `coordinator.py` are LIVE** — md5-matched both sides (`5373e70c` / `022443be` /
+  `a0c352ab`), HA Core restarted (API 61 s, 122 entities 190 s, 53 services).
+  **The host is current with the working tree.** The dead-region fix is PROVEN on
+  hardware: `Updated Mammotion device` now logs every ~5 min (22:32:28 / 22:38:04
+  / 22:43:19) where it appeared **zero** times before, so the opportunistic BLE
+  reconnect actually runs. Both service changes confirmed by dry run.
+  **⚠️ The restart left the integration in `setup_error` with no auto-retry** (a
+  BLE GATT `start_notify` timeout escaping `async_setup_entry` as a raw
+  `TimeoutAPIError`); a manual entry reload fixed it. See the hazard section in
+  the plan doc — restarting HA while BLE is unhealthy can leave the integration
+  dead silently.
   **Deploy 2026-07-24: `f2074722` (`services.py` + `coordinator.py`) is LIVE** —
   scp'd and md5-matched both sides, then loaded by the operator's own HA update
   restart. Verified on hardware: `get_map_data` returns the new `map_sync`
@@ -150,13 +162,17 @@ while `pos_type` is 1 (`AREA_INSIDE`). It read 0 while docked (`pos_type: 5`,
 > **withdrawn** — at that rate a saga landing inside a specific ~2-minute run
 > window is improbable, and there is no evidence one did.
 >
-> **The real bug here is the opposite one**, and it is still open: because that
-> block is unreachable, a device-side map edit (`bol_hash` change) is **never
-> picked up while HA is running** — only on restart. `_map_callback`'s comment
-> ("Map freshness is enforced in `_async_update_data()` via bol_hash checks")
-> therefore does not hold. Fixing that would make the block live on every tick,
-> which is exactly when the back-off below becomes necessary — so the two belong
-> in the same change.
+> **The real bug here is the opposite one:** because that block is unreachable, a
+> device-side map edit (`bol_hash` change) is **never picked up while HA is
+> running** — only on restart. `_map_callback`'s comment ("Map freshness is
+> enforced in `_async_update_data()` via bol_hash checks") therefore does not
+> hold. Fixing that makes the block live on every tick, which is exactly when the
+> back-off below becomes necessary — so the two belong in the same change.
+>
+> **✅ FIXED 2026-07-25 (later, NOT deployed)** — see the item-4 section below.
+> The block turned out to be in `MammotionMapUpdateCoordinator` (60 min), not the
+> report coordinator, and the same bug existed in **five** coordinators. The
+> back-off is now load-bearing as predicted.
 
 The contention **mechanism** below is code-verified and still worth guarding;
 only its frequency was overstated:
@@ -207,10 +223,50 @@ moment the tick path is made reachable:
    `services` imports `coordinator` and the flag has to be readable from both.
    Atomic check-and-set semantics preserved.
 
-Deliberately **no new motion gate**: refusing a command the operator just issued
-is worse than the wait, and these two make a mid-run saga rare.
+~~Deliberately **no new motion gate**: refusing a command the operator just issued
+is worse than the wait, and these two make a mid-run saga rare.~~
+
+**⚠️ REVERSED 2026-07-26 (adversarial review).** Both premises stopped holding:
+
+1. **Sagas are no longer only operator-triggered.** Making the per-tick block
+   reachable means they also fire automatically (~hourly), so the operator has
+   no idea one started — the "they'd know why" half of the argument is gone.
+2. **The "wait" was never benign.** Motion is `Priority.NORMAL` with
+   `skip_if_saga_active=False`, so it *blocks* on the exclusive slot while the
+   executor sleeps out its pulse on **local timing**. The pulse can elapse
+   before the mower moves at all, and the movement and its stop can be
+   separated — or either dropped at the 120 s `_COMMAND_TTL`. That breaks the
+   bounded-pulse guarantee the safety model rests on; it is not a late start.
+
+The original objection was really to an *unexplained* refusal.
+`_exclusive_saga_active()` now gates the motion wrapper and returns the
+existing busy shape with `busy_owner: map_sync_saga`, so the operator is told
+it is a map sync and can retry in seconds. The probe is
+positively-True-only — any unreadable piece allows motion, so pymammotion API
+drift can never block everything — and it is a synchronous read, so the
+check-and-claim stays one uninterrupted block on the event loop.
 
 ## Immediate next steps (all doable off-mower)
+
+> **STATUS 2026-07-25 (end of the later off-mower session).** The whole off-mower
+> queue is **clear**: the turn-phase stale-feed detector, refresh wired into
+> `vio_turn_to_heading`, the vector-executor echo fix, and the five-coordinator
+> dead-region fix are all done (352 tests, mypy + ruff clean, **not deployed**).
+> The BLE investigation is root-caused (see the 2026-07-25 "later" section).
+>
+> **Everything still open needs the mower, daylight, and an operator:**
+> 1. **Deploy + restart** (`services.py`, `services.yaml`, `coordinator.py`), then
+>    run the three confirmation checks in the plan doc's item-4 section.
+> 2. **Step 5b — the supervised segment run**, still unachieved; the Task-2
+>    constants (pulse-geometry ceilings, `min_progress_distance`, cadence) remain
+>    un-re-derived hypotheses.
+> 3. **Re-derive `heading_tolerance_degrees`** with
+>    `motion_refresh_interval_ms: 200` passed explicitly to
+>    `vio_turn_to_heading` (it defaults to 0 precisely because 18 was derived from
+>    the single-shot quantum).
+> 4. **File the pymammotion reassembly patch** —
+>    `docs/pymammotion-ble-reassembly-bug.md` has a ready-to-file diff. It cannot
+>    land here: pymammotion is a pinned PyPI release (`==0.8.8`), not a fork.
 
 1. **Test refresh on a *properly-powered* turn.** `manual_velocity_pulse_test`
    caps angular at ~202 (speed ≤ 0.6), so it *cannot* command the ≥382/500 a real
@@ -233,9 +289,17 @@ is worse than the wait, and these two make a mid-run saga rare.
    continuously, `heading_tolerance_degrees` can drop far below 18.
 
    **✅ DONE 2026-07-25 — refresh gives ~7x (9° → 62°), compass-verified.** See
-   the 2026-07-25 on-mower section below. Next code item from it: wire
-   `motion_refresh_interval_ms` into `vio_turn_to_heading` and re-derive
-   `heading_tolerance_degrees`.
+   the 2026-07-25 on-mower section below.
+
+   **✅ CODE DONE 2026-07-25 (later, NOT deployed): `motion_refresh_interval_ms`
+   is now wired into `vio_turn_to_heading`** (schema + services.yaml + handler,
+   via the existing `_motion_refresh_window`; refreshes counted separately in
+   `motion_refresh_commands_sent` so they never inflate `commands_sent`).
+   **Left defaulting to 0 on purpose.** `heading_tolerance_degrees: 18` exists
+   only because single-shot turning was quantised into ~8–15° steps; enabling
+   refresh by default before re-deriving it would drive continuous rotation into
+   a deadband sized for discrete steps. **Re-deriving the tolerance needs a mower
+   session** — pass `motion_refresh_interval_ms: 200` explicitly and measure.
 
 2. **✅ DONE (code, 2026-07-22, NOT deployed): the executors' linear refresh now
    defaults to 200** (`raw_pymammotion_execute_vector_segment` / `_multi_segment`
@@ -309,8 +373,10 @@ is worse than the wait, and these two make a mid-run saga rare.
    `out_of_sync` was resolved by one button press.** No pymammotion change is
    needed. Withdraw the earlier framing that `is_map_synced()` is "permanently
    false on this mower" — it was false only because **nothing was ever running a
-   sync automatically** (see the unreachable-block bug below). That is the real
-   defect, and it is still open.
+   sync automatically** (the unreachable-block bug). That was the real defect,
+   and it is **✅ fixed as of 2026-07-25 (later, NOT deployed)** — see the item-4
+   section. Confirm on hardware after deploying: edit an area on the mower and
+   check `map_sync_status` converges without a restart or a `sync_maps` press.
 
 Note `manual_velocity_pulse_test`'s `speed` is on the app's 0.0–1.0 scale
 (default **0.55** → raw linear 400, matching the executors); its `duration_ms`
@@ -437,12 +503,29 @@ phase got `telemetry_stream_stale` on 2026-07-19 (bit-identical position across
 ≥3 polls = dead stream, not a stopped mower). The turn phase never got the
 equivalent, so `no_actuation_detected` cannot distinguish *"the link is dead"*
 (the 07-19 e-stop case it was built for) from *"the feed froze while the mower
-turned fine"* (tonight). **The discriminating signal was already in the result
-and unused: `heading_went_fresh: false` with an 8.01 s poll timeout on BOTH
-pulses.** Fix: when the freshness poll times out, do not emit
-`no_actuation_detected` — emit a stale-feed reason instead. Same "always require
-positive evidence the sensor is live" lesson as the three earlier false-positive
-bugs.
+turned fine"* (tonight).
+
+**✅ FIXED 2026-07-25 (later, NOT deployed) — but not the way this note
+proposed.** The prescription was to gate on `heading_went_fresh: false`. That
+**does not discriminate**: `heading_went_fresh` is True only when before/after
+differ by more than the epsilon, which is exactly when
+`_streak_shows_no_actuation` (bit-identical heading) is False. The two are
+perfectly correlated, so gating on it would have deleted the no-actuation branch
+rather than refined it.
+
+The signal that works is *"did any channel move at all"* — a live feed is never
+perfectly still (position jitters ~2–4 mm; a dusk-latched heading still emits
+~0.0018° noise). New `heading_poll_count` / `heading_poll_feed_alive` per pulse
+feed `_streak_shows_dead_telemetry`, which fires only when heading **and**
+position were bit-identical across every poll. New reason:
+`vio_telemetry_stream_stale`. Verified to fail with the fix reverted; the two
+dusk-latch tests pass untouched.
+
+**Note the semantic change:** a replay of the 07-19 e-stop run now reports
+`vio_telemetry_stream_stale`, because that run's feed was frozen too (heading
+bit-identical for 45 min). That is the honest answer — telemetry never saw the
+e-stop, the operator did. `no_actuation_detected` now means the link was
+demonstrably alive and the mower still did not move.
 
 ### ⚠️ Step 5b attempt 2 — calibration pulse sent, THEN THE STOP FAILED
 
@@ -510,9 +593,12 @@ re-arm it.
   mid-drive re-aim uses `vision_heading` + that fresh offset (`services.py:8762`).
   Neither reads `toward`. Still worth understanding.
 - **`max_linear_pulse_ceiling` is not echoed** in the vector executor's result
-  (it echoes `None` even when passed and honoured — confirmed it *is* wired in at
-  `services.py:8477`). The multi-segment executor got this echo gap fixed on
-  2026-07-19; the vector one still has it. Cosmetic, blocks forensics.
+  (it echoes `None` even when passed and honoured). The multi-segment executor
+  got this echo gap fixed on 2026-07-19; the vector one still had it.
+  **✅ FIXED 2026-07-25 (later, NOT deployed)** — the vector executor now echoes
+  `max_linear_pulse_ceiling`, `turn_pulse_duration_ms`,
+  `linear_pulse_duration_ms`, `vio_turn_max_commands`, `vio_angular_speed` and
+  `vio_heading_offset_degrees`, with a regression test over all six.
 - **The map emptied again after real motion** (`map.area` count 0,
   `out_of_sync`) and recovered on `force_map_resync`. Consistent with
   `invalidate_maps()` firing on a report whose `bol_hash` mismatches, plus the
@@ -530,11 +616,142 @@ cadence) are still un-re-derived and remain hypotheses.** Retry needs a healthy
 BLE session; consider moving the mower closer to a proxy first, and fire the run
 promptly after a wake rather than spending the doze window on diagnostics.
 
+## 🚨 2026-07-25 (later): BLE root-caused — the mower barely advertises
+
+Full detail in `docs/codex-working-plan.md` (2026-07-25 "later" section). The
+headline, measured with HA's own advertisement stream rather than inferred:
+
+**In a 30-minute window while the mower was actively mowing, HA's six scanners
+heard exactly TWO advertisements from it** — one burst, at −76 and −97. Positive
+control in the same session: 444 advertisements from 107 other devices in 45 s.
+A normal connectable peripheral advertises every 20 ms–1.28 s; this one emits
+roughly one burst per ~10 minutes.
+
+That single fact produces every `never seen by any scanner` / `last advertisement
+613s ago` failure. **Retire the "−70/−76 coverage wall" as the primary
+explanation** — when the mower *is* heard it is heard at −62 to −69, and four of
+six proxies have all connection slots free at the moment of failure.
+
+Four separate problems were being treated as one:
+
+1. **The mower is not advertising** (6 of 8 cooldowns): no proxy connect is even
+   attempted. Root cause; not fixable from our side.
+2. **A connect is attempted at −64 and hangs ~20 s, then `status=133`
+   (`ESP_GATTC_OPEN_EVT in DISCONNECTING state`)** — both instances on
+   `p1s-printer-a5774c`. Not coverage.
+3. **HA keeps preferring the proxy that just failed.** The failure penalty is
+   negligible next to RSSI (score −67.06 with 2 failures vs −67.00 with 0). The
+   P1S proxy is closest to the mower and is the only one never showing a free
+   allocation (`slots=2/3 free` in every sample).
+4. **Corrupted frames are a pymammotion reassembly bug**, root-caused below.
+
+**Ops action worth trying before any code change:** park the mower nearer
+`esphomes3-irk`, or reduce what the P1S printer proxy carries.
+
+### 🐛 The corrupted frames — root cause found (upstream, pymammotion)
+
+The garbage decodes as protobuf: `"a1LLmy1zc0j"` (Aliyun product key) and
+`"Luba-VSPLV397"` (device name) — a device-identity message **spliced into** a
+report frame, not bit-flips.
+
+`BleMessage.parseNotification` accumulates fragments into a buffer that
+`_notification_handler` clears **only on a complete frame**. A lost fragment,
+checksum failure, or exception returns early and leaves the partial buffer in
+place; the next message appends to it and the concatenation is delivered as one
+"complete" frame. The sequence check even *detects* the gap and only resyncs the
+counter — it never discards the poisoned buffer.
+
+**Live: `parseNotification read sequence wrong` fired 11 times in ~3 minutes of
+connected BLE.** One lost packet mid-fragment costs at least two reports — this
+is the mechanism behind the 07-25 turn reporting bit-identical `vision_heading`
+*and* `displacement_m` while the mower physically turned.
+
+*Fix (upstream): reset the accumulation buffer on a detected sequence gap and on
+the checksum/exception paths.*
+
+### 🐛 Our own code contributes: the dead region also contains the BLE reconnect
+
+`_async_opportunistic_ble_reconnect()` sits in the **same unreachable block** as
+the map-sync check (past `if data := await super()._async_update_data(): return
+data`). Proven with DEBUG on: `Finished fetching mammotion data in 0.000 seconds
+(success: True)` on every tick while `Updated Mammotion device` — three lines
+past the early return — appears **zero** times.
+
+That function was written for exactly this symptom ("stuck on `cloud_aliyun` at
+healthy RSSI with the cooldown long expired"). **It has never run.** So when one
+of the mower's rare advertisements lands, HA *does* immediately push a fresh
+`BLEDevice` (that path works), but nothing then calls `connect()`. Observed:
+advertisement burst 18:56:56 → `active_transport: ble` at 19:04:47, ~8 minutes
+of usable link discarded.
+
+**This makes off-mower item 4 (make the per-tick block reachable) the
+highest-value BLE fix available**, and it now governs two subsystems, not one.
+
+**✅ DONE 2026-07-25 (later still, NOT deployed).** The bug was in **five**
+coordinators, not one, and the map-sync block turned out to live in
+`MammotionMapUpdateCoordinator` (60 min), not the report coordinator — the older
+notes had that wrong. The base method is now
+`_async_short_circuit_update() -> DataT | None`, returning `None` for "carry on",
+and all five call sites test `is not None` rather than truthiness. Every dead
+region was already individually guarded, so turning them on is contained. 6 new
+tests (one verified to fail against the old return, plus an AST test pinning
+`is not None` at all five sites); 352 tests, mypy + ruff clean.
+
+**Runtime effect to expect after deploy:** the BLE reconnect attempts every
+5 min instead of once per HA start, and the map-sync check runs every 60 min
+(which is what makes `_should_start_map_sync`'s back-off load-bearing, and what
+finally fixes "a device-side map edit is never picked up until a restart").
+Confirmation steps are listed at the end of the matching plan-doc section.
+
+*Checked and cleared: the advertisement callback registration is fine —
+`_async_start()` registers it; the copy in the dead region is a redundant backup.*
+
+### 🚨 …and the config option `prefer_ble_over_wifi` was `false`, which gated the fix
+
+Read from `/config/.storage/core.config_entries` (the options form defaults
+`prefer_ble` to `True`, so an unchecked box meant it was explicitly `False`).
+What the flag actually does differs per call site:
+
+| site | uses | effect when `false` |
+|---|---|---|
+| `active_transport()` (handle.py:1883) | `self._prefer_ble` | **none** — its docstring says it "no longer affects which transport is returned"; it only biases a log de-dup key. This is why `active_transport: ble` still appeared. |
+| `_do_send()` (handle.py:772) | `self._prefer_ble`, no override | **reconnect-on-send disabled** |
+| `send_raw()` (handle.py:1668) | caller's value if given, else `self.prefer_ble` | our motion services pass `prefer_ble=True` explicitly, so **they** still reconnect |
+
+That last row explains the whole observed pattern: BLE recovered when something
+explicitly asked for it (a motion service, a probe) but not from routine
+background traffic.
+
+**The coupling that matters:** the two *automatic* reconnect paths — pymammotion's
+reconnect-on-send and our `_async_opportunistic_ble_reconnect` — were **both**
+disabled, and not independently: our function also short-circuits on
+`handle.prefer_ble`. **So the item-4 fix alone would have changed nothing on this
+system.**
+
+**✅ The operator set `prefer_ble_over_wifi: true` on 2026-07-25 at 20:46:13
+local.** Expect the log to look *busier*: `is_usable` can be True on a
+cached-but-stale `BLEDevice`, so attempts fire at a non-advertising mower and fail
+into the 120 s cooldown. That is the intended bounded retry.
+
+**Leave `movement_use_wifi` OFF** — `services.py` never reads it (verified: zero
+references); only `button.py` does, where it makes `_nudge_available` return True
+unconditionally and routes the nudge buttons over cloud. Cloud-routed motion has
+no position feedback (the feed is BLE-only), so it is blind driving, and it masks
+the "BLE selected but not usable" signal that exposed the 07-19 gate bug.
+`mow_path_fetch_enabled` has no BLE effect (it gates `MowPathSaga` over MQTT).
+
+*Next measurement: re-run `ble_advert_monitor.py` with the mower **docked and
+idle** before treating ~10 minutes as the real duty cycle. One evening, one
+mower, one window.*
+
 ## Known walls (not code bugs)
 
-- **BLE proxy coverage is the hard limit.** Works above ~-70 rssi, dies below
-  ~-76 (ESPHome GATT status=133 → 120 s cooldown). Long runs outlive the link.
-  A faster drive (refresh cadence) may dodge this on its own.
+- **BLE: the mower's advertising duty cycle is the hard limit** (measured
+  2026-07-25, above). The older framing below held that proxy coverage was the
+  wall; it is at most a secondary factor.
+  - Historical note: works above ~-70 rssi, dies below ~-76 (ESPHome GATT
+    status=133 → 120 s cooldown). The status=133 failures observed on 2026-07-25
+    happened at **−64**, so status=133 is not a signal-strength tell.
   - **The reliable fix when stuck on a far proxy (frozen rssi, no hand-off):**
     hold a BLE proxy right next to the mower and **restart the mower** — it drops
     the stuck link and HA's proxies race to reconnect, the close one wins

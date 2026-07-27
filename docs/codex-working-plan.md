@@ -3838,3 +3838,896 @@ Both attempts died in transport before reaching the linear phase, so **the Task-
 (pulse-geometry ceilings, `min_progress_distance`, cadence) remain un-re-derived hypotheses.**
 Retry needs a healthy BLE window: move the mower near a proxy, and fire promptly after a wake
 rather than spending the doze window on diagnostics.
+
+## Wrap-up 2026-07-25 (later, off-mower): the BLE instability root-caused by measurement
+
+The operator made BLE the primary investigation. It was treated as one problem; it is
+**four**, and three of them were misattributed. Everything below comes from what the
+system recorded — HA's own advertisement stream, its scanner path-scoring log, and
+DEBUG logs enabled for the occasion — not from re-reading code.
+
+### The instrument that was missing: HA's raw advertisement stream
+
+`sensor.<mower>_ble_rssi` is self-reported by the mower, so it holds a plausible value
+after the radio goes quiet — the project already knew that but had no replacement.
+HA's `bluetooth/subscribe_advertisements` websocket command is the replacement: an
+advertisement is proof the radio was on air at that instant, observed by HA's own
+scanners. Script: `ble_advert_monitor.py` (scratchpad), pairs with `state_sampler.py`.
+
+**Positive control first** (a zero proves nothing unless the instrument is shown to
+emit): in 45 s the stream delivered **444 advertisements from 107 distinct devices**,
+and the mower appeared in **none** of them.
+
+### 🚨 Finding 1 — the mower barely advertises. This is the root cause.
+
+Measured over a **30-minute window while the mower was actively mowing**
+(`MODE_WORKING`, `active_transport: cloud_aliyun`):
+
+| | |
+|---|---|
+| advertisements heard from the mower | **2** (a single burst at 18:56:55 and :56) |
+| scanners that heard that burst | atom-fireplace (−97), p1s-printer-a5774c (−76) |
+| advertisements in the other ~29 minutes | **0** |
+
+A normal connectable BLE peripheral advertises every 20 ms–1.28 s while disconnected.
+This one emits roughly **one burst per ~10 minutes**. That single fact produces every
+`BleakOutOfConnectionSlotsError ... unknown (never seen by any scanner)` and every
+`last advertisement 613s ago` in the logs.
+
+It is **not** proxy capacity: 6 scanners registered, 6 scanning, 6 connectable, and
+four of them report `slots=3/3 free` at the moment of failure. It is **not** the
+documented −70/−76 RSSI wall: whenever the mower *is* heard, it is heard at −62 to −69.
+
+It is also **not only** the idle doze as documented — this window was a mower actively
+working, not an idle one dozing.
+
+### Finding 2 — two failure modes were being conflated
+
+| mode | signature | what it means | count in a 2.5 h log |
+|---|---|---|---|
+| **A** | `unknown (never seen by any scanner)` / `only in non-connectable history` — **no proxy connect is attempted at all** | the mower is not advertising | 6 of 8 |
+| **B** | a proxy **does** attempt: `Connecting v3 with cache` → ~20 s of nothing → `ESP_GATTC_OPEN_EVT in DISCONNECTING state (status=133)` | the mower was advertising at −64 and still refused/timed out the connection | 2 |
+
+Both end identically — `BLETransport[...]: cooling down for 120s` — which is why they
+read as one problem. They need opposite fixes. Mode B at −64 dBm flatly refutes a
+coverage explanation for those events.
+
+### Finding 3 — HA keeps routing connects to the proxy that just failed
+
+From the scanner path-scoring lines, the failure penalty is negligible next to RSSI:
+
+```
+17:39:03  esphomes3-irk       RSSI=-67  failures=0  score=-67.00
+          p1s-printer-a5774c  RSSI=-64  failures=2  score=-67.06   <- 0.06 margin
+```
+
+`p1s-printer-a5774c` sits closest to the mower, so it usually wins on RSSI, and both
+mode-B failures happened on it. It is also the only proxy that never has a free
+allocation (`slots=2/3 free` in **every** sample — one connection permanently in use).
+Moving the mower's usual parking spot nearer `esphomes3-irk`, or reducing what the P1S
+proxy carries, is a placement change worth trying before any code change.
+
+### 🐛 Finding 4 — the corrupted frames are a pymammotion reassembly bug (root-caused)
+
+The 2026-07-25 garbage decodes cleanly as protobuf:
+
+```
+0x1a 0x0b "a1LLmy1zc0j"     field 3, len 11  -> the Aliyun product key
+0x22 0x0d "Luba-VSPLV397"   field 4, len 13  -> the device name
+```
+
+That is a **device-identity message spliced into a report frame** — meaningful bytes
+from another message, not bit-flips on the wire. The mechanism:
+
+- `BleMessage.parseNotification` accumulates fragments into `self.notification` via
+  `addData` (an appending `BytesIO`).
+- `BLETransport._notification_handler` calls `clear_notification()` **only** when
+  `parseNotification` returns 0 (a complete frame).
+- A lost fragment (`return 1`, still waiting), a checksum failure (`return -4`) or an
+  exception (`return -100`) all make the handler return early — **the partial buffer is
+  never reset**.
+- The next message's fragments append to that stale partial. When its non-fragmented
+  terminator arrives, `parseBlufiNotifyData` hands back *old partial + new message*
+  concatenated, and `handle.py` drops the whole thing.
+
+`parseNotification` even **detects** the loss and does nothing about it — on a sequence
+discontinuity (`ble_message.py:391`) it resyncs the counter and keeps the poisoned
+buffer.
+
+**Live confirmation (DEBUG enabled this session):** `parseNotification read sequence
+wrong` fired **11 times in ~3 minutes** of connected BLE (19:04–19:07), with gaps of
+1–3+ packets (`15 14`, `126 123`, `201 199`, …). So the precondition is common on this
+link; poisoning only surfaces when a gap lands mid-fragment, which matches the observed
+rarity of `dropping frame` (4 in 2.5 h).
+
+**Impact:** one lost packet mid-fragment costs at least two reports. This is the
+mechanism behind the 07-25 turn reporting bit-identical `vision_heading` *and*
+bit-identical `displacement_m` while the mower physically turned.
+
+**Fix (upstream, pymammotion):** reset the accumulation buffer whenever the sequence
+check detects a gap, and on the `-4`/`-100` paths.
+
+### 🐛 Finding 5 — our own code contributes, and the dead region is bigger than documented
+
+The 2026-07-24 correction established that
+`MammotionReportUpdateCoordinator._async_update_data` early-returns on every healthy
+tick because `MowingDevice` is always truthy, making the map-sync block unreachable.
+**`_async_opportunistic_ble_reconnect()` is in that same dead region** (coordinator.py,
+three statements past the early return).
+
+Proven by recorded evidence rather than code reading — with DEBUG enabled:
+
+```
+DEBUG [custom_components.mammotion] Finished fetching mammotion data in 0.000 seconds (success: True)
+```
+appears on every tick, while `Updated Mammotion device` (a `LOGGER.debug` three lines
+past the early return) appears **0 times** across every tick observed. "in 0.000
+seconds" is itself the tell.
+
+That function was written for exactly this symptom — its docstring cites "live
+2026-07-19: repeatedly stuck on `cloud_aliyun` at healthy RSSI with the cooldown long
+expired". **It has never run.**
+
+The consequence chains straight into Finding 1: when one of the mower's rare
+advertisements finally lands, HA *does* immediately push a fresh `BLEDevice`
+(`poll_debouncer` → `_add_ble_device` → `set_ble_device`, `immediate=True`) — but
+**nothing then calls `connect()`**. BLE returns only when something else happens to
+send a BLE command. Observed this session: advertisement burst at **18:56:56**,
+`active_transport` back to `ble` at **19:04:47** — roughly 8 minutes of usable link
+thrown away.
+
+**Checked and cleared:** the advertisement callback registration itself is fine.
+`_async_start()` registers it properly; the copy inside the dead region is a redundant
+backup, not the live path. (Suspected it, checked it, it was wrong — recorded so the
+next session does not re-suspect it.)
+
+This makes off-mower item 4 (make the per-tick block reachable) the highest-value BLE
+fix available, and it is now load-bearing for two subsystems, not one.
+
+### Method notes
+
+- The 30-minute advertisement window is one sample of one mower on one evening. It is
+  strong evidence for "advertises rarely", not proof of the duty cycle. Re-run it while
+  the mower is **docked and idle** before treating ~10 minutes as the number.
+- `logger.set_level` changes are runtime-only and revert on an HA restart; nothing was
+  persisted.
+
+### Code shipped this session (off-mower, NOT deployed) — 346 tests, mypy + ruff clean
+
+**1. Turn-phase stale-feed detector (`vio_telemetry_stream_stale`).**
+
+The handoff prescribed "when the freshness poll times out, emit a stale-feed reason
+instead of `no_actuation_detected`". **That does not work, and the reason matters:**
+`heading_went_fresh` is True only when before/after differ by more than the epsilon,
+which is exactly when `_streak_shows_no_actuation` (bit-identical heading) is False.
+The two are **perfectly correlated**, so gating on it would have deleted the
+no-actuation branch rather than refined it.
+
+The signal that actually discriminates is *"did any channel move at all"*. A live feed
+is never perfectly still: position jitters ~2–4 mm between reads on a stationary mower,
+and a VIO heading latched by dusk still emits sub-epsilon noise (~0.0018°, run 2). The
+poll loop now records `heading_poll_count` and `heading_poll_feed_alive` per pulse, and
+`_streak_shows_dead_telemetry` fires only when heading **and** position were
+bit-identical across every poll of the streak (≥ `_STALE_FEED_MIN_POLLS`).
+
+Ordering: dead-telemetry → no-actuation → no-heading-progress.
+
+Verified to fail with the fix reverted (reproduces the exact 07-25 misdiagnosis). The
+two dusk-latch tests **pass untouched**, which is the real check that the discriminator
+is right rather than fitted to the new test.
+
+**Consequence worth knowing:** a replay of the 2026-07-19 e-stop run now reports
+`vio_telemetry_stream_stale`, not `no_actuation_detected` — because that run's feed was
+frozen too (heading bit-identical for 45 min). That is the honest answer: telemetry
+never saw the e-stop, the operator did. `no_actuation_detected` now means what it says
+— the link was demonstrably alive and the mower still did not move.
+
+**2. `motion_refresh_interval_ms` wired into `vio_turn_to_heading`.**
+
+Mirrors the linear phase via the existing `_motion_refresh_window`; refreshes are
+counted in `motion_refresh_commands_sent` so they never inflate `commands_sent` (which
+drives `max_commands`). Schema + services.yaml + handler wired.
+
+**Deliberately left defaulting to 0.** Refresh gave ~7x at angular 500 on 2026-07-25,
+but `heading_tolerance_degrees: 18` exists only because single-shot turning was
+quantised into ~8–15° steps. Turning refresh on by default before re-deriving the
+tolerance would drive continuous rotation into a deadband sized for discrete steps.
+**Re-deriving that tolerance needs a mower session** — it cannot be done at the desk.
+
+**3. `max_linear_pulse_ceiling` (and siblings) now echoed by the vector executor.**
+
+Also `turn_pulse_duration_ms`, `linear_pulse_duration_ms`, `vio_turn_max_commands`,
+`vio_angular_speed`, `vio_heading_offset_degrees` — matching the multi-segment executor
+(fixed there 2026-07-19, missed here). Regression test asserts all six on a dry run.
+
+**Not done: off-mower item 4** (make the per-tick coordinator block reachable). Finding
+5 above changes its scope — it now governs the BLE reconnect as well as map sync, and
+making it reachable turns on two behaviours at once on every 5-minute tick. That is an
+operator-visible behaviour change and wants a deliberate decision, not a drive-by.
+
+### Diagnostic tooling added (`scripts/`)
+
+- **`ble_advert_monitor.py`** — subscribes to HA's raw advertisement stream and
+  records every advertisement heard from the mower (RSSI, scanner, connectable),
+  then summarises silent gaps and per-scanner coverage. Prints a **CONTROL** count
+  of advertisements from all devices, so a zero for the mower can never be read as
+  a result until the instrument is shown to be emitting. Read-only.
+  `.venv/bin/python scripts/ble_advert_monitor.py 1800`
+- **`state_sampler.py`** — samples the mower's self-reported transport/rssi/mode
+  on a cadence, recording each entity's `last_updated` alongside its value so a
+  frozen timestamp beside a healthy-looking number is visible at a glance.
+
+Sample taken while writing this up: **1 mower advertisement vs 311 from all
+devices in 60 seconds.**
+
+To re-enable the DEBUG logging this investigation used (runtime only, reverts on
+restart; it was set back to `info`/`warning` afterwards):
+
+```yaml
+service: logger.set_level
+data:
+  pymammotion.bluetooth.ble_message: debug   # parseNotification sequence gaps
+  pymammotion.transport.ble: debug
+  custom_components.mammotion: debug         # coordinator dead-region check
+  pymammotion.device.handle: debug
+```
+
+## Wrap-up 2026-07-25 (later still): item 4 — the dead region made reachable
+
+Off-mower item 4 done. Scope turned out **larger than documented**, in two ways.
+
+### The map-sync block is not where the notes said it was
+
+Previous notes (and `_should_start_map_sync`'s own docstring) placed the per-tick map
+sync in `MammotionReportUpdateCoordinator._async_update_data`. It is actually in
+**`MammotionMapUpdateCoordinator._async_update_data`**, which runs on `MAP_INTERVAL`
+(60 min), not `REPORT_INTERVAL` (5 min). Docstring corrected.
+
+### Five coordinators had the bug, not one
+
+`if data := await super()._async_update_data(): return data` appears in **five**
+subclasses — report, maintenance, version, map, and error — and the base's terminal
+`return self.data` was always truthy in every one of them. So five dead regions, each
+running only once per HA start:
+
+| coordinator | interval | what was unreachable | guarded on its own? |
+|---|---|---|---|
+| report | 5 min | `async_save_data`, backup BLE callback registration, **`_async_opportunistic_ble_reconnect`** | yes — `is_usable` / not connected / timeout |
+| maintenance | 30 min | returns fresher `report_data.maintenance` | n/a, pure read |
+| version | 30 min | up to 4 device-info commands, `check_firmware_version()`, the OTA-firmware HTTP fetch, **and its own `update_interval` self-throttle** | yes — each command skipped once `already_set` |
+| map | 60 min | RTK/dock fetch + **map-sync saga** | yes — `is_map_synced` + `_should_start_map_sync` back-off |
+| error | 30 min | HTTP error-code fetch | yes — skipped once populated |
+
+Every region was already individually guarded, which is why turning them on is a
+contained change: the guards were written, they simply never got a chance to run.
+
+### The fix: an explicit contract instead of truthiness
+
+The base method is renamed **`_async_short_circuit_update() -> DataT | None`**. It
+returns the data to publish when the update must stop (device gone, disabled, offline,
+mid-map-edit, failing repeatedly) and **`None`** when the caller should carry on. All
+five call sites now read:
+
+```python
+if (data := await self._async_short_circuit_update()) is not None:
+    return data
+```
+
+`is not None` rather than truthiness is the point — truthiness is what hid this for
+months, and it would equally misread a legitimately falsy payload as "carry on". The
+rename also stops the base overriding HA's `DataUpdateCoordinator._async_update_data`
+with a widened return type; every subclass overrides it anyway, so the base never
+needed one.
+
+**6 new tests**, including one verified to fail against the old terminal return, and an
+AST test pinning `is not None` at all five call sites so the regression cannot be
+reintroduced. 352 tests, mypy + ruff clean.
+
+### What this changes at runtime — read before deploying
+
+- **BLE reconnect now attempts every 5 minutes** instead of once per HA start. This is
+  the fix for the finding above (a rare advertisement lands, HA caches a fresh
+  `BLEDevice`, and nothing ever calls `connect()`). It is bounded: it no-ops unless
+  `prefer_ble` and `is_usable` and not already connected, and it is wrapped in a
+  timeout so a slow connect cannot stall the tick.
+- **The map-sync check now runs every 60 minutes.** `_should_start_map_sync` becomes
+  load-bearing exactly as predicted: a repeat attempt against an unchanged `bol_hash`
+  waits out `MAP_INTERVAL`, and no saga starts while a guarded motion run holds the
+  mower. This is what finally fixes "a device-side map edit is never picked up until an
+  HA restart".
+- Version/error/maintenance regions are no-ops once their data is populated.
+
+**Hardware confirmation to take after the next deploy:**
+1. `sensor.<mower>_active_transport` should stop sitting on `cloud_aliyun` for long
+   stretches while the mower is advertising — compare against a
+   `scripts/ble_advert_monitor.py` run over the same window.
+2. Edit an area on the mower and confirm `map_sync_status` converges **without** an HA
+   restart or a `sync_maps` press.
+3. Confirm `sensor.<mower>_last_map_sync` advances at most once per hour, not per tick.
+
+### Second advertisement sample: docked and idle — the duty cycle is not a mowing artefact
+
+The first sample was taken while the mower was working, so the obvious objection was
+that mowing (distance, motor noise, power management) explained the silence. Repeated
+with the mower **docked and `MODE_READY`**:
+
+| | |
+|---|---|
+| window | ~20 min (the websocket dropped before the full 25) |
+| mower advertisements | **4, in exactly 2 bursts** — 20:11:30 and 20:16:52 |
+| silent before the first burst | ~13 min |
+| RSSI when heard | −84 (garage-m5stack), then −68 (esphomes3-irk) and **−50** (p1s-printer) |
+
+**Same behaviour docked as mowing: roughly one burst every 5–10 minutes.** So the sparse
+duty cycle is a property of the mower, not of mowing — which is the confirmation the
+first sample could not provide on its own.
+
+Note the −50 reading: when this mower does advertise, at least one proxy hears it
+*loudly*. Nothing about the link quality is marginal. The problem is purely **how rarely
+the radio is on air**.
+
+Also worth recording: HA's scanners observed −84 in the first burst while
+`sensor.<mower>_ble_rssi` was self-reporting **−52** at the same time. So that sensor is
+not a usable proxy for link quality either, not merely for liveness.
+
+**Script hardened as a result:** the first long run died partway through on an aiohttp
+heartbeat timeout (`No PONG received after 15.0s`) and lost its summary — the one
+failure mode that matters for a measurement whose whole point is "how long was it
+silent". `ble_advert_monitor.py` now reconnects on a dropped socket and always emits the
+summary from a `finally` block.
+
+## 🚨 2026-07-25 (config): `prefer_ble_over_wifi` is stored **false** — and it gates the item-4 fix
+
+Read from `/config/.storage/core.config_entries`, not inferred from the options form
+(whose default is `True`, so an unchecked box means the key was explicitly set `False`):
+
+```json
+{"movement_use_wifi": false, "mow_path_fetch_enabled": false, "prefer_ble_over_wifi": false}
+```
+
+### What `prefer_ble` actually controls — three sites, and they differ
+
+| site | uses | effect today (`false`) |
+|---|---|---|
+| `active_transport()` (handle.py:1883) | `self._prefer_ble` | **none.** Its own docstring: prefer_ble "no longer affects which transport is returned (a connected BLE always wins; otherwise a usable MQTT wins)" — it only biases a log de-dup key. This is why `active_transport: ble` still appeared for long stretches. |
+| `_do_send()` (handle.py:772) | `self._prefer_ble`, **no override** | **reconnect-on-send disabled.** A command sent while BLE is disconnected-but-usable never schedules a BLE reconnect. |
+| `send_raw()` (handle.py:1668) | `self.prefer_ble if prefer_ble is None else prefer_ble` | **caller can override.** Our motion services pass `prefer_ble=True` explicitly, so they *do* trigger a reconnect. |
+
+That last row explains the observed pattern precisely: BLE recovers when something
+explicitly asks for it (a motion service, a probe) but not from routine background
+traffic — which is why an advertisement at 18:56:56 was only followed by
+`active_transport: ble` at 19:04:47.
+
+### The coupling that matters
+
+There are exactly two *automatic* BLE-reconnect paths, and **both are disabled right
+now**:
+
+1. pymammotion's reconnect-on-send — off because `prefer_ble=False`;
+2. our `_async_opportunistic_ble_reconnect` — dead code (the region bug fixed today).
+
+They are not independent. Our function **also** short-circuits on the same flag:
+
+```python
+if not (handle.prefer_ble and ble.is_usable and not ble.is_connected and self._bluetooth_enabled):
+    return
+```
+
+**So the item-4 fix on its own would have changed nothing on this system.** Enabling
+`prefer_ble_over_wifi` is required for it to do anything. Recorded because the previous
+section could otherwise be read as "the fix closes the gap" — it does not, unaided.
+
+### Recommendation on the other two options
+
+- **`movement_use_wifi` — leave OFF.** `services.py` never reads it (verified: zero
+  references); only `button.py` does, where it makes `_nudge_available` return `True`
+  unconditionally and routes the nudge buttons over cloud. Cloud-routed motion is what
+  the safety model refuses — the position feed is BLE-only and stone dead on cloud, so
+  it is driving blind. It would also mask the "BLE selected but not usable" signal that
+  exposed the 2026-07-19 gate bug.
+- **`mow_path_fetch_enabled` — no BLE effect.** It gates `MowPathSaga` over MQTT only.
+  Neutral; adds cloud command-queue traffic.
+
+### Expected side effect of enabling prefer_ble
+
+More connect attempts and more cooldown churn in the log: `is_usable` can be `True` on a
+cached-but-stale `BLEDevice` (pymammotion deliberately keeps it when tripping a
+cooldown), so attempts will fire against a mower that is not currently advertising and
+fail into the 120 s cooldown. That is the intended bounded-retry design, and it is the
+mechanism by which BLE gets re-established — but expect the log to look busier, not
+quieter.
+
+Saving options fires `_async_update_listener` → `async_reload(entry)`, i.e. an
+integration reload (not an HA restart). Do it while the mower is **awake**, per the known
+blank-card-map gotcha.
+
+### First 25 minutes after `prefer_ble_over_wifi: true` (saved 20:46:13 local)
+
+Sampled every 20 s (`scripts/state_sampler.py`, 75 samples, 20:46:59 → 21:11:40), mower
+`MODE_WORKING` throughout — i.e. mowing, so its distance from the proxies changed across
+the window. That is a confound; read this as encouraging, not as proof.
+
+| period | transport | `ble_rssi` |
+|---|---|---|
+| 20:46:59 → 21:02:00 | `cloud_aliyun` | `0` (no link) |
+| 21:02:00 → 21:11:20 | **`ble`**, one 20 s cloud blip | live every sample, **−60 degrading to −90** |
+| 21:11:20 → end | `cloud_aliyun` | back to `0` |
+
+What the server log shows in the same window:
+
+```
+21:01:54  P1S Printer: Connecting v3 with cache -> Connection open      (2s)
+21:04:37  P1S Printer: Connecting v3 with cache -> Connection open      (16s)
+21:06:01  BLETransport: device Luba-VSPLV397 disconnected
+21:06:01  Bluetooth Proxy: Connecting v3 without cache
+21:06:03  Bluetooth Proxy: Connection open + Service discovery complete (2s, DIFFERENT proxy)
+21:11:02  BLETransport: out of connection slots / device unreachable — cooling down 120s
+```
+
+Three successful connects, a **2-second hand-off to a different proxy** on disconnect,
+and a ~9-minute continuous BLE hold. During that hold `ble_rssi` updated on essentially
+every sample and degraded monotonically −60 → −90 as the mower drove away — a *live*
+feed, in direct contrast to the frozen values recorded earlier in the evening.
+
+**What this does and does not establish.** The window contains **no `status=133`
+failures and no "never seen by any scanner"** — the eventual drop at 21:11 is
+`device unreachable` after the RSSI decayed to −90, i.e. the mower simply mowed out of
+range. That is the *ordinary* failure mode, not the pathological ones that dominated
+earlier. But the mower's position changed throughout, there is no control window under
+matched conditions, and immediate reconnect-on-disconnect was already observed before
+the change (motion services pass `prefer_ble=True` explicitly, so they always had it).
+
+**So: consistent with the flag helping, not attributable to it yet.** The clean test is
+a docked-and-idle window compared against the docked-and-idle sample taken earlier
+tonight (4 adverts / 2 bursts / ~20 min, transport stuck on cloud at −52 self-reported).
+Run that before crediting the change.
+
+### Docked-and-idle control, `prefer_ble=true` (21:43 → 22:08) — and a ceiling on what the fix can buy
+
+The matched control for the earlier docked sample. Mower `MODE_READY` on the dock,
+`ble_rssi` self-reporting −50, `active_transport: cloud_aliyun`.
+
+| | earlier docked (`prefer_ble=false`) | this run (`prefer_ble=true`) |
+|---|---|---|
+| window | ~20 min | 25 min |
+| mower advertisements | 4 (2 bursts) | **1** |
+| RSSI when heard | −84 / −68 / −50 | **−50** |
+| control (all devices) | — | **9,393** |
+
+**The flag did not change the advertising rate**, which is exactly right: advertising is
+device-side and nothing in HA can influence it. That part of the model holds.
+
+**But this is the cleanest statement of the root cause so far: one advertisement in
+25 minutes, at −50 dBm, sitting on its own dock.** Signal quality is superb; the radio is
+simply almost never on air. Ratio to the rest of the house: 1 : 9,393.
+
+#### ⚠️ What this implies for the deploy — read before expecting a transformation
+
+A central can only open a BLE connection **in response to a connectable advertisement**.
+So the advertisement rate is a hard ceiling on when BLE can be (re)established, and
+neither `prefer_ble=true` nor the item-4 reconnect fix can raise it. Concretely:
+
+- `_async_opportunistic_ble_reconnect` will now run every 5 minutes, but it no-ops
+  unless `is_usable` — and most of those ticks will land in a silent window.
+- pymammotion deliberately *keeps* the cached `BLEDevice` when it trips a cooldown, so
+  `is_usable` can be True against a mower that is not currently advertising. Those
+  attempts will fail and re-arm the 120 s cooldown. **Expect a busier log with a
+  significant failure fraction — that is the design working, not a regression.**
+
+So the honest expectation for the deploy is **"BLE is re-established promptly whenever
+the mower gives us a chance", not "BLE is continuously available"**. The remaining gap is
+device-side and not addressable from this integration.
+
+#### Open question, deliberately not answered
+
+Advertising rate does **not** track docked-vs-mowing cleanly:
+
+| window | state | adverts |
+|---|---|---|
+| 18:47 → 19:17 | mowing | 0 in 30 min |
+| ~20:00 → 20:20 | docked idle | 4 in 20 min |
+| 21:01 → 21:11 | mowing | 3 successful *connects*, so adverts were present |
+| 21:43 → 22:08 | docked idle | 1 in 25 min |
+
+(Note a connected peripheral normally stops advertising, so the 21:02–21:11 BLE hold
+would itself show no adverts — the connects at 21:01:54, 21:04:37 and 21:06:01 are the
+evidence that adverts were available then.)
+
+No clean dependence on activity state, and the earlier "~10–13 min idle doze" framing
+does not survive as a general rule either — it is sparser and more irregular than that.
+Do not commit to a mechanism yet; it needs more windows under recorded conditions.
+
+## ⚠️ REFINEMENT (same night, docked): connecting is not the bottleneck — **sessions die in ~73 s**
+
+The "the mower barely advertises" headline above is correct as a measurement but it is
+**not the whole diagnosis**, and this refines it. Correlating ESPHome connect events
+against `sensor.<mower>_active_transport` while the mower sat **docked and idle**
+(`MODE_READY` from 21:16:53):
+
+| BLE session | ended | held |
+|---|---|---|
+| 21:16:53 | 21:18:06 | **73 s** |
+| 21:46:53 | 21:48:07 | **74 s** |
+| 22:01:56 | 22:06:56 | 300 s |
+| 22:16:53 | (ongoing at time of writing) | — |
+
+And the ESPHome side shows `Connection open` for the mower at **21:01:54, 21:16:52,
+21:46:52, 22:01:54, 22:16:52** — i.e. roughly a **15-minute grid**, with almost no
+matching `BLETransport: device ... disconnected` lines.
+
+**So HA does manage to connect regularly — about every 15 minutes — and the link then
+dies after ~73 seconds.** That is a materially different problem from "we can never get
+a connection", and a more actionable one: pymammotion runs a `todev_ble_sync(2)`
+heartbeat every **5 s** (`ble_loop.py::_KEEP_ALIVE_BLE_INTERVAL`) precisely to hold the
+GATT link open, with a 30-failure (~150 s) tolerance before giving up. A link that dies
+in 73 s with that heartbeat running is a real defect, not a radio limitation.
+
+**What this does and does not change:**
+
+- The advertisement measurements stand — 1 advert / 25 min docked, control 9,393. That
+  is still extraordinary and still device-side.
+- But because a *held* connection needs no further advertisements, sparse advertising
+  only gates the **initial** connect after a drop. If sessions survived, one advert per
+  25 minutes would be plenty.
+- **Therefore the dominant docked-state problem is session lifetime, not advertisement
+  rate.** Both are real; the ordering was wrong.
+
+Note the 73 s / 74 s figures are suspiciously repeatable and match none of the obvious
+constants (`_KEEP_ALIVE_BLE_INTERVAL` 5 s, `_BLE_HEARTBEAT_FAIL_LIMIT` 30 → ~150 s,
+`_BLE_STREAM_STALE_THRESHOLD` 15 s, the docked poll intervals 60 s / 300 s). The 300 s
+session does match `_BLE_POLL_INTERVAL[DOCKED_FULL/IDLE]`. Do **not** guess a mechanism
+from these numbers — DEBUG logging for `pymammotion.transport.ble`,
+`pymammotion.device.handle` and `pymammotion.device.ble_loop` was enabled at ~22:20 to
+capture the next cycle directly.
+
+**Next session: this is the thread to pull.** It is fully answerable with the mower on
+the dock, needs no motion, and if sessions can be made to persist it removes most of the
+BLE pain regardless of the advertising rate.
+
+## Deploy 2026-07-25 (late): 3 files live — and a restart-time hazard found
+
+`coordinator.py`, `services.py`, `services.yaml` scp'd to
+`/config/custom_components/mammotion/` and **md5-matched on both sides**
+(`a0c352ab` / `5373e70c` / `022443be`). The other 41 integration files and the card were
+already byte-identical. Manifest reads `0.6.4-beta11` on both sides — unchanged by this
+work, and therefore useless as a deploy indicator, exactly as the repo gotcha warns.
+
+HA Core restarted: API back in 61 s, 122 mammotion entities at 190 s. 53 mammotion
+services registered.
+
+### 🐛 The restart left the integration DEAD, and it did not self-recover
+
+```
+22:29:42 ERROR [homeassistant.config_entries] Error setting up entry ... for mammotion
+  aioesphomeapi.core.TimeoutAPIError: Timeout waiting for BluetoothGATTNotifyResponse,
+  BluetoothGATTErrorResponse, BluetoothDeviceConnectionResponse after 10.0s
+  ...
+  File "/config/custom_components/mammotion/__init__.py", line 502, in async_setup_entry
+    await _await_device_connection(...)
+  File "/config/custom_components/mammotion/__init__.py", line 332, in _await_device_connection
+    await handle.connect_transport(TransportType.BLE)
+22:29:52 WARNING [homeassistant.config_entries] Unloading matt.joslin@me.com (mammotion)
+```
+
+Result: config entry state **`setup_error`**, 121 of 122 entities `unavailable`, and
+**no automatic retry** — HA only auto-retries `setup_retry` (i.e. `ConfigEntryNotReady`).
+A raw `TimeoutAPIError` propagating out of `async_setup_entry` yields `setup_error`,
+which is terminal until someone reloads by hand. A manual entry reload fixed it
+immediately (state `loaded`, 122 entities, 17 unavailable — the normal BLE-gated ones).
+
+**This is not caused by the deployed change** — `__init__.py` was byte-identical before
+and after, and the failure is a GATT `start_notify` timeout through the ESPHome proxy.
+It is the BLE flakiness biting at the worst possible moment.
+
+**But it is a real robustness bug, and a nasty one given this hardware:** `_await_device_connection`
+attempts a BLE connect during setup, and on a marginal link that timeout takes the whole
+integration down permanently. Restarting HA while BLE is unhealthy — which, on the
+measurements above, is most of the time — can leave the mower integration dead with no
+retry and no notification. The plausible fix is to wrap the setup-time BLE connect so a
+failure raises `ConfigEntryNotReady` (retry with backoff) or degrades to cloud, rather
+than escaping as a raw transport error. **Not attempted this session; queued.**
+
+### Verification
+
+- 53 services registered; `vio_turn_to_heading`, `raw_pymammotion_execute_vector_segment`
+  and `force_map_resync` all present.
+- No syntax/import error from the two changed Python files.
+- **Dead-region marker:** `Updated Mammotion device` — which appeared **zero** times
+  across every tick before the fix — now appears. Confirming it *repeats* across
+  successive `REPORT_INTERVAL` ticks (rather than the old once-per-start) is the actual
+  proof; a watcher is running for the third occurrence.
+
+### ✅ The dead-region fix is PROVEN LIVE ON HARDWARE
+
+`Updated Mammotion device` — the `LOGGER.debug` three statements past the early return,
+which appeared **zero** times across every tick before the fix:
+
+```
+2026-07-25 22:32:28  Updated Mammotion device Luba-VSPLV397
+2026-07-25 22:38:04  Updated Mammotion device Luba-VSPLV397
+2026-07-25 22:43:19  Updated Mammotion device Luba-VSPLV397
+```
+
+Three occurrences ~5 min apart, matching `REPORT_INTERVAL`. The first alone proved
+nothing (that is the once-per-HA-start case which happened before the fix too); the
+**repetition** is the proof. So as of this deploy:
+
+- `_async_opportunistic_ble_reconnect()` runs every ~5 minutes instead of never;
+- `async_save_data()` runs per tick;
+- the map coordinator's `bol_hash` / map-sync block runs on its 60-minute tick, with
+  `_should_start_map_sync`'s back-off now load-bearing.
+
+Also verified on hardware by dry run (no motion):
+
+- `vio_turn_to_heading` accepts and echoes `motion_refresh_interval_ms: 200` and reports
+  `motion_refresh_commands_sent` — HTTP 200 where the old schema rejected the key.
+- The vector executor echoes `max_linear_pulse_ceiling: 12` (previously `None`) plus
+  `turn_pulse_duration_ms`, `linear_pulse_duration_ms`, `vio_turn_max_commands`,
+  `vio_angular_speed`.
+
+**Remaining post-deploy checks that need wall-clock time:** `sensor.<mower>_last_map_sync`
+should advance at most hourly, and a device-side map edit should converge without a
+restart or a `sync_maps` press.
+
+DEBUG logging was set back to `info` afterwards. To re-arm the BLE session-death capture
+(the next session's top thread) — note these reset on every HA restart:
+
+```yaml
+service: logger.set_level
+data:
+  pymammotion.transport.ble: debug
+  pymammotion.device.handle: debug
+  pymammotion.device.ble_loop: debug
+```
+
+## ❓→❌ "Can we drive over Wi-Fi instead of BLE?" — No. The app doesn't either.
+
+Raised 2026-07-26: the mower moves from the app while it is on Wi-Fi, so perhaps BLE is
+only needed for blades-on manual mowing. This would be a way around the BLE wall, so it
+was checked against the decompile rather than reasoned about. **It does not hold.**
+
+### The app has exactly two links, and the driving command is hard-wired to BLE
+
+`MALinkManagerAPI` owns precisely two managers — `espBleManager` (BLE) and `maIotManager`
+(IoT/cloud) — with `LinkType`, `trySwitchToIOT` and `_trySwitchToBT`. There is **no
+Wi-Fi/LAN link manager** in `device/source/links/managers/`.
+
+Two delivery paths hang off it, and they are not symmetric:
+
+```java
+// MALinkManager.java:410 — binary commands. Unconditionally BLE.
+public void postCustomeDateByte(byte[] bArr, String str) {
+    EspBleManagerApi espBleManagerApi = this.espBleManager;
+    if (espBleManagerApi == null || bArr == null) return;
+    espBleManagerApi.postCustomeDateByte(bArr, str);      // <- no IoT branch at all
+}
+
+// MALinkManager.java:419 — JSON. This is the cloud path.
+public void postJsonString(String str, String str2, boolean z2, String str3) {
+    IotManagerApi iotManagerApi = this.maIotManager;      // <- IoT
+    ...
+}
+```
+
+`DrvMotionCtrl` passes transport flag `false`, which routes to `postCustomeDateByte`
+(`MACommandHelper.java:217-226,229-256`) — i.e. **straight to `EspBleManager`**. So the
+app's joystick drives over **BLE**, and the earlier catalog note that this is "not
+intrinsically BLE-only" is too cautious: with only two managers and the binary path
+hard-wired to BLE, there is nowhere else for it to go.
+
+### Why it *looks* like Wi-Fi
+
+`MALinkManager` does expose `getAllWifi()`, `getDeviceWifiList()`, `setWiFiOpen/Close()`
+— but these are **BluFi Wi-Fi provisioning carried over BLE** (ESP BluFi: you use
+Bluetooth to hand the device its Wi-Fi credentials). The mower's Wi-Fi is what gets it to
+the **cloud**; it is not a control link for the app. The app's WIFI/BLE indicator showing
+Wi-Fi does not mean the joystick is using it.
+
+### The operator's other belief is correct, and stronger than stated
+
+Manual mowing (`DrvMowCtrlByHand`, refreshed every 800 ms) is **Bluetooth-only** via a
+caller-level gate, and the blade auto-stops when filtered BLE RSSI ≤ **−80 dBm** — a
+safety interlock that only makes sense on a BLE link. So BLE is required for blades-on
+mowing *and* for plain driving.
+
+### What our own `use_wifi` / `movement_use_wifi` actually is
+
+Not the same thing. pymammotion has three transports — `ble.py`, `mqtt.py`,
+`aliyun_mqtt.py` — and **no local/LAN transport**. `async_stop_manual_motion(use_wifi=True)`
+just sets `prefer_ble=False`, which routes over **Aliyun cloud MQTT**: a path the app
+deliberately never uses for motion. Even setting aside safety, it is unusable here —
+cloud report cadence is 10–60 min (sensors measured 9–15 min stale tonight), the position
+feed is dead on cloud (20 of 21 polls bit-identical, 2026-07-21), and the proven 200 ms
+refresh cadence cannot survive a cloud round trip.
+
+**Conclusion: there is no Wi-Fi shortcut around the BLE work.** The BLE session-lifetime
+thread is not optional — it is the only path to reliable click-to-path.
+
+## 💡 2026-07-26: the comms module is an ESP32 — Wi-Fi/BLE coexistence is the leading hypothesis
+
+Operator supplied the hardware fact: the mower's Wi-Fi and BLE are the same ESP32.
+Confirmed in both codebases — the app ships `com.agilexrobotics.espressif.BlufiClientImpl`
+/ `BlufiNotifyData` / `FrameCtrlData`, and pymammotion implements the same BluFi framing
+(`ble_message.py`, `mBlufiMTU`, `BlufiNotifyData`). BluFi is Espressif's own BLE
+protocol, so this is an ESP32 at the mower end.
+
+**This matters because an ESP32 has ONE 2.4 GHz radio shared between Wi-Fi and BLE.**
+When both are active the coexistence scheduler time-slices them: BLE advertising events
+get delayed or skipped while Wi-Fi has the radio, and an active BLE connection can miss
+enough connection events to hit its supervision timeout and drop.
+
+### It explains both open mysteries at once, and the paradox between them
+
+| observation | coexistence explanation |
+|---|---|
+| 1 advertisement per ~25 min while **docked and idle** | advertising events are being starved by Wi-Fi, not skipped for power saving |
+| yet heard at **−50 dBm** when it does advertise | signal was never the problem — radio *time* is |
+| sessions connect fine, then die at ~**73 s** | missed connection events under Wi-Fi contention → supervision timeout |
+| `ble_rssi` self-reported −50 while scanners heard −84 | consistent with sporadic, poorly-timed transmissions rather than a weak link |
+
+Nothing else proposed so far explains "excellent signal, almost never on air".
+
+### It probably also explains the proxy-side failures
+
+Our ESPHome proxies are **also ESP32s sharing one radio**. The two `status=133`
+(`ESP_GATT_ERROR`) connect failures both landed on **`p1s-printer-a5774c`** — a proxy
+co-located with a 3D printer, i.e. very likely carrying real Wi-Fi traffic. Same
+mechanism, other end of the link. That is a better explanation than "that proxy is
+broken", and it fits the observation that it also permanently shows `slots=2/3 free`.
+
+### The test — and its risk
+
+`switch.<mower>_device_wifi` is real: `async_set_device_wifi_enabled` sends
+`set_device_wifi_enable_status` to the mower (over BLE, `prefer_ble=True`). So the
+hypothesis is directly testable: **turn the mower's Wi-Fi off, then re-run
+`scripts/ble_advert_monitor.py` and watch session lifetime.** If advertising rate and
+session length jump, coexistence is confirmed and the whole BLE problem becomes a
+configuration question rather than a mystery.
+
+**⚠️ Do not run this unattended.** Wi-Fi is this mower's *only* cloud path — the 4G
+switch is off and `mobile_rssi` reads 0. Turning Wi-Fi off means:
+
+- cloud transport disappears entirely;
+- if BLE does *not* improve, the mower is unreachable from HA;
+- the command to turn Wi-Fi back on must itself go over BLE.
+
+So it should be done with the operator physically present and the mower in reach.
+
+**Zero-risk alternative worth trying first:** the mower's own `wifi_rssi` reads −69/−74,
+which is mediocre. A weak Wi-Fi link means more retries and therefore *more* radio time
+spent on Wi-Fi, starving BLE further. Improving the mower's Wi-Fi coverage at the dock
+(closer AP / better placement) would reduce contention without disabling anything, and
+predicts a measurable BLE improvement on its own.
+
+**Status: strong hypothesis, not confirmed.** It has the best explanatory fit of anything
+proposed, but it has not been tested. Test before recording it as the cause.
+
+## 🔑 2026-07-26: the mower is HANGING UP ON US — `error=19` (peer user terminated)
+
+Chasing the MTU refined itself into something much better. The first
+`bleak_esphome` connection-state debug line for the mower reads:
+
+```
+p1s-printer-a5774c [C4:DD:57:A5:77:4E]: Luba-VSPLV397 - A8:B5:8E:2C:52:40:
+  Connection state changed to connected=False mtu=0 error=19
+```
+
+`error=19` is `0x13` = **`ESP_GATT_CONN_TERMINATE_PEER_USER`** — "connection terminated
+by peer user". The **mower deliberately closed the link.** This is not:
+
+| code | meaning | would imply |
+|---|---|---|
+| `0x08` (8) | connection/supervision timeout | passive radio starvation, missed connection events |
+| `0x16` (22) | terminated by local host | *we* dropped it |
+| **`0x13` (19)** | **terminated by peer user** | **the mower made a decision** |
+
+That distinction matters a lot. A pure Wi-Fi/BLE coexistence starvation (the hypothesis
+from earlier tonight) would surface as **0x08**, not 0x13. So the sessions are not simply
+being starved off the air — the mower's firmware is choosing to hang up.
+
+### The chain this completes
+
+pymammotion already sends a `todev_ble_sync(2)` heartbeat specifically to hold the link
+open — but note its own interval comment (`ble_loop.py`):
+
+> The device drops out of its "synced" state ... after roughly its ~10 s keep-alive
+> window ... **The APK sends sync every ~1.5 s; we use 5 s as a balance** — well under
+> the ~10 s timeout while ~3x less BLE/ESPHome-proxy traffic than the APK cadence.
+
+5 s is comfortably inside a 10 s window **only if every heartbeat lands**. And we
+measured that they do not: **11 `parseNotification read sequence wrong` events in ~3
+minutes** of connected BLE. Lose two consecutive 5 s heartbeats and the gap exceeds the
+device's ~10 s window; at the app's 1.5 s cadence you would need ~7 consecutive losses to
+do the same damage.
+
+So the pieces fit into one chain, each link independently measured:
+
+```
+packet loss on the link  ->  missed 5 s heartbeats  ->  device keep-alive window (~10 s)
+exceeded  ->  mower terminates the connection (error=19)  ->  ~73 s / ~5 min sessions
+->  long cloud-only gaps waiting for the next rare advertisement
+```
+
+### What to try — cheap, reversible, upstream-shaped
+
+**Raise the BLE heartbeat rate toward the app's cadence.** `_KEEP_ALIVE_BLE_INTERVAL`
+is `5.0` in `pymammotion/device/ble_loop.py`; the app uses ~1.5 s. The existing comment
+shows 5 s was chosen to reduce proxy traffic, explicitly trading margin for airtime —
+that trade looks wrong on a link that is losing packets. This is the single highest-value
+experiment available and it needs no mower motion.
+
+Caveat worth stating: more heartbeats means more BLE traffic, which on a shared-radio
+ESP32 could aggravate the coexistence pressure. So it is genuinely a test, not an obvious
+win — measure session lifetime before and after.
+
+### Confidence
+
+**One disconnect sample.** The code semantics are certain and the supporting
+measurements (heartbeat interval, sequence-gap rate, session lifetimes) are each solid,
+but the `error=19` observation itself needs repeating before it is recorded as *the*
+cause. A collector is running for further samples; if some disconnects come back `0x08`
+instead, the starvation story is back in play alongside this one.
+
+**This supersedes the MTU line of inquiry**, which was refuted (largest send ever: 54
+bytes) though it did surface a real latent defect — see
+`docs/pymammotion-ble-reassembly-bug.md`.
+
+## ⚠️ CORRECTION (same night): `error=19` is NOT the whole story, and the MTU is UNSTABLE
+
+The single `error=19` sample above was recorded with an explicit caveat — "if some
+disconnects come back `0x08`, the starvation story is back in play". More samples
+arrived, and that is exactly what happened.
+
+### Every mower connection transition captured
+
+| connects | disconnects |
+|---|---|
+| `mtu=517` ×3 | `error=19` (peer terminated) ×2 |
+| `mtu=250` ×2 | `error=0` ×2 |
+| `mtu=23` ×1 | **`error=8` (supervision timeout) ×1** |
+
+**Two corrections follow.**
+
+### 1. Both failure mechanisms are present, not one
+
+`error=8` is `ESP_GATT_CONN_TIMEOUT` — the supervision timeout, i.e. the *passive
+starvation* signature the coexistence hypothesis predicted. So the picture is mixed:
+the mower sometimes deliberately hangs up (`0x13`, 2×) and sometimes the link simply
+times out (`0x08`, 1×), with two more disconnects reporting `error=0`.
+
+**Withdraw the framing that "the mower is hanging up on us" is *the* cause.** It happens,
+and it is real, but it accounts for at most 2 of 5 observed disconnects. The
+heartbeat-cadence experiment (`_KEEP_ALIVE_BLE_INTERVAL` 5 s → ~1.5 s) is still worth
+running — it plausibly addresses both mechanisms — but it should not be sold as a fix for
+a single diagnosed cause.
+
+### 2. The MTU is not stable, which partly REVIVES the MTU angle
+
+Negotiated MTU varies across connections: **517, 250, and 23**. The 23 case is the BLE
+default, i.e. no successful negotiation at all.
+
+This does **not** resurrect the send-side theory — sends are still ≤54 bytes and
+`chunk_size=517` is still never reached. But it matters a great deal on the **receive**
+side, because a BluFi frame carries at most `min(MTU-3, 255)` bytes:
+
+| negotiated MTU | fragments for a ~249-byte report | exposure to the reassembly bug |
+|---|---|---|
+| 517 | 1 (unfragmented) | **none** — an unfragmented frame clears the buffer immediately |
+| 250 | ~2 | moderate |
+| **23** | **~13+** | **severe** — every fragment is another chance to lose one and poison the buffer |
+
+So when the link negotiates a low MTU, fragmentation explodes and the buffer-poisoning
+bug becomes dramatically more likely. That is a concrete mechanism connecting MTU
+instability to the corrupted frames — and it is a *better* explanation of why the
+corruption is intermittent than "reports happen to exceed 255 bytes".
+
+Worth noting alongside: `bleak_esphome` caches the negotiated MTU
+(`if not self._mtu: self._mtu = mtu`, plus `set_gatt_mtu_cache`). A bad negotiation
+cached at 23 could persist across reconnects.
+
+### Method note
+
+This is the fifth time on this project that a confident single-sample conclusion has been
+walked back by more data. The caveat was stated when the claim was made, which is why the
+correction is cheap — but the lesson stands: **one sample of a categorical code is a
+hypothesis, not a finding.**
