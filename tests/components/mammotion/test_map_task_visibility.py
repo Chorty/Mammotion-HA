@@ -62,6 +62,7 @@ from custom_components.mammotion.services import (
     _export_mower_map,
     _export_mower_tasks,
     _export_runtime_state,
+    _final_approach_pulse_ms,
     _forward_two_pulse_latency_test,
     _is_zero_motion_stop_nudge,
     _manual_velocity_best_heading_decision,
@@ -4476,6 +4477,228 @@ async def test_vector_segment_echoes_pulse_geometry_params() -> None:
     assert result["vio_turn_max_commands"] == 16
     assert result["vio_angular_speed"] == 500
     assert result["vio_heading_offset_degrees"] == 42.5
+
+
+def test_final_approach_scales_the_last_pulse_to_the_remaining_distance() -> None:
+    """Less than one pulse of travel left -> shorten the pulse proportionally."""
+    info = _final_approach_pulse_ms(
+        distance_to_target=0.2,
+        observed_pulse_distances=[],
+        default_metres_per_pulse=1.06,
+        pulse_duration_ms=3500.0,
+        refresh_interval_ms=200,
+    )
+
+    assert info["applied"] is True
+    assert info["reason"] == "final_approach_scaled_to_remaining_distance"
+    # 0.2 m of a 1.06 m pulse -> 18.9% of 3500 ms.
+    assert info["pulse_duration_ms"] == pytest.approx(660.4, abs=0.1)
+    assert info["metres_per_pulse_source"] == "default"
+
+
+def test_final_approach_is_disabled_without_the_refresh_cadence() -> None:
+    """Single-shot motion moves a fixed step, so scaling the duration is a trap.
+
+    The 2026-07-22 B1 tape proved distance is duration-dependent only while the
+    command is being re-sent: the same 4 s pulse moved ~4 in single-shot and
+    ~44 in at ``motion_refresh_interval_ms`` 200. Without refresh a shortened
+    pulse would not land closer -- and 2026-07-18 measured a 2000 ms single-shot
+    pulse as a physical no-op, so it could stop the mower moving at all. The
+    guard must hold regardless of how little distance remains.
+    """
+    info = _final_approach_pulse_ms(
+        distance_to_target=0.2,
+        observed_pulse_distances=[1.06],
+        default_metres_per_pulse=1.06,
+        pulse_duration_ms=3500.0,
+        refresh_interval_ms=0,
+    )
+
+    assert info["applied"] is False
+    assert info["reason"] == "refresh_disabled_distance_not_proportional_to_duration"
+    assert info["pulse_duration_ms"] == 3500.0
+
+
+def test_final_approach_leaves_cruising_pulses_full_length() -> None:
+    """More than one pulse to go -> drive the full pulse, unchanged."""
+    info = _final_approach_pulse_ms(
+        distance_to_target=2.5,
+        observed_pulse_distances=[],
+        default_metres_per_pulse=1.06,
+        pulse_duration_ms=3500.0,
+        refresh_interval_ms=200,
+    )
+
+    assert info["applied"] is False
+    assert info["reason"] == "cruising_full_pulse_fits"
+    assert info["pulse_duration_ms"] == 3500.0
+
+
+def test_final_approach_floors_the_pulse_so_the_mower_still_actuates() -> None:
+    """A hair of distance left must not become a pulse too short to move.
+
+    Proportional scaling alone would ask for ~33 ms here. The floor keeps the
+    pulse long enough to actuate (~9 cm at the measured rate), which still lands
+    inside the waypoint tolerance.
+    """
+    info = _final_approach_pulse_ms(
+        distance_to_target=0.01,
+        observed_pulse_distances=[],
+        default_metres_per_pulse=1.06,
+        pulse_duration_ms=3500.0,
+        refresh_interval_ms=200,
+    )
+
+    assert info["applied"] is True
+    assert info["pulse_duration_ms"] == 300.0
+
+
+def test_final_approach_prefers_the_distance_observed_this_run() -> None:
+    """Today's measured pulses beat the baked-in constant.
+
+    Speed, grass and gradient move the per-pulse distance around, so the run
+    calibrates itself. Here the mower is covering 2.0 m per pulse -- against the
+    1.06 m default the same 1.5 m of remaining distance would have read as
+    "cruising" and fired a full pulse straight past the target.
+    """
+    info = _final_approach_pulse_ms(
+        distance_to_target=1.5,
+        observed_pulse_distances=[2.0, 2.0],
+        default_metres_per_pulse=1.06,
+        pulse_duration_ms=3500.0,
+        refresh_interval_ms=200,
+    )
+
+    assert info["applied"] is True
+    assert info["metres_per_pulse_source"] == "observed"
+    assert info["metres_per_pulse"] == pytest.approx(2.0)
+    assert info["pulse_duration_ms"] == pytest.approx(2625.0, abs=0.1)
+
+
+def test_final_approach_declines_when_the_distance_is_unknown() -> None:
+    """No distance reading -> no scaling, and say why rather than guessing."""
+    info = _final_approach_pulse_ms(
+        distance_to_target=None,
+        observed_pulse_distances=[1.06],
+        default_metres_per_pulse=1.06,
+        pulse_duration_ms=3500.0,
+        refresh_interval_ms=200,
+    )
+
+    assert info["applied"] is False
+    assert info["reason"] == "distance_unknown"
+    assert info["pulse_duration_ms"] == 3500.0
+
+
+@pytest.mark.asyncio
+async def test_vector_segment_shortens_the_final_pulse_instead_of_overshooting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replays the 2026-07-27 return run, which overshot by 0.8 m and gave up.
+
+    That run drove 4.06 m for a 3.26 m target: with ~0.2 m to go the executor
+    had no move available except another full ~1.06 m pulse, so it stepped past
+    the waypoint and then failed trying to re-aim at a target now 176 deg behind
+    it. Raising ``waypoint_tolerance`` does not fix that -- pulse granularity is
+    the limit. The fix is a shortened final pulse, which only became possible
+    once the refresh cadence made distance proportional to duration.
+
+    Here the mower starts 3.0 m out and covers 1.06 m per full pulse: two full
+    pulses leave 0.88 m, which must be driven as a scaled ~2905 ms pulse rather
+    than a third full one that would land 0.18 m past the target.
+    """
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=10.0, vio_state=2
+    )
+    state = {"y": 1.0}
+    windows: list[float] = []
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    async def fake_calibration(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        return {
+            "passed": True,
+            "reason": "calibrated",
+            "offset_degrees": -90.0,
+            "map_motion_heading_degrees": 280.0,
+            "vision_heading": 10.0,
+            "vio_state": 2,
+            "distance_m": 0.06,
+            "pulses_sent": 1,
+            "command_results": [],
+        }
+
+    async def fake_vio_turn(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        return {
+            "stop_reason": "target_heading_reached",
+            "commands_sent": 1,
+            "command_results": [],
+            "final_vision_heading": 90.0,
+            "final_heading_error_degrees": 0.5,
+        }
+
+    async def fake_refresh_window(
+        coordinator_arg: MammotionReportUpdateCoordinator,
+        *,
+        resend: object,
+        duration_seconds: float,
+        refresh_interval_ms: int,
+    ) -> dict:
+        # The mower drives for the whole window at the measured rate, which is
+        # the property the refresh cadence buys us: distance tracks duration.
+        windows.append(duration_seconds)
+        state["y"] += (duration_seconds / 3.5) * 1.06
+        coordinator.data.mowing_state.pos_y = state["y"]
+        return {
+            "refresh_enabled": True,
+            "refresh_interval_ms": refresh_interval_ms,
+            "refresh_commands_sent": int(duration_seconds * 1000 / refresh_interval_ms),
+        }
+
+    monkeypatch.setattr(
+        mammotion_services, "_vio_segment_calibration_drive", fake_calibration
+    )
+    monkeypatch.setattr(mammotion_services, "_vio_turn_to_heading", fake_vio_turn)
+    monkeypatch.setattr(
+        mammotion_services, "_motion_refresh_window", fake_refresh_window
+    )
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.0, "y": 4.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        max_linear_pulse_ceiling=12,
+        vio_max_realignments=0,
+        linear_pulse_duration_ms=3500.0,
+        motion_refresh_interval_ms=200,
+        waypoint_tolerance=0.15,
+        sample_delays=(0,),
+    )
+
+    assert result["stop_reason"] == "target_reached"
+    # Two full pulses, then one scaled to the 0.88 m that was left.
+    assert len(windows) == 3
+    assert windows[0] == pytest.approx(3.5)
+    assert windows[1] == pytest.approx(3.5)
+    assert windows[2] == pytest.approx(2.905, abs=0.01)
+
+    approaches = [
+        c["final_approach"] for c in result["command_results"] if "final_approach" in c
+    ]
+    assert [a["applied"] for a in approaches] == [False, False, True]
+    # The scale factor came from the two pulses this run actually measured.
+    assert approaches[-1]["metres_per_pulse_source"] == "observed"
+    assert approaches[-1]["metres_per_pulse"] == pytest.approx(1.06, abs=0.01)
 
 
 @pytest.mark.asyncio

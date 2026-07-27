@@ -927,6 +927,12 @@ RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("linear_pulse_duration_ms", default=3500.0): vol.All(
             vol.Coerce(float), vol.Range(min=50.0, max=4000.0)
         ),
+        # Fallback metres-per-pulse for the final-approach scaling, used only
+        # until the run has measured a full pulse of its own. 1.06 m is the
+        # live 2026-07-27 figure at linear 400 / 3500 ms / refresh 200.
+        vol.Optional(
+            "final_approach_metres_per_pulse", default=1.06
+        ): vol.All(vol.Coerce(float), vol.Range(min=0.05, max=5.0)),
         # App-parity motion cadence. Defaults to 200 ms, the app's own timer:
         # B1 (2026-07-22) proved re-sending the movement command every 200 ms
         # for the pulse duration drives ~11x further than a single shot (the
@@ -8009,6 +8015,90 @@ def _raw_vector_linear_command_selection(
     }
 
 
+#: Distance one full-length linear pulse covers at the proven config
+#: (linear 400, 3500 ms, ``motion_refresh_interval_ms`` 200). Measured live
+#: 2026-07-27 over six pulses across two runs: 2.125 m / 2 pulses and
+#: 4.06 m / 4 pulses both give ~1.06 m. Only the fallback -- the executor
+#: prefers what it actually observes during the run.
+_DEFAULT_METRES_PER_LINEAR_PULSE = 1.06
+#: Floor for a scaled final-approach pulse (~9 cm at the measured rate). Short
+#: enough to land inside a 15 cm waypoint tolerance, long enough that the mower
+#: still actuates.
+_MIN_SCALED_LINEAR_PULSE_MS = 300.0
+
+
+def _final_approach_pulse_ms(
+    *,
+    distance_to_target: float | None,
+    observed_pulse_distances: list[float],
+    default_metres_per_pulse: float,
+    pulse_duration_ms: float,
+    refresh_interval_ms: int,
+) -> dict[str, Any]:
+    """Shorten the last pulse so it lands on the target instead of overshooting.
+
+    A full pulse covers ~1 m. Whenever the remaining distance is less than that
+    but more than ``waypoint_tolerance``, the executor previously had no move
+    available except a full pulse, so it necessarily overshot -- live
+    2026-07-27, a run with ~0.2 m to go fired a full pulse, overshot by 0.8 m,
+    and then failed trying to re-aim at a target that was now 176 deg behind it.
+    Raising the tolerance does not fix that; the granularity is the problem.
+
+    **This only works because of the refresh cadence.** Single-shot motion moves
+    a fixed ~4 in step regardless of duration (and 2 s was a measured physical
+    no-op), so scaling the duration would do nothing and could stop the mower
+    moving at all. With refresh the mower drives continuously, distance becomes
+    proportional to duration, and the final approach can be scaled. Hence the
+    hard guard on ``refresh_interval_ms > 0``.
+
+    Self-calibrating: ``observed_pulse_distances`` holds the measured distance of
+    each full-length pulse in this run, so the scale factor tracks today's
+    speed, grass and gradient rather than a constant baked in from one evening.
+    ``default_metres_per_pulse`` only covers the first pulse, before there is
+    anything to observe.
+    """
+    info: dict[str, Any] = {
+        "applied": False,
+        "reason": None,
+        "distance_to_target": distance_to_target,
+        "metres_per_pulse": None,
+        "metres_per_pulse_source": None,
+        "pulse_duration_ms": pulse_duration_ms,
+    }
+    if refresh_interval_ms <= 0:
+        info["reason"] = "refresh_disabled_distance_not_proportional_to_duration"
+        return info
+    if distance_to_target is None:
+        info["reason"] = "distance_unknown"
+        return info
+
+    if observed_pulse_distances:
+        metres_per_pulse = sum(observed_pulse_distances) / len(observed_pulse_distances)
+        info["metres_per_pulse_source"] = "observed"
+    else:
+        metres_per_pulse = default_metres_per_pulse
+        info["metres_per_pulse_source"] = "default"
+    info["metres_per_pulse"] = round(metres_per_pulse, 4)
+
+    if metres_per_pulse <= 0:
+        info["reason"] = "no_usable_pulse_distance"
+        return info
+    if distance_to_target >= metres_per_pulse:
+        info["reason"] = "cruising_full_pulse_fits"
+        return info
+
+    scaled = (distance_to_target / metres_per_pulse) * pulse_duration_ms
+    scaled = max(_MIN_SCALED_LINEAR_PULSE_MS, min(scaled, pulse_duration_ms))
+    info.update(
+        {
+            "applied": True,
+            "reason": "final_approach_scaled_to_remaining_distance",
+            "pulse_duration_ms": round(scaled, 1),
+        }
+    )
+    return info
+
+
 _VIO_TURN_MODES = ("vio", "legacy")
 
 
@@ -8173,6 +8263,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     calibrated_forward_heading_offset_degrees: float = 116.5,
     turn_pulse_duration_ms: float = 300.0,
     linear_pulse_duration_ms: float = 300.0,
+    final_approach_metres_per_pulse: float = _DEFAULT_METRES_PER_LINEAR_PULSE,
     turn_mode: str = "vio",
     vio_heading_offset_degrees: float | None = None,
     vio_turn_max_commands: int = 8,
@@ -8409,6 +8500,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         # especially, since without it `max_linear_commands` defaults to 1 and a
         # multi-metre segment stops after a single pulse (live 2026-07-25).
         "max_linear_pulse_ceiling": max_linear_pulse_ceiling,
+        "final_approach_metres_per_pulse": final_approach_metres_per_pulse,
         "turn_pulse_duration_ms": turn_pulse_duration_ms,
         "linear_pulse_duration_ms": linear_pulse_duration_ms,
         "vio_turn_max_commands": vio_turn_max_commands,
@@ -8709,6 +8801,10 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     # very first pulse are better explained by a mower that never moved; the
     # 2026-07-19 signature was ten good pulses followed by three frozen ones.
     feed_moved_earlier = False
+    # Measured distance of each FULL-length linear pulse this run. Drives the
+    # self-calibrating final-approach scaling, so the scale factor reflects
+    # today's speed, grass and gradient rather than a baked-in constant.
+    observed_pulse_distances: list[float] = []
     while command_index < effective_linear_ceiling:
         command_index += 1
         before = _custom_path_telemetry_snapshot(coordinator)
@@ -8782,6 +8878,17 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
             },
             "selection": selection,
         }
+        # Scale the pulse when less than one pulse of travel remains, so the
+        # final approach lands on the target instead of stepping past it.
+        final_approach = _final_approach_pulse_ms(
+            distance_to_target=selection.get("distance_to_target"),
+            observed_pulse_distances=observed_pulse_distances,
+            default_metres_per_pulse=final_approach_metres_per_pulse,
+            pulse_duration_ms=linear_pulse_duration_ms,
+            refresh_interval_ms=motion_refresh_interval_ms,
+        )
+        command_result["final_approach"] = final_approach
+        pulse_ms = float(final_approach["pulse_duration_ms"])
         started = time.monotonic()
         try:
             await _send_manager_command_with_args(
@@ -8820,7 +8927,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                 prefer_ble=prefer_ble,
                 command_kwargs=command_result["kwargs"],
             ),
-            duration_seconds=linear_pulse_duration_ms / 1000,
+            duration_seconds=pulse_ms / 1000,
             refresh_interval_ms=motion_refresh_interval_ms,
         )
         result["motion_refresh_commands_sent"] += command_result["motion_refresh"][
@@ -8892,6 +8999,14 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                 "measured_delta": _telemetry_position_delta(before, after),
             }
         )
+        # Feed full-length pulses back into the final-approach scale factor.
+        # Scaled pulses are deliberately excluded: they are short by design, so
+        # averaging them in would shrink the estimate and under-drive the next
+        # approach.
+        if not final_approach["applied"]:
+            measured_distance = (progress.get("measured_delta") or {}).get("distance")
+            if measured_distance is not None and float(measured_distance) > 0:
+                observed_pulse_distances.append(float(measured_distance))
         result["progress_diagnostics"].append(progress)
         completion_status = _manual_velocity_completion_status(
             normalized_points,
@@ -11687,6 +11802,9 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             max_turn_commands=call.data["max_turn_commands"],
             max_linear_commands=call.data["max_linear_commands"],
             max_linear_pulse_ceiling=call.data.get("max_linear_pulse_ceiling"),
+            final_approach_metres_per_pulse=call.data[
+                "final_approach_metres_per_pulse"
+            ],
             max_no_progress_pulses=call.data["max_no_progress_pulses"],
             linear_distance_ceiling_factor=call.data["linear_distance_ceiling_factor"],
             heading_tolerance_degrees=call.data["heading_tolerance_degrees"],
