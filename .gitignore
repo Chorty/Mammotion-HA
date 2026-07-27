@@ -13,3 +13,7 @@
 *.py[cod]
 __pycache__
 .secrets.local
+
+# Diagnostic script output (scripts/ble_advert_monitor.py, scripts/state_sampler.py)
+scripts/advert_log.jsonl
+scripts/state_log.jsonl
