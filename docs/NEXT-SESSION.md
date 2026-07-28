@@ -371,6 +371,68 @@ compare first-pulse distance.
 **And 1.06 was a good constant after all** — run 4's pulses averaged 1.00 and
 self-calibration converged to 1.0374, within 2% of the baked-in default.
 
+### Ready-to-run: next daylight session, in order
+
+Pre-flight before EVERY real-motion call (the operator gives a fresh "go" each
+time): blade off, area clear, and **BLE verified by keepalive traffic**, not by
+`ble_rssi` or `active_transport`:
+
+```bash
+set -a && source .env && set +a
+scripts/ha_ssh.exp 'docker logs --since 25s homeassistant 2>&1 | grep -cE "BLETransport send"'   # want >= 2
+```
+(after any HA restart, re-enable the logger first — it resets:
+`logger.set_level` with `pymammotion.transport.ble: debug`)
+
+**0. Deploy + restart**, then confirm `turn_degrees_per_second` is registered on
+both `vio_turn_to_heading` and `raw_pymammotion_execute_vector_segment`.
+
+**1. The 176 deg return segment that failed** — the direct regression test for
+the turn scaling and the executor forwarding, together:
+```yaml
+service: mammotion.raw_pymammotion_execute_vector_segment
+data:
+  entity_id: lawn_mower.back_yard_clip_skywalker
+  points: [{x: <current_x>, y: <current_y>}, {x: <target_x>, y: <target_y>}]   # validate_custom_path FIRST
+  dry_run: false
+  confirm_blades_off: true
+  confirm_clear_area: true
+  motion_refresh_interval_ms: 200
+  linear_pulse_duration_ms: 3500
+  waypoint_tolerance: 0.20
+  heading_tolerance_degrees: 18
+  max_linear_pulse_ceiling: 6
+  sample_delays: [0, 3]
+```
+Expect: the turn now completes instead of `turn_phase_incomplete`, and the run
+reaches its linear phase. Check each turn command's `final_approach` block.
+
+**2. Find the real turn-pulse floor** (replaces the 400 ms guess). Step
+`pulse_duration_ms` and watch where rotation stops tracking duration:
+```yaml
+service: mammotion.vio_turn_to_heading
+data:
+  entity_id: lawn_mower.back_yard_clip_skywalker
+  target_vision_heading: <current + 30>
+  angular_speed: 500
+  motion_refresh_interval_ms: 200
+  pulse_duration_ms: 700      # then 500, then 400, then 300
+  heading_tolerance_degrees: 5
+  max_commands: 2
+  dry_run: false
+  confirm_blades_off: true
+  confirm_clear_area: true
+```
+Read `measured_change_degrees` per command; rotation should stay ~33-37 deg/s
+until it doesn't.
+
+**3. Re-derive `heading_tolerance_degrees`** — only after 2. This is what closes
+the residual cross-track error (8.5-12.3 cm over 3 m = 1.6-2.3 deg).
+
+**4. Settle the first-pulse question** — two segments back to back, one preceded
+by a turn and one not, comparing first-pulse distance. Run 1 gave 0.528 m after
+6 turn commands; run 4 gave 1.0159 m after 0.
+
 ### Night addendum — actuation survives a blind VIO; measurement does not
 
 After full dark (`vio_brightness 0`, `vio_tracked_features 0`,
