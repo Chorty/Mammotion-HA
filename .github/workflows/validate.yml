@@ -20,6 +20,41 @@ jobs:
           cache: pip
       - name: Install test dependencies
         run: python -m pip install -r requirements_test.txt
+      - name: Install HA component requirements
+        # `pip install homeassistant` ships CORE only — the per-component
+        # requirements are not installed. Importing this integration pulls in
+        # everything listed in its manifest `dependencies`, transitively, and
+        # each of those components has requirements of its own; without them
+        # every test module dies at collection on ModuleNotFoundError.
+        #
+        # Derived from the installed HA manifests rather than hand-pinned,
+        # because a hand-pinned list is precisely what rotted this workflow
+        # before: it silently drifts from whatever HA version is installed.
+        run: |
+          python - <<'PY' > /tmp/component-requirements.txt
+          import importlib.util, json, pathlib
+          root = pathlib.Path(importlib.util.find_spec("homeassistant").origin).parent / "components"
+          manifest = json.loads(pathlib.Path("custom_components/mammotion/manifest.json").read_text())
+          seen: set[str] = set()
+          reqs: set[str] = set()
+          stack = list(manifest.get("dependencies", []))
+          while stack:
+              name = stack.pop()
+              if name in seen:
+                  continue
+              seen.add(name)
+              path = root / name / "manifest.json"
+              if not path.exists():
+                  continue
+              data = json.loads(path.read_text())
+              reqs.update(data.get("requirements", []))
+              stack.extend(data.get("dependencies", []))
+              stack.extend(data.get("after_dependencies", []))
+          print("\n".join(sorted(reqs)))
+          PY
+          echo "--- resolved from HA component manifests ---"
+          cat /tmp/component-requirements.txt
+          python -m pip install -r /tmp/component-requirements.txt
       - name: Ruff
         run: |
           ruff check custom_components tests

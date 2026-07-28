@@ -13,19 +13,8 @@ websockets==16.0
 sdp-transform==1.1.0
 autotyping==24.9.0
 
-# manifest.json declares `dependencies: [bluetooth_adapters]`, and importing the
-# integration pulls that HA component in. `pip install homeassistant` ships core
-# only -- per-component requirements are NOT installed -- so the whole
-# bluetooth_adapters chain has to be listed explicitly or collection fails with
-# ModuleNotFoundError before a single test runs.
-aiousbwatcher==1.1.2
-habluetooth==6.8.1
-bluetooth-adapters==2.4.0
-bluetooth-auto-recovery==1.6.4
-bluetooth-data-tools==1.29.18
-bleak==3.0.2
-bleak-retry-connector==4.6.1
-usb-devices==0.5.1
-
-# Pulled in by the camera/WebRTC surface the integration exposes.
-webrtc-models==0.3.0
+# NOTE: the HA *component* requirements this integration depends on
+# (bluetooth_adapters and friends) are deliberately NOT listed here. They are
+# resolved from the installed HA manifests by the "Install HA component
+# requirements" step in .github/workflows/validate.yml, so they track whatever
+# homeassistant version is pinned above instead of drifting out of date.
