@@ -371,6 +371,30 @@ compare first-pulse distance.
 **And 1.06 was a good constant after all** — run 4's pulses averaged 1.00 and
 self-calibration converged to 1.0374, within 2% of the baked-in default.
 
+### Night addendum — actuation survives a blind VIO; measurement does not
+
+After full dark (`vio_brightness 0`, `vio_tracked_features 0`,
+`visual_positioning_status SIGNAL_NONE`) a single blind `send_movement` at
+angular 500 via `raw_pymammotion_motion_probe` **did rotate the mower** (operator
+observed "a little"). So **VIO darkness blocks the closed loop, not the drive** —
+the motors do not care about light. Everything that fails at night fails because
+nothing can *measure* the result.
+
+Worth knowing for the service inventory: on the deployed build, **no service can
+do a bounded, explicitly-stopped angular pulse at >=382 without a VIO gate.**
+`vio_turn_to_heading`/`vio_turn_probe` gate on VIO; `manual_velocity_pulse_test`
+caps angular at ~202 (below this mower's rotation threshold);
+`raw_pymammotion_angular_calibration` closes the loop on `toward`, which freezes
+during a pivot; and `raw_pymammotion_motion_probe` **never sends a stop** — it
+relies on the mower's own H-watchdog self-halt. There is also no standalone
+motion-stop service to pair with it. If blind repositioning ever needs to be a
+supported operation, that gap is the thing to close.
+
+⚠️ Telemetry could not confirm the rotation and was never expected to: `toward`
+freezes during a pivot and the position feed polls every 5 min when idle, so
+identical samples 3 s apart mean nothing. Operator observation was the only
+feedback channel.
+
 ### Ops note — I caused a BLE drop by trusting `ble_rssi`
 
 `active_transport` read `cloud_aliyun` and `ble_rssi` read 0, so BLE looked
