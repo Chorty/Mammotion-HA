@@ -411,15 +411,44 @@ explicitly set, so a `grep -c "BLETransport send"` returning 0 means nothing.
 > duration, so the turn needs a **scaled final pulse** before the tolerance is
 > re-derived — tuning 18 alone cannot fix a 50° granularity. The top off-mower
 > queue is now:
-> - **(a) Scale the turn pulse to the remaining angle** — port
->   `_final_approach_pulse_ms` to the turn path, guarded on `refresh > 0`,
->   self-calibrating on observed degrees-per-pulse.
-> - **(b) Forward `motion_refresh_interval_ms` and `heading_tolerance_degrees`
->   from the vector executor into both `_vio_turn_to_heading` call sites**
->   (~8684, ~9090) — currently the executor's turns always run at refresh 0 and
->   tolerance 3.0.
-> - **(c) Fix `final_displacement_m: None`** on the turn path (per-command
->   `displacement_m` is populated, so the aggregate is just not being filled).
+> - ~~**(a) Scale the turn pulse to the remaining angle**~~ **DONE `d39e3cdd`.**
+> - ~~**(b) Forward `motion_refresh_interval_ms` into both
+>   `_vio_turn_to_heading` call sites**~~ **DONE `d39e3cdd`.**
+>   (`heading_tolerance_degrees` turned out to be forwarded already; a test now
+>   pins it.)
+> - ~~**(c) Fix `final_displacement_m: None`**~~ **DONE `d39e3cdd`.**
+>
+> **All three shipped 2026-07-27 in `d39e3cdd` (370 tests, mypy + ruff clean,
+> NOT DEPLOYED).** `_turn_final_approach_pulse_ms()` calibrates on a **rate**
+> (deg/s) rather than degrees-per-pulse, so samples at different pulse lengths
+> stay comparable and a scaled pulse is still a valid sample; it only accumulates
+> from pulses whose heading went fresh, because a latched sample reads ~0 deg for
+> a pulse that really turned and would collapse the rate. Scaling is layered on
+> top of the existing slow-pulse safety cap, never instead of it. The end-to-end
+> test was verified to fail against the old behaviour with `no_heading_progress`
+> — the live overshoot-reverse signature.
+>
+> ⚠️ **`_MIN_SCALED_TURN_PULSE_MS = 400.0` is NOT proven.** The shortest turn
+> pulse ever measured is 700 ms, and the single-shot path had a hard actuation
+> floor (a 2000 ms single-shot pulse was a measured physical no-op). Rotation is
+> proportional to duration under refresh, so a shorter pulse *should* just turn
+> less — but nobody has found the refreshed path's floor. **To prove it:** run
+> `vio_turn_to_heading` at refresh 200 / angular 500 with `pulse_duration_ms`
+> stepped 700 → 500 → 400 → 300 and find where rotation stops tracking duration.
+>
+> **Next mower session, in order:**
+> 1. Deploy `services.py` + `services.yaml`, restart, confirm
+>    `turn_degrees_per_second` is registered on both services.
+> 2. **Re-run the 176° return segment that failed** — it should now complete the
+>    turn and reach its linear phase. This is the direct regression test for (a)
+>    and (b) together.
+> 3. Step the pulse floor down (above) to replace the 400 ms guess with a
+>    measurement.
+> 4. **Then** re-derive `heading_tolerance_degrees`; with a scaled pulse it
+>    should drop well below 18, which is what closes the residual cross-track
+>    error (8.5–12.3 cm over 3 m ≈ 1.6–2.3°).
+> 5. Settle the first-pulse question: two segments back to back, one preceded by
+>    a turn and one not, comparing first-pulse distance.
 > 4. **File the pymammotion reassembly patch** —
 >    `docs/pymammotion-ble-reassembly-bug.md` has a ready-to-file diff. It cannot
 >    land here: pymammotion is a pinned PyPI release (`==0.8.8`), not a fork.
