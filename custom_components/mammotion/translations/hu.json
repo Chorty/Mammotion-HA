@@ -733,7 +733,9 @@
       }
     },
     "device_tracker": {
-      "name": "Eszközkövetés"
+      "device_tracker": {
+        "name": "Eszközkövetés"
+      }
     }
   },
   "selector": {

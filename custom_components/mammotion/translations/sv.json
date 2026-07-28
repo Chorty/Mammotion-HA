@@ -733,7 +733,9 @@
       }
     },
     "device_tracker": {
-      "name": "Spårning av enhet"
+      "device_tracker": {
+        "name": "Spårning av enhet"
+      }
     }
   },
   "selector": {

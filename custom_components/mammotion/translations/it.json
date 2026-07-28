@@ -733,7 +733,9 @@
       }
     },
     "device_tracker": {
-      "name": "Tracciamento del dispositivo"
+      "device_tracker": {
+        "name": "Tracciamento del dispositivo"
+      }
     }
   },
   "selector": {

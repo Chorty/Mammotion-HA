@@ -634,7 +634,9 @@
       }
     },
     "device_tracker": {
-      "name": "Device Tracking"
+      "device_tracker": {
+        "name": "Device Tracking"
+      }
     }
   },
   "selector": {

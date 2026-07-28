@@ -733,7 +733,9 @@
       }
     },
     "device_tracker": {
-      "name": "Geräteverfolgung"
+      "device_tracker": {
+        "name": "Geräteverfolgung"
+      }
     }
   },
   "selector": {

@@ -733,7 +733,9 @@
       }
     },
     "device_tracker": {
-      "name": "Sledenje"
+      "device_tracker": {
+        "name": "Sledenje"
+      }
     }
   },
   "selector": {

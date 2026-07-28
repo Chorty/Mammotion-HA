@@ -733,7 +733,9 @@
       }
     },
     "device_tracker": {
-      "name": "Apparaat volgen"
+      "device_tracker": {
+        "name": "Apparaat volgen"
+      }
     }
   },
   "selector": {
