@@ -246,6 +246,114 @@ positively-True-only — any unreadable piece allows motion, so pymammotion API
 drift can never block everything — and it is a synchronous read, so the
 check-and-claim stays one uninterrupted block on the event loop.
 
+## 🏆 2026-07-27 ON-MOWER: final approach PROVEN; turn granularity is the new wall
+
+Three runs after deploying the sub-pulse final approach (`b62a988c`). Deploy
+verified live: `final_approach_metres_per_pulse` registered with default 1.06.
+
+### Run 1 — 3.0 m straight segment: `target_reached` ✅
+
+The fix works. Target (5.3562, −1.2272) from (8.3562, −1.2272), ~1° of turn
+needed, so the run isolates linear control almost perfectly.
+
+| Pulse | Duration | Remaining | m/pulse used | Source | Moved |
+|---|---|---|---|---|---|
+| 1 | 3500 ms | 3.015 m | 1.06 | default | **0.528 m** |
+| 2 | 3500 ms | 2.488 m | 0.528 | observed | 1.108 m |
+| 3 | 3500 ms | 1.383 m | 0.818 | observed | 0.997 m |
+| 4 | **1593 ms** ← scaled | 0.400 m | 0.878 | observed | 0.370 m |
+
+Landed at (5.3660, −1.3502): **along-track error 1.0 cm**, cross-track 12.3 cm,
+total 12.3 cm inside the 0.15 m tolerance. Drove 3.003 m for a 3.015 m target.
+No overshoot, no re-aim, no stale feed, no `no_actuation`, 58 refreshes
+delivered, BLE held throughout.
+
+**The 1.06 constant is right, but only for steady-state pulses.** Pulse 1 moved
+0.528 m; pulses 2–3 moved 1.108 and 0.997 (~1.05 avg, matching 1.06 almost
+exactly). The first pulse loses about half a pulse to spin-up. This was not
+anticipated.
+
+**Self-calibration absorbed it and erred safe.** Pulse 1's low value dragged the
+running average to 0.878, so the final pulse asked for slightly *less* than
+needed and landed 3 cm short of its own prediction rather than past it. A fixed
+1.06 constant would have overshot. This is a better argument for
+self-calibration than the one in the commit message.
+
+**Longitudinal control is now essentially solved; the residual error is
+lateral.** 12.3 cm of cross-track over 3.0 m is ~2.3° of heading error.
+
+### Run 2 — return segment: `turn_phase_incomplete` (turn budget, not the fix)
+
+The 176° turn burned all 8 commands at 13.0°/command (179.69° → 75.60°) and the
+executor correctly sent **zero** linear commands rather than drive misaligned.
+
+🐛 **Wiring gap found (NOT yet fixed):** `_vio_turn_to_heading` accepts
+`motion_refresh_interval_ms` and the standalone service forwards it
+(`services.py` ~12057), but the **vector executor's two internal call sites**
+(~8684 and ~9090) do not pass it — nor `heading_tolerance_degrees: 18`, so the
+turn inherits the executor's own 3.0 default. The 2026-07-25 "refresh wired into
+`vio_turn_to_heading`" item was only half done: the service, not the executor.
+
+### Run 3 — the turn A/B: refresh is ~3.8x, and it overshoots 🚨
+
+Standalone `vio_turn_to_heading`, angular 500, refresh 200, 1500 ms pulses.
+Clean A/B: `pulse_duration_ms` defaults to 1500 **in the function**, and the
+executor does not override it, so both arms used 1500 ms at angular 500. (The
+executor's `turn_pulse_duration_ms: 300` is not forwarded to the VIO turn at
+all — it belongs to the legacy path.)
+
+| Cmd | Heading | Change | Error before | Notes |
+|---|---|---|---|---|
+| 1 | 75.60° → 27.36° | −48.24° | 71.98° | good progress |
+| 2 | 27.36° → **−23.56°** | −50.92° | 23.74° | **overshot 27°**, `progress_degrees −3.43` |
+| 3 | −23.56° → 2.39° | +25.94° | 27.18° | angular **−500**, reversed, 700 ms slow pulse |
+
+⚠️ **METHOD LESSON — a net figure hid a reversal.** The first read of this run
+reported "24.4°/command", computed as net 73.2° over 3 commands. The **operator
+watching the mower** reported it turned one way then came back — which the
+per-command dump confirmed. The parse that produced 24.4° had printed only
+`heading_went_fresh` per command (the other keys were filtered out), so
+monotonicity was *assumed*, not observed. Net-over-count arithmetic averages an
+overshoot away. Same family as the "a zero from a log grep proves nothing if
+DEBUG is off" lesson: check the per-item record, not the aggregate.
+
+**Real result: ~49.6°/pulse at refresh 200 (48.24 and 50.92) vs 13.0°/command
+single-shot = ~3.8x.** And cmd3's 700 ms slow pulse gave 25.94° → ~37°/s vs
+~33°/s for the 1500 ms pulses, so **rotation is now proportional to duration
+under refresh**, the same unlock as linear. The old ~8–15° rotation quantum is
+gone when refresh is on.
+
+🚨 **The turn phase has exactly the granularity bug the linear phase just had.**
+At ~50°/pulse a 1500 ms pulse cannot service a 23.7° error — only stop short or
+blow past. The existing guard does not help: `slow_threshold_degrees` is 15°, so
+a 23.7° error is *above* it and fires a full 1500 ms pulse; and even the 700 ms
+"slow" pulse is ~26° at this rate.
+
+**Fix = the same shape as `_final_approach_pulse_ms`:** scale the turn pulse to
+the remaining angle, hard-guarded on `refresh > 0`, self-calibrating from
+observed degrees-per-pulse. At ~33°/s the 23.7° error needed roughly a 720 ms
+pulse. `heading_tolerance_degrees: 18` then becomes the wrong constant — it was
+derived from the 13° single-shot quantum and can drop a long way once the pulse
+is scaled, which is also what would close run 1's 12.3 cm cross-track error.
+
+🐛 Still unfixed: `final_displacement_m` came back `None` again (the 2026-07-19
+turn-path honesty bug), even though per-command `displacement_m` was populated
+(0.037 / 0.068 / 0.046 m — the turn drifted ~15 cm total).
+
+### Ops note — I caused a BLE drop by trusting `ble_rssi`
+
+`active_transport` read `cloud_aliyun` and `ble_rssi` read 0, so BLE looked
+dead and the BLE switch was toggled. The log showed `BLETransport send: 27 bytes`
+every ~5 s right through that moment: **BLE was fine, and the toggle is what
+disconnected it** (`error=0`, a clean local disconnect). The advertisement
+monitor then confirmed the radio had never slept (−62 dBm via
+`p1s-printer-a5774c`). `ble_rssi` is self-reported and stale — the rule already
+in the memory file — and it got trusted anyway. **Verify BLE with keepalive
+traffic in the log, not with `ble_rssi` or `active_transport`.**
+
+Also: after an HA restart, `pymammotion.transport.ble` is NOT at debug unless
+explicitly set, so a `grep -c "BLETransport send"` returning 0 means nothing.
+
 ## Immediate next steps (all doable off-mower)
 
 > **STATUS 2026-07-25 (end of the later off-mower session).** The whole off-mower
@@ -264,6 +372,23 @@ check-and-claim stays one uninterrupted block on the event loop.
 >    `motion_refresh_interval_ms: 200` passed explicitly to
 >    `vio_turn_to_heading` (it defaults to 0 precisely because 18 was derived from
 >    the single-shot quantum).
+>
+> **SUPERSEDED 2026-07-27 — see the on-mower section above.** Item 1 (deploy) and
+> item 2 (the supervised segment run) are **done**: a 3.0 m segment reached
+> `target_reached` with 1.0 cm along-track error. Item 3 is now better specified:
+> refresh gives ~3.8x on turns (~49.6°/pulse) and rotation became proportional to
+> duration, so the turn needs a **scaled final pulse** before the tolerance is
+> re-derived — tuning 18 alone cannot fix a 50° granularity. The top off-mower
+> queue is now:
+> - **(a) Scale the turn pulse to the remaining angle** — port
+>   `_final_approach_pulse_ms` to the turn path, guarded on `refresh > 0`,
+>   self-calibrating on observed degrees-per-pulse.
+> - **(b) Forward `motion_refresh_interval_ms` and `heading_tolerance_degrees`
+>   from the vector executor into both `_vio_turn_to_heading` call sites**
+>   (~8684, ~9090) — currently the executor's turns always run at refresh 0 and
+>   tolerance 3.0.
+> - **(c) Fix `final_displacement_m: None`** on the turn path (per-command
+>   `displacement_m` is populated, so the aggregate is just not being filled).
 > 4. **File the pymammotion reassembly patch** —
 >    `docs/pymammotion-ble-reassembly-bug.md` has a ready-to-file diff. It cannot
 >    land here: pymammotion is a pinned PyPI release (`==0.8.8`), not a fork.
