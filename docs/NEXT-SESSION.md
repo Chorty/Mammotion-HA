@@ -380,6 +380,39 @@ compare first-pulse distance.
 **And 1.06 was a good constant after all** — run 4's pulses averaged 1.00 and
 self-calibration converged to 1.0374, within 2% of the baked-in default.
 
+### PR #10 CI: green except one deliberate deferral (2026-07-27)
+
+`python` **passes** — ruff clean, format clean, mypy clean, 370 tests, 42%
+coverage. It had never been green: `requirements_test.txt` pinned homeassistant
+2025.3.1 and pymammotion 0.5.3 (against 0.8.8 shipped) and could not even
+resolve, so CI failed before running a single check.
+
+`hacs` is **skipped on forks**. It validates repository *publishability* —
+topics, issue tracker, license — which no code change can satisfy on a fork:
+a fork of an unlicensed upstream cannot add a license, that not being ours to
+grant. Upstream carries neither a license nor topics either, so the job is red
+there too and has never passed for this project. Left running on the publishing
+repo. The fork's issue tracker was enabled (a real gap).
+
+`hassfest` is down to **one class of error, deliberately deferred**: uppercase
+ENUM translation keys. HA requires `[a-z0-9-_]+`, and the codebase uses
+`MODE_READY`, `AREA_INSIDE`, `ENGLISH` and so on. Fixing it means changing the
+keys **and the sensor state values that produce them**, across `strings.json`,
+all 12 locale files, and the sensor code — a breaking change for anyone with
+automations or dashboards keyed on the current states. Not something to bury in
+a VIO feature PR. **Its own scoped task**, and per CLAUDE.md every locale file
+must move together.
+
+Two related fixes that did land: `manifest.json` now declares `camera`, `http`
+and `web_rtc` (all imported, none declared — `camera` in particular is what
+pulls `PyTurboJPEG`), and keys are sorted per hassfest.
+
+⚠️ The workflow now derives HA **component** requirements by walking the
+installed homeassistant manifests, because `pip install homeassistant` ships core
+only. Do not re-add them by hand to `requirements_test.txt` — hand-pinning is
+exactly what rotted this workflow, and a stale pin there conflicts with what
+HA's own manifests ask for.
+
 ### Ready-to-run: next daylight session, in order
 
 Pre-flight before EVERY real-motion call (the operator gives a fresh "go" each
