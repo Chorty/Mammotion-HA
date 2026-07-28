@@ -38,6 +38,15 @@ jobs:
           PY
 
   hacs:
+    # HACS validates whether a REPOSITORY is publishable as an integration --
+    # topics, issue tracker, license. Those are properties of the publishing
+    # repo, not of a fork used to stage development, and on a fork they fail for
+    # reasons no code change can fix: a fork of an unlicensed upstream cannot
+    # add a license (that is not ours to grant), and upstream itself currently
+    # carries neither a license nor topics, so this job is red there too.
+    # Running it on every fork PR turns a publishing-readiness check into
+    # permanent noise that masks the checks that do carry signal.
+    if: github.event.repository.fork == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
