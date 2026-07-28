@@ -268,16 +268,15 @@ total 12.3 cm inside the 0.15 m tolerance. Drove 3.003 m for a 3.015 m target.
 No overshoot, no re-aim, no stale feed, no `no_actuation`, 58 refreshes
 delivered, BLE held throughout.
 
-**The 1.06 constant is right, but only for steady-state pulses.** Pulse 1 moved
-0.528 m; pulses 2–3 moved 1.108 and 0.997 (~1.05 avg, matching 1.06 almost
-exactly). The first pulse loses about half a pulse to spin-up. This was not
-anticipated.
+Pulse 1 moved only 0.528 m while pulses 2–3 moved 1.108 and 0.997. **The
+first reading of this — "the first pulse loses about half a pulse to
+spin-up" — was WRONG and is withdrawn; see run 4 below, where the first pulse
+moved 1.0159 m.**
 
-**Self-calibration absorbed it and erred safe.** Pulse 1's low value dragged the
+**Self-calibration absorbed the low first pulse and erred safe.** It dragged the
 running average to 0.878, so the final pulse asked for slightly *less* than
-needed and landed 3 cm short of its own prediction rather than past it. A fixed
-1.06 constant would have overshot. This is a better argument for
-self-calibration than the one in the commit message.
+needed and landed 3 cm short of its own prediction rather than past it. That
+property is real and holds regardless of what caused the low reading.
 
 **Longitudinal control is now essentially solved; the residual error is
 lateral.** 12.3 cm of cross-track over 3.0 m is ~2.3° of heading error.
@@ -339,6 +338,38 @@ is scaled, which is also what would close run 1's 12.3 cm cross-track error.
 🐛 Still unfixed: `final_displacement_m` came back `None` again (the 2026-07-19
 turn-path honesty bug), even though per-command `displacement_m` was populated
 (0.037 / 0.068 / 0.046 m — the turn drifted ~15 cm total).
+
+### Run 4 — return segment, 3.09 m: `target_reached`, 2.5 mm along-track 🏆
+
+Best result of the project. Same params as run 1 plus two deliberate changes:
+`heading_tolerance_degrees: 18` passed **explicitly** (so the turn phase does not
+inherit the executor's 3.0 and oscillate) and `vio_max_realignments: 0` (so no
+mid-run re-aim goes through the known-broken un-refreshed turn path).
+
+| Pulse | Duration | Remaining | m/pulse | Source | Moved |
+|---|---|---|---|---|---|
+| 1 | 3500 ms | 2.995 m | 1.06 | default | 1.0159 m |
+| 2 | 3500 ms | 1.980 m | 1.0159 | observed | 1.0588 m |
+| 3 | **3114 ms** ← scaled | 0.923 m | 1.0374 | observed | 0.9264 m |
+
+(5.2628, −1.3058) → landed (8.3587, −1.1418) against target (8.3562, −1.2272):
+**along-track error 2.5 mm**, cross-track 8.5 cm, total 8.5 cm. **Turn commands:
+0** — tolerance 18 let the turn phase accept immediately. 49 refreshes, no
+aborts. The scaled pulse asked for 0.9231 m at 1.0374 m/pulse → 3114.5 ms and
+delivered 0.9264 m: **prediction error 3.3 mm**.
+
+⚠️ **CORRECTION — the run-1 "spin-up" claim is withdrawn.** Run 1's 0.528 m
+first pulse did **not** reproduce here (1.0159 m), and all three pulses were a
+consistent ~1.0 m. The difference is what preceded the linear phase: run 1 ran
+**6 turn commands**, run 4 ran **0**. So a short first pulse tracks *a preceding
+turn*, not spin-up — most plausibly the position feed still catching up after
+the turn, truncating the first measurement (run 1's pulse 2 then read 1.108,
+above the true rate). **Hypothesis with n=1 each way, not a finding.** To settle
+it: run two segments back to back, one preceded by a turn and one not, and
+compare first-pulse distance.
+
+**And 1.06 was a good constant after all** — run 4's pulses averaged 1.00 and
+self-calibration converged to 1.0374, within 2% of the baked-in default.
 
 ### Ops note — I caused a BLE drop by trusting `ble_rssi`
 
