@@ -289,9 +289,15 @@ executor correctly sent **zero** linear commands rather than drive misaligned.
 🐛 **Wiring gap found (NOT yet fixed):** `_vio_turn_to_heading` accepts
 `motion_refresh_interval_ms` and the standalone service forwards it
 (`services.py` ~12057), but the **vector executor's two internal call sites**
-(~8684 and ~9090) do not pass it — nor `heading_tolerance_degrees: 18`, so the
-turn inherits the executor's own 3.0 default. The 2026-07-25 "refresh wired into
+(~8684 and ~9090) do not pass it. The 2026-07-25 "refresh wired into
 `vio_turn_to_heading`" item was only half done: the service, not the executor.
+
+⚠️ **CORRECTED later the same day:** a first pass also claimed the executor
+forced `heading_tolerance_degrees: 3.0` into the turn. **Wrong.** The schema
+default is **18.0** on every executor and all four handlers forward it; the 3.0
+in the Python signature only ever applies to direct calls (i.e. tests). This
+run's turn used 18. Its failure was purely the command budget — 176° at
+13°/command needs ~14 commands and the budget was 8.
 
 ### Run 3 — the turn A/B: refresh is ~3.8x, and it overshoots 🚨
 
@@ -328,6 +334,10 @@ blow past. The existing guard does not help: `slow_threshold_degrees` is 15°, s
 a 23.7° error is *above* it and fires a full 1500 ms pulse; and even the 700 ms
 "slow" pulse is ~26° at this rate.
 
+Both arms also ran the same `heading_tolerance_degrees` (18 — see the correction
+above), so `motion_refresh_interval_ms` really was the only variable that
+differed between them.
+
 **Fix = the same shape as `_final_approach_pulse_ms`:** scale the turn pulse to
 the remaining angle, hard-guarded on `refresh > 0`, self-calibrating from
 observed degrees-per-pulse. At ~33°/s the 23.7° error needed roughly a 720 ms
@@ -341,10 +351,10 @@ turn-path honesty bug), even though per-command `displacement_m` was populated
 
 ### Run 4 — return segment, 3.09 m: `target_reached`, 2.5 mm along-track 🏆
 
-Best result of the project. Same params as run 1 plus two deliberate changes:
-`heading_tolerance_degrees: 18` passed **explicitly** (so the turn phase does not
-inherit the executor's 3.0 and oscillate) and `vio_max_realignments: 0` (so no
-mid-run re-aim goes through the known-broken un-refreshed turn path).
+Best result of the project. Same params as run 1 plus `vio_max_realignments: 0`, so no mid-run re-aim goes
+through the known-broken un-refreshed turn path. (`heading_tolerance_degrees: 18`
+was also passed explicitly, but that was a **no-op** — 18 is already the schema
+default; see the correction in the run-2 section.)
 
 | Pulse | Duration | Remaining | m/pulse | Source | Moved |
 |---|---|---|---|---|---|
@@ -354,8 +364,7 @@ mid-run re-aim goes through the known-broken un-refreshed turn path).
 
 (5.2628, −1.3058) → landed (8.3587, −1.1418) against target (8.3562, −1.2272):
 **along-track error 2.5 mm**, cross-track 8.5 cm, total 8.5 cm. **Turn commands:
-0** — tolerance 18 let the turn phase accept immediately. 49 refreshes, no
-aborts. The scaled pulse asked for 0.9231 m at 1.0374 m/pulse → 3114.5 ms and
+0** — the mower was already inside the 18° tolerance. 49 refreshes, no aborts. The scaled pulse asked for 0.9231 m at 1.0374 m/pulse → 3114.5 ms and
 delivered 0.9264 m: **prediction error 3.3 mm**.
 
 ⚠️ **CORRECTION — the run-1 "spin-up" claim is withdrawn.** Run 1's 0.528 m
