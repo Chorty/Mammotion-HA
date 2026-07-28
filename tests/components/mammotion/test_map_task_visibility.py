@@ -94,6 +94,7 @@ from custom_components.mammotion.services import (
     _streak_shows_dead_telemetry,
     _streak_shows_no_actuation,
     _transport_is_ble,
+    _turn_final_approach_pulse_ms,
     _validate_custom_path,
     _vio_feed_liveness,
     _vio_motion_probe,
@@ -4588,6 +4589,253 @@ def test_final_approach_declines_when_the_distance_is_unknown() -> None:
     assert info["applied"] is False
     assert info["reason"] == "distance_unknown"
     assert info["pulse_duration_ms"] == 3500.0
+
+
+def test_turn_final_approach_scales_the_pulse_to_the_remaining_angle() -> None:
+    """Replays the 2026-07-27 overshoot: 23.7 deg left must not take a full pulse.
+
+    Live, that error took the full 1500 ms pulse, turned 50.9 deg, overshot by
+    27 deg and forced a reversal. At the measured ~33 deg/s it needs ~720 ms.
+    """
+    info = _turn_final_approach_pulse_ms(
+        heading_error_degrees=-23.744,
+        observed_rotation_degrees=48.236,
+        observed_rotation_ms=1500.0,
+        default_degrees_per_second=37.0,
+        pulse_duration_ms=1500.0,
+        refresh_interval_ms=200,
+    )
+
+    assert info["applied"] is True
+    assert info["degrees_per_second_source"] == "observed"
+    assert info["degrees_per_second"] == pytest.approx(32.16, abs=0.01)
+    assert info["pulse_duration_ms"] == pytest.approx(738.4, abs=1.0)
+
+
+def test_turn_final_approach_is_disabled_without_the_refresh_cadence() -> None:
+    """Single-shot rotation is a fixed quantum, so scaling the duration is a trap.
+
+    Without refresh the mower turns ~8-15 deg per command regardless of pulse
+    length, so a shortened pulse would not land closer -- and the single-shot
+    path has a hard actuation floor (a 2000 ms single-shot pulse was a measured
+    physical no-op). The guard must hold however little angle remains.
+    """
+    info = _turn_final_approach_pulse_ms(
+        heading_error_degrees=-5.0,
+        observed_rotation_degrees=48.0,
+        observed_rotation_ms=1500.0,
+        default_degrees_per_second=37.0,
+        pulse_duration_ms=1500.0,
+        refresh_interval_ms=0,
+    )
+
+    assert info["applied"] is False
+    assert info["reason"] == "refresh_disabled_rotation_not_proportional_to_duration"
+    assert info["pulse_duration_ms"] == 1500.0
+
+
+def test_turn_final_approach_leaves_a_large_error_on_the_full_pulse() -> None:
+    """A 72 deg error needs more than one pulse -- do not shorten it."""
+    info = _turn_final_approach_pulse_ms(
+        heading_error_degrees=-71.98,
+        observed_rotation_degrees=0.0,
+        observed_rotation_ms=0.0,
+        default_degrees_per_second=37.0,
+        pulse_duration_ms=1500.0,
+        refresh_interval_ms=200,
+    )
+
+    assert info["applied"] is False
+    assert info["reason"] == "cruising_full_pulse_fits"
+    assert info["degrees_per_second_source"] == "default"
+    assert info["pulse_duration_ms"] == 1500.0
+
+
+def test_turn_final_approach_floors_the_pulse_so_the_mower_still_rotates() -> None:
+    """A sliver of angle must not become a pulse too short to actuate."""
+    info = _turn_final_approach_pulse_ms(
+        heading_error_degrees=0.5,
+        observed_rotation_degrees=48.0,
+        observed_rotation_ms=1500.0,
+        default_degrees_per_second=37.0,
+        pulse_duration_ms=1500.0,
+        refresh_interval_ms=200,
+    )
+
+    assert info["applied"] is True
+    assert info["pulse_duration_ms"] == 400.0
+
+
+def test_turn_final_approach_rate_is_duration_normalised() -> None:
+    """Samples taken at different pulse lengths must stay comparable.
+
+    A per-pulse average would be corrupted by mixing a 1500 ms pulse with a
+    700 ms one; a rate is not. Here 48.24 deg over 1500 ms and 25.94 deg over
+    700 ms give (48.24+25.94)/2.2 s = 33.7 deg/s.
+    """
+    info = _turn_final_approach_pulse_ms(
+        heading_error_degrees=10.0,
+        observed_rotation_degrees=48.236 + 25.942,
+        observed_rotation_ms=1500.0 + 700.0,
+        default_degrees_per_second=37.0,
+        pulse_duration_ms=1500.0,
+        refresh_interval_ms=200,
+    )
+
+    assert info["degrees_per_second"] == pytest.approx(33.72, abs=0.01)
+    assert info["pulse_duration_ms"] == pytest.approx(400.0)
+
+
+@pytest.mark.asyncio
+async def test_vio_turn_scales_the_last_pulse_and_does_not_overshoot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End-to-end: the turn lands on target instead of blowing past and reversing.
+
+    Replays the 2026-07-27 A/B run. The mower rotates at ~33 deg/s under refresh,
+    so command 2 (23.7 deg to go) must be a ~720 ms pulse rather than the full
+    1500 ms that overshot by 27 deg live and forced a direction reversal.
+    """
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    state = {"heading": 75.6}
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=state["heading"], vio_state=2
+    )
+    durations: list[float] = []
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    async def fake_refresh_window(
+        coordinator_arg: MammotionReportUpdateCoordinator,
+        *,
+        resend: object,
+        duration_seconds: float,
+        refresh_interval_ms: int,
+    ) -> dict:
+        durations.append(duration_seconds)
+        # 33 deg/s, and the sign follows the commanded direction: +angular
+        # decreases vision_heading.
+        state["heading"] -= 33.0 * duration_seconds
+        coordinator.data.report_data.vision_info = SimpleNamespace(
+            heading=state["heading"], vio_state=2
+        )
+        return {
+            "refresh_enabled": True,
+            "refresh_interval_ms": refresh_interval_ms,
+            "refresh_commands_sent": int(duration_seconds * 1000 / refresh_interval_ms),
+        }
+
+    monkeypatch.setattr(
+        mammotion_services, "_motion_refresh_window", fake_refresh_window
+    )
+
+    result = await _vio_turn_to_heading(
+        coordinator,
+        target_vision_heading=3.62,
+        heading_tolerance_degrees=5.0,
+        angular_speed=500,
+        pulse_duration_ms=1500,
+        slow_threshold_degrees=0.0,
+        max_commands=6,
+        refresh_wait_seconds=0.0,
+        motion_refresh_interval_ms=200,
+        turn_degrees_per_second=37.0,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+    )
+
+    assert result["stop_reason"] == "target_heading_reached"
+    # Never turned past the target: no command may reverse direction.
+    signs = {
+        (c["angular_speed"] > 0) for c in result["command_results"] if c.get("ok")
+    }
+    assert len(signs) == 1, "turn reversed direction -- it overshot"
+    # First pulse cruises at full length, the last is scaled short.
+    assert durations[0] == pytest.approx(1.5)
+    assert durations[-1] < 1.5
+    assert result["command_results"][-1]["final_approach"]["applied"] is True
+    # And the aggregate displacement is reported, not left as None.
+    assert result["final_displacement_m"] is not None
+
+
+@pytest.mark.asyncio
+async def test_vector_segment_forwards_refresh_and_rate_into_the_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The executor must hand its refresh cadence to the turn phase.
+
+    Regression for 2026-07-27: the executor accepted
+    ``motion_refresh_interval_ms`` and used it for linear pulses but did not
+    forward it to ``_vio_turn_to_heading``, so its turns always ran single-shot
+    at ~13 deg/command. A 176 deg turn then exhausted the 8-command budget live
+    and the segment never reached its linear phase.
+    """
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=10.0, vio_state=2
+    )
+    turn_calls: list[dict[str, object]] = []
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    async def fake_calibration(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        return {
+            "passed": True,
+            "reason": "calibrated",
+            "offset_degrees": -90.0,
+            "map_motion_heading_degrees": 280.0,
+            "vision_heading": 10.0,
+            "vio_state": 2,
+            "distance_m": 0.06,
+            "pulses_sent": 1,
+            "command_results": [],
+        }
+
+    async def fake_vio_turn(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        turn_calls.append(kwargs)
+        return {
+            "stop_reason": "target_heading_reached",
+            "commands_sent": 1,
+            "command_results": [],
+            "final_vision_heading": 90.0,
+            "final_heading_error_degrees": 0.5,
+        }
+
+    monkeypatch.setattr(
+        mammotion_services, "_vio_segment_calibration_drive", fake_calibration
+    )
+    monkeypatch.setattr(mammotion_services, "_vio_turn_to_heading", fake_vio_turn)
+
+    await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        max_linear_commands=1,
+        vio_max_realignments=0,
+        motion_refresh_interval_ms=200,
+        heading_tolerance_degrees=18.0,
+        turn_degrees_per_second=37.0,
+        sample_delays=(0,),
+    )
+
+    assert len(turn_calls) == 1
+    assert turn_calls[0]["motion_refresh_interval_ms"] == 200
+    assert turn_calls[0]["turn_degrees_per_second"] == 37.0
+    # The tolerance must come from the segment call, not the executor default.
+    assert turn_calls[0]["heading_tolerance_degrees"] == 18.0
 
 
 @pytest.mark.asyncio

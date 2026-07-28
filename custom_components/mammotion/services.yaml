@@ -1230,7 +1230,15 @@ vio_turn_to_heading:
       default: false
       selector:
         boolean:
-
+    turn_degrees_per_second:
+      required: false
+      default: 37.0
+      selector:
+        number:
+          min: 1.0
+          max: 180.0
+          step: 0.5
+          unit_of_measurement: "°/s"
 raw_pymammotion_execute_segment:
   fields:
     entity_id:
@@ -1773,6 +1781,15 @@ raw_pymammotion_execute_vector_segment:
           max: 5.0
           step: 0.01
           unit_of_measurement: m
+    turn_degrees_per_second:
+      required: false
+      default: 37.0
+      selector:
+        number:
+          min: 1.0
+          max: 180.0
+          step: 0.5
+          unit_of_measurement: "°/s"
     max_linear_pulse_ceiling:
       required: false
       selector:

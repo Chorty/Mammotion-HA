@@ -734,6 +734,12 @@ VIO_TURN_TO_HEADING_SCHEMA = vol.Schema(
         vol.Optional("motion_refresh_interval_ms", default=0): vol.All(
             vol.Coerce(int), vol.Range(min=0, max=1000)
         ),
+        # Fallback rotation rate for the scaled final approach, used only until
+        # the run measures its own. 37 deg/s is the live 2026-07-27 figure at
+        # angular 500 / refresh 200, biased high so the turn undershoots.
+        vol.Optional(
+            "turn_degrees_per_second", default=37.0
+        ): vol.All(vol.Coerce(float), vol.Range(min=1.0, max=180.0)),
         vol.Optional("prefer_ble", default=True): cv.boolean,
         vol.Optional("dry_run", default=True): cv.boolean,
         vol.Optional("confirm_blades_off", default=False): cv.boolean,
@@ -933,6 +939,10 @@ RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional(
             "final_approach_metres_per_pulse", default=1.06
         ): vol.All(vol.Coerce(float), vol.Range(min=0.05, max=5.0)),
+        # Same idea for the turn phase; see VIO_TURN_TO_HEADING_SCHEMA.
+        vol.Optional(
+            "turn_degrees_per_second", default=37.0
+        ): vol.All(vol.Coerce(float), vol.Range(min=1.0, max=180.0)),
         # App-parity motion cadence. Defaults to 200 ms, the app's own timer:
         # B1 (2026-07-22) proved re-sending the movement command every 200 ms
         # for the pulse duration drives ~11x further than a single shot (the
@@ -5767,6 +5777,97 @@ async def _reconfirm_vio_feed_degraded(
     return feed
 
 
+#: Rotation rate at the proven turn config (angular 500, refresh 200). Measured
+#: live 2026-07-27: 1500 ms pulses gave 48.24 and 50.92 deg (~33 deg/s) and a
+#: 700 ms pulse gave 25.94 deg (~37 deg/s). Biased to the HIGH end on purpose --
+#: overestimating the rate shortens the pulse, so the turn undershoots and takes
+#: another pulse instead of overshooting and having to reverse. Only the
+#: fallback; the turn prefers the rate it measures during the run.
+_DEFAULT_TURN_DEGREES_PER_SECOND = 37.0
+#: Floor for a scaled turn pulse (~15 deg at the measured rate).
+#: NOT PROVEN: the shortest turn pulse ever measured is 700 ms. Rotation is
+#: proportional to duration under refresh, so a shorter pulse should simply turn
+#: less -- but the single-shot path had a hard actuation threshold (a 2000 ms
+#: single-shot pulse was a measured physical no-op on 2026-07-18), and no one has
+#: shown where the refreshed path's threshold is. To prove it: run
+#: `vio_turn_to_heading` at refresh 200 / angular 500 with `pulse_duration_ms`
+#: stepped down 700 -> 500 -> 400 -> 300 and find where measured rotation stops
+#: tracking duration.
+_MIN_SCALED_TURN_PULSE_MS = 400.0
+
+
+def _turn_final_approach_pulse_ms(
+    *,
+    heading_error_degrees: float | None,
+    observed_rotation_degrees: float,
+    observed_rotation_ms: float,
+    default_degrees_per_second: float,
+    pulse_duration_ms: float,
+    refresh_interval_ms: int,
+) -> dict[str, Any]:
+    """Shorten the last turn pulse so it lands on the heading instead of past it.
+
+    The turn phase has the same granularity defect the linear phase had, for the
+    same reason. Live 2026-07-27: with a 23.7 deg error remaining, a full 1500 ms
+    pulse turned 50.9 deg -- a 27 deg overshoot -- and the next pulse had to
+    reverse direction to recover. ``slow_threshold_degrees`` does not catch this:
+    it is 15 deg, so a 23.7 deg error is *above* the threshold and takes the full
+    pulse, and even the 700 ms slow pulse is ~26 deg at this rate.
+
+    **This only works because of the refresh cadence.** Single-shot rotation is a
+    fixed ~8-15 deg quantum regardless of duration, so scaling would do nothing;
+    with refresh, rotation became proportional to duration (1500 ms -> ~33 deg/s,
+    700 ms -> ~37 deg/s), which is what makes a scaled pulse meaningful. Hence the
+    hard guard on ``refresh_interval_ms > 0``.
+
+    Self-calibrating on a *rate* rather than a per-pulse figure, so samples taken
+    at different pulse lengths stay comparable -- and so a scaled pulse is still a
+    valid sample, unlike the linear case where short-by-design pulses had to be
+    excluded from a per-pulse average.
+    """
+    info: dict[str, Any] = {
+        "applied": False,
+        "reason": None,
+        "heading_error_degrees": heading_error_degrees,
+        "degrees_per_second": None,
+        "degrees_per_second_source": None,
+        "pulse_duration_ms": pulse_duration_ms,
+    }
+    if refresh_interval_ms <= 0:
+        info["reason"] = "refresh_disabled_rotation_not_proportional_to_duration"
+        return info
+    if heading_error_degrees is None:
+        info["reason"] = "heading_error_unknown"
+        return info
+
+    if observed_rotation_ms > 0 and observed_rotation_degrees > 0:
+        rate = observed_rotation_degrees / (observed_rotation_ms / 1000)
+        info["degrees_per_second_source"] = "observed"
+    else:
+        rate = default_degrees_per_second
+        info["degrees_per_second_source"] = "default"
+    info["degrees_per_second"] = round(rate, 4)
+
+    if rate <= 0:
+        info["reason"] = "no_usable_rotation_rate"
+        return info
+
+    needed_ms = (abs(heading_error_degrees) / rate) * 1000
+    if needed_ms >= pulse_duration_ms:
+        info["reason"] = "cruising_full_pulse_fits"
+        return info
+
+    scaled = max(_MIN_SCALED_TURN_PULSE_MS, min(needed_ms, pulse_duration_ms))
+    info.update(
+        {
+            "applied": True,
+            "reason": "final_approach_scaled_to_remaining_angle",
+            "pulse_duration_ms": round(scaled, 1),
+        }
+    )
+    return info
+
+
 async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
     coordinator: MammotionReportUpdateCoordinator,
     *,
@@ -5784,6 +5885,7 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
     max_displacement_m: float = 0.5,
     invert_direction: bool = False,
     motion_refresh_interval_ms: int = 0,
+    turn_degrees_per_second: float = _DEFAULT_TURN_DEGREES_PER_SECOND,
     prefer_ble: bool = True,
     dry_run: bool = True,
     confirm_blades_off: bool = False,
@@ -5953,6 +6055,10 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # Always present (like final_vision_heading); the vio_feed_degraded stop
         # path overwrites it. Avoids a KeyError for consumers on other stops.
         "final_vio_feed": initial_feed,
+        # 0.0 rather than None: a turn that sends no commands genuinely did not
+        # translate, and None reads as "not measured" (the 2026-07-19 bug).
+        "final_displacement_m": 0.0,
+        "turn_degrees_per_second": turn_degrees_per_second,
         "stop_reason": None,
     }
     if initial_error is not None and abs(initial_error) <= heading_tolerance_degrees:
@@ -5971,6 +6077,10 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
     consecutive_no_progress = 0
     last_heading_went_fresh = True
     last_progress_degrees = 0.0
+    # Rotation rate measured during this run, tracked as degrees and milliseconds
+    # separately so pulses of different lengths stay comparable.
+    observed_rotation_degrees = 0.0
+    observed_rotation_ms = 0.0
     for command_index in range(1, max_commands + 1):
         before_telemetry = _custom_path_telemetry_snapshot(coordinator)
         before_reading = _vio_reading(coordinator)
@@ -6025,7 +6135,7 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # or mechanical fault turning the wrong way): both are cases where a
         # full-length pulse risks a long wrong/blind rotation. A fresh streak that
         # was still moving toward the target (merely slowly) keeps the full pulse.
-        pulse_ms = (
+        base_pulse_ms = float(
             slow_pulse_duration_ms
             if (
                 abs(error) <= slow_threshold_degrees
@@ -6036,6 +6146,19 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
             )
             else pulse_duration_ms
         )
+        # Then scale to the angle that actually remains. This is applied on top of
+        # the cap above, never instead of it: it can only shorten the pulse the
+        # safety logic already chose, so a no-progress or blind-feed streak can
+        # never be lengthened back to a full pulse.
+        turn_approach = _turn_final_approach_pulse_ms(
+            heading_error_degrees=error,
+            observed_rotation_degrees=observed_rotation_degrees,
+            observed_rotation_ms=observed_rotation_ms,
+            default_degrees_per_second=turn_degrees_per_second,
+            pulse_duration_ms=base_pulse_ms,
+            refresh_interval_ms=motion_refresh_interval_ms,
+        )
+        pulse_ms = float(turn_approach["pulse_duration_ms"])
         angular = _planned_angular(error)
         command_result: dict[str, Any] = {
             "index": command_index,
@@ -6056,6 +6179,7 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
             "heading_poll_seconds": None,
             "heading_went_fresh": None,
             "motion_refresh": None,
+            "final_approach": turn_approach,
         }
         try:
             await _send_manager_command_with_args(
@@ -6197,9 +6321,23 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         command_result["heading_error_after"] = round(new_error, 3)
         command_result["progress_degrees"] = round(progress, 3)
         command_result["displacement_m"] = displacement
+        # Feed the rate estimate, but only from a pulse whose heading reading
+        # actually went fresh. A stale/latched sample measures ~0 deg of rotation
+        # for a pulse that really turned, and folding that in would collapse the
+        # rate and over-lengthen every later pulse -- the exact failure the
+        # scaling exists to prevent.
+        if heading_went_fresh:
+            observed_rotation_degrees += abs(measured_change)
+            observed_rotation_ms += pulse_ms
         result["command_results"].append(command_result)
         result["final_vision_heading"] = after_heading
         result["final_heading_error_degrees"] = round(new_error, 3)
+        # Cumulative translation during the turn. Populated on every pulse so the
+        # aggregate never reports None while the per-command values show real
+        # movement (the 2026-07-19 honesty bug, still live on this path as of
+        # 2026-07-27).
+        if displacement is not None:
+            result["final_displacement_m"] = displacement
         if displacement is not None and displacement > max_displacement_m:
             result["stop_reason"] = "aborted_displacement_cap"
             return result
@@ -8264,6 +8402,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     turn_pulse_duration_ms: float = 300.0,
     linear_pulse_duration_ms: float = 300.0,
     final_approach_metres_per_pulse: float = _DEFAULT_METRES_PER_LINEAR_PULSE,
+    turn_degrees_per_second: float = _DEFAULT_TURN_DEGREES_PER_SECOND,
     turn_mode: str = "vio",
     vio_heading_offset_degrees: float | None = None,
     vio_turn_max_commands: int = 8,
@@ -8501,6 +8640,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         # multi-metre segment stops after a single pulse (live 2026-07-25).
         "max_linear_pulse_ceiling": max_linear_pulse_ceiling,
         "final_approach_metres_per_pulse": final_approach_metres_per_pulse,
+        "turn_degrees_per_second": turn_degrees_per_second,
         "turn_pulse_duration_ms": turn_pulse_duration_ms,
         "linear_pulse_duration_ms": linear_pulse_duration_ms,
         "vio_turn_max_commands": vio_turn_max_commands,
@@ -8687,6 +8827,13 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                 heading_tolerance_degrees=heading_tolerance_degrees,
                 angular_speed=vio_angular_speed,
                 max_commands=vio_turn_max_commands,
+                # Forward the segment's refresh cadence into the turn. Without
+                # this the executor's turns always ran single-shot at ~13 deg
+                # per command even when the segment was given 200, which is why
+                # a 176 deg turn exhausted an 8-command budget live 2026-07-27
+                # and the segment never reached its linear phase.
+                motion_refresh_interval_ms=motion_refresh_interval_ms,
+                turn_degrees_per_second=turn_degrees_per_second,
                 prefer_ble=prefer_ble,
                 dry_run=False,
                 confirm_blades_off=confirm_blades_off,
@@ -9093,6 +9240,8 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                         heading_tolerance_degrees=heading_tolerance_degrees,
                         angular_speed=vio_angular_speed,
                         max_commands=min(6, vio_turn_max_commands),
+                        motion_refresh_interval_ms=motion_refresh_interval_ms,
+                        turn_degrees_per_second=turn_degrees_per_second,
                         prefer_ble=prefer_ble,
                         dry_run=False,
                         confirm_blades_off=confirm_blades_off,
@@ -11805,6 +11954,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             final_approach_metres_per_pulse=call.data[
                 "final_approach_metres_per_pulse"
             ],
+            turn_degrees_per_second=call.data["turn_degrees_per_second"],
             max_no_progress_pulses=call.data["max_no_progress_pulses"],
             linear_distance_ceiling_factor=call.data["linear_distance_ceiling_factor"],
             heading_tolerance_degrees=call.data["heading_tolerance_degrees"],
@@ -12055,6 +12205,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             max_displacement_m=call.data["max_displacement_m"],
             invert_direction=call.data["invert_direction"],
             motion_refresh_interval_ms=call.data["motion_refresh_interval_ms"],
+            turn_degrees_per_second=call.data["turn_degrees_per_second"],
             prefer_ble=call.data["prefer_ble"],
             dry_run=call.data["dry_run"],
             confirm_blades_off=call.data["confirm_blades_off"],
