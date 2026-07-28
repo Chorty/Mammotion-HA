@@ -243,7 +243,7 @@ class MammotionLawnMowerEntity(MammotionBaseEntity, LawnMowerEntity):
                     continue
                 try:
                     attributes.append(int(entity_hash))
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     LOGGER.debug(
                         "Skipping area %s with non-numeric hash %r",
                         entity_id,

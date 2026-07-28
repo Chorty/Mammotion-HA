@@ -403,7 +403,10 @@ def test_export_runtime_state_reports_blade_on_as_unsafe() -> None:
     assert exported["blade"]["blade_safe_for_motion"] is False
     assert exported["active_transport"] == "ble"
     assert exported["ble_only_fallback_mode"] is False
-    assert exported["last_command_failure_reason"] == "set_car_wiper:GatewayTimeoutException"
+    assert (
+        exported["last_command_failure_reason"]
+        == "set_car_wiper:GatewayTimeoutException"
+    )
     assert exported["last_camera_stream_failure_code"] == "401"
     assert "blade_reported_on" in exported["safety"]["blockers"]
 
@@ -449,8 +452,7 @@ def test_export_runtime_state_reports_active_mowing_and_route_blockers() -> None
     assert exported["safety"]["active_route_detected"] is True
     assert exported["safety"]["active_route_status"]["blocks_motion"] is True
     assert (
-        exported["safety"]["active_route_status"]["reason"]
-        == "live_route_while_mowing"
+        exported["safety"]["active_route_status"]["reason"] == "live_route_while_mowing"
     )
     assert "active_mowing_detected" in exported["safety"]["blockers"]
     assert "active_route_detected" in exported["safety"]["blockers"]
@@ -474,8 +476,7 @@ def test_export_runtime_state_allows_stale_route_when_paused_ready() -> None:
     assert exported["safety"]["active_route_detected"] is True
     assert exported["safety"]["active_route_status"]["blocks_motion"] is False
     assert (
-        exported["safety"]["active_route_status"]["reason"]
-        == "stale_route_while_ready"
+        exported["safety"]["active_route_status"]["reason"] == "stale_route_while_ready"
     )
     assert "active_route_detected" not in exported["safety"]["blockers"]
     assert exported["safety"]["allowed_for_manual_motion"] is True
@@ -977,7 +978,10 @@ def test_manual_velocity_best_heading_decision_selects_forward_candidate() -> No
     assert decision["reason"] == "heading_aligned"
     assert decision["selected_heading_offset_degrees"] == 0.0
     assert decision["heading_offset_candidates"] == [110.0, 0.0, 90.0]
-    assert [item["heading_offset_degrees"] for item in decision["heading_offset_diagnostics"]] == [
+    assert [
+        item["heading_offset_degrees"]
+        for item in decision["heading_offset_diagnostics"]
+    ] == [
         110.0,
         0.0,
         90.0,
@@ -1155,9 +1159,12 @@ def test_manual_velocity_pulse_schema_allows_up_to_executor_pulse_speed() -> Non
     assert parsed["stop_mode"] == "immediate"
     assert parsed["post_command_sample_delays"] == [0.0, 2.0, 10.0, 30.0, 60.0]
     # The old emergency-nudge-tied ceiling of 0.4 is lifted; 0.45 now passes.
-    assert MANUAL_VELOCITY_PULSE_TEST_SCHEMA(
-        {"entity_id": "lawn_mower.test", "action": "forward", "speed": 0.45}
-    )["speed"] == 0.45
+    assert (
+        MANUAL_VELOCITY_PULSE_TEST_SCHEMA(
+            {"entity_id": "lawn_mower.test", "action": "forward", "speed": 0.45}
+        )["speed"]
+        == 0.45
+    )
     with pytest.raises(Exception):  # noqa: B017
         MANUAL_VELOCITY_PULSE_TEST_SCHEMA(
             {
@@ -1183,9 +1190,12 @@ def test_manual_velocity_pulse_defaults_match_executor_pulse() -> None:
     assert linear_speed == 400
     assert angular_speed == 0
     # The documented B1 call (4000ms) is now accepted rather than HTTP 400.
-    assert MANUAL_VELOCITY_PULSE_TEST_SCHEMA(
-        {"entity_id": "lawn_mower.test", "duration_ms": 4000}
-    )["duration_ms"] == 4000
+    assert (
+        MANUAL_VELOCITY_PULSE_TEST_SCHEMA(
+            {"entity_id": "lawn_mower.test", "duration_ms": 4000}
+        )["duration_ms"]
+        == 4000
+    )
 
 
 @pytest.mark.parametrize(
@@ -1602,9 +1612,7 @@ def test_service_registration_discovery_is_complete() -> None:
     assert "ble_auto_recover" in _handler_call_data_keys(
         "handle_raw_pymammotion_execute_multi_segment"
     )
-    assert "stop_mode" in _handler_call_data_keys(
-        "handle_manual_velocity_segment_test"
-    )
+    assert "stop_mode" in _handler_call_data_keys("handle_manual_velocity_segment_test")
     # Indirection: the movement services read speed/use_wifi via handle_movement.
     assert "speed" in _handler_call_data_keys("handle_directional_movement")
 
@@ -2154,9 +2162,7 @@ async def test_vio_turn_probe_app_parity_refresh_resends_the_turn(
     assert result["motion_refresh_interval_ms"] == 200
     assert refreshes > 0
     # Every send is the initial one plus one per refresh; all identical turn commands.
-    assert (
-        coordinator.manager.send_command_with_args.await_count == refreshes + 1
-    )
+    assert coordinator.manager.send_command_with_args.await_count == refreshes + 1
     assert result["command"]["kwargs"] == {"linear_speed": 0, "angular_speed": 500}
     coordinator.async_stop_manual_motion.assert_awaited_once()
 
@@ -2680,9 +2686,7 @@ async def test_vio_turn_to_heading_keeps_full_pulse_creeping_toward_target(
     assert result["stop_reason"] == "no_heading_progress"
     assert all(cmd["heading_went_fresh"] for cmd in result["command_results"])
     # Fresh AND still moving toward target -> never slow-capped; all pulses full.
-    assert all(
-        cmd["pulse_duration_ms"] == 1500 for cmd in result["command_results"]
-    )
+    assert all(cmd["pulse_duration_ms"] == 1500 for cmd in result["command_results"])
 
 
 @pytest.mark.asyncio
@@ -2784,10 +2788,9 @@ async def test_forward_two_pulse_latency_test_sends_pulses_and_detects_change(
     }
     assert result["telemetry"]["first_position_change_after_command_1_seconds"] == 12.0
     assert result["telemetry"]["first_position_change_after_command_2_seconds"] == 7.0
-    assert (
-        result["telemetry"]["first_position_change_after_final_command_seconds"]
-        == pytest.approx(2.0)
-    )
+    assert result["telemetry"][
+        "first_position_change_after_final_command_seconds"
+    ] == pytest.approx(2.0)
     assert result["telemetry"]["final_delta"]["distance"] == pytest.approx(0.02)
     assert coordinator.manager.send_command_with_args.await_count == 3
 
@@ -3351,7 +3354,9 @@ async def test_raw_pymammotion_angular_calibration_negative_direction_dry_run() 
 
 
 @pytest.mark.asyncio
-async def test_raw_pymammotion_angular_calibration_rejects_missing_confirmations() -> None:
+async def test_raw_pymammotion_angular_calibration_rejects_missing_confirmations() -> (
+    None
+):
     """Real raw angular calibration rejects missing operator confirmations."""
     coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
 
@@ -3516,7 +3521,9 @@ async def test_raw_pymammotion_turn_to_heading_uses_slow_speed_near_target() -> 
 
 
 @pytest.mark.asyncio
-async def test_raw_pymammotion_turn_to_heading_returns_reached_without_command() -> None:
+async def test_raw_pymammotion_turn_to_heading_returns_reached_without_command() -> (
+    None
+):
     """Already-at-target heading returns reached and sends nothing."""
     coordinator = _pulse_coordinator(position=(1.0, 1.0, 1.0))
 
@@ -3809,7 +3816,9 @@ async def test_raw_motion_readiness_test_stops_on_first_failed_real_phase(
 
 
 @pytest.mark.asyncio
-async def test_raw_pymammotion_execute_vector_segment_dry_run_with_zero_offset() -> None:
+async def test_raw_pymammotion_execute_vector_segment_dry_run_with_zero_offset() -> (
+    None
+):
     """Vector dry-run can use an explicit zero heading offset."""
     coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
 
@@ -3873,7 +3882,9 @@ async def test_raw_pymammotion_execute_vector_segment_dry_run_applies_offset() -
 
 
 @pytest.mark.asyncio
-async def test_raw_pymammotion_execute_vector_segment_rejects_missing_confirmations() -> None:
+async def test_raw_pymammotion_execute_vector_segment_rejects_missing_confirmations() -> (
+    None
+):
     """Real vector execution requires explicit operator confirmations."""
     coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
 
@@ -4161,9 +4172,7 @@ def test_active_transport_state_normalizes_real_ble_enum() -> None:
         manager=SimpleNamespace(mower=lambda _name: handle),
     )
 
-    normalized = MammotionReportUpdateCoordinator.active_transport_state.fget(
-        fake_self
-    )
+    normalized = MammotionReportUpdateCoordinator.active_transport_state.fget(fake_self)
 
     assert normalized == "ble"
     assert _transport_is_ble(SimpleNamespace(active_transport_state=normalized))
@@ -4440,12 +4449,8 @@ async def test_vector_segment_reports_stale_stream_after_feed_dies_mid_run(
     assert "bit-identical" in result["telemetry_stream_stale_hint"]
     # It must have driven successfully first -- otherwise "the stream died" is
     # not a supportable claim.
-    assert any(
-        c.get("position_moved") for c in result["command_results"]
-    )
-    assert any(
-        c.get("position_feed_stale") for c in result["command_results"]
-    )
+    assert any(c.get("position_moved") for c in result["command_results"])
+    assert any(c.get("position_feed_stale") for c in result["command_results"])
 
 
 @pytest.mark.asyncio
@@ -4750,9 +4755,7 @@ async def test_vio_turn_scales_the_last_pulse_and_does_not_overshoot(
 
     assert result["stop_reason"] == "target_heading_reached"
     # Never turned past the target: no command may reverse direction.
-    signs = {
-        (c["angular_speed"] > 0) for c in result["command_results"] if c.get("ok")
-    }
+    signs = {(c["angular_speed"] > 0) for c in result["command_results"] if c.get("ok")}
     assert len(signs) == 1, "turn reversed direction -- it overshot"
     # First pulse cruises at full length, the last is scaled short.
     assert durations[0] == pytest.approx(1.5)
@@ -5153,7 +5156,11 @@ async def test_vio_calibration_drive_aborts_when_stop_fails(
     async def failing_stop(
         coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
     ) -> dict:
-        return {"attempted": True, "ok": False, "error": "BLEUnavailableError: cooldown"}
+        return {
+            "attempted": True,
+            "ok": False,
+            "error": "BLEUnavailableError: cooldown",
+        }
 
     monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
     monkeypatch.setattr(
@@ -5200,9 +5207,7 @@ async def test_vio_segment_calibration_drive_computes_offset(
 ) -> None:
     """The calibration drive derives offset = map motion heading - vision heading."""
     coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
-    coordinator.data.report_data.vision_info = SimpleNamespace(
-        heading=0.0, vio_state=0
-    )
+    coordinator.data.report_data.vision_info = SimpleNamespace(heading=0.0, vio_state=0)
 
     async def no_sleep(_: float) -> None:
         return None
@@ -5241,9 +5246,7 @@ async def test_vio_segment_calibration_drive_rejects_offset_on_degraded_feed(
 ) -> None:
     """A blind feed (0 features) yields no offset even though vio_state reads active."""
     coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
-    coordinator.data.report_data.vision_info = SimpleNamespace(
-        heading=0.0, vio_state=0
-    )
+    coordinator.data.report_data.vision_info = SimpleNamespace(heading=0.0, vio_state=0)
 
     async def no_sleep(_: float) -> None:
         return None
@@ -5389,7 +5392,9 @@ async def test_vector_segment_ble_auto_recovers_then_proceeds(
     """A successful BLE auto-recovery lets ble_transport_required pass and the run proceed."""
     coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
     coordinator.active_transport_state = "cloud"  # not BLE at entry
-    coordinator.data.report_data.vision_info = SimpleNamespace(heading=10.0, vio_state=2)
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=10.0, vio_state=2
+    )
 
     async def no_sleep(_: float) -> None:
         return None
@@ -5459,7 +5464,9 @@ async def test_vector_segment_ble_auto_recovery_failure_fails_gate(
     """A failed BLE auto-recovery leaves ble_transport_required blocking the real run."""
     coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
     coordinator.active_transport_state = "cloud"  # not BLE, and recovery can't fix it
-    coordinator.data.report_data.vision_info = SimpleNamespace(heading=10.0, vio_state=2)
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=10.0, vio_state=2
+    )
 
     async def fake_recover(
         coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
@@ -5497,7 +5504,9 @@ async def test_vector_segment_ble_auto_recover_disabled_skips_recovery(
     """ble_auto_recover=false skips recovery entirely; the transport gate blocks as before."""
     coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
     coordinator.active_transport_state = "cloud"
-    coordinator.data.report_data.vision_info = SimpleNamespace(heading=10.0, vio_state=2)
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=10.0, vio_state=2
+    )
 
     async def fail_if_called(
         coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
@@ -5720,9 +5729,7 @@ async def test_settle_feed_not_stale_when_live_feed_jitters(
     async def jitter(count: int = 5) -> None:
         tick["n"] += 1
         # ~2mm of sensor noise, well under the 1cm settle epsilon.
-        coordinator.data.mowing_state.pos_x = 1.0 + (
-            0.002 if tick["n"] % 2 else 0.0
-        )
+        coordinator.data.mowing_state.pos_x = 1.0 + (0.002 if tick["n"] % 2 else 0.0)
 
     monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
     coordinator.async_get_reports.side_effect = jitter
@@ -5982,9 +5989,7 @@ def test_ble_transport_usable_reflects_transport_flag() -> None:
     usable = {"value": True}
 
     coordinator.manager.mower = lambda _device_name: SimpleNamespace(
-        get_transport=lambda _transport_type: SimpleNamespace(
-            is_usable=usable["value"]
-        )
+        get_transport=lambda _transport_type: SimpleNamespace(is_usable=usable["value"])
     )
 
     assert _ble_transport_usable(coordinator) is True
@@ -6023,9 +6028,7 @@ def test_ble_ready_for_motion_requires_label_and_usability() -> None:
     coordinator = _pulse_coordinator()
     usable = {"value": True}
     coordinator.manager.mower = lambda _device_name: SimpleNamespace(
-        get_transport=lambda _transport_type: SimpleNamespace(
-            is_usable=usable["value"]
-        )
+        get_transport=lambda _transport_type: SimpleNamespace(is_usable=usable["value"])
     )
 
     coordinator.active_transport_state = "ble"
@@ -6103,7 +6106,9 @@ def test_pinned_pymammotion_ble_transport_exposes_connect_cooldown_until() -> No
 
 
 @pytest.mark.asyncio
-async def test_raw_pymammotion_execute_multi_segment_real_rejects_missing_confirmations() -> None:
+async def test_raw_pymammotion_execute_multi_segment_real_rejects_missing_confirmations() -> (
+    None
+):
     """Real multi-segment execution requires explicit operator confirmations."""
     coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
 
@@ -6494,7 +6499,9 @@ async def test_manual_velocity_pulse_test_allows_paused_work_mode() -> None:
 @pytest.mark.asyncio
 async def test_manual_velocity_pulse_test_rejects_unavailable_position() -> None:
     """Real pulse rejects missing live map-local position before movement."""
-    coordinator = _pulse_coordinator(position=(None, None, None), pos_type=0, zone_hash=0)
+    coordinator = _pulse_coordinator(
+        position=(None, None, None), pos_type=0, zone_hash=0
+    )
 
     result = await _manual_velocity_pulse_test(
         coordinator,
@@ -6568,9 +6575,7 @@ async def test_manual_velocity_pulse_test_allows_turn_area_inside() -> None:
     assert result["would_send"] is True
     assert result["blockers"] == []
     before_position = result["samples"][0]["telemetry"]["position"]
-    assert before_position["pos_type_label"] == (
-        "TURN_AREA_INSIDE"
-    )
+    assert before_position["pos_type_label"] == ("TURN_AREA_INSIDE")
     assert before_position["valid_for_motion"] is True
     coordinator.async_move_forward.assert_awaited_once()
     coordinator.async_stop_manual_motion.assert_awaited_once()
@@ -6889,10 +6894,14 @@ def test_manual_velocity_cumulative_pulse_schema_defaults() -> None:
     assert parsed["stop_mode"] == "immediate"
     assert parsed["stop_delay_ms"] == 0
     assert parsed["cumulative_sample_delays"][-1] == 120
-    assert parsed["heading_offset_candidates"] == list(DEFAULT_HEADING_OFFSET_CANDIDATES)
+    assert parsed["heading_offset_candidates"] == list(
+        DEFAULT_HEADING_OFFSET_CANDIDATES
+    )
 
 
-def test_manual_velocity_heading_offset_candidate_schema_rejects_invalid_values() -> None:
+def test_manual_velocity_heading_offset_candidate_schema_rejects_invalid_values() -> (
+    None
+):
     """Heading offset candidates are bounded to valid degrees."""
     with pytest.raises(Exception):  # noqa: B017
         MANUAL_VELOCITY_CUMULATIVE_PULSE_TEST_SCHEMA(
@@ -7098,7 +7107,9 @@ async def test_manual_velocity_segment_test_accepts_delayed_progress(
     async def no_sleep(_: float) -> None:
         return None
 
-    monkeypatch.setattr(mammotion_services, "_custom_path_telemetry_snapshot", delayed_snapshot)
+    monkeypatch.setattr(
+        mammotion_services, "_custom_path_telemetry_snapshot", delayed_snapshot
+    )
     monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
 
     result = await _manual_velocity_segment_test(
@@ -7161,7 +7172,9 @@ async def test_manual_velocity_segment_test_reports_lost_after_late_window(
 
 
 @pytest.mark.asyncio
-async def test_manual_velocity_segment_test_reports_path_complete_at_max_pulses() -> None:
+async def test_manual_velocity_segment_test_reports_path_complete_at_max_pulses() -> (
+    None
+):
     """Max pulses at target reports path_complete, not a timeout."""
     coordinator = _pulse_coordinator()
 
@@ -7222,7 +7235,9 @@ async def test_manual_velocity_segment_test_stops_when_quality_degrades() -> Non
 
 
 @pytest.mark.asyncio
-async def test_manual_velocity_segment_test_can_report_multi_pulse_service_name() -> None:
+async def test_manual_velocity_segment_test_can_report_multi_pulse_service_name() -> (
+    None
+):
     """The same guarded engine can back the explicit multi-pulse service."""
     coordinator = _pulse_coordinator()
 
@@ -7254,7 +7269,9 @@ async def test_manual_velocity_cumulative_pulse_test_defaults_to_dry_run() -> No
     assert result["real_probe_allowed"] is False
     assert result["stop_reason"] == "dry_run"
     assert result["heading_offset_candidates"] == [110.0, 0.0]
-    assert result["initial_controller_decision"]["selected_heading_offset_degrees"] == 0.0
+    assert (
+        result["initial_controller_decision"]["selected_heading_offset_degrees"] == 0.0
+    )
     assert len(result["initial_controller_decision"]["heading_offset_diagnostics"]) == 2
     assert result["command_not_sent"] == {
         "service": "mammotion.move_forward",
@@ -7453,9 +7470,10 @@ async def test_experimental_execute_segment_burst_blocks_unproven_turn_by_defaul
         "segment_heading_outside_calibrated_forward_window"
     )
     assert result["blockers"] == ["unproven_turn_or_lateral_motion_required"]
-    assert result["manual_motion_execution_policy"][
-        "experimental_segment_scope"
-    ] == "one_segment_calibrated_forward_only"
+    assert (
+        result["manual_motion_execution_policy"]["experimental_segment_scope"]
+        == "one_segment_calibrated_forward_only"
+    )
     assert result["calibrated_forward_heading_diagnostic"] == {
         "segment_heading_degrees": 0.0,
         "calibrated_forward_heading_degrees": 270.0,
@@ -7880,16 +7898,25 @@ def test_diagnostic_sensor_values_match_map_and_task_data() -> None:
     descriptions = {description.key: description for description in WORK_SENSOR_TYPES}
 
     assert descriptions["task_count"].value_fn(coordinator, coordinator.data) == 1
-    assert descriptions["enabled_task_count"].value_fn(coordinator, coordinator.data) == 0
+    assert (
+        descriptions["enabled_task_count"].value_fn(coordinator, coordinator.data) == 0
+    )
     assert descriptions["area_count"].value_fn(coordinator, coordinator.data) == 1
-    assert descriptions["map_area_name_count"].value_fn(coordinator, coordinator.data) == 1
+    assert (
+        descriptions["map_area_name_count"].value_fn(coordinator, coordinator.data) == 1
+    )
     assert descriptions["last_map_sync"].value_fn(coordinator, coordinator.data) is None
-    assert descriptions["last_task_sync"].value_fn(coordinator, coordinator.data) is None
+    assert (
+        descriptions["last_task_sync"].value_fn(coordinator, coordinator.data) is None
+    )
     assert (
         descriptions["last_map_task_error"].value_fn(coordinator, coordinator.data)
         == "task_sync: RuntimeError"
     )
-    assert descriptions["active_transport"].value_fn(coordinator, coordinator.data) == "ble"
+    assert (
+        descriptions["active_transport"].value_fn(coordinator, coordinator.data)
+        == "ble"
+    )
     assert (
         descriptions["ble_only_fallback_mode"].value_fn(coordinator, coordinator.data)
         == "fallback_active"
@@ -7903,11 +7930,15 @@ def test_diagnostic_sensor_values_match_map_and_task_data() -> None:
         == coordinator.last_token_refresh
     )
     assert (
-        descriptions["last_command_failure_reason"].value_fn(coordinator, coordinator.data)
+        descriptions["last_command_failure_reason"].value_fn(
+            coordinator, coordinator.data
+        )
         == "set_car_wiper:GatewayTimeoutException"
     )
     assert (
-        descriptions["last_camera_stream_failure_code"].value_fn(coordinator, coordinator.data)
+        descriptions["last_camera_stream_failure_code"].value_fn(
+            coordinator, coordinator.data
+        )
         == "401"
     )
 
@@ -7985,8 +8016,10 @@ async def test_sync_maps_refuses_during_a_guarded_motion_run() -> None:
         manual_motion_owner="raw_pymammotion_execute_vector_segment",
     )
     coordinator._raise_if_manual_motion_in_progress = (  # noqa: SLF001
-        lambda action: MammotionBaseUpdateCoordinator._raise_if_manual_motion_in_progress(  # noqa: SLF001
-            coordinator, action
+        lambda action: (
+            MammotionBaseUpdateCoordinator._raise_if_manual_motion_in_progress(  # noqa: SLF001
+                coordinator, action
+            )
         )
     )
 
@@ -8286,8 +8319,10 @@ async def test_sync_success_updates_last_sync_metadata() -> None:
         manual_motion_owner=None,
     )
     coordinator._raise_if_manual_motion_in_progress = (  # noqa: SLF001
-        lambda action: MammotionBaseUpdateCoordinator._raise_if_manual_motion_in_progress(  # noqa: SLF001
-            coordinator, action
+        lambda action: (
+            MammotionBaseUpdateCoordinator._raise_if_manual_motion_in_progress(  # noqa: SLF001
+                coordinator, action
+            )
         )
     )
     coordinator._reported_bol_hash = (  # noqa: SLF001
@@ -8318,8 +8353,10 @@ async def test_sync_failure_updates_last_error() -> None:
         manual_motion_owner=None,
     )
     coordinator._raise_if_manual_motion_in_progress = (  # noqa: SLF001
-        lambda action: MammotionBaseUpdateCoordinator._raise_if_manual_motion_in_progress(  # noqa: SLF001
-            coordinator, action
+        lambda action: (
+            MammotionBaseUpdateCoordinator._raise_if_manual_motion_in_progress(  # noqa: SLF001
+                coordinator, action
+            )
         )
     )
 

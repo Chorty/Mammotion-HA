@@ -302,7 +302,7 @@ class AgoraWebSocketHandler:
                         await self._websocket.close()
                     self._websocket = None
                 continue
-            except (WebSocketException, json.JSONDecodeError):
+            except WebSocketException, json.JSONDecodeError:
                 _LOGGER.warning("Agora WebSocket connection failed; trying next")
                 if self._websocket:
                     with suppress(Exception):
@@ -448,7 +448,7 @@ class AgoraWebSocketHandler:
                             "_type": "ping",
                         }
                         await self._websocket.send(json.dumps(ping_msg))
-                    except (WebSocketException, ConnectionError):
+                    except WebSocketException, ConnectionError:
                         _LOGGER.warning("Agora ping failed")
                         break
         except asyncio.CancelledError:
@@ -530,7 +530,7 @@ class AgoraWebSocketHandler:
             }
             await self._websocket.send(json.dumps(renew_msg))
             _LOGGER.debug("Token will expire soon, sent renew_token")
-        except (WebSocketException, ConnectionError):
+        except WebSocketException, ConnectionError:
             _LOGGER.error("Failed to renew Agora credential")
             # Reset debounce so the next event can retry rather than waiting
             # 30 s after a send that never actually went out.

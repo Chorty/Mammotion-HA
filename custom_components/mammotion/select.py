@@ -41,9 +41,9 @@ class MammotionConfigSelectEntityDescription(SelectEntityDescription):
     key: str
     options: list[str]
     set_fn: Callable[[MammotionBaseUpdateCoordinator, str], None]
-    async_set_fn: (
-        Callable[[MammotionBaseUpdateCoordinator], Awaitable[None]] | None
-    ) = None
+    async_set_fn: Callable[[MammotionBaseUpdateCoordinator], Awaitable[None]] | None = (
+        None
+    )
 
 
 @dataclass(frozen=True, kw_only=True)

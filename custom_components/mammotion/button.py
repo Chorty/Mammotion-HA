@@ -369,7 +369,7 @@ def async_add_task_entities(
                 translation_placeholders={"name": existing_plan.task_name},
                 plan_id=task_id,
                 name=existing_plan.task_name,
-                press_fn=lambda coord, value: (coord.start_task(value)),
+                press_fn=lambda coord, value: coord.start_task(value),
             )
             entity = MammotionTaskButtonSensorEntity(
                 coordinator, base_plan_button_entity

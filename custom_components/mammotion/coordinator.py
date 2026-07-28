@@ -173,7 +173,7 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
             _user_account = int(
                 _mammotion_data["data"]["userInformation"]["userAccount"]
             )
-        except (KeyError, TypeError, ValueError):
+        except KeyError, TypeError, ValueError:
             _user_account = 0
         self.commands = MammotionCommand(device.device_name, _user_account)
         self._subscriptions: list[Subscription] = []
@@ -294,7 +294,12 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
                     )
                     self.last_token_refresh = datetime.datetime.now(datetime.UTC)
                     self.store_cloud_credentials()
-                except (AuthError, ClientError, HomeAssistantError, TimeoutError) as err:
+                except (
+                    AuthError,
+                    ClientError,
+                    HomeAssistantError,
+                    TimeoutError,
+                ) as err:
                     LOGGER.warning(
                         "Camera stream credential refresh failed: %s",
                         type(err).__name__,
@@ -479,7 +484,7 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         active_transport: Any
         try:
             active_transport = handle.active_transport()
-        except (AttributeError, TypeError, ValueError):
+        except AttributeError, TypeError, ValueError:
             return "unknown"
         if active_transport is None:
             return "none"
@@ -823,9 +828,7 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
     def _reported_bol_hash(self) -> int:
         """Return the device's currently reported map checksum, or 0."""
         device = self.manager.get_device_by_name(self.device_name)
-        locations = getattr(
-            getattr(device, "report_data", None), "locations", None
-        )
+        locations = getattr(getattr(device, "report_data", None), "locations", None)
         if not locations:
             return 0
         return int(getattr(locations[0], "bol_hash", 0) or 0)
@@ -964,9 +967,7 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
             result["busy_owner"] = self.manual_motion_owner
             result["steps"].append("refused_manual_motion_in_progress")
             result["map_sync_status_after"] = self.map_sync_status
-            result["map_sync_diagnostics_after"] = result[
-                "map_sync_diagnostics_before"
-            ]
+            result["map_sync_diagnostics_after"] = result["map_sync_diagnostics_before"]
             result["last_map_task_error"] = self.last_map_task_error
             return result
         try:
@@ -1368,7 +1369,9 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
             "move_right", prefer_ble=not use_wifi, angular=speed
         )
 
-    async def async_move_back(self, speed: float, use_wifi: bool = False) -> bool | None:
+    async def async_move_back(
+        self, speed: float, use_wifi: bool = False
+    ) -> bool | None:
         """Move back. Prefer BLE unless use_wifi=True."""
         if not use_wifi:
             await self._async_ensure_ble_client()
@@ -2313,7 +2316,7 @@ class MammotionReportUpdateCoordinator(MammotionBaseUpdateCoordinator[MowingDevi
         """Trigger a one-shot count=1 poll on sys_status transitions when not streaming."""
         try:
             await self.async_request_report_snapshot()
-        except (DeviceOfflineException, NoTransportAvailableError):
+        except DeviceOfflineException, NoTransportAvailableError:
             LOGGER.debug(
                 "report-coordinator [%s]: skipping sys_status refresh — device offline / no transport",
                 self.device_name,
@@ -2362,7 +2365,7 @@ class MammotionMaintenanceUpdateCoordinator(MammotionBaseUpdateCoordinator[Maint
         if was_working and sys_status == WorkMode.MODE_READY:
             try:
                 await self.async_send_command("get_maintenance")
-            except (DeviceOfflineException, GatewayTimeoutException):
+            except DeviceOfflineException, GatewayTimeoutException:
                 pass
 
     async def _async_update_data(self) -> Maintain:
@@ -2389,7 +2392,7 @@ class MammotionMaintenanceUpdateCoordinator(MammotionBaseUpdateCoordinator[Maint
             await self.async_send_and_wait(
                 "read_job_do_not_disturb", "todev_unable_time_set"
             )
-        except (DeviceOfflineException, GatewayTimeoutException):
+        except DeviceOfflineException, GatewayTimeoutException:
             pass
 
 
@@ -2609,7 +2612,7 @@ class MammotionMapUpdateCoordinator(MammotionBaseUpdateCoordinator[MowerInfo]):
                 return device.mower_state
         except GatewayTimeoutException:
             pass
-        except (ConcurrentRequestError, NoTransportAvailableError):
+        except ConcurrentRequestError, NoTransportAvailableError:
             pass
 
         _d = self.manager.get_device_by_name(self.device_name)
@@ -2839,8 +2842,11 @@ class MammotionDeviceErrorUpdateCoordinator(
         if device is None:
             return
         if handle := self.manager.mower(self.device_name):
+
             def _extract_sys_status(snapshot: DeviceSnapshot) -> WorkMode:
-                return cast(WorkMode, cast(MowerDevice, snapshot.raw).report_data.dev.sys_status)
+                return cast(
+                    WorkMode, cast(MowerDevice, snapshot.raw).report_data.dev.sys_status
+                )
 
             handle.watch_field(
                 _extract_sys_status,
@@ -2885,7 +2891,9 @@ class MammotionRTKCoordinator(MammotionBaseUpdateCoordinator[RTKBaseStationDevic
             unique_name=unique_name,
         )
 
-    def get_coordinator_data(self, device: RTKBaseStationDevice) -> RTKBaseStationDevice:
+    def get_coordinator_data(
+        self, device: RTKBaseStationDevice
+    ) -> RTKBaseStationDevice:
         """Return the current RTK device state tracked by this coordinator."""
         return self.data
 
@@ -2950,7 +2958,7 @@ class MammotionRTKCoordinator(MammotionBaseUpdateCoordinator[RTKBaseStationDevic
                     raise ConfigEntryAuthFailed(
                         f"Re-authentication required for Mammotion account: {err}"
                     ) from err
-                except (DeviceOfflineException, GatewayTimeoutException):
+                except DeviceOfflineException, GatewayTimeoutException:
                     pass
 
         return self.data
@@ -3166,7 +3174,7 @@ class MammotionSpinoCoordinator(MammotionBaseUpdateCoordinator[PoolCleanerDevice
                     raise ConfigEntryAuthFailed(
                         f"Re-authentication required for Mammotion account: {err}"
                     ) from err
-                except (DeviceOfflineException, GatewayTimeoutException):
+                except DeviceOfflineException, GatewayTimeoutException:
                     pass
 
         await self.async_save_data(self.data)

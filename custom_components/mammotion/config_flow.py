@@ -152,9 +152,7 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._discovered_device.address
             )
             merged = {
-                discovered_name: format_mac(
-                    self._discovered_device.address
-                ),
+                discovered_name: format_mac(self._discovered_device.address),
                 **entry.data.get(CONF_BLE_DEVICES, {}),
             }
             self._abort_if_unique_id_configured(updates={CONF_BLE_DEVICES: merged})
@@ -229,7 +227,9 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
 
             if account and password:
                 integration = await async_get_integration(self.hass, DOMAIN)
-                temp_client = MammotionClient(ha_version=_integration_ha_version(integration))
+                temp_client = MammotionClient(
+                    ha_version=_integration_ha_version(integration)
+                )
                 try:
                     session = aiohttp_client.async_get_clientsession(self.hass)
                     await temp_client.login_and_initiate_cloud(
@@ -268,7 +268,7 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
                 except CloudSetupError as err:
                     LOGGER.error("Aliyun cloud setup failed during login: %s", err)
                     errors["base"] = "cannot_connect"
-                except (LoginFailedError, ReLoginRequiredError):
+                except LoginFailedError, ReLoginRequiredError:
                     errors["base"] = "login_failed"
                 except (ClientError, HTTPException, TimeoutError) as err:
                     LOGGER.error("Unexpected error during login: %s", err)
@@ -337,7 +337,9 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
 
             if account and password:
                 integration = await async_get_integration(self.hass, DOMAIN)
-                temp_client = MammotionClient(ha_version=_integration_ha_version(integration))
+                temp_client = MammotionClient(
+                    ha_version=_integration_ha_version(integration)
+                )
                 try:
                     session = aiohttp_client.async_get_clientsession(self.hass)
                     await temp_client.login_and_initiate_cloud(
@@ -355,7 +357,7 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
                     return self.async_abort(reason="api_limit_exceeded")
                 except data_entry_flow.AbortFlow:
                     raise
-                except (LoginFailedError, ReLoginRequiredError):
+                except LoginFailedError, ReLoginRequiredError:
                     errors["base"] = "login_failed"
                 except (
                     CloudSetupError,
@@ -366,9 +368,7 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
                     LOGGER.error("Login failed during reconfigure: %s", err)
                     errors["base"] = "cannot_connect"
                 except Exception:  # noqa: BLE001 - library/cloud parse errors
-                    LOGGER.exception(
-                        "Unexpected Mammotion error during reconfigure"
-                    )
+                    LOGGER.exception("Unexpected Mammotion error during reconfigure")
                     errors["base"] = "cannot_connect"
                 finally:
                     await temp_client.stop()
@@ -426,7 +426,9 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
             account = user_input[CONF_ACCOUNTNAME].strip()
             password = user_input[CONF_PASSWORD].strip()
             integration = await async_get_integration(self.hass, DOMAIN)
-            temp_client = MammotionClient(ha_version=_integration_ha_version(integration))
+            temp_client = MammotionClient(
+                ha_version=_integration_ha_version(integration)
+            )
             try:
                 await temp_client.login_and_initiate_cloud(
                     account,
@@ -464,9 +466,9 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
                         )
             except TooManyRequestsException:
                 errors["base"] = "api_limit_exceeded"
-            except (LoginFailedError, ReLoginRequiredError):
+            except LoginFailedError, ReLoginRequiredError:
                 errors["base"] = "login_failed"
-            except (CloudSetupError, HTTPException):
+            except CloudSetupError, HTTPException:
                 errors["base"] = "cannot_connect"
             except Exception:  # noqa: BLE001 - library/cloud parse errors
                 LOGGER.exception("Unexpected Mammotion error during reauth")

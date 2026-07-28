@@ -52,15 +52,11 @@ async def async_setup_entry(
 
     mammotion_rtks = entry.runtime_data.RTK
     for rtk in mammotion_rtks:
-        entities.append(
-            MammotionRTKUpdateEntity(rtk.coordinator, MammotionUpdate)
-        )
+        entities.append(MammotionRTKUpdateEntity(rtk.coordinator, MammotionUpdate))
 
     mammotion_spinos = entry.runtime_data.spino
     for spino in mammotion_spinos:
-        entities.append(
-            MammotionSpinoUpdateEntity(spino.coordinator, MammotionUpdate)
-        )
+        entities.append(MammotionSpinoUpdateEntity(spino.coordinator, MammotionUpdate))
 
     async_add_entities(entities)
 

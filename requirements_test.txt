@@ -1,7 +1,10 @@
-homeassistant==2025.3.1
-pytest==8.3.5
-pytest-cov==6.0.0
-pytest-homeassistant-custom-component==0.13.222
-ruff==0.11.2
-mypy==1.15.0
-pymammotion==0.5.3
+homeassistant==2026.6.1
+pytest==9.0.3
+pytest-cov==7.1.0
+pytest-homeassistant-custom-component==0.13.345
+ruff==0.15.16
+mypy==2.1.0
+pymammotion==0.8.8
+websockets==16.0
+sdp-transform==1.1.0
+autotyping==24.9.0

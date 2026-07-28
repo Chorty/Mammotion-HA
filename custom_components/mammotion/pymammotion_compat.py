@@ -31,7 +31,10 @@ def _normalize_share_notice_response(data: Any) -> Any:
     for record in records:
         if not isinstance(record, dict):
             continue
-        if record.get("initiatorAlias") is None and record.get("initiator_alias") is None:
+        if (
+            record.get("initiatorAlias") is None
+            and record.get("initiator_alias") is None
+        ):
             record["initiatorAlias"] = ""
 
     return data

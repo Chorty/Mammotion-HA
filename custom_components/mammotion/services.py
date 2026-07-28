@@ -54,24 +54,18 @@ SERVICE_DRY_RUN_CUSTOM_PATH = "dry_run_custom_path"
 SERVICE_MANUAL_VELOCITY_PULSE_TEST = "manual_velocity_pulse_test"
 SERVICE_MANUAL_VELOCITY_SEGMENT_TEST = "manual_velocity_segment_test"
 SERVICE_MANUAL_VELOCITY_MULTI_PULSE_TEST = "manual_velocity_multi_pulse_test"
-SERVICE_MANUAL_VELOCITY_CUMULATIVE_PULSE_TEST = (
-    "manual_velocity_cumulative_pulse_test"
-)
+SERVICE_MANUAL_VELOCITY_CUMULATIVE_PULSE_TEST = "manual_velocity_cumulative_pulse_test"
 SERVICE_MANUAL_VELOCITY_HEADING_CALIBRATION_TEST = (
     "manual_velocity_heading_calibration_test"
 )
 SERVICE_RAW_PYMAMMOTION_MOTION_PROBE = "raw_pymammotion_motion_probe"
 SERVICE_RAW_PYMAMMOTION_EXECUTE_SEGMENT = "raw_pymammotion_execute_segment"
-SERVICE_RAW_PYMAMMOTION_ANGULAR_CALIBRATION = (
-    "raw_pymammotion_angular_calibration"
-)
+SERVICE_RAW_PYMAMMOTION_ANGULAR_CALIBRATION = "raw_pymammotion_angular_calibration"
 SERVICE_RAW_PYMAMMOTION_TURN_TO_HEADING = "raw_pymammotion_turn_to_heading"
 SERVICE_RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT = (
     "raw_pymammotion_execute_vector_segment"
 )
-SERVICE_RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT = (
-    "raw_pymammotion_execute_multi_segment"
-)
+SERVICE_RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT = "raw_pymammotion_execute_multi_segment"
 SERVICE_FORWARD_TWO_PULSE_LATENCY_TEST = "forward_two_pulse_latency_test"
 SERVICE_POSITION_FEEDBACK_DIAGNOSTIC = "position_feedback_diagnostic"
 SERVICE_VIO_MOTION_PROBE = "vio_motion_probe"
@@ -132,6 +126,7 @@ class _TelemetryDelaySample(TypedDict):
 
     delay_seconds: float
     telemetry: dict[str, Any]
+
 
 # Optional schedule fields shared by both device kinds.  The HA service
 # layer normalises them into the per-kind Plan / PoolPlan dataclass.
@@ -267,9 +262,7 @@ _HEADING_OFFSET_CANDIDATES_SCHEMA = vol.All(
 VALIDATE_CUSTOM_PATH_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_ENTITY_ID): cv.entity_id,
-        vol.Required("points"): vol.All(
-            cv.ensure_list, [_CUSTOM_PATH_POINT_SCHEMA]
-        ),
+        vol.Required("points"): vol.All(cv.ensure_list, [_CUSTOM_PATH_POINT_SCHEMA]),
         vol.Optional("area_hash"): vol.Coerce(int),
         vol.Optional("speed", default=0.2): vol.All(
             vol.Coerce(float), vol.Range(min=0.05, max=0.6)
@@ -282,9 +275,7 @@ VALIDATE_CUSTOM_PATH_SCHEMA = vol.Schema(
 DRY_RUN_CUSTOM_PATH_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_ENTITY_ID): cv.entity_id,
-        vol.Required("points"): vol.All(
-            cv.ensure_list, [_CUSTOM_PATH_POINT_SCHEMA]
-        ),
+        vol.Required("points"): vol.All(cv.ensure_list, [_CUSTOM_PATH_POINT_SCHEMA]),
         vol.Optional("area_hash"): vol.Coerce(int),
         vol.Optional("speed", default=0.2): vol.All(
             vol.Coerce(float), vol.Range(min=0.05, max=0.6)
@@ -338,7 +329,9 @@ MANUAL_VELOCITY_PULSE_TEST_SCHEMA = vol.Schema(
         vol.Optional("motion_refresh_interval_ms", default=0): vol.All(
             vol.Coerce(int), vol.Range(min=0, max=1000)
         ),
-        vol.Optional("use_wifi", default=DEFAULT_EXPERIMENTAL_SEGMENT_USE_WIFI): cv.boolean,
+        vol.Optional(
+            "use_wifi", default=DEFAULT_EXPERIMENTAL_SEGMENT_USE_WIFI
+        ): cv.boolean,
         vol.Optional("dry_run", default=True): cv.boolean,
         vol.Optional("confirm_blades_off", default=False): cv.boolean,
         vol.Optional("confirm_clear_area", default=False): cv.boolean,
@@ -349,9 +342,7 @@ MANUAL_VELOCITY_PULSE_TEST_SCHEMA = vol.Schema(
 MANUAL_VELOCITY_SEGMENT_TEST_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_ENTITY_ID): cv.entity_id,
-        vol.Required("points"): vol.All(
-            cv.ensure_list, [_CUSTOM_PATH_POINT_SCHEMA]
-        ),
+        vol.Required("points"): vol.All(cv.ensure_list, [_CUSTOM_PATH_POINT_SCHEMA]),
         vol.Optional("area_hash"): vol.Coerce(int),
         vol.Optional("speed", default=0.4): vol.All(
             vol.Coerce(float), vol.Range(min=0.05, max=0.4)
@@ -400,9 +391,7 @@ MANUAL_VELOCITY_SEGMENT_TEST_SCHEMA = vol.Schema(
 MANUAL_VELOCITY_MULTI_PULSE_TEST_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_ENTITY_ID): cv.entity_id,
-        vol.Required("points"): vol.All(
-            cv.ensure_list, [_CUSTOM_PATH_POINT_SCHEMA]
-        ),
+        vol.Required("points"): vol.All(cv.ensure_list, [_CUSTOM_PATH_POINT_SCHEMA]),
         vol.Optional("area_hash"): vol.Coerce(int),
         vol.Optional("speed", default=0.4): vol.All(
             vol.Coerce(float), vol.Range(min=0.05, max=0.4)
@@ -482,7 +471,9 @@ MANUAL_VELOCITY_CUMULATIVE_PULSE_TEST_SCHEMA = vol.Schema(
         vol.Optional("dry_run", default=True): cv.boolean,
         vol.Optional("confirm_blades_off", default=False): cv.boolean,
         vol.Optional("confirm_clear_area", default=False): cv.boolean,
-        vol.Optional("cumulative_sample_delays", default=[0, 10, 20, 30, 45, 60, 90, 120]): vol.All(
+        vol.Optional(
+            "cumulative_sample_delays", default=[0, 10, 20, 30, 45, 60, 90, 120]
+        ): vol.All(
             cv.ensure_list,
             [
                 vol.All(
@@ -737,9 +728,9 @@ VIO_TURN_TO_HEADING_SCHEMA = vol.Schema(
         # Fallback rotation rate for the scaled final approach, used only until
         # the run measures its own. 37 deg/s is the live 2026-07-27 figure at
         # angular 500 / refresh 200, biased high so the turn undershoots.
-        vol.Optional(
-            "turn_degrees_per_second", default=37.0
-        ): vol.All(vol.Coerce(float), vol.Range(min=1.0, max=180.0)),
+        vol.Optional("turn_degrees_per_second", default=37.0): vol.All(
+            vol.Coerce(float), vol.Range(min=1.0, max=180.0)
+        ),
         vol.Optional("prefer_ble", default=True): cv.boolean,
         vol.Optional("dry_run", default=True): cv.boolean,
         vol.Optional("confirm_blades_off", default=False): cv.boolean,
@@ -924,9 +915,9 @@ RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("max_turn_translation_distance", default=0.25): vol.All(
             vol.Coerce(float), vol.Range(min=0.0, max=2.0)
         ),
-        vol.Optional("calibrated_forward_heading_offset_degrees", default=116.5): vol.All(
-            vol.Coerce(float), vol.Range(min=-180.0, max=180.0)
-        ),
+        vol.Optional(
+            "calibrated_forward_heading_offset_degrees", default=116.5
+        ): vol.All(vol.Coerce(float), vol.Range(min=-180.0, max=180.0)),
         vol.Optional("turn_pulse_duration_ms", default=1500.0): vol.All(
             vol.Coerce(float), vol.Range(min=50.0, max=2000.0)
         ),
@@ -936,13 +927,13 @@ RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA = vol.Schema(
         # Fallback metres-per-pulse for the final-approach scaling, used only
         # until the run has measured a full pulse of its own. 1.06 m is the
         # live 2026-07-27 figure at linear 400 / 3500 ms / refresh 200.
-        vol.Optional(
-            "final_approach_metres_per_pulse", default=1.06
-        ): vol.All(vol.Coerce(float), vol.Range(min=0.05, max=5.0)),
+        vol.Optional("final_approach_metres_per_pulse", default=1.06): vol.All(
+            vol.Coerce(float), vol.Range(min=0.05, max=5.0)
+        ),
         # Same idea for the turn phase; see VIO_TURN_TO_HEADING_SCHEMA.
-        vol.Optional(
-            "turn_degrees_per_second", default=37.0
-        ): vol.All(vol.Coerce(float), vol.Range(min=1.0, max=180.0)),
+        vol.Optional("turn_degrees_per_second", default=37.0): vol.All(
+            vol.Coerce(float), vol.Range(min=1.0, max=180.0)
+        ),
         # App-parity motion cadence. Defaults to 200 ms, the app's own timer:
         # B1 (2026-07-22) proved re-sending the movement command every 200 ms
         # for the pulse duration drives ~11x further than a single shot (the
@@ -1047,9 +1038,9 @@ RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("max_turn_translation_distance", default=0.25): vol.All(
             vol.Coerce(float), vol.Range(min=0.0, max=2.0)
         ),
-        vol.Optional("calibrated_forward_heading_offset_degrees", default=116.5): vol.All(
-            vol.Coerce(float), vol.Range(min=-180.0, max=180.0)
-        ),
+        vol.Optional(
+            "calibrated_forward_heading_offset_degrees", default=116.5
+        ): vol.All(vol.Coerce(float), vol.Range(min=-180.0, max=180.0)),
         vol.Optional("turn_pulse_duration_ms", default=1500.0): vol.All(
             vol.Coerce(float), vol.Range(min=50.0, max=2000.0)
         ),
@@ -1126,9 +1117,9 @@ RAW_VECTOR_READINESS_TEST_SCHEMA = vol.Schema(
         vol.Optional("turn_delta_degrees", default=10.0): vol.All(
             vol.Coerce(float), vol.Range(min=3.0, max=45.0)
         ),
-        vol.Optional("calibrated_forward_heading_offset_degrees", default=116.5): vol.All(
-            vol.Coerce(float), vol.Range(min=-180.0, max=180.0)
-        ),
+        vol.Optional(
+            "calibrated_forward_heading_offset_degrees", default=116.5
+        ): vol.All(vol.Coerce(float), vol.Range(min=-180.0, max=180.0)),
         vol.Optional("max_turn_commands", default=4): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=5)
         ),
@@ -1196,12 +1187,12 @@ EXPERIMENTAL_EXECUTE_SEGMENT_BURST_SCHEMA = vol.Schema(
         vol.Optional("pulse_duration_ms", default=750): vol.All(
             vol.Coerce(int), vol.Range(min=50, max=750)
         ),
-        vol.Optional("pulses_per_burst", default=DEFAULT_EXPERIMENTAL_SEGMENT_PULSES_PER_BURST): vol.All(
-            vol.Coerce(int), vol.Range(min=1, max=3)
-        ),
-        vol.Optional("max_bursts", default=DEFAULT_EXPERIMENTAL_SEGMENT_MAX_BURSTS): vol.All(
-            vol.Coerce(int), vol.Range(min=1, max=3)
-        ),
+        vol.Optional(
+            "pulses_per_burst", default=DEFAULT_EXPERIMENTAL_SEGMENT_PULSES_PER_BURST
+        ): vol.All(vol.Coerce(int), vol.Range(min=1, max=3)),
+        vol.Optional(
+            "max_bursts", default=DEFAULT_EXPERIMENTAL_SEGMENT_MAX_BURSTS
+        ): vol.All(vol.Coerce(int), vol.Range(min=1, max=3)),
         vol.Optional("waypoint_tolerance", default=0.1): vol.All(
             vol.Coerce(float), vol.Range(min=0.02, max=0.5)
         ),
@@ -1212,9 +1203,9 @@ EXPERIMENTAL_EXECUTE_SEGMENT_BURST_SCHEMA = vol.Schema(
             "heading_offset_candidates",
             default=list(DEFAULT_HEADING_OFFSET_CANDIDATES),
         ): _HEADING_OFFSET_CANDIDATES_SCHEMA,
-        vol.Optional("stop_mode", default=DEFAULT_EXPERIMENTAL_SEGMENT_STOP_MODE): vol.In(
-            ["immediate", "delayed", "firmware"]
-        ),
+        vol.Optional(
+            "stop_mode", default=DEFAULT_EXPERIMENTAL_SEGMENT_STOP_MODE
+        ): vol.In(["immediate", "delayed", "firmware"]),
         vol.Optional("stop_delay_ms", default=0): vol.All(
             vol.Coerce(int), vol.Range(min=0, max=5000)
         ),
@@ -1225,9 +1216,10 @@ EXPERIMENTAL_EXECUTE_SEGMENT_BURST_SCHEMA = vol.Schema(
             vol.Coerce(float), vol.Range(min=0.0, max=45.0)
         ),
         vol.Optional("allow_unproven_turns", default=False): cv.boolean,
-        vol.Optional("calibrated_forward_heading_degrees", default=DEFAULT_CALIBRATED_FORWARD_HEADING_DEGREES): vol.All(
-            vol.Coerce(float), vol.Range(min=0.0, max=360.0)
-        ),
+        vol.Optional(
+            "calibrated_forward_heading_degrees",
+            default=DEFAULT_CALIBRATED_FORWARD_HEADING_DEGREES,
+        ): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=360.0)),
         vol.Optional(
             "calibrated_forward_heading_tolerance_degrees",
             default=DEFAULT_CALIBRATED_FORWARD_HEADING_TOLERANCE_DEGREES,
@@ -1473,9 +1465,7 @@ def _point_on_segment(
     return dot <= squared_len + tolerance
 
 
-def _point_in_polygon(
-    point: dict[str, float], polygon: list[dict[str, float]]
-) -> bool:
+def _point_in_polygon(point: dict[str, float], polygon: list[dict[str, float]]) -> bool:
     """Return True when a map-local point is inside or on a polygon boundary."""
     if len(polygon) < 3:
         return False
@@ -1486,9 +1476,9 @@ def _point_in_polygon(
             return True
         crosses = (current["y"] > point["y"]) != (previous["y"] > point["y"])
         if crosses:
-            x_at_y = (previous["x"] - current["x"]) * (
-                point["y"] - current["y"]
-            ) / (previous["y"] - current["y"]) + current["x"]
+            x_at_y = (previous["x"] - current["x"]) * (point["y"] - current["y"]) / (
+                previous["y"] - current["y"]
+            ) + current["x"]
             if point["x"] <= x_at_y:
                 inside = not inside
         previous = current
@@ -1503,9 +1493,7 @@ def _path_distance(points: list[dict[str, float]]) -> float:
     )
 
 
-def _path_heading_degrees(
-    start: dict[str, float], end: dict[str, float]
-) -> float:
+def _path_heading_degrees(start: dict[str, float], end: dict[str, float]) -> float:
     """Return a map-local heading in degrees for a segment."""
     return (
         math.degrees(math.atan2(end["y"] - start["y"], end["x"] - start["x"])) + 360
@@ -1588,11 +1576,7 @@ def _manual_velocity_next_waypoint(  # noqa: C901
                     )
 
     active = next(
-        (
-            item
-            for item in distances
-            if item["distance"] > waypoint_tolerance
-        ),
+        (item for item in distances if item["distance"] > waypoint_tolerance),
         None,
     )
     if active is None:
@@ -1786,7 +1770,11 @@ def _geojson_features(geojson: Any) -> list[dict[str, Any]]:
     if not isinstance(geojson, dict):
         return []
     features = geojson.get("features")
-    return [feature for feature in features if isinstance(feature, dict)] if isinstance(features, list) else []
+    return (
+        [feature for feature in features if isinstance(feature, dict)]
+        if isinstance(features, list)
+        else []
+    )
 
 
 def _feature_coordinate_count(geometry: dict[str, Any]) -> int | None:
@@ -1860,10 +1848,12 @@ def _export_active_route(
         coordinator.map_offset_lon,
     )
     mow_path_features = [
-        _normalize_route_feature(feature) for feature in _geojson_features(mow_path_geojson)
+        _normalize_route_feature(feature)
+        for feature in _geojson_features(mow_path_geojson)
     ]
     progress_features = [
-        _normalize_route_feature(feature) for feature in _geojson_features(progress_geojson)
+        _normalize_route_feature(feature)
+        for feature in _geojson_features(progress_geojson)
     ]
     active_progress = next(
         (feature for feature in progress_features if feature.get("is_active") is True),
@@ -1897,7 +1887,9 @@ def _export_runtime_state(
 ) -> dict[str, Any]:
     """Return read-only runtime diagnostics for active path/motion work."""
     telemetry = _custom_path_telemetry_snapshot(coordinator)
-    route = active_route if active_route is not None else _export_active_route(coordinator)
+    route = (
+        active_route if active_route is not None else _export_active_route(coordinator)
+    )
     blade = _runtime_blade_diagnostics(telemetry)
     safety = _runtime_motion_safety_summary(
         telemetry,
@@ -1932,9 +1924,7 @@ def _export_runtime_state(
         ),
         "last_map_task_error": getattr(coordinator, "last_map_task_error", None),
         "active_transport": getattr(coordinator, "active_transport_state", None),
-        "ble_only_fallback_mode": getattr(
-            coordinator, "ble_only_fallback_mode", None
-        ),
+        "ble_only_fallback_mode": getattr(coordinator, "ble_only_fallback_mode", None),
         "last_cloud_login_success": _isoformat_or_none(
             getattr(coordinator, "last_cloud_login_success", None)
         ),
@@ -1991,14 +1981,10 @@ def _manual_motion_execution_policy() -> dict[str, Any]:
             },
         },
         "default_transport": (
-            "wifi"
-            if DEFAULT_EXPERIMENTAL_SEGMENT_USE_WIFI
-            else "ble_preferred"
+            "wifi" if DEFAULT_EXPERIMENTAL_SEGMENT_USE_WIFI else "ble_preferred"
         ),
         "default_stop_mode": DEFAULT_EXPERIMENTAL_SEGMENT_STOP_MODE,
-        "default_pulses_per_burst": (
-            DEFAULT_EXPERIMENTAL_SEGMENT_PULSES_PER_BURST
-        ),
+        "default_pulses_per_burst": (DEFAULT_EXPERIMENTAL_SEGMENT_PULSES_PER_BURST),
         "default_max_bursts": DEFAULT_EXPERIMENTAL_SEGMENT_MAX_BURSTS,
         "calibrated_forward_heading_degrees": (
             DEFAULT_CALIBRATED_FORWARD_HEADING_DEGREES
@@ -2060,8 +2046,7 @@ def _validate_custom_path(  # noqa: C901
         outside: list[int] = []
         for index, point in enumerate(normalized_points):
             if not any(
-                _point_in_polygon(point, polygon)
-                for polygon in valid_polygons.values()
+                _point_in_polygon(point, polygon) for polygon in valid_polygons.values()
             ):
                 outside.append(index)
         if outside:
@@ -2207,7 +2192,7 @@ def _scale_report_position(value: Any) -> float | None:
         return None
     try:
         return float(value) / 10_000
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
@@ -2219,7 +2204,7 @@ def _position_mode_label(pos_level: Any) -> str | None:
         from pymammotion.data.model.enums import PositionMode  # noqa: PLC0415
 
         return PositionMode.from_value(int(pos_level)).name
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return "UNKNOWN"
 
 
@@ -2237,7 +2222,7 @@ def _rtk_status_label(value: Any) -> str | None:
         from pymammotion.data.model.enums import RTKStatus  # noqa: PLC0415
 
         return str(RTKStatus.from_value(int(value)))
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return "Unknown"
 
 
@@ -2255,7 +2240,7 @@ def _charge_state_label(value: Any) -> str:
     """Return a readable charge-state label."""
     try:
         charge_state = int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return "unknown"
     return {
         0: "not_charging",
@@ -2275,7 +2260,7 @@ def _is_zero_pose(x: Any, y: Any) -> bool:
     """Return true when x/y are both exactly zero-like values."""
     try:
         return float(x) == 0.0 and float(y) == 0.0
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return False
 
 
@@ -2283,18 +2268,16 @@ def _is_area_out(pos_type: Any, zone_hash: Any) -> bool:
     """Return true when position metadata indicates outside/no mapped area."""
     try:
         pos_type_int = int(pos_type)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         pos_type_int = None
     try:
         zone_hash_int = int(zone_hash)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         zone_hash_int = None
     return pos_type_int == 0 and zone_hash_int == 0
 
 
-def _is_stale_zero_area_out_pose(
-    x: Any, y: Any, pos_type: Any, zone_hash: Any
-) -> bool:
+def _is_stale_zero_area_out_pose(x: Any, y: Any, pos_type: Any, zone_hash: Any) -> bool:
     """Return true for the common stale dock/default pose."""
     return _is_zero_pose(x, y) and _is_area_out(pos_type, zone_hash)
 
@@ -2372,9 +2355,13 @@ def _custom_path_position_snapshot(
             pos_type = candidate_pos_type
             zone_hash = candidate_zone_hash
 
-    if source == "unavailable" and mowing_state is not None and (
-        _safe_attr_path(mowing_state, "pos_x") is not None
-        or _safe_attr_path(mowing_state, "pos_y") is not None
+    if (
+        source == "unavailable"
+        and mowing_state is not None
+        and (
+            _safe_attr_path(mowing_state, "pos_x") is not None
+            or _safe_attr_path(mowing_state, "pos_y") is not None
+        )
     ):
         candidate_x = _safe_attr_path(mowing_state, "pos_x")
         candidate_y = _safe_attr_path(mowing_state, "pos_y")
@@ -2399,9 +2386,13 @@ def _custom_path_position_snapshot(
         pos_type = location_pos_type
         zone_hash = location_zone_hash
         toward = location_toward
-    if source == "unavailable" and mowing_state is not None and (
-        _safe_attr_path(mowing_state, "pos_x") is not None
-        or _safe_attr_path(mowing_state, "pos_y") is not None
+    if (
+        source == "unavailable"
+        and mowing_state is not None
+        and (
+            _safe_attr_path(mowing_state, "pos_x") is not None
+            or _safe_attr_path(mowing_state, "pos_y") is not None
+        )
     ):
         # Keep raw zero-pose diagnostics visible on dry-runs, but overlay
         # known-good location metadata below so real-pulse gates can reject it
@@ -2512,9 +2503,7 @@ def _position_source_comparison(
     agreement_m: float | None = None
     if locations_xy is not None and mowing_xy is not None:
         agreement_m = round(
-            math.hypot(
-                locations_xy[0] - mowing_xy[0], locations_xy[1] - mowing_xy[1]
-            ),
+            math.hypot(locations_xy[0] - mowing_xy[0], locations_xy[1] - mowing_xy[1]),
             4,
         )
 
@@ -2659,7 +2648,9 @@ def _custom_path_telemetry_snapshot(
     blade_state = _safe_attr_path(data, "report_data.dev.blade_state")
     connect = _safe_attr_path(data, "report_data.connect")
     return {
-        "online": coordinator.is_online() if hasattr(coordinator, "is_online") else None,
+        "online": coordinator.is_online()
+        if hasattr(coordinator, "is_online")
+        else None,
         "work_mode": work_mode,
         "work_mode_label": device_mode(work_mode) if work_mode is not None else None,
         "charge_state": charge_state,
@@ -2669,7 +2660,9 @@ def _custom_path_telemetry_snapshot(
         "blade": {
             "reported_state": _enum_value(blade_state),
             "reported_state_label": _blade_state_label(blade_state),
-            "knife_status": _safe_attr_path(data, "report_data.knife_status.knife_status"),
+            "knife_status": _safe_attr_path(
+                data, "report_data.knife_status.knife_status"
+            ),
             "current_cutter_mode": _safe_attr_path(
                 data, "report_data.cutter_work_mode_info.current_cutter_mode"
             ),
@@ -2686,7 +2679,9 @@ def _custom_path_telemetry_snapshot(
             "iot_connect_status": _safe_attr_path(
                 data, "report_data.connect.iot_connect_status"
             ),
-            "connection_label": device_connection(connect) if connect is not None else None,
+            "connection_label": device_connection(connect)
+            if connect is not None
+            else None,
         },
     }
 
@@ -2824,7 +2819,10 @@ def _manual_velocity_decision_rank(decision: dict[str, Any]) -> tuple[int, float
     abs_heading_error = (
         abs(float(heading_error)) if heading_error is not None else float("inf")
     )
-    if decision.get("action") == "forward" and decision.get("reason") == "heading_aligned":
+    if (
+        decision.get("action") == "forward"
+        and decision.get("reason") == "heading_aligned"
+    ):
         return (0, abs_heading_error)
     if decision.get("action") in {"turn_left", "turn_right"}:
         return (1, abs_heading_error)
@@ -2874,9 +2872,7 @@ def _manual_velocity_best_heading_decision(
                 "action": decision.get("action"),
                 "reason": decision.get("reason"),
                 "current_heading_degrees": decision.get("current_heading_degrees"),
-                "corrected_heading_degrees": decision.get(
-                    "corrected_heading_degrees"
-                ),
+                "corrected_heading_degrees": decision.get("corrected_heading_degrees"),
                 "target_heading_degrees": decision.get("target_heading_degrees"),
                 "heading_error_degrees": decision.get("heading_error_degrees"),
                 "distance_to_target": decision.get("distance_to_target"),
@@ -3033,10 +3029,9 @@ def _position_available(telemetry: dict[str, Any]) -> bool:
 def _position_has_known_area(telemetry: dict[str, Any]) -> bool:
     """Return true when telemetry ties the mower to a known mowing area."""
     position = telemetry.get("position", {})
-    return (
-        _is_manual_motion_area_label(position.get("pos_type_label"))
-        and position.get("zone_hash") not in (None, 0, "0")
-    )
+    return _is_manual_motion_area_label(
+        position.get("pos_type_label")
+    ) and position.get("zone_hash") not in (None, 0, "0")
 
 
 def _blade_reported_safe(telemetry: dict[str, Any]) -> bool:
@@ -3195,10 +3190,10 @@ def _manual_velocity_path_progress_diagnostic(
     else:
         unit_x = target_dx / target_distance
         unit_y = target_dy / target_distance
-        path_progress_distance = float(delta["dx"]) * unit_x + float(delta["dy"]) * unit_y
-        target_heading = (
-            math.degrees(math.atan2(target_dy, target_dx)) + 360
-        ) % 360
+        path_progress_distance = (
+            float(delta["dx"]) * unit_x + float(delta["dy"]) * unit_y
+        )
+        target_heading = (math.degrees(math.atan2(target_dy, target_dx)) + 360) % 360
 
     movement_vector_heading = None
     if delta.get("distance") is not None and float(delta["distance"]) > 0:
@@ -3266,7 +3261,7 @@ def _quality_rank(value: Any) -> int | None:
         return None
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
@@ -3286,10 +3281,11 @@ def _manual_velocity_quality_degradation(
         reasons.append("pos_type_not_valid_manual_motion_area")
     if current_position.get("zone_hash") in (None, 0, "0"):
         reasons.append("zone_hash_unavailable")
-    elif (
-        baseline_position.get("zone_hash") not in (None, 0, "0")
-        and current_position.get("zone_hash") != baseline_position.get("zone_hash")
-    ):
+    elif baseline_position.get("zone_hash") not in (
+        None,
+        0,
+        "0",
+    ) and current_position.get("zone_hash") != baseline_position.get("zone_hash"):
         reasons.append("zone_hash_changed")
 
     baseline_pos_level = _quality_rank(baseline_position.get("pos_level"))
@@ -3303,7 +3299,11 @@ def _manual_velocity_quality_degradation(
 
     baseline_rtk = _quality_rank(baseline_position.get("rtk_status"))
     current_rtk = _quality_rank(current_position.get("rtk_status"))
-    if baseline_rtk is not None and current_rtk is not None and current_rtk < baseline_rtk:
+    if (
+        baseline_rtk is not None
+        and current_rtk is not None
+        and current_rtk < baseline_rtk
+    ):
         reasons.append("rtk_status_degraded")
 
     return {
@@ -3489,9 +3489,7 @@ async def _attempt_ble_recovery(  # noqa: C901
         "ok": False,
         "reason": None,
         "steps": [],
-        "ble_rssi": _safe_attr_path(
-            coordinator.data, "report_data.connect.ble_rssi"
-        ),
+        "ble_rssi": _safe_attr_path(coordinator.data, "report_data.connect.ble_rssi"),
         "timeout_seconds": timeout_seconds,
     }
     if _ble_ready_for_motion(coordinator):
@@ -3527,9 +3525,7 @@ async def _attempt_ble_recovery(  # noqa: C901
                 await coordinator.async_set_bluetooth_enabled(True)
                 report["steps"].append("ble_toggled")
             except Exception as err:  # noqa: BLE001
-                report["steps"].append(
-                    f"toggle_failed: {type(err).__name__}: {err}"
-                )
+                report["steps"].append(f"toggle_failed: {type(err).__name__}: {err}")
     rssi = report["ble_rssi"]
     if rssi in (0, None):
         report["reason"] = "mower_not_advertising_needs_wake"
@@ -3810,7 +3806,7 @@ def _app_speed_scale_report(linear_speed: Any, angular_speed: Any) -> dict[str, 
     try:
         linear = int(linear_speed)
         angular = int(angular_speed)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return {"available": False}
     return {
         "available": True,
@@ -3991,12 +3987,15 @@ async def _manual_velocity_pulse_test(
     """Run or simulate one tiny manual-velocity pulse with telemetry sampling."""
     if post_command_sample_delays is None:
         post_command_sample_delays = tuple(
-            followup_interval_seconds * (index + 1)
-            for index in range(followup_samples)
+            followup_interval_seconds * (index + 1) for index in range(followup_samples)
         )
     if hasattr(coordinator, "async_start_report_stream"):
-        stream_duration_ms = int((max(post_command_sample_delays, default=0.0) + 10) * 1000)
-        await coordinator.async_start_report_stream(duration_ms=max(10_000, stream_duration_ms))
+        stream_duration_ms = int(
+            (max(post_command_sample_delays, default=0.0) + 10) * 1000
+        )
+        await coordinator.async_start_report_stream(
+            duration_ms=max(10_000, stream_duration_ms)
+        )
 
     before = _custom_path_telemetry_snapshot(coordinator)
     gates = _manual_velocity_pulse_gates(
@@ -4081,7 +4080,9 @@ async def _manual_velocity_pulse_test(
         refresh_interval_ms=motion_refresh_interval_ms,
     )
     after_command = _custom_path_telemetry_snapshot(coordinator)
-    result["samples"].append({"label": "after_command_window", "telemetry": after_command})
+    result["samples"].append(
+        {"label": "after_command_window", "telemetry": after_command}
+    )
     if stop_mode == "delayed" and stop_delay_ms > 0:
         await _motion_open_sleep(coordinator, stop_delay_ms / 1000)
     if stop_mode in {"immediate", "delayed"}:
@@ -4402,18 +4403,20 @@ def _position_feedback_raw_sources(
         "report_data.locations": [],
         "handle": {},
     }
-    for index, location in enumerate(_safe_attr_path(data, "report_data.locations") or []):
+    for index, location in enumerate(
+        _safe_attr_path(data, "report_data.locations") or []
+    ):
         if index >= 3:
             break
         bol_hash = _safe_attr_path(location, "bol_hash")
         try:
             safe_bol_hash: Any = _json_safe_int(int(bol_hash or 0))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             safe_bol_hash = str(bol_hash) if bol_hash is not None else None
         zone_hash = _safe_attr_path(location, "zone_hash")
         try:
             safe_zone_hash: Any = _json_safe_int(int(zone_hash or 0))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             safe_zone_hash = str(zone_hash) if zone_hash is not None else None
         sources["report_data.locations"].append(
             {
@@ -5683,7 +5686,7 @@ def _vio_scene_brightness(
     if raw is not None:
         try:
             label = camera_brightness(int(raw))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             label = None
     return raw, label
 
@@ -5720,7 +5723,7 @@ def _vio_feed_liveness(
     if features is not None:
         try:
             degraded = int(features) < _VIO_MIN_TRACKED_FEATURES
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             degraded = False
     return {
         "live": not degraded,
@@ -5988,7 +5991,9 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
     initial_error: float | None = None
     if initial_heading is not None:
         initial_error = _heading_error_degrees(float(initial_heading), target)
-    planned_angular = _planned_angular(initial_error) if initial_error is not None else None
+    planned_angular = (
+        _planned_angular(initial_error) if initial_error is not None else None
+    )
     result: dict[str, Any] = {
         "service": SERVICE_VIO_TURN_TO_HEADING,
         "mode": "dry_run" if dry_run else "real_vio_turn_to_heading",
@@ -6097,9 +6102,7 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # can't get here otherwise, and nothing refreshes in between), so reuse it
         # rather than re-read; later pulses re-check live.
         before_feed = (
-            initial_feed
-            if command_index == 1
-            else _vio_feed_liveness(coordinator)
+            initial_feed if command_index == 1 else _vio_feed_liveness(coordinator)
         )
         if not before_feed["live"]:
             # vio_state stayed active but the feature track collapsed (dusk): the
@@ -6285,11 +6288,7 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
             if after_heading is None:
                 break
             if (
-                abs(
-                    _heading_error_degrees(
-                        float(before_heading), float(after_heading)
-                    )
-                )
+                abs(_heading_error_degrees(float(before_heading), float(after_heading)))
                 > _VIO_HEADING_FRESH_EPSILON_DEGREES
             ):
                 heading_went_fresh = True
@@ -6308,7 +6307,9 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
             result["command_results"].append(command_result)
             result["stop_reason"] = "vio_heading_unavailable"
             return result
-        measured_change = _heading_error_degrees(float(before_heading), float(after_heading))
+        measured_change = _heading_error_degrees(
+            float(before_heading), float(after_heading)
+        )
         new_error = _heading_error_degrees(float(after_heading), target)
         progress = abs(error) - abs(new_error)
         # Remembered for the next pulse's slow-cap decision: a negative value means
@@ -6855,9 +6856,9 @@ async def _raw_pymammotion_execute_segment(  # noqa: C901, PLR0913
             # transport loss); abort immediately.
             result["stop_reason"] = "stop_failed_aborting"
             return result
-        command_result["post_command_feedback_refresh"] = (
-            await _refresh_position_after_raw_motion(coordinator)
-        )
+        command_result[
+            "post_command_feedback_refresh"
+        ] = await _refresh_position_after_raw_motion(coordinator)
         # With the pulse now software-stopped (above), wait for the lagged
         # map-local feed to register and settle this pulse's motion before
         # sampling, mirroring the vector executor.
@@ -6971,7 +6972,9 @@ def _raw_readiness_phase_passed(name: str, result: dict[str, Any]) -> bool:
     if name in {"dry_run_negative_y_segment", "dry_run_positive_y_segment"}:
         return (
             result.get("stop_reason") == "dry_run"
-            and result.get("command_not_sent", {}).get("kwargs", {}).get("angular_speed")
+            and result.get("command_not_sent", {})
+            .get("kwargs", {})
+            .get("angular_speed")
             == 0
         )
     if name in {"dry_run_positive_turn_to_heading", "dry_run_negative_turn_to_heading"}:
@@ -6981,7 +6984,10 @@ def _raw_readiness_phase_passed(name: str, result: dict[str, Any]) -> bool:
             == 0
         )
     if name in {"real_negative_y_segment", "real_positive_y_segment"}:
-        return result.get("stop_reason") in {"target_reached", "max_commands_reached"} and all(
+        return result.get("stop_reason") in {
+            "target_reached",
+            "max_commands_reached",
+        } and all(
             diagnostic.get("passed")
             for diagnostic in result.get("progress_diagnostics", [])
         )
@@ -7142,7 +7148,9 @@ def _raw_vector_readiness_phase_passed(name: str, result: dict[str, Any]) -> boo
                 continue
             if diagnostic.get("heading_progress") is not True:
                 continue
-            min_progress_distance = float(diagnostic.get("min_progress_distance") or 0.0)
+            min_progress_distance = float(
+                diagnostic.get("min_progress_distance") or 0.0
+            )
             measured_delta = diagnostic.get("measured_delta") or {}
             distance_value = measured_delta.get("distance")
             measured_distance = (
@@ -7385,8 +7393,10 @@ async def _raw_vector_readiness_test(  # noqa: C901, PLR0913
             blockers = list(phases[-1]["result"].get("blockers") or [])
             return response()
 
-    if not dry_run and max_real_steps > 0 and (
-        not confirm_blades_off or not confirm_clear_area
+    if (
+        not dry_run
+        and max_real_steps > 0
+        and (not confirm_blades_off or not confirm_clear_area)
     ):
         failed_phase = "real_preflight"
         blockers = [
@@ -7481,7 +7491,10 @@ async def _raw_motion_readiness_test(  # noqa: C901, PLR0913
         if points is None:
             return add_phase(
                 name,
-                {"stop_reason": "position_unavailable", "blockers": ["position_unavailable"]},
+                {
+                    "stop_reason": "position_unavailable",
+                    "blockers": ["position_unavailable"],
+                },
             )
         result = await _raw_pymammotion_execute_segment(
             coordinator,
@@ -7510,7 +7523,10 @@ async def _raw_motion_readiness_test(  # noqa: C901, PLR0913
         if target_heading is None:
             return add_phase(
                 name,
-                {"stop_reason": "heading_unavailable", "blockers": ["heading_unavailable"]},
+                {
+                    "stop_reason": "heading_unavailable",
+                    "blockers": ["heading_unavailable"],
+                },
             )
         result = await _raw_pymammotion_turn_to_heading(
             coordinator,
@@ -7570,8 +7586,10 @@ async def _raw_motion_readiness_test(  # noqa: C901, PLR0913
                 real_steps_run=real_steps_run,
             )
 
-    if not dry_run and max_real_steps > 0 and (
-        not confirm_blades_off or not confirm_clear_area
+    if (
+        not dry_run
+        and max_real_steps > 0
+        and (not confirm_blades_off or not confirm_clear_area)
     ):
         failed_phase = "real_preflight"
         blockers = [
@@ -7672,8 +7690,7 @@ def _raw_angular_heading_diagnostic(
     else:
         signed_progress = -float(heading_change)
     heading_progress = (
-        signed_progress is not None
-        and signed_progress >= min_heading_change_degrees
+        signed_progress is not None and signed_progress >= min_heading_change_degrees
     )
     excessive_translation = (
         delta.get("distance") is not None
@@ -7738,7 +7755,7 @@ def _normalized_heading_degrees(value: Any) -> float | None:
         return None
     try:
         return float(value) % 360
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
@@ -8052,9 +8069,9 @@ async def _raw_pymammotion_turn_to_heading(  # noqa: C901, PLR0913
         command_result["stop_result"] = await _manual_velocity_stop_attempt(
             coordinator, use_wifi=not prefer_ble
         )
-        command_result["post_command_feedback_refresh"] = (
-            await _refresh_position_after_raw_motion(coordinator)
-        )
+        command_result[
+            "post_command_feedback_refresh"
+        ] = await _refresh_position_after_raw_motion(coordinator)
 
         command_samples: list[dict[str, Any]] = []
         previous_delay = 0.0
@@ -8540,8 +8557,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         # a cold start is allowed when the drive will actually run. In the
         # dark, or when a provided offset would skip the drive, refuse.
         calibration_will_warm = (
-            vio_heading_offset_degrees is None
-            and _vio_scene_is_bright(coordinator)
+            vio_heading_offset_degrees is None and _vio_scene_is_bright(coordinator)
         )
         gates.append(
             {
@@ -8608,7 +8624,9 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         "service": SERVICE_RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT,
         "mode": "dry_run" if dry_run else "real_raw_vector_segment",
         "dry_run": dry_run,
-        "would_send": not dry_run and not blockers and not completion_status["complete"],
+        "would_send": not dry_run
+        and not blockers
+        and not completion_status["complete"],
         "real_execution_scope": "one_segment_turn_then_forward_only",
         "full_path_execution_allowed": False,
         "ready_for_multi_point": False,
@@ -9088,9 +9106,9 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
             # transport loss); abort immediately.
             result["stop_reason"] = "stop_failed_aborting"
             return result
-        command_result["post_command_feedback_refresh"] = (
-            await _refresh_position_after_raw_motion(coordinator)
-        )
+        command_result[
+            "post_command_feedback_refresh"
+        ] = await _refresh_position_after_raw_motion(coordinator)
         # The map-local feed lags ~4s and jumps: wait for this pulse's motion to
         # register and settle before sampling, so the samples below (and thus the
         # progress/completion checks) reflect THIS pulse instead of leaking a prior
@@ -10267,15 +10285,11 @@ async def _manual_velocity_cumulative_pulse_test(  # noqa: C901
         result["cumulative_path_progress_diagnostic"] = late_progress[
             "late_path_progress_diagnostic"
         ]
-        result["telemetry_latency_seconds"] = late_progress[
-            "telemetry_latency_seconds"
-        ]
+        result["telemetry_latency_seconds"] = late_progress["telemetry_latency_seconds"]
         result["cumulative_sample_diagnostics"] = late_progress[
             "post_stop_sample_diagnostics"
         ]
-        result["cumulative_progress_detected"] = late_progress[
-            "late_progress_detected"
-        ]
+        result["cumulative_progress_detected"] = late_progress["late_progress_detected"]
         if result["stop_reason"] is None:
             result["stop_reason"] = (
                 "cumulative_progress_detected"
@@ -10417,12 +10431,9 @@ async def _experimental_execute_segment_burst(  # noqa: C901
     }
     if (
         not allow_unproven_turns
-        and abs(calibrated_heading_error)
-        > calibrated_forward_heading_tolerance_degrees
+        and abs(calibrated_heading_error) > calibrated_forward_heading_tolerance_degrees
     ):
-        result["stop_reason"] = (
-            "segment_heading_outside_calibrated_forward_window"
-        )
+        result["stop_reason"] = "segment_heading_outside_calibrated_forward_window"
         result["blockers"] = ["unproven_turn_or_lateral_motion_required"]
         return result
 
@@ -10510,9 +10521,9 @@ async def _experimental_execute_segment_burst(  # noqa: C901
         delta = burst_result.get("cumulative_delta") or {}
         if delta.get("distance") is not None:
             result["cumulative_distance"] += float(delta["distance"])
-        progress_diagnostic = burst_result.get(
-            "cumulative_path_progress_diagnostic"
-        ) or {}
+        progress_diagnostic = (
+            burst_result.get("cumulative_path_progress_diagnostic") or {}
+        )
         path_progress = progress_diagnostic.get("path_progress_distance")
         if path_progress is not None and path_progress > 0:
             result["cumulative_path_progress"] += float(path_progress)
@@ -10587,7 +10598,11 @@ async def _manual_velocity_heading_calibration_test(
         confirm_clear_area=confirm_clear_area,
     )
     samples = pulse_result.get("samples", [])
-    before = samples[0]["telemetry"] if samples else _custom_path_telemetry_snapshot(coordinator)
+    before = (
+        samples[0]["telemetry"]
+        if samples
+        else _custom_path_telemetry_snapshot(coordinator)
+    )
     after = samples[-1]["telemetry"] if samples else before
     command_ok = pulse_result.get("command_result", {}).get("ok") is True
     calibration = _manual_velocity_heading_calibration(
@@ -10911,9 +10926,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
             no_progress_count += 1
         if measured_delta["distance"] is not None:
             cumulative_distance += float(measured_delta["distance"])
-        path_progress_distance = path_progress_diagnostic.get(
-            "path_progress_distance"
-        )
+        path_progress_distance = path_progress_diagnostic.get("path_progress_distance")
         if path_progress_distance is not None and path_progress_distance > 0:
             cumulative_path_progress += float(path_progress_distance)
         if measured_delta["heading_change_degrees"] is not None:
@@ -10945,9 +10958,7 @@ async def _manual_velocity_segment_test(  # noqa: C901
                     "late_path_progress_diagnostic"
                 ],
                 "late_measured_delta": late_progress["late_measured_delta"],
-                "telemetry_latency_seconds": late_progress[
-                    "telemetry_latency_seconds"
-                ],
+                "telemetry_latency_seconds": late_progress["telemetry_latency_seconds"],
                 "post_stop_sample_diagnostics": late_progress[
                     "post_stop_sample_diagnostics"
                 ],
@@ -11403,6 +11414,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         (SERVICE_MOVE_RIGHT, "async_move_right"),
         (SERVICE_MOVE_BACKWARD, "async_move_back"),
     ):
+
         async def handle_directional_movement(
             call: ServiceCall,
             method_name: str = method_name,
@@ -11867,7 +11879,9 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         try:
             active_route = _export_active_route(mower.reporting_coordinator)
         except Exception as err:  # noqa: BLE001
-            LOGGER.debug("Could not export active route for angular calibration: %s", err)
+            LOGGER.debug(
+                "Could not export active route for angular calibration: %s", err
+            )
         return await _raw_pymammotion_angular_calibration(
             mower.reporting_coordinator,
             direction=call.data["direction"],

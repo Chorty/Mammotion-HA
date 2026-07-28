@@ -180,8 +180,9 @@ LUBA_WORKING_ENTITIES: tuple[MammotionConfigNumberEntityDescription, ...] = (
         set_fn=lambda coordinator, value: setattr(
             coordinator.operation_settings, "blade_height", int(value)
         ),
-        set_async_fn=lambda coordinator,
-        value: coordinator.async_modify_plan_if_mowing(),
+        set_async_fn=lambda coordinator, value: (
+            coordinator.async_modify_plan_if_mowing()
+        ),
         get_fn=lambda coordinator: coordinator.operation_settings.blade_height,
     ),
 )
@@ -195,8 +196,9 @@ NUMBER_WORKING_ENTITIES: tuple[MammotionConfigNumberEntityDescription, ...] = (
         native_step=0.1,
         native_min_value=0.2,
         native_max_value=0.6,
-        set_async_fn=lambda coordinator,
-        value: coordinator.async_modify_plan_if_mowing(),
+        set_async_fn=lambda coordinator, value: (
+            coordinator.async_modify_plan_if_mowing()
+        ),
         set_fn=lambda coordinator, value: setattr(
             coordinator.operation_settings, "speed", value
         ),

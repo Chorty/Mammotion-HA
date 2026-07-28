@@ -84,9 +84,7 @@ class MammotionTracker(MammotionBaseEntity, TrackerEntity, RestoreEntity):
         cos_lat = math.cos(math.radians(lat))
         if cos_lat == 0:
             return lon
-        return lon + self.coordinator.map_offset_lon / (
-            111_111.0 * cos_lat
-        )
+        return lon + self.coordinator.map_offset_lon / (111_111.0 * cos_lat)
 
     @property
     def battery_level(self) -> int | None:

@@ -135,12 +135,16 @@ MINI_AND_X_SERIES_CONFIG_SWITCH_ENTITIES: tuple[
 ] = (
     MammotionAsyncSwitchEntityDescription(
         key="manual_light",
-        is_on_func=lambda coordinator: coordinator.data.mower_state.lamp_info.manual_light,
+        is_on_func=lambda coordinator: (
+            coordinator.data.mower_state.lamp_info.manual_light
+        ),
         set_fn=lambda coordinator, value: coordinator.async_set_manual_light(value),
     ),
     MammotionAsyncSwitchEntityDescription(
         key="night_light",
-        is_on_func=lambda coordinator: coordinator.data.mower_state.lamp_info.night_light,
+        is_on_func=lambda coordinator: (
+            coordinator.data.mower_state.lamp_info.night_light
+        ),
         set_fn=lambda coordinator, value: coordinator.async_set_night_light(value),
     ),
 )
@@ -157,8 +161,9 @@ AUDIO_SWITCH_ENTITIES: tuple[MammotionAsyncSwitchEntityDescription, ...] = (
 SWITCH_ENTITIES: tuple[MammotionAsyncSwitchEntityDescription, ...] = (
     MammotionAsyncSwitchEntityDescription(
         key="side_led",
-        is_on_func=lambda coordinator: coordinator.data.mower_state.side_led.enable
-        == 0,
+        is_on_func=lambda coordinator: (
+            coordinator.data.mower_state.side_led.enable == 0
+        ),
         set_fn=lambda coordinator, value: coordinator.async_set_sidelight(int(value)),
         entity_category=EntityCategory.CONFIG,
     ),
