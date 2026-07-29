@@ -380,6 +380,155 @@ compare first-pulse distance.
 **And 1.06 was a good constant after all** — run 4's pulses averaged 1.00 and
 self-calibration converged to 1.0374, within 2% of the baked-in default.
 
+## ✅ 2026-07-28 (later, off-mower): slot leak confirmed + dispatch guard added
+
+Follow-up to the root-cause section below. Investigation and local code are
+complete; **motion is still halted** until the guard is deployed and verified
+off-mower. The upstream report is drafted but not submitted.
+
+### 1. The leak is confirmed, and it is worse than "no disconnect on cooldown"
+
+The hypothesis was right but aimed one level too high. `_record_connect_failure`
+never needed to disconnect — by the time it runs, `establish_connection` has
+already failed and no slot was taken. The leak is in **three other places**, all
+of which abandon a client that the proxy still counts:
+
+- **`ble.py:427-436`, `_write_payload`'s except handler — the main leak.** On
+  `TimeoutError`/`BleakError`/`OSError` it sets `self._client = None` on a client
+  that may still be connected (a **write timeout does not tear down the GATT
+  link**), and never disconnects it. This is self-sealing: nulling `_client`
+  makes `is_connected` False, and `DeviceHandle.disconnect_transport`
+  (`handle.py:1551`) is gated on `is_connected`, so the only cleanup path is now
+  a no-op and the object is unreachable. Next send takes a **fresh** slot. Six
+  of these exhaust a 3-slot proxy twice — exactly the 6-open/0-disconnect count.
+- **`ble.py:299-313`, `connect()`'s `start_notify` failure.** The connection
+  already succeeded at line 277, so the slot is spent. On failure it announces
+  DISCONNECTED and arms the cooldown but never disconnects **and never clears
+  `_client`** — leaving `is_connected` True while `availability` is DISCONNECTED.
+  `_write_payload` will write over that link, which has no notify subscription.
+- **`ble.py:300`, a non-`BleakError` from `start_notify`.** Verified locally:
+  `TimeoutAPIError.__mro__` is `(TimeoutAPIError, APIConnectionError, Exception,
+  BaseException, object)` — **not** a `BleakError`, not a builtin `TimeoutError`.
+  Both handlers in `connect()` catch only `BleakError`, so it escapes with the
+  slot spent, `_client` live, and no cooldown armed. This is the 2026-07-25
+  `setup_error` incident.
+
+Also: `disconnect()` (`ble.py:400`) guards on `self._client.is_connected`, so it
+cannot clean up a slot the proxy holds but bleak thinks is gone.
+
+### 1b. UPSTREAM CHECK (2026-07-28, same session) — partial prior knowledge
+
+Checked `mikey0000/pymammotion` and `mikey0000/Mammotion-HA` via `gh`. Four
+results that change the plan:
+
+- 🎯 **Site B is ALREADY FIXED upstream** — `5e18185a` ("Claude/code review
+  cleanup", PR #176, 2026-07-08), and `v0.8.12` is 5 commits *ahead* of it with 0
+  behind, so **the fix ships in 0.8.12**. Its comment states the same mechanism
+  independently derived here ("leaving it connected here would wedge the
+  transport into a state where writes succeed but responses never arrive").
+  Found by code review, not by a bug report — nobody has connected it to the
+  slot-exhaustion symptom.
+- ❌ **Sites A and C are NOT fixed in 0.8.12.** Verified byte-for-byte:
+  `ble.py` at tag `v0.8.12` is identical to `main`, `_write_payload` still nulls
+  `_client` without disconnecting (line 439-443), `connect()` still catches only
+  `BleakError`, and `disconnect()` is still guarded on `is_connected`.
+  **So the 0.8.12 bump fixes 1 of 3 sites — it helps, it does not solve this.**
+- ✅ **This Mammotion-HA branch now pins 0.8.12.** Updated the integration
+  manifest, project metadata, test requirements, lockfile, and local environment.
+  The 15 BLE liveness/confirmed-dispatch regression tests pass, as do Ruff,
+  formatting, mypy, and all 387 tests. The local dispatch safeguards remain
+  necessary because Sites A and C are still present in 0.8.12.
+- 🔑 **`bf92c389` (2026-05-04): "don't bother disconnecting from ble anymore, too
+  many issues"** — deleted the whole idle-disconnect mechanism
+  (`_DISCONNECT_DELAY = 10`, `_idle_disconnect_timer`, `set_disconnect_strategy`,
+  and the `disconnect_on_idle` arg on `add_ble_to_device`). Since then **nothing
+  in normal operation calls `disconnect()`**; every disconnect is an exception
+  path, which is exactly where the teardown is missing. This didn't create the
+  bug — it removed what was masking it.
+- 🔑 **Mammotion-HA #810 "BLE Proxy issues" (closed)** — a different user, a
+  different mower, **our exact log line**. Closed on the explanation that Shelly
+  proxies are passive-scan-only and can't make GATT connections. Correct for that
+  reporter, but it closed the issue without asking why slots ran out, and **it
+  does not transfer to us: we run ESPHome active proxies with 3 slots and still
+  exhaust them.** Treat that log line as ambiguous, not as proof of a bad proxy.
+
+Suggestive but NOT corroboration (no slot evidence in either thread): #681 "move
+forward/left/right don't work — works some minutes then stops" (ESPHome proxy
+3 m away) and #778 "reload the integration, works once or twice, then stops".
+That shape is what a leak resetting on reload would produce. Also open and
+BLE-stuck-ish, probably distinct: #797, #672.
+
+### 2. Filed: `docs/pymammotion-ble-slot-leak-bug.md`
+
+Written for upstream in the same shape as the reassembly report (PyMammotion#179),
+with the evidence, the three sites, suggested patches (failure-atomic teardown
+around the post-`establish_connection` region, `BaseException` so a
+`CancelledError` can't strand a slot either), and a follow-up asking for a
+connect/disconnect balance counter. **Not yet submitted** — needs filing.
+
+### 3. Local mitigation: preflight plus completion-aware BLE dispatch
+
+New `_ble_link_liveness()` + a `ble_link_live` gate in
+`_manual_velocity_pulse_gates` gives every real motion path a fail-closed
+preflight. Review found that preflight alone was insufficient: queue state is a
+snapshot, `qsize()` excludes an in-flight item, and pinned pymammotion stamps
+`last_send_monotonic` **before** awaiting the GATT write.
+
+The final mitigation therefore adds `_send_ble_motion_command_confirmed()`.
+Motion commands remain ordered through `DeviceCommandQueue`, but the integration
+owns the queued work and waits for two separate facts before starting the local
+pulse timer:
+
+1. the item actually starts within 2 seconds; otherwise it is disarmed so a later
+   queue recovery consumes it as a no-op;
+2. the BLE-only GATT write completes within 4 seconds; it cannot silently fall
+   back to MQTT.
+
+Cancellation before queue start also disarms the item. Cancellation during the
+write waits for it to settle and then sends a confirmed zero-velocity command
+before propagating cancellation.
+
+The preflight remains useful for fast refusal and diagnostics:
+
+| field | source | refuses when |
+|---|---|---|
+| `is_connected` | public | no live client |
+| `is_usable` | public | not routing-eligible |
+| `_connect_cooldown_until` | private | cooldown armed |
+| `_transport_gate.is_set()` | private | dispatch gated |
+| `_queue.qsize()` | private | depth is nonzero |
+| `is_saga_active` | public | exclusive saga running |
+| `last_send_monotonic` | public | last attempt older than 15s |
+
+⚠️ **The guard refuses when it cannot see** — the opposite of
+`_ble_transport_usable`, which deliberately degrades permissive. Degrading
+permissive is what let unbounded motion through; a guard that silently passes
+when blind is the vacuously-true failure this project has hit twice already. The
+failing check is named in `blockers` and the full reading rides along in the
+gate's `diagnostics` key, so a refusal says *why*.
+
+Tests cover an already-stalled queue, a write that has not completed, a
+post-preflight item that cannot start, cancellation before start, and
+cancellation during a write. The complete service test file passes.
+
+### Still to do before motion resumes
+
+1. **Deploy** `services.py` and confirm `ble_link_live` **passes** on hardware in
+   a dry run. Then exercise a zero-velocity confirmed send off-mower and verify
+   its queue-start/write timing before any nonzero command.
+2. **File the upstream bug** — retargeted at 0.8.12/`main` (Sites A and C only),
+   citing `bf92c389` and #810 as prior art. Worth referencing #681/#778 as
+   *possibly* the same user-visible failure so the maintainer can ask those
+   reporters for connection counts.
+3. **The 0.8.12 bump is now worth more than expected** — it carries the Site B
+   fix as well as the chunk-size fix. It does **not** fix Site A (the main leak)
+   or Site C. Re-run the pin test after bumping; `ble.py` gained a
+   `_disconnect_task` attribute and dropped the `on_message` class attribute, so
+   check nothing else in the integration leaned on those.
+4. The 2-second queue-start and 4-second write deadlines are deliberately strict
+   and need a healthy-link hardware baseline. A false refusal is acceptable; do
+   not relax them without measuring queue and GATT latency first.
+
 ## 🚨 2026-07-28: EVERY MAP CONTAINMENT CHECK WAS INERT (fixed `0a591eb4`, DEPLOYED)
 
 The single most important find of the project so far, and it was found by
@@ -704,7 +853,7 @@ does not need daylight.
 
 `python` **passes** — ruff clean, format clean, mypy clean, 370 tests, 42%
 coverage. It had never been green: `requirements_test.txt` pinned homeassistant
-2025.3.1 and pymammotion 0.5.3 (against 0.8.8 shipped) and could not even
+2025.3.1 and pymammotion 0.5.3 (against 0.8.8 shipped at the time) and could not even
 resolve, so CI failed before running a single check.
 
 `hacs` is **skipped on forks**. It validates repository *publishability* —
@@ -899,7 +1048,7 @@ explicitly set, so a `grep -c "BLETransport send"` returning 0 means nothing.
 >    a turn and one not, comparing first-pulse distance.
 > 4. **File the pymammotion reassembly patch** —
 >    `docs/pymammotion-ble-reassembly-bug.md` has a ready-to-file diff. It cannot
->    land here: pymammotion is a pinned PyPI release (`==0.8.8`), not a fork.
+>    land here: pymammotion is a pinned PyPI release (`==0.8.12`), not a fork.
 
 1. **Test refresh on a *properly-powered* turn.** `manual_velocity_pulse_test`
    caps angular at ~202 (speed ≤ 0.6), so it *cannot* command the ≥382/500 a real
