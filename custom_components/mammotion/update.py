@@ -12,6 +12,7 @@ from homeassistant.components.update import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import MammotionRTKCoordinator
@@ -23,6 +24,100 @@ from .entity import (
 )
 
 LOGGER = logging.getLogger(__name__)
+MIN_FIRMWARE_UPDATE_BATTERY_PERCENT = 30
+
+
+def _enum_name(value: Any) -> str | None:
+    """Return a stable enum name without inventing one for raw unknowns."""
+    name = getattr(value, "name", None)
+    return str(name) if name is not None else None
+
+
+def _firmware_install_readiness(  # noqa: C901
+    coordinator: Any,
+    *,
+    installed_version: str | None,
+    target_version: str | None,
+    hardware_kind: str = "mower",
+) -> dict[str, Any]:
+    """Return fail-closed firmware prerequisites from fresh coordinator data."""
+    blockers: list[str] = []
+    if getattr(coordinator, "last_update_success", None) is not True:
+        blockers.append("fresh_state_unavailable")
+    if hardware_kind != "mower":
+        blockers.append(f"{hardware_kind}_firmware_acceptance_missing")
+        return {
+            "allowed": False,
+            "blockers": blockers,
+            "hardware_kind": hardware_kind,
+        }
+
+    device_name = str(getattr(coordinator, "device_name", "")).upper()
+    if not device_name.startswith(("LUBA", "YUKA")):
+        blockers.append("model_support_unknown")
+    if getattr(coordinator, "has_cloud_account", None) is not True:
+        blockers.append("cloud_account_required")
+
+    try:
+        online = coordinator.is_online()
+    except AttributeError, TypeError:
+        online = None
+    if online is not True:
+        blockers.append("device_online_state_unknown")
+
+    data = getattr(coordinator, "data", None)
+    report = getattr(data, "report_data", None)
+    dev = getattr(report, "dev", None)
+    connect = getattr(report, "connect", None)
+    work_mode = getattr(dev, "sys_status", None)
+    work_mode_name = _enum_name(work_mode)
+    if work_mode_name not in {"MODE_READY", "MODE_PAUSE"}:
+        blockers.append("device_not_idle")
+
+    charge_state = getattr(dev, "charge_state", None)
+    charge_name = (_enum_name(charge_state) or "").lower()
+    charging = (
+        "charging" in charge_name and "not_charging" not in charge_name
+        if charge_name
+        else None
+    )
+    if charging is not True:
+        blockers.append("device_not_confirmed_charging")
+
+    battery = getattr(dev, "battery_val", None)
+    if (
+        not isinstance(battery, int | float)
+        or battery < MIN_FIRMWARE_UPDATE_BATTERY_PERCENT
+    ):
+        blockers.append("battery_below_or_unknown")
+
+    wifi_rssi = getattr(connect, "wifi_rssi", None)
+    if not isinstance(wifi_rssi, int | float) or wifi_rssi == 0:
+        blockers.append("wifi_link_unknown")
+    if not installed_version or not target_version:
+        blockers.append("version_pair_incomplete")
+    elif installed_version == target_version:
+        blockers.append("target_version_already_installed")
+    return {
+        "allowed": not blockers,
+        "blockers": blockers,
+        "hardware_kind": hardware_kind,
+        "installed_version": installed_version,
+        "target_version": target_version,
+        "work_mode": work_mode_name,
+        "charging": charging,
+        "battery_percent": battery,
+        "wifi_rssi": wifi_rssi,
+    }
+
+
+def _raise_firmware_install_blocked(readiness: dict[str, Any]) -> None:
+    """Raise an actionable HA error without starting an unsafe update."""
+    if readiness["allowed"]:
+        return
+    raise HomeAssistantError(
+        "Firmware install blocked: " + ", ".join(readiness["blockers"])
+    )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -136,8 +231,16 @@ class MammotionUpdateEntity(MammotionBaseEntity, UpdateEntity):
         self, version: str | None, backup: bool, **kwargs: Any
     ) -> None:
         """Install the latest firmware version."""
+        await self.coordinator.async_refresh()
         if version is None:
             version = self.latest_version
+        _raise_firmware_install_blocked(
+            _firmware_install_readiness(
+                self.coordinator,
+                installed_version=self.installed_version,
+                target_version=version,
+            )
+        )
         if version:
             await self.coordinator.update_firmware(version)
         await self.coordinator.async_refresh()
@@ -221,8 +324,17 @@ class MammotionRTKUpdateEntity(MammotionBaseRTKEntity, UpdateEntity):
         self, version: str | None, backup: bool, **kwargs: Any
     ) -> None:
         """Install the latest firmware version."""
+        await self.coordinator.async_refresh()
         if version is None:
             version = self.latest_version
+        _raise_firmware_install_blocked(
+            _firmware_install_readiness(
+                self.coordinator,
+                installed_version=self.installed_version,
+                target_version=version,
+                hardware_kind="rtk",
+            )
+        )
         if version:
             await self.coordinator.update_firmware(version)
         await self.coordinator.async_refresh()
@@ -306,8 +418,17 @@ class MammotionSpinoUpdateEntity(MammotionBaseSpinoEntity, UpdateEntity):
         self, version: str | None, backup: bool, **kwargs: Any
     ) -> None:
         """Install the latest firmware version."""
+        await self.coordinator.async_refresh()
         if version is None:
             version = self.latest_version
+        _raise_firmware_install_blocked(
+            _firmware_install_readiness(
+                self.coordinator,
+                installed_version=self.installed_version,
+                target_version=version,
+                hardware_kind="spino",
+            )
+        )
         if version:
             await self.coordinator.update_firmware(version)
         await self.coordinator.async_refresh()

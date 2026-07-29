@@ -129,29 +129,29 @@
       "position_type": {
         "name": "Typ pozice zařízení",
         "state": {
-          "AREA_BORDER_ON": "Na obvodu",
-          "AREA_INSIDE": "Uvnitř oblasti",
-          "AREA_OUT": "Mimo oblast",
-          "CHANNEL_AREA_OVERLAP": "Překrytí oblastí cesty",
-          "CHANNEL_ON": "Na cestě",
-          "CHARGE_ON": "U nabíjecí stanice",
-          "DUMPING_AREA_INSIDE": "Ve výkladní oblasti",
-          "DUMPING_OUTSIDE": "Mimo výkladní oblast",
-          "ABNORMAL_POSITIONING": "Chyba polohy",
-          "NO_AREAS": "Žádné oblasti nejsou definovány",
-          "OBS_ON": "U překážky",
-          "TURN_AREA_INSIDE": "V oblasti otáčení",
-          "VIRTUAL_INSIDE": "Ve virtuální oblasti"
+          "area_border_on": "Na obvodu",
+          "area_inside": "Uvnitř oblasti",
+          "area_out": "Mimo oblast",
+          "channel_area_overlap": "Překrytí oblastí cesty",
+          "channel_on": "Na cestě",
+          "charge_on": "U nabíjecí stanice",
+          "dumping_area_inside": "Ve výkladní oblasti",
+          "dumping_outside": "Mimo výkladní oblast",
+          "abnormal_positioning": "Chyba polohy",
+          "no_areas": "Žádné oblasti nejsou definovány",
+          "obs_on": "U překážky",
+          "turn_area_inside": "V oblasti otáčení",
+          "virtual_inside": "Ve virtuální oblasti"
         }
       },
       "visual_positioning_status": {
         "name": "Stav vizuálního polohování",
         "state": {
-          "SIGNAL_NONE": "Žádný",
-          "SIGNAL_INIT": "Inicializace",
-          "SIGNAL_GOOD": "Dobrý",
-          "SIGNAL_BAD": "Špatný",
-          "SIGNAL_UNKNOWN": "Neznámý"
+          "signal_none": "Žádný",
+          "signal_init": "Inicializace",
+          "signal_good": "Dobrý",
+          "signal_bad": "Špatný",
+          "signal_unknown": "Neznámý"
         }
       },
       "vio_heading": {
@@ -226,30 +226,30 @@
       "activity_mode": {
         "name": "Režim činnosti",
         "state": {
-          "MODE_NOT_ACTIVE": "Neaktivní",
-          "MODE_ONLINE": "Online",
-          "MODE_OFFLINE": "Offline",
-          "MODE_DISABLE": "Zakázáno",
-          "MODE_INITIALIZATION": "Inicializace",
-          "MODE_READY": "Připraveno",
-          "MODE_WORKING": "Pracuje",
-          "MODE_RETURNING": "Návrat",
-          "MODE_CHARGING": "Nabíjení",
-          "MODE_UPDATING": "Aktualizace",
-          "MODE_LOCK": "Zamčeno",
-          "MODE_PAUSE": "Pozastaveno",
-          "MODE_MANUAL_MOWING": "Ruční sekání",
-          "MODE_UPDATE_SUCCESS": "Aktualizace úspěšná",
-          "MODE_OTA_UPGRADE_FAIL": "Aktualizace selhala",
-          "MODE_JOB_DRAW": "Kreslení úlohy",
-          "MODE_OBSTACLE_DRAW": "Kreslení překážek",
-          "MODE_CHANNEL_DRAW": "Kreslení kanálu",
-          "MODE_ERASER_DRAW": "Kreslení mazání",
-          "MODE_EDIT_BOUNDARY": "Úprava hranice",
-          "MODE_LOCATION_ERROR": "Chyba polohy",
-          "MODE_BOUNDARY_JUMP": "Překročení hranice",
-          "MODE_CHARGING_PAUSE": "Nabíjení pozastaveno",
-          "MODE_POWER_OFF": "Vypínání"
+          "mode_not_active": "Neaktivní",
+          "mode_online": "Online",
+          "mode_offline": "Offline",
+          "mode_disable": "Zakázáno",
+          "mode_initialization": "Inicializace",
+          "mode_ready": "Připraveno",
+          "mode_working": "Pracuje",
+          "mode_returning": "Návrat",
+          "mode_charging": "Nabíjení",
+          "mode_updating": "Aktualizace",
+          "mode_lock": "Zamčeno",
+          "mode_pause": "Pozastaveno",
+          "mode_manual_mowing": "Ruční sekání",
+          "mode_update_success": "Aktualizace úspěšná",
+          "mode_ota_upgrade_fail": "Aktualizace selhala",
+          "mode_job_draw": "Kreslení úlohy",
+          "mode_obstacle_draw": "Kreslení překážek",
+          "mode_channel_draw": "Kreslení kanálu",
+          "mode_eraser_draw": "Kreslení mazání",
+          "mode_edit_boundary": "Úprava hranice",
+          "mode_location_error": "Chyba polohy",
+          "mode_boundary_jump": "Překročení hranice",
+          "mode_charging_pause": "Nabíjení pozastaveno",
+          "mode_power_off": "Vypínání"
         }
       },
       "work_area": {
@@ -307,29 +307,29 @@
       "position_mode": {
         "name": "Režim polohování",
         "state": {
-          "RTK_OVER_DATALINK": "Antena přes DataLink",
-          "RTK_OVER_INTERNET": "Antena přes internet",
-          "INAVI_NET_RTK": "iNavi NetRTK",
-          "INAVI_RTK_BOX": "iNavi RTK Box",
-          "UNKNOWN": "Neznámé"
+          "rtk_over_datalink": "Antena přes DataLink",
+          "rtk_over_internet": "Antena přes internet",
+          "inavi_net_rtk": "iNavi NetRTK",
+          "inavi_rtk_box": "iNavi RTK Box",
+          "unknown": "Neznámé"
         }
       },
       "rtk_app_connect_type": {
         "name": "Typ připojení",
         "state": {
-          "UNKNOWN": "Neznámý",
-          "CON_BLE": "BLE",
-          "CON_WIFI": "Wi-Fi"
+          "unknown": "Neznámý",
+          "con_ble": "BLE",
+          "con_wifi": "Wi-Fi"
         }
       },
       "task_area_status": {
         "name": "Stav oblasti úkolu {name}",
         "state": {
-          "NOT_STARTED": "Nezahájeno",
-          "WAITING": "Čeká se",
-          "MOWING": "Sečení",
-          "COMPLETE": "Dokončeno",
-          "ABORTED": "Přerušeno"
+          "not_started": "Nezahájeno",
+          "waiting": "Čeká se",
+          "mowing": "Sečení",
+          "complete": "Dokončeno",
+          "aborted": "Přerušeno"
         }
       },
       "spino_battery": {
@@ -338,29 +338,29 @@
       "spino_status": {
         "name": "Stav",
         "state": {
-          "UNKNOWN": "Neznámý",
-          "IDLE": "Pohotovostní režim",
-          "PREPARE": "Pohotovostní režim",
-          "WAIT_WATER": "Napouštění vody",
-          "WORKING": "Pracuje",
-          "PAUSE_GO_CHARGE": "Návrat k nabíjení (pozastaveno)",
-          "END_GO_CHARGE": "Návrat k nabíjení",
-          "CHARGING": "Nabíjení",
-          "LEAVE_DOCK": "Opouští dok",
-          "RECALLING": "Návrat"
+          "unknown": "Neznámý",
+          "idle": "Pohotovostní režim",
+          "prepare": "Pohotovostní režim",
+          "wait_water": "Napouštění vody",
+          "working": "Pracuje",
+          "pause_go_charge": "Návrat k nabíjení (pozastaveno)",
+          "end_go_charge": "Návrat k nabíjení",
+          "charging": "Nabíjení",
+          "leave_dock": "Opouští dok",
+          "recalling": "Návrat"
         }
       },
       "spino_work_mode": {
         "name": "Režim čištění",
         "state": {
-          "UNKNOWN": "Neznámý",
-          "RECHARGE": "Dobíjení",
-          "AUTO": "Vše",
-          "FLOOR": "Dno",
-          "WALL": "Stěna",
-          "ECO": "Eko",
-          "LINE": "Vodní hladina",
-          "CUSTOM": "Vlastní"
+          "unknown": "Neznámý",
+          "recharge": "Dobíjení",
+          "auto": "Vše",
+          "floor": "Dno",
+          "wall": "Stěna",
+          "eco": "Eko",
+          "line": "Vodní hladina",
+          "custom": "Vlastní"
         }
       },
       "spino_error_time": {
@@ -658,8 +658,8 @@
       "voice_gender": {
         "name": "Pohlaví hlasu",
         "state": {
-          "MAN": "Mužský",
-          "WOMAN": "Ženský"
+          "man": "Mužský",
+          "woman": "Ženský"
         }
       },
       "wildlife_safety": {
@@ -673,27 +673,27 @@
       "spino_work_mode": {
         "name": "Režim čištění",
         "state": {
-          "UNKNOWN": "Neznámý",
-          "RECHARGE": "Dobíjení",
-          "AUTO": "Vše",
-          "FLOOR": "Dno",
-          "WALL": "Stěna",
-          "ECO": "Eko",
-          "LINE": "Vodní hladina",
-          "CUSTOM": "Vlastní"
+          "unknown": "Neznámý",
+          "recharge": "Dobíjení",
+          "auto": "Vše",
+          "floor": "Dno",
+          "wall": "Stěna",
+          "eco": "Eko",
+          "line": "Vodní hladina",
+          "custom": "Vlastní"
         }
       },
       "voice_language": {
         "name": "Voice language",
         "state": {
-          "ENGLISH": "English",
-          "GERMAN": "German",
-          "FRENCH": "French",
-          "ITALIAN": "Italian",
-          "SPANISH": "Spanish",
-          "PORTUGUESE": "Portuguese",
-          "DUTCH": "Dutch",
-          "SWEDISH": "Swedish"
+          "english": "English",
+          "german": "German",
+          "french": "French",
+          "italian": "Italian",
+          "spanish": "Spanish",
+          "portuguese": "Portuguese",
+          "dutch": "Dutch",
+          "swedish": "Swedish"
         }
       }
     },

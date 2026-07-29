@@ -2,6 +2,7 @@
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from enum import Enum
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.const import EntityCategory
@@ -32,6 +33,21 @@ from pymammotion.utility.device_type import DeviceType
 from . import MammotionConfigEntry, MammotionReportUpdateCoordinator
 from .coordinator import MammotionBaseUpdateCoordinator, MammotionSpinoCoordinator
 from .entity import MammotionBaseEntity, MammotionBaseSpinoEntity
+
+
+def _lower_options(values: list[str]) -> list[str]:
+    """Expose protocol options using HA's required lowercase form."""
+    return [value.lower() for value in values]
+
+
+def _enum_member[EnumT: Enum](enum_type: type[EnumT], option: str) -> EnumT:
+    """Accept new lowercase and legacy uppercase enum option input."""
+    for candidate in (option, option.upper(), option.lower()):
+        try:
+            return enum_type[candidate]
+        except KeyError:
+            continue
+    raise ValueError(f"Unsupported {enum_type.__name__} option: {option}")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -72,40 +88,46 @@ SPINO_SELECT_ENTITIES: tuple[MammotionSpinoSelectEntityDescription, ...] = (
         # and UNKNOWN (-1, sentinel) are valid *reported* values — surfaced by the
         # spino_work_mode sensor — but they're not modes a user can start, so they
         # are excluded from the select's options.
-        options=[
-            mode.name
-            for mode in SpinoWorkMode
-            if mode not in (SpinoWorkMode.UNKNOWN, SpinoWorkMode.RECHARGE)
-        ],
-        current_fn=lambda spino_data: spino_data.pool_state.work_mode.name,
+        options=_lower_options(
+            [
+                mode.name
+                for mode in SpinoWorkMode
+                if mode not in (SpinoWorkMode.UNKNOWN, SpinoWorkMode.RECHARGE)
+            ]
+        ),
+        current_fn=lambda spino_data: spino_data.pool_state.work_mode.name.lower(),
         set_fn=lambda coordinator, value: coordinator.async_set_work_mode(
-            SpinoWorkMode[value].value
+            _enum_member(SpinoWorkMode, value).value
         ),
     ),
     MammotionSpinoSelectEntityDescription(
         key="spino_wall_material",
         # UNKNOWN (-1) is a sentinel for an unreported value, not a user choice.
-        options=[
-            material.name
-            for material in WallMaterial
-            if material is not WallMaterial.UNKNOWN
-        ],
-        current_fn=lambda spino_data: spino_data.pool_state.wall_material.name,
+        options=_lower_options(
+            [
+                material.name
+                for material in WallMaterial
+                if material is not WallMaterial.UNKNOWN
+            ]
+        ),
+        current_fn=lambda spino_data: spino_data.pool_state.wall_material.name.lower(),
         set_fn=lambda coordinator, value: coordinator.async_set_wall_material(
-            WallMaterial[value].value
+            _enum_member(WallMaterial, value).value
         ),
     ),
     MammotionSpinoSelectEntityDescription(
         key="spino_bottom_type",
         # UNKNOWN (-1) is a sentinel for an unreported value, not a user choice.
-        options=[
-            bottom.name
-            for bottom in PoolBottomType
-            if bottom is not PoolBottomType.UNKNOWN
-        ],
-        current_fn=lambda spino_data: spino_data.pool_state.bottom_type.name,
+        options=_lower_options(
+            [
+                bottom.name
+                for bottom in PoolBottomType
+                if bottom is not PoolBottomType.UNKNOWN
+            ]
+        ),
+        current_fn=lambda spino_data: spino_data.pool_state.bottom_type.name.lower(),
         set_fn=lambda coordinator, value: coordinator.async_set_bottom_type(
-            PoolBottomType[value].value
+            _enum_member(PoolBottomType, value).value
         ),
     ),
 )
@@ -114,51 +136,57 @@ SPINO_SELECT_ENTITIES: tuple[MammotionSpinoSelectEntityDescription, ...] = (
 AUDIO_SELECT_ENTITIES: tuple[MammotionAsyncConfigSelectEntityDescription, ...] = (
     MammotionAsyncConfigSelectEntityDescription(
         key="voice_language",
-        options=[
-            language.name
-            for language in MulLanguage
-            if language is not MulLanguage.NONE_LAN
-        ],
+        options=_lower_options(
+            [
+                language.name
+                for language in MulLanguage
+                if language is not MulLanguage.NONE_LAN
+            ]
+        ),
         get_fn=lambda coordinator: getattr(
             coordinator.data.mower_state.audio, "au_language", 0
         ),
-        set_fn=lambda coordinator, value: coordinator.async_set_voice_language(value),
+        set_fn=lambda coordinator, value: coordinator.async_set_voice_language(
+            value.upper()
+        ),
     ),
     MammotionAsyncConfigSelectEntityDescription(
         key="voice_gender",
-        options=["MAN", "WOMAN"],
+        options=["man", "woman"],
         get_fn=lambda coordinator: coordinator.data.mower_state.audio.sex,
-        set_fn=lambda coordinator, value: coordinator.async_set_voice_gender(value),
+        set_fn=lambda coordinator, value: coordinator.async_set_voice_gender(
+            value.upper()
+        ),
     ),
 )
 
 ASYNC_SELECT_ENTITIES: tuple[MammotionAsyncConfigSelectEntityDescription, ...] = (
     MammotionAsyncConfigSelectEntityDescription(
         key="traversal_mode",
-        options=[mode.name for mode in TraversalMode],
+        options=_lower_options([mode.name for mode in TraversalMode]),
         get_fn=lambda coordinator: coordinator.data.mower_state.traversal_mode,
         set_fn=lambda coordinator, value: coordinator.async_set_traversal_mode(
-            TraversalMode[value].value
+            _enum_member(TraversalMode, value).value
         ),
     ),
     MammotionAsyncConfigSelectEntityDescription(
         key="turning_mode",
-        options=[mode.name for mode in TurningMode],
+        options=_lower_options([mode.name for mode in TurningMode]),
         get_fn=lambda coordinator: coordinator.data.mower_state.turning_mode,
         set_fn=lambda coordinator, value: coordinator.async_set_turning_mode(
-            TurningMode[value].value
+            _enum_member(TurningMode, value).value
         ),
     ),
     MammotionAsyncConfigSelectEntityDescription(
         key="wildlife_safety",
-        options=[mode.name for mode in WildlifeSafety],
+        options=_lower_options([mode.name for mode in WildlifeSafety]),
         get_fn=lambda coordinator: (
             WildlifeSafety.off.value
             if coordinator.data.mower_state.animal_protection.status == 0
             else coordinator.data.mower_state.animal_protection.mode
         ),
         set_fn=lambda coordinator, value: coordinator.async_set_wildlife_safety(
-            WildlifeSafety[value].value
+            _enum_member(WildlifeSafety, value).value
         ),
     ),
 )
@@ -168,10 +196,10 @@ MINI_AND_X_SERIES_CONFIG_SELECT_ENTITIES: tuple[
 ] = (
     MammotionAsyncConfigSelectEntityDescription(
         key="cutter_mode",
-        options=[mode.name for mode in CuttingSpeedMode],
+        options=_lower_options([mode.name for mode in CuttingSpeedMode]),
         get_fn=lambda coordinator: coordinator.data.mower_state.cutter_mode,
         set_fn=lambda coordinator, value: coordinator.async_set_cutter_speed(
-            CuttingSpeedMode[value].value
+            _enum_member(CuttingSpeedMode, value).value
         ),
     ),
 )
@@ -180,32 +208,38 @@ MINI_AND_X_SERIES_CONFIG_SELECT_ENTITIES: tuple[
 SELECT_ENTITIES: tuple[MammotionConfigSelectEntityDescription, ...] = (
     MammotionConfigSelectEntityDescription(
         key="channel_mode",
-        options=[mode.name for mode in CuttingMode],
+        options=_lower_options([mode.name for mode in CuttingMode]),
         set_fn=lambda coordinator, value: setattr(
-            coordinator.operation_settings, "channel_mode", CuttingMode[value].value
+            coordinator.operation_settings,
+            "channel_mode",
+            _enum_member(CuttingMode, value).value,
         ),
     ),
     MammotionConfigSelectEntityDescription(
         key="mowing_laps",
-        options=[mode.name for mode in BorderPatrolMode],
+        options=_lower_options([mode.name for mode in BorderPatrolMode]),
         set_fn=lambda coordinator, value: setattr(
-            coordinator.operation_settings, "mowing_laps", BorderPatrolMode[value].value
+            coordinator.operation_settings,
+            "mowing_laps",
+            _enum_member(BorderPatrolMode, value).value,
         ),
     ),
     MammotionConfigSelectEntityDescription(
         key="obstacle_laps",
-        options=[mode.name for mode in ObstacleLapsMode],
+        options=_lower_options([mode.name for mode in ObstacleLapsMode]),
         set_fn=lambda coordinator, value: setattr(
             coordinator.operation_settings,
             "obstacle_laps",
-            ObstacleLapsMode[value].value,
+            _enum_member(ObstacleLapsMode, value).value,
         ),
     ),
     MammotionConfigSelectEntityDescription(
         key="border_mode",
-        options=[order.name for order in MowOrder],
+        options=_lower_options([order.name for order in MowOrder]),
         set_fn=lambda coordinator, value: setattr(
-            coordinator.operation_settings, "border_mode", MowOrder[value].value
+            coordinator.operation_settings,
+            "border_mode",
+            _enum_member(MowOrder, value).value,
         ),
     ),
 )
@@ -213,13 +247,17 @@ SELECT_ENTITIES: tuple[MammotionConfigSelectEntityDescription, ...] = (
 LUBA1_SELECT_ENTITIES: tuple[MammotionConfigSelectEntityDescription, ...] = (
     MammotionConfigSelectEntityDescription(
         key="cutting_angle_mode",
-        options=[
-            angle_type.name
-            for angle_type in PathAngleSetting
-            if angle_type != PathAngleSetting.random_angle
-        ],
+        options=_lower_options(
+            [
+                angle_type.name
+                for angle_type in PathAngleSetting
+                if angle_type != PathAngleSetting.random_angle
+            ]
+        ),
         set_fn=lambda coordinator, value: setattr(
-            coordinator.operation_settings, "toward_mode", PathAngleSetting[value].value
+            coordinator.operation_settings,
+            "toward_mode",
+            _enum_member(PathAngleSetting, value).value,
         ),
     ),
 )
@@ -227,9 +265,11 @@ LUBA1_SELECT_ENTITIES: tuple[MammotionConfigSelectEntityDescription, ...] = (
 LUBA_PRO_SELECT_ENTITIES: tuple[MammotionConfigSelectEntityDescription, ...] = (
     MammotionConfigSelectEntityDescription(
         key="cutting_angle_mode",
-        options=[angle_type.name for angle_type in PathAngleSetting],
+        options=_lower_options([angle_type.name for angle_type in PathAngleSetting]),
         set_fn=lambda coordinator, value: setattr(
-            coordinator.operation_settings, "toward_mode", PathAngleSetting[value].value
+            coordinator.operation_settings,
+            "toward_mode",
+            _enum_member(PathAngleSetting, value).value,
         ),
     ),
 )
@@ -284,17 +324,19 @@ async def async_setup_entry(
 
         bypass_mode_desc = MammotionConfigSelectEntityDescription(
             key="bypass_mode",
-            options=[
-                s.name
-                for s in DetectionStrategy.for_device(
-                    mower.device.device_name,
-                    _device_firmware_version(mower.reporting_coordinator.data),
-                )
-            ],
+            options=_lower_options(
+                [
+                    s.name
+                    for s in DetectionStrategy.for_device(
+                        mower.device.device_name,
+                        _device_firmware_version(mower.reporting_coordinator.data),
+                    )
+                ]
+            ),
             set_fn=lambda coordinator, value: setattr(
                 coordinator.operation_settings,
                 "ultra_wave",
-                DetectionStrategy[value].value,
+                _enum_member(DetectionStrategy, value).value,
             ),
             async_set_fn=lambda coordinator: coordinator.async_modify_plan_if_mowing(),
         )
@@ -359,18 +401,25 @@ class MammotionConfigSelectEntity(MammotionBaseEntity, SelectEntity, RestoreEnti
 
     async def async_select_option(self, option: str) -> None:
         """Select an option."""
-        self._attr_current_option = option
-        self.entity_description.set_fn(self.coordinator, option)
+        normalized = option.lower()
+        self._attr_current_option = normalized
+        self.entity_description.set_fn(self.coordinator, normalized)
         if self.entity_description.async_set_fn is not None:
             await self.entity_description.async_set_fn(self.coordinator)
         self.async_write_ha_state()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str]:
+        """Expose a legacy/raw enum spelling during the lowercase migration."""
+        return {"raw_protocol_value": self._attr_current_option.upper()}
 
     async def async_added_to_hass(self) -> None:
         """Restore last state."""
         await super().async_added_to_hass()
         if (state := await self.async_get_last_state()) is not None:
-            if state.state in self.entity_description.options:
-                self._attr_current_option = state.state
+            normalized = state.state.lower()
+            if normalized in self.entity_description.options:
+                self._attr_current_option = normalized
                 self.entity_description.set_fn(
                     self.coordinator, self._attr_current_option
                 )
@@ -416,16 +465,23 @@ class MammotionAsyncConfigSelectEntity(
 
     async def async_select_option(self, option: str) -> None:
         """Select an option."""
-        self._attr_current_option = option
-        await self.entity_description.set_fn(self.coordinator, option)
+        normalized = option.lower()
+        self._attr_current_option = normalized
+        await self.entity_description.set_fn(self.coordinator, normalized)
         self.async_write_ha_state()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str]:
+        """Expose a legacy/raw enum spelling during the lowercase migration."""
+        return {"raw_protocol_value": self._attr_current_option.upper()}
 
     async def async_added_to_hass(self) -> None:
         """Restore last state."""
         await super().async_added_to_hass()
         if (state := await self.async_get_last_state()) is not None:
-            if state.state in self.entity_description.options:
-                self._attr_current_option = state.state
+            normalized = state.state.lower()
+            if normalized in self.entity_description.options:
+                self._attr_current_option = normalized
 
     async def async_update(self) -> None:
         """Update entity state from coordinator."""
@@ -458,5 +514,11 @@ class MammotionSpinoSelectEntity(MammotionBaseSpinoEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
-        await self.entity_description.set_fn(self.coordinator, option)
+        await self.entity_description.set_fn(self.coordinator, option.lower())
         await self.coordinator.async_request_refresh()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        """Expose a legacy/raw enum spelling during the lowercase migration."""
+        option = self.current_option
+        return {"raw_protocol_value": option.upper()} if option is not None else None

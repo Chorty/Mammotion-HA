@@ -68,7 +68,8 @@
           "title": "Update Configuration",
           "stay_connected_bluetooth": "Keep bluetooth connected",
           "prefer_ble_over_wifi": "Prefer Bluetooth over Wi-Fi when available",
-          "movement_use_wifi": "Send movement commands over Wi-Fi",
+          "movement_use_wifi": "Deprecated: send movement commands over Wi-Fi (ignored for manual motion)",
+          "enable_experimental_motion": "Enable experimental BLE-only manual motion",
           "mow_path_fetch_enabled": "Enable mow path fetching (cloud)",
           "full_map_fetch_enabled": "Enable full map fetching (cloud) — when off, only area names are fetched"
         }
@@ -140,29 +141,29 @@
       "position_type": {
         "name": "Device position type",
         "state": {
-          "AREA_BORDER_ON": "At perimeter",
-          "AREA_INSIDE": "Inside area",
-          "AREA_OUT": "Outside area",
-          "CHANNEL_AREA_OVERLAP": "Path area overlap",
-          "CHANNEL_ON": "On path",
-          "CHARGE_ON": "At charging station",
-          "DUMPING_AREA_INSIDE": "In dump area",
-          "DUMPING_OUTSIDE": "Outside dump area",
-          "ABNORMAL_POSITIONING": "Position error",
-          "NO_AREAS": "No areas defined",
-          "OBS_ON": "At obstacle",
-          "TURN_AREA_INSIDE": "In turn area",
-          "VIRTUAL_INSIDE": "In virtual area"
+          "area_border_on": "At perimeter",
+          "area_inside": "Inside area",
+          "area_out": "Outside area",
+          "channel_area_overlap": "Path area overlap",
+          "channel_on": "On path",
+          "charge_on": "At charging station",
+          "dumping_area_inside": "In dump area",
+          "dumping_outside": "Outside dump area",
+          "abnormal_positioning": "Position error",
+          "no_areas": "No areas defined",
+          "obs_on": "At obstacle",
+          "turn_area_inside": "In turn area",
+          "virtual_inside": "In virtual area"
         }
       },
       "visual_positioning_status": {
         "name": "Visual positioning status",
         "state": {
-          "SIGNAL_NONE": "None",
-          "SIGNAL_INIT": "Initialising",
-          "SIGNAL_GOOD": "Good",
-          "SIGNAL_BAD": "Bad",
-          "SIGNAL_UNKNOWN": "Unknown"
+          "signal_none": "None",
+          "signal_init": "Initialising",
+          "signal_good": "Good",
+          "signal_bad": "Bad",
+          "signal_unknown": "Unknown"
         }
       },
       "vio_heading": {
@@ -237,30 +238,30 @@
       "activity_mode": {
         "name": "Activity mode",
         "state": {
-          "MODE_NOT_ACTIVE": "Not active",
-          "MODE_ONLINE": "Online",
-          "MODE_OFFLINE": "Offline",
-          "MODE_DISABLE": "Disabled",
-          "MODE_INITIALIZATION": "Initializing",
-          "MODE_READY": "Ready",
-          "MODE_WORKING": "Working",
-          "MODE_RETURNING": "Returning",
-          "MODE_CHARGING": "Charging",
-          "MODE_UPDATING": "Updating",
-          "MODE_LOCK": "Locked",
-          "MODE_PAUSE": "Paused",
-          "MODE_MANUAL_MOWING": "Manual mowing",
-          "MODE_UPDATE_SUCCESS": "Update successful",
-          "MODE_OTA_UPGRADE_FAIL": "Update failed",
-          "MODE_JOB_DRAW": "Drawing job",
-          "MODE_OBSTACLE_DRAW": "Drawing obstacles",
-          "MODE_CHANNEL_DRAW": "Drawing channel",
-          "MODE_ERASER_DRAW": "Drawing eraser",
-          "MODE_EDIT_BOUNDARY": "Editing boundary",
-          "MODE_LOCATION_ERROR": "Location error",
-          "MODE_BOUNDARY_JUMP": "Boundary crossed",
-          "MODE_CHARGING_PAUSE": "Charging paused",
-          "MODE_POWER_OFF": "Powering off"
+          "mode_not_active": "Not active",
+          "mode_online": "Online",
+          "mode_offline": "Offline",
+          "mode_disable": "Disabled",
+          "mode_initialization": "Initializing",
+          "mode_ready": "Ready",
+          "mode_working": "Working",
+          "mode_returning": "Returning",
+          "mode_charging": "Charging",
+          "mode_updating": "Updating",
+          "mode_lock": "Locked",
+          "mode_pause": "Paused",
+          "mode_manual_mowing": "Manual mowing",
+          "mode_update_success": "Update successful",
+          "mode_ota_upgrade_fail": "Update failed",
+          "mode_job_draw": "Drawing job",
+          "mode_obstacle_draw": "Drawing obstacles",
+          "mode_channel_draw": "Drawing channel",
+          "mode_eraser_draw": "Drawing eraser",
+          "mode_edit_boundary": "Editing boundary",
+          "mode_location_error": "Location error",
+          "mode_boundary_jump": "Boundary crossed",
+          "mode_charging_pause": "Charging paused",
+          "mode_power_off": "Powering off"
         }
       },
       "work_area": {
@@ -334,11 +335,11 @@
       "task_area_status": {
         "name": "Task area {name}",
         "state": {
-          "NOT_STARTED": "Not started",
-          "WAITING": "Waiting",
-          "MOWING": "Mowing",
-          "COMPLETE": "Complete",
-          "ABORTED": "Aborted"
+          "not_started": "Not started",
+          "waiting": "Waiting",
+          "mowing": "Mowing",
+          "complete": "Complete",
+          "aborted": "Aborted"
         }
       },
       "maintenance_distance": {
@@ -378,19 +379,19 @@
       "position_mode": {
         "name": "Position mode",
         "state": {
-          "RTK_OVER_DATALINK": "Antenna Over Datalink",
-          "RTK_OVER_INTERNET": "Antenna Over Internet",
-          "INAVI_NET_RTK": "iNavi NetRTK",
-          "INAVI_RTK_BOX": "iNavi RTK Box",
-          "UNKNOWN": "Unknown"
+          "rtk_over_datalink": "Antenna Over Datalink",
+          "rtk_over_internet": "Antenna Over Internet",
+          "inavi_net_rtk": "iNavi NetRTK",
+          "inavi_rtk_box": "iNavi RTK Box",
+          "unknown": "Unknown"
         }
       },
       "rtk_app_connect_type": {
         "name": "Connection type",
         "state": {
-          "UNKNOWN": "Unknown",
-          "CON_BLE": "BLE",
-          "CON_WIFI": "Wi-Fi"
+          "unknown": "Unknown",
+          "con_ble": "BLE",
+          "con_wifi": "Wi-Fi"
         }
       },
       "spino_battery": {
@@ -399,29 +400,29 @@
       "spino_status": {
         "name": "Status",
         "state": {
-          "UNKNOWN": "Unknown",
-          "IDLE": "Standby",
-          "PREPARE": "Standby",
-          "WAIT_WATER": "Filling with water",
-          "WORKING": "Working",
-          "PAUSE_GO_CHARGE": "Returning to charge (paused)",
-          "END_GO_CHARGE": "Returning to charge",
-          "CHARGING": "Charging",
-          "LEAVE_DOCK": "Leaving dock",
-          "RECALLING": "Returning"
+          "unknown": "Unknown",
+          "idle": "Standby",
+          "prepare": "Standby",
+          "wait_water": "Filling with water",
+          "working": "Working",
+          "pause_go_charge": "Returning to charge (paused)",
+          "end_go_charge": "Returning to charge",
+          "charging": "Charging",
+          "leave_dock": "Leaving dock",
+          "recalling": "Returning"
         }
       },
       "spino_work_mode": {
         "name": "Cleaning mode",
         "state": {
-          "UNKNOWN": "Unknown",
-          "RECHARGE": "Recharge",
-          "AUTO": "All",
-          "FLOOR": "Floor",
-          "WALL": "Wall",
-          "ECO": "Eco",
-          "LINE": "Waterline",
-          "CUSTOM": "Custom"
+          "unknown": "Unknown",
+          "recharge": "Recharge",
+          "auto": "All",
+          "floor": "Floor",
+          "wall": "Wall",
+          "eco": "Eco",
+          "line": "Waterline",
+          "custom": "Custom"
         }
       },
       "spino_error_time": {
@@ -683,51 +684,51 @@
       "voice_gender": {
         "name": "Voice gender",
         "state": {
-          "MAN": "Male",
-          "WOMAN": "Female"
+          "man": "Male",
+          "woman": "Female"
         }
       },
       "voice_language": {
         "name": "Voice language",
         "state": {
-          "ENGLISH": "English",
-          "GERMAN": "German",
-          "FRENCH": "French",
-          "ITALIAN": "Italian",
-          "SPANISH": "Spanish",
-          "PORTUGUESE": "Portuguese",
-          "DUTCH": "Dutch",
-          "SWEDISH": "Swedish"
+          "english": "English",
+          "german": "German",
+          "french": "French",
+          "italian": "Italian",
+          "spanish": "Spanish",
+          "portuguese": "Portuguese",
+          "dutch": "Dutch",
+          "swedish": "Swedish"
         }
       },
       "spino_work_mode": {
         "name": "Cleaning mode",
         "state": {
-          "UNKNOWN": "Unknown",
-          "RECHARGE": "Recharge",
-          "AUTO": "All",
-          "FLOOR": "Floor",
-          "WALL": "Wall",
-          "ECO": "Eco",
-          "LINE": "Waterline",
-          "CUSTOM": "Custom"
+          "unknown": "Unknown",
+          "recharge": "Recharge",
+          "auto": "All",
+          "floor": "Floor",
+          "wall": "Wall",
+          "eco": "Eco",
+          "line": "Waterline",
+          "custom": "Custom"
         }
       },
       "spino_wall_material": {
         "name": "Wall material",
         "state": {
-          "GLASS": "Glass",
-          "CERAMICS": "Tile",
-          "SAND_STONE": "Mosaic"
+          "glass": "Glass",
+          "ceramics": "Tile",
+          "sand_stone": "Mosaic"
         }
       },
       "spino_bottom_type": {
         "name": "Pool bottom shape",
         "state": {
-          "RIGHT_ANGLE_SIMPLE": "Right angle (simple)",
-          "RIGHT_ANGLE_COMPLEX": "Right angle (complex)",
-          "CURVE_SIMPLE": "Curved (simple)",
-          "CURVE_COMPLEX": "Curved (complex)"
+          "right_angle_simple": "Right angle (simple)",
+          "right_angle_complex": "Right angle (complex)",
+          "curve_simple": "Curved (simple)",
+          "curve_complex": "Curved (complex)"
         }
       }
     },
@@ -1032,6 +1033,16 @@
         }
       }
     },
+    "stop_manual_motion": {
+      "name": "Stop experimental manual motion",
+      "description": "Aborts the active backend motion session, prevents later nonzero writes, and sends a bounded confirmed BLE stop sequence.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        }
+      }
+    },
     "export_active_route": {
       "name": "Export active route",
       "description": "Returns read-only active mowing route and progress GeoJSON diagnostics.",
@@ -1290,7 +1301,7 @@
     },
     "raw_pymammotion_execute_multi_segment": {
       "name": "Raw pymammotion execute multi segment",
-      "description": "Guarded chain of 1-3 already-proven one-segment moves (2-4 points), used by the multi-waypoint click/go path builder. Re-validates safety before every segment and stops immediately on the first failure.",
+      "description": "Guarded chain used by click-to-go. Preview and dry-run accept up to seven segments; real execution is limited to two and stops immediately on the first failure.",
       "fields": {
         "entity_id": {
           "name": "Entity",
@@ -1298,7 +1309,7 @@
         },
         "points": {
           "name": "Points",
-          "description": "Between two and four map-local points: current/near-current start followed by one to three waypoints, executed in order."
+          "description": "Between two and eight map-local points: current/near-current start followed by up to seven destinations, executed in order."
         },
         "area_hash": {
           "name": "Area hash",

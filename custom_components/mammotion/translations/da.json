@@ -129,29 +129,29 @@
       "position_type": {
         "name": "Enhedspositionstype",
         "state": {
-          "AREA_BORDER_ON": "Ved perimeter",
-          "AREA_INSIDE": "Inde i område",
-          "AREA_OUT": "Udenfor område",
-          "CHANNEL_AREA_OVERLAP": "Overlappende stiområde",
-          "CHANNEL_ON": "På sti",
-          "CHARGE_ON": "Ved ladestation",
-          "DUMPING_AREA_INSIDE": "I affaldszone",
-          "DUMPING_OUTSIDE": "Udenfor affaldszone",
-          "ABNORMAL_POSITIONING": "Positionsfejl",
-          "NO_AREAS": "Ingen områder defineret",
-          "OBS_ON": "Ved forhindring",
-          "TURN_AREA_INSIDE": "I vendezone",
-          "VIRTUAL_INSIDE": "I virtuelt område"
+          "area_border_on": "Ved perimeter",
+          "area_inside": "Inde i område",
+          "area_out": "Udenfor område",
+          "channel_area_overlap": "Overlappende stiområde",
+          "channel_on": "På sti",
+          "charge_on": "Ved ladestation",
+          "dumping_area_inside": "I affaldszone",
+          "dumping_outside": "Udenfor affaldszone",
+          "abnormal_positioning": "Positionsfejl",
+          "no_areas": "Ingen områder defineret",
+          "obs_on": "Ved forhindring",
+          "turn_area_inside": "I vendezone",
+          "virtual_inside": "I virtuelt område"
         }
       },
       "visual_positioning_status": {
         "name": "Visuel positioneringsstatus",
         "state": {
-          "SIGNAL_NONE": "Ingen",
-          "SIGNAL_INIT": "Initialiserer",
-          "SIGNAL_GOOD": "God",
-          "SIGNAL_BAD": "Dårlig",
-          "SIGNAL_UNKNOWN": "Ukendt"
+          "signal_none": "Ingen",
+          "signal_init": "Initialiserer",
+          "signal_good": "God",
+          "signal_bad": "Dårlig",
+          "signal_unknown": "Ukendt"
         }
       },
       "vio_heading": {
@@ -226,30 +226,30 @@
       "activity_mode": {
         "name": "Aktivitetstilstand",
         "state": {
-          "MODE_NOT_ACTIVE": "Ikke aktiv",
-          "MODE_ONLINE": "Online",
-          "MODE_OFFLINE": "Offline",
-          "MODE_DISABLE": "Deaktiveret",
-          "MODE_INITIALIZATION": "Initialiserer",
-          "MODE_READY": "Klar",
-          "MODE_WORKING": "Arbejder",
-          "MODE_RETURNING": "Vender tilbage",
-          "MODE_CHARGING": "Oplader",
-          "MODE_UPDATING": "Opdaterer",
-          "MODE_LOCK": "Låst",
-          "MODE_PAUSE": "Sat på pause",
-          "MODE_MANUAL_MOWING": "Manuel klipning",
-          "MODE_UPDATE_SUCCESS": "Opdatering lykkedes",
-          "MODE_OTA_UPGRADE_FAIL": "Opdatering fejlede",
-          "MODE_JOB_DRAW": "Tegner opgave",
-          "MODE_OBSTACLE_DRAW": "Tegner forhindringer",
-          "MODE_CHANNEL_DRAW": "Tegner kanal",
-          "MODE_ERASER_DRAW": "Tegner viskelæder",
-          "MODE_EDIT_BOUNDARY": "Redigerer grænse",
-          "MODE_LOCATION_ERROR": "Positionsfejl",
-          "MODE_BOUNDARY_JUMP": "Grænse overskredet",
-          "MODE_CHARGING_PAUSE": "Opladning sat på pause",
-          "MODE_POWER_OFF": "Slukker"
+          "mode_not_active": "Ikke aktiv",
+          "mode_online": "Online",
+          "mode_offline": "Offline",
+          "mode_disable": "Deaktiveret",
+          "mode_initialization": "Initialiserer",
+          "mode_ready": "Klar",
+          "mode_working": "Arbejder",
+          "mode_returning": "Vender tilbage",
+          "mode_charging": "Oplader",
+          "mode_updating": "Opdaterer",
+          "mode_lock": "Låst",
+          "mode_pause": "Sat på pause",
+          "mode_manual_mowing": "Manuel klipning",
+          "mode_update_success": "Opdatering lykkedes",
+          "mode_ota_upgrade_fail": "Opdatering fejlede",
+          "mode_job_draw": "Tegner opgave",
+          "mode_obstacle_draw": "Tegner forhindringer",
+          "mode_channel_draw": "Tegner kanal",
+          "mode_eraser_draw": "Tegner viskelæder",
+          "mode_edit_boundary": "Redigerer grænse",
+          "mode_location_error": "Positionsfejl",
+          "mode_boundary_jump": "Grænse overskredet",
+          "mode_charging_pause": "Opladning sat på pause",
+          "mode_power_off": "Slukker"
         }
       },
       "work_area": {
@@ -307,29 +307,29 @@
       "position_mode": {
         "name": "Positioneringstilstand",
         "state": {
-          "RTK_OVER_DATALINK": "Antenne over Datalink",
-          "RTK_OVER_INTERNET": "Antenne over internet",
-          "INAVI_NET_RTK": "iNavi NetRTK",
-          "INAVI_RTK_BOX": "iNavi RTK-boks",
-          "UNKNOWN": "Ukendt"
+          "rtk_over_datalink": "Antenne over Datalink",
+          "rtk_over_internet": "Antenne over internet",
+          "inavi_net_rtk": "iNavi NetRTK",
+          "inavi_rtk_box": "iNavi RTK-boks",
+          "unknown": "Ukendt"
         }
       },
       "rtk_app_connect_type": {
         "name": "Forbindelsestype",
         "state": {
-          "UNKNOWN": "Ukendt",
-          "CON_BLE": "BLE",
-          "CON_WIFI": "Wi-Fi"
+          "unknown": "Ukendt",
+          "con_ble": "BLE",
+          "con_wifi": "Wi-Fi"
         }
       },
       "task_area_status": {
         "name": "Opgaveområde {name}",
         "state": {
-          "NOT_STARTED": "Ikke startet",
-          "WAITING": "Venter",
-          "MOWING": "Klipper",
-          "COMPLETE": "Fuldført",
-          "ABORTED": "Afbrudt"
+          "not_started": "Ikke startet",
+          "waiting": "Venter",
+          "mowing": "Klipper",
+          "complete": "Fuldført",
+          "aborted": "Afbrudt"
         }
       },
       "spino_battery": {
@@ -338,29 +338,29 @@
       "spino_status": {
         "name": "Status",
         "state": {
-          "UNKNOWN": "Ukendt",
-          "IDLE": "Standby",
-          "PREPARE": "Standby",
-          "WAIT_WATER": "Fylder med vand",
-          "WORKING": "Arbejder",
-          "PAUSE_GO_CHARGE": "Vender tilbage til opladning (pause)",
-          "END_GO_CHARGE": "Vender tilbage til opladning",
-          "CHARGING": "Oplader",
-          "LEAVE_DOCK": "Forlader dock",
-          "RECALLING": "Vender tilbage"
+          "unknown": "Ukendt",
+          "idle": "Standby",
+          "prepare": "Standby",
+          "wait_water": "Fylder med vand",
+          "working": "Arbejder",
+          "pause_go_charge": "Vender tilbage til opladning (pause)",
+          "end_go_charge": "Vender tilbage til opladning",
+          "charging": "Oplader",
+          "leave_dock": "Forlader dock",
+          "recalling": "Vender tilbage"
         }
       },
       "spino_work_mode": {
         "name": "Rengøringstilstand",
         "state": {
-          "UNKNOWN": "Ukendt",
-          "RECHARGE": "Genoplad",
-          "AUTO": "Alle",
-          "FLOOR": "Bund",
-          "WALL": "Væg",
-          "ECO": "Eco",
-          "LINE": "Vandlinje",
-          "CUSTOM": "Brugerdefineret"
+          "unknown": "Ukendt",
+          "recharge": "Genoplad",
+          "auto": "Alle",
+          "floor": "Bund",
+          "wall": "Væg",
+          "eco": "Eco",
+          "line": "Vandlinje",
+          "custom": "Brugerdefineret"
         }
       },
       "spino_error_time": {
@@ -658,8 +658,8 @@
       "voice_gender": {
         "name": "Stemmekøn",
         "state": {
-          "MAN": "Mand",
-          "WOMAN": "Kvinde"
+          "man": "Mand",
+          "woman": "Kvinde"
         }
       },
       "wildlife_safety": {
@@ -673,27 +673,27 @@
       "spino_work_mode": {
         "name": "Rengøringstilstand",
         "state": {
-          "UNKNOWN": "Ukendt",
-          "RECHARGE": "Genoplad",
-          "AUTO": "Alle",
-          "FLOOR": "Bund",
-          "WALL": "Væg",
-          "ECO": "Eco",
-          "LINE": "Vandlinje",
-          "CUSTOM": "Brugerdefineret"
+          "unknown": "Ukendt",
+          "recharge": "Genoplad",
+          "auto": "Alle",
+          "floor": "Bund",
+          "wall": "Væg",
+          "eco": "Eco",
+          "line": "Vandlinje",
+          "custom": "Brugerdefineret"
         }
       },
       "voice_language": {
         "name": "Voice language",
         "state": {
-          "ENGLISH": "English",
-          "GERMAN": "German",
-          "FRENCH": "French",
-          "ITALIAN": "Italian",
-          "SPANISH": "Spanish",
-          "PORTUGUESE": "Portuguese",
-          "DUTCH": "Dutch",
-          "SWEDISH": "Swedish"
+          "english": "English",
+          "german": "German",
+          "french": "French",
+          "italian": "Italian",
+          "spanish": "Spanish",
+          "portuguese": "Portuguese",
+          "dutch": "Dutch",
+          "swedish": "Swedish"
         }
       }
     },

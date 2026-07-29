@@ -1,15 +1,12 @@
 name: Beta Release
 
 on:
-  push:
-    branches:
-      - main
-      - refactored-library
-    paths:
-      - "**.py"
-      - "custom_components/**/manifest.json"
-      - "pyproject.toml"
-      - "uv.lock"
+  workflow_dispatch:
+    inputs:
+      confirmed_luba_acceptance:
+        description: "I confirm CI and supervised LUBA acceptance passed"
+        required: true
+        type: boolean
 
 jobs:
   check-tag:
@@ -35,8 +32,7 @@ jobs:
   beta-release:
     name: Create Beta Release
     runs-on: ubuntu-latest
-    # Skip if the commit was made by the bot (version bump commit) or if it already has a tag
-    if: "!contains(github.event.head_commit.message, '[skip ci]') && needs.check-tag.outputs.is_tagged != 'true'"
+    if: "inputs.confirmed_luba_acceptance && needs.check-tag.outputs.is_tagged != 'true'"
     needs: check-tag
     permissions:
       contents: write
@@ -53,16 +49,28 @@ jobs:
       - name: Determine beta version
         id: version
         run: |
+          git fetch --force --tags origin
+
           # Get current base version from manifest.json, stripping any existing beta suffix
           BASE_VERSION=$(jq -r .version custom_components/mammotion/manifest.json | sed 's/-beta[0-9]*$//')
 
-          # Find the next available beta number by checking existing tags
-          BETA_NUM=1
-          while git tag --list "v${BASE_VERSION}-beta${BETA_NUM}" | grep -q .; do
-            BETA_NUM=$((BETA_NUM + 1))
-          done
+          # Start above both the manifest suffix and every fetched remote tag.
+          MANIFEST_BETA=$(jq -r .version custom_components/mammotion/manifest.json \
+            | sed -n 's/.*-beta\\([0-9][0-9]*\\)$/\\1/p')
+          TAG_BETA=$(git tag --list "v${BASE_VERSION}-beta*" \
+            | sed -n 's/.*-beta\\([0-9][0-9]*\\)$/\\1/p' \
+            | sort -n | tail -1)
+          HIGHEST=${MANIFEST_BETA:-0}
+          if [ "${TAG_BETA:-0}" -gt "$HIGHEST" ]; then
+            HIGHEST=$TAG_BETA
+          fi
+          BETA_NUM=$((HIGHEST + 1))
 
           BETA_VERSION="${BASE_VERSION}-beta${BETA_NUM}"
+          if git rev-parse "v${BETA_VERSION}" >/dev/null 2>&1; then
+            echo "Refusing to reuse existing tag v${BETA_VERSION}"
+            exit 1
+          fi
           echo "beta_version=${BETA_VERSION}" >> $GITHUB_OUTPUT
           echo "tag=v${BETA_VERSION}" >> $GITHUB_OUTPUT
           echo "Next beta version: ${BETA_VERSION}"
@@ -78,14 +86,30 @@ jobs:
         run: |
           sed -i 's/^version = ".*"/version = "${{ steps.version.outputs.beta_version }}"/' pyproject.toml
 
+      - name: Update card resource version
+        run: |
+          sed -i 's/^const CARD_VERSION = ".*";/const CARD_VERSION = "${{ steps.version.outputs.beta_version }}";/' \
+            custom_components/mammotion/www/mammotion-custom-path-card.js
+
       - name: Update uv.lock
         run: uv lock
+
+      - name: Verify release versions agree
+        run: |
+          EXPECTED="${{ steps.version.outputs.beta_version }}"
+          test "$(jq -r .version custom_components/mammotion/manifest.json)" = "$EXPECTED"
+          test "$(sed -n 's/^version = "\\(.*\\)"/\\1/p' pyproject.toml | head -1)" = "$EXPECTED"
+          grep -Fq "const CARD_VERSION = \"${EXPECTED}\";" \
+            custom_components/mammotion/www/mammotion-custom-path-card.js
+          grep -A4 'name = "mammotion"' uv.lock | grep -Fq "version = \"${EXPECTED}\""
 
       - name: Commit and push version bump
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add custom_components/mammotion/manifest.json pyproject.toml uv.lock
+          git add custom_components/mammotion/manifest.json \
+            custom_components/mammotion/www/mammotion-custom-path-card.js \
+            pyproject.toml uv.lock
           git commit -m "chore: bump version to ${{ steps.version.outputs.beta_version }} [skip ci]"
           git push
 

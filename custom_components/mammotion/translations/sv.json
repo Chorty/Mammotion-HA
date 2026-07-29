@@ -129,29 +129,29 @@
       "position_type": {
         "name": "Typ av enhet",
         "state": {
-          "AREA_BORDER_ON": "Vid perimeter",
-          "AREA_INSIDE": "Inuti område",
-          "AREA_OUT": "Utanför område",
-          "CHANNEL_AREA_OVERLAP": "Överlapp av banområde",
-          "CHANNEL_ON": "På bana",
-          "CHARGE_ON": "Vid laddstation",
-          "DUMPING_AREA_INSIDE": "I dumpningszon",
-          "DUMPING_OUTSIDE": "Utanför dumpningszon",
-          "ABNORMAL_POSITIONING": "Positionsfel",
-          "NO_AREAS": "Inga områden definierade",
-          "OBS_ON": "Vid hinder",
-          "TURN_AREA_INSIDE": "I vändningszon",
-          "VIRTUAL_INSIDE": "I virtuellt område"
+          "area_border_on": "Vid perimeter",
+          "area_inside": "Inuti område",
+          "area_out": "Utanför område",
+          "channel_area_overlap": "Överlapp av banområde",
+          "channel_on": "På bana",
+          "charge_on": "Vid laddstation",
+          "dumping_area_inside": "I dumpningszon",
+          "dumping_outside": "Utanför dumpningszon",
+          "abnormal_positioning": "Positionsfel",
+          "no_areas": "Inga områden definierade",
+          "obs_on": "Vid hinder",
+          "turn_area_inside": "I vändningszon",
+          "virtual_inside": "I virtuellt område"
         }
       },
       "visual_positioning_status": {
         "name": "Visuell positioneringsstatus",
         "state": {
-          "SIGNAL_NONE": "Ingen",
-          "SIGNAL_INIT": "Initialiserar",
-          "SIGNAL_GOOD": "Bra",
-          "SIGNAL_BAD": "Dålig",
-          "SIGNAL_UNKNOWN": "Okänd"
+          "signal_none": "Ingen",
+          "signal_init": "Initialiserar",
+          "signal_good": "Bra",
+          "signal_bad": "Dålig",
+          "signal_unknown": "Okänd"
         }
       },
       "vio_heading": {
@@ -226,30 +226,30 @@
       "activity_mode": {
         "name": "Aktivitetsläge",
         "state": {
-          "MODE_NOT_ACTIVE": "Inte aktiv",
-          "MODE_ONLINE": "Online",
-          "MODE_OFFLINE": "Offline",
-          "MODE_DISABLE": "Inaktiverad",
-          "MODE_INITIALIZATION": "Initialiserar",
-          "MODE_READY": "Redo",
-          "MODE_WORKING": "Arbetar",
-          "MODE_RETURNING": "Återvänder",
-          "MODE_CHARGING": "Laddar",
-          "MODE_UPDATING": "Uppdaterar",
-          "MODE_LOCK": "Låst",
-          "MODE_PAUSE": "Pausad",
-          "MODE_MANUAL_MOWING": "Manuell klippning",
-          "MODE_UPDATE_SUCCESS": "Uppdatering lyckades",
-          "MODE_OTA_UPGRADE_FAIL": "Uppdatering misslyckades",
-          "MODE_JOB_DRAW": "Ritar uppgift",
-          "MODE_OBSTACLE_DRAW": "Ritar hinder",
-          "MODE_CHANNEL_DRAW": "Ritar kanal",
-          "MODE_ERASER_DRAW": "Ritar suddgummi",
-          "MODE_EDIT_BOUNDARY": "Redigerar gräns",
-          "MODE_LOCATION_ERROR": "Positionsfel",
-          "MODE_BOUNDARY_JUMP": "Gräns korsad",
-          "MODE_CHARGING_PAUSE": "Laddning pausad",
-          "MODE_POWER_OFF": "Stänger av"
+          "mode_not_active": "Inte aktiv",
+          "mode_online": "Online",
+          "mode_offline": "Offline",
+          "mode_disable": "Inaktiverad",
+          "mode_initialization": "Initialiserar",
+          "mode_ready": "Redo",
+          "mode_working": "Arbetar",
+          "mode_returning": "Återvänder",
+          "mode_charging": "Laddar",
+          "mode_updating": "Uppdaterar",
+          "mode_lock": "Låst",
+          "mode_pause": "Pausad",
+          "mode_manual_mowing": "Manuell klippning",
+          "mode_update_success": "Uppdatering lyckades",
+          "mode_ota_upgrade_fail": "Uppdatering misslyckades",
+          "mode_job_draw": "Ritar uppgift",
+          "mode_obstacle_draw": "Ritar hinder",
+          "mode_channel_draw": "Ritar kanal",
+          "mode_eraser_draw": "Ritar suddgummi",
+          "mode_edit_boundary": "Redigerar gräns",
+          "mode_location_error": "Positionsfel",
+          "mode_boundary_jump": "Gräns korsad",
+          "mode_charging_pause": "Laddning pausad",
+          "mode_power_off": "Stänger av"
         }
       },
       "work_area": {
@@ -307,29 +307,29 @@
       "position_mode": {
         "name": "Positioneringsläge",
         "state": {
-          "RTK_OVER_DATALINK": "Antenn över DataLink",
-          "RTK_OVER_INTERNET": "Antenn över internet",
-          "INAVI_NET_RTK": "iNavi NetRTK",
-          "INAVI_RTK_BOX": "iNavi RTK-box",
-          "UNKNOWN": "Okänd"
+          "rtk_over_datalink": "Antenn över DataLink",
+          "rtk_over_internet": "Antenn över internet",
+          "inavi_net_rtk": "iNavi NetRTK",
+          "inavi_rtk_box": "iNavi RTK-box",
+          "unknown": "Okänd"
         }
       },
       "rtk_app_connect_type": {
         "name": "Anslutningstyp",
         "state": {
-          "UNKNOWN": "Okänd",
-          "CON_BLE": "BLE",
-          "CON_WIFI": "Wi-Fi"
+          "unknown": "Okänd",
+          "con_ble": "BLE",
+          "con_wifi": "Wi-Fi"
         }
       },
       "task_area_status": {
         "name": "Uppgiftsområde {name}",
         "state": {
-          "NOT_STARTED": "Inte startat",
-          "WAITING": "Väntar",
-          "MOWING": "Klipper",
-          "COMPLETE": "Slutfört",
-          "ABORTED": "Avbrutet"
+          "not_started": "Inte startat",
+          "waiting": "Väntar",
+          "mowing": "Klipper",
+          "complete": "Slutfört",
+          "aborted": "Avbrutet"
         }
       },
       "spino_battery": {
@@ -338,29 +338,29 @@
       "spino_status": {
         "name": "Status",
         "state": {
-          "UNKNOWN": "Okänd",
-          "IDLE": "Standby",
-          "PREPARE": "Standby",
-          "WAIT_WATER": "Fyller med vatten",
-          "WORKING": "Arbetar",
-          "PAUSE_GO_CHARGE": "Återvänder för laddning (pausad)",
-          "END_GO_CHARGE": "Återvänder för laddning",
-          "CHARGING": "Laddar",
-          "LEAVE_DOCK": "Lämnar dockan",
-          "RECALLING": "Återvänder"
+          "unknown": "Okänd",
+          "idle": "Standby",
+          "prepare": "Standby",
+          "wait_water": "Fyller med vatten",
+          "working": "Arbetar",
+          "pause_go_charge": "Återvänder för laddning (pausad)",
+          "end_go_charge": "Återvänder för laddning",
+          "charging": "Laddar",
+          "leave_dock": "Lämnar dockan",
+          "recalling": "Återvänder"
         }
       },
       "spino_work_mode": {
         "name": "Rengöringsläge",
         "state": {
-          "UNKNOWN": "Okänd",
-          "RECHARGE": "Ladda om",
-          "AUTO": "Alla",
-          "FLOOR": "Botten",
-          "WALL": "Vägg",
-          "ECO": "Eco",
-          "LINE": "Vattenlinje",
-          "CUSTOM": "Anpassad"
+          "unknown": "Okänd",
+          "recharge": "Ladda om",
+          "auto": "Alla",
+          "floor": "Botten",
+          "wall": "Vägg",
+          "eco": "Eco",
+          "line": "Vattenlinje",
+          "custom": "Anpassad"
         }
       },
       "spino_error_time": {
@@ -658,8 +658,8 @@
       "voice_gender": {
         "name": "Röstens kön",
         "state": {
-          "MAN": "Man",
-          "WOMAN": "Kvinna"
+          "man": "Man",
+          "woman": "Kvinna"
         }
       },
       "wildlife_safety": {
@@ -673,27 +673,27 @@
       "spino_work_mode": {
         "name": "Rengöringsläge",
         "state": {
-          "UNKNOWN": "Okänd",
-          "RECHARGE": "Ladda om",
-          "AUTO": "Alla",
-          "FLOOR": "Botten",
-          "WALL": "Vägg",
-          "ECO": "Eco",
-          "LINE": "Vattenlinje",
-          "CUSTOM": "Anpassad"
+          "unknown": "Okänd",
+          "recharge": "Ladda om",
+          "auto": "Alla",
+          "floor": "Botten",
+          "wall": "Vägg",
+          "eco": "Eco",
+          "line": "Vattenlinje",
+          "custom": "Anpassad"
         }
       },
       "voice_language": {
         "name": "Voice language",
         "state": {
-          "ENGLISH": "English",
-          "GERMAN": "German",
-          "FRENCH": "French",
-          "ITALIAN": "Italian",
-          "SPANISH": "Spanish",
-          "PORTUGUESE": "Portuguese",
-          "DUTCH": "Dutch",
-          "SWEDISH": "Swedish"
+          "english": "English",
+          "german": "German",
+          "french": "French",
+          "italian": "Italian",
+          "spanish": "Spanish",
+          "portuguese": "Portuguese",
+          "dutch": "Dutch",
+          "swedish": "Swedish"
         }
       }
     },

@@ -155,9 +155,32 @@ def _task_area_value_fn(area_hash: int) -> Callable[[MowingDevice], str | None]:
 
     def _value(mower_data: MowingDevice) -> str | None:
         area = mower_data.events.work_tasks_event.hash_area_map.get(area_hash)
-        return getattr(area, "name", None)
+        raw = getattr(area, "name", None)
+        return raw.lower() if isinstance(raw, str) else None
 
     return _value
+
+
+def _configure_enum_options(entity: SensorEntity, description: Any) -> None:
+    """Override enum options with HA-compliant lowercase values."""
+    if description.device_class == SensorDeviceClass.ENUM and description.options:
+        entity._attr_options = [  # noqa: SLF001
+            str(option).lower() for option in description.options
+        ]
+
+
+def _normalize_enum_native_value(description: Any, value: StateType) -> StateType:
+    """Normalize enum state while leaving numeric/measurement sensors untouched."""
+    if description.device_class == SensorDeviceClass.ENUM and isinstance(value, str):
+        return value.lower()
+    return value
+
+
+def _raw_enum_attributes(description: Any, value: StateType) -> dict[str, Any] | None:
+    """Preserve the original vendor enum label for migration/debugging."""
+    if description.device_class == SensorDeviceClass.ENUM and isinstance(value, str):
+        return {"raw_protocol_value": value}
+    return None
 
 
 LUBA_SENSOR_ONLY_TYPES: tuple[MammotionSensorEntityDescription, ...] = (
@@ -1011,11 +1034,19 @@ class MammotionSensorEntity(MammotionBaseEntity, SensorEntity):
         super().__init__(coordinator, entity_description.key)
         self.entity_description = entity_description
         self._attr_translation_key = entity_description.key
+        _configure_enum_options(self, entity_description)
 
     @property
     def native_value(self) -> StateType:
         """Return the state of the sensor."""
-        return self.entity_description.value_fn(self.coordinator.data)
+        raw = self.entity_description.value_fn(self.coordinator.data)
+        return _normalize_enum_native_value(self.entity_description, raw)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Expose the unmodified protocol enum value."""
+        raw = self.entity_description.value_fn(self.coordinator.data)
+        return _raw_enum_attributes(self.entity_description, raw)
 
 
 class MammotionRTKSensorEntity(MammotionBaseRTKEntity, SensorEntity):
@@ -1032,11 +1063,19 @@ class MammotionRTKSensorEntity(MammotionBaseRTKEntity, SensorEntity):
         super().__init__(coordinator, entity_description.key)
         self.entity_description = entity_description
         self._attr_translation_key = entity_description.key
+        _configure_enum_options(self, entity_description)
 
     @property
     def native_value(self) -> StateType:
         """Return the state of the sensor."""
-        return self.entity_description.value_fn(self.coordinator.data)
+        raw = self.entity_description.value_fn(self.coordinator.data)
+        return _normalize_enum_native_value(self.entity_description, raw)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Expose the unmodified protocol enum value."""
+        raw = self.entity_description.value_fn(self.coordinator.data)
+        return _raw_enum_attributes(self.entity_description, raw)
 
 
 class MammotionSpinoSensorEntity(MammotionBaseSpinoEntity, SensorEntity):
@@ -1053,11 +1092,19 @@ class MammotionSpinoSensorEntity(MammotionBaseSpinoEntity, SensorEntity):
         super().__init__(coordinator, entity_description.key)
         self.entity_description = entity_description
         self._attr_translation_key = entity_description.key
+        _configure_enum_options(self, entity_description)
 
     @property
     def native_value(self) -> StateType:
         """Return the state of the sensor."""
-        return self.entity_description.value_fn(self.coordinator.data)
+        raw = self.entity_description.value_fn(self.coordinator.data)
+        return _normalize_enum_native_value(self.entity_description, raw)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Expose the unmodified protocol enum value."""
+        raw = self.entity_description.value_fn(self.coordinator.data)
+        return _raw_enum_attributes(self.entity_description, raw)
 
 
 class MammotionSpinoErrorSensorEntity(MammotionBaseSpinoEntity, SensorEntity):
@@ -1075,6 +1122,7 @@ class MammotionSpinoErrorSensorEntity(MammotionBaseSpinoEntity, SensorEntity):
         super().__init__(coordinator, entity_description.key)
         self.entity_description = entity_description
         self._attr_translation_key = entity_description.key
+        _configure_enum_options(self, entity_description)
 
     @property
     def native_value(self) -> StateType:
@@ -1119,6 +1167,7 @@ class MammotionWorkSensorEntity(MammotionBaseEntity, SensorEntity):
         """Set up MammotionSensor."""
         super().__init__(coordinator, entity_description.key)
         self.entity_description = entity_description
+        _configure_enum_options(self, entity_description)
         self._attr_translation_key = entity_description.key
 
     @property
@@ -1159,7 +1208,14 @@ class MammotionTaskAreaSensorEntity(MammotionBaseEntity, SensorEntity):
     @property
     def native_value(self) -> StateType:
         """Return the state via value_fn, identical to MammotionSensorEntity."""
-        return self.entity_description.value_fn(self.coordinator.data)
+        raw = self.entity_description.value_fn(self.coordinator.data)
+        return _normalize_enum_native_value(self.entity_description, raw)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Expose the unmodified protocol enum value."""
+        raw = self.entity_description.value_fn(self.coordinator.data)
+        return _raw_enum_attributes(self.entity_description, raw)
 
     def update_name(self, new_name: str) -> None:
         """Refresh the display name when the area is renamed on the device.
@@ -1172,7 +1228,7 @@ class MammotionTaskAreaSensorEntity(MammotionBaseEntity, SensorEntity):
             self.async_write_ha_state()
 
 
-_TASK_AREA_OPTIONS: list[str] = [s.name for s in TaskAreaStatus]
+_TASK_AREA_OPTIONS: list[str] = [s.name.lower() for s in TaskAreaStatus]
 
 
 @callback

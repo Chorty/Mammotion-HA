@@ -129,29 +129,29 @@
       "position_type": {
         "name": "Apparaatpositietype",
         "state": {
-          "AREA_BORDER_ON": "Aan grens",
-          "AREA_INSIDE": "Binnen gebied",
-          "AREA_OUT": "Buiten gebied",
-          "CHANNEL_AREA_OVERLAP": "Pad gebied overlapping",
-          "CHANNEL_ON": "Op pad",
-          "CHARGE_ON": "Bij laadstation",
-          "DUMPING_AREA_INSIDE": "In dumping gebied",
-          "DUMPING_OUTSIDE": "Buiten dumping gebied",
-          "ABNORMAL_POSITIONING": "Positie fout",
-          "NO_AREAS": "Geen gebieden gedefinieerd",
-          "OBS_ON": "Aan obstakel",
-          "TURN_AREA_INSIDE": "In draaigebied",
-          "VIRTUAL_INSIDE": "In virtueel gebied"
+          "area_border_on": "Aan grens",
+          "area_inside": "Binnen gebied",
+          "area_out": "Buiten gebied",
+          "channel_area_overlap": "Pad gebied overlapping",
+          "channel_on": "Op pad",
+          "charge_on": "Bij laadstation",
+          "dumping_area_inside": "In dumping gebied",
+          "dumping_outside": "Buiten dumping gebied",
+          "abnormal_positioning": "Positie fout",
+          "no_areas": "Geen gebieden gedefinieerd",
+          "obs_on": "Aan obstakel",
+          "turn_area_inside": "In draaigebied",
+          "virtual_inside": "In virtueel gebied"
         }
       },
       "visual_positioning_status": {
         "name": "Status visuele positionering",
         "state": {
-          "SIGNAL_NONE": "Geen",
-          "SIGNAL_INIT": "Initialiseren",
-          "SIGNAL_GOOD": "Goed",
-          "SIGNAL_BAD": "Slecht",
-          "SIGNAL_UNKNOWN": "Onbekend"
+          "signal_none": "Geen",
+          "signal_init": "Initialiseren",
+          "signal_good": "Goed",
+          "signal_bad": "Slecht",
+          "signal_unknown": "Onbekend"
         }
       },
       "vio_heading": {
@@ -226,30 +226,30 @@
       "activity_mode": {
         "name": "Activiteitsmodus",
         "state": {
-          "MODE_NOT_ACTIVE": "Niet actief",
-          "MODE_ONLINE": "Online",
-          "MODE_OFFLINE": "Offline",
-          "MODE_DISABLE": "Gedeactiveerd",
-          "MODE_INITIALIZATION": "Initialiseren",
-          "MODE_READY": "Gereed",
-          "MODE_WORKING": "Bezig",
-          "MODE_RETURNING": "Aan het terugkeren",
-          "MODE_CHARGING": "Aan het opladen",
-          "MODE_UPDATING": "Aan het bijwerken",
-          "MODE_LOCK": "Vergrendeld",
-          "MODE_PAUSE": "Gepauzeerd",
-          "MODE_MANUAL_MOWING": "Handmatig aan het maaien",
-          "MODE_UPDATE_SUCCESS": "Bijwerken is gelukt",
-          "MODE_OTA_UPGRADE_FAIL": "Bijwerken mislukt",
-          "MODE_JOB_DRAW": "Taak aan het tekenen",
-          "MODE_OBSTACLE_DRAW": "Obstakels aan het tekenen",
-          "MODE_CHANNEL_DRAW": "Kanaal aan het tekenen",
-          "MODE_ERASER_DRAW": "Tekening aan het verwijderen",
-          "MODE_EDIT_BOUNDARY": "Grens aan het aanpassen",
-          "MODE_LOCATION_ERROR": "Locatie fout",
-          "MODE_BOUNDARY_JUMP": "Grens overschreden",
-          "MODE_CHARGING_PAUSE": "Opladen gepauzeerd",
-          "MODE_POWER_OFF": "Uitschakelen"
+          "mode_not_active": "Niet actief",
+          "mode_online": "Online",
+          "mode_offline": "Offline",
+          "mode_disable": "Gedeactiveerd",
+          "mode_initialization": "Initialiseren",
+          "mode_ready": "Gereed",
+          "mode_working": "Bezig",
+          "mode_returning": "Aan het terugkeren",
+          "mode_charging": "Aan het opladen",
+          "mode_updating": "Aan het bijwerken",
+          "mode_lock": "Vergrendeld",
+          "mode_pause": "Gepauzeerd",
+          "mode_manual_mowing": "Handmatig aan het maaien",
+          "mode_update_success": "Bijwerken is gelukt",
+          "mode_ota_upgrade_fail": "Bijwerken mislukt",
+          "mode_job_draw": "Taak aan het tekenen",
+          "mode_obstacle_draw": "Obstakels aan het tekenen",
+          "mode_channel_draw": "Kanaal aan het tekenen",
+          "mode_eraser_draw": "Tekening aan het verwijderen",
+          "mode_edit_boundary": "Grens aan het aanpassen",
+          "mode_location_error": "Locatie fout",
+          "mode_boundary_jump": "Grens overschreden",
+          "mode_charging_pause": "Opladen gepauzeerd",
+          "mode_power_off": "Uitschakelen"
         }
       },
       "work_area": {
@@ -307,29 +307,29 @@
       "position_mode": {
         "name": "Positioneringsmodus",
         "state": {
-          "RTK_OVER_DATALINK": "Antenne via DataLink",
-          "RTK_OVER_INTERNET": "Antenne via internet",
-          "INAVI_NET_RTK": "iNavi NetRTK",
-          "INAVI_RTK_BOX": "iNavi RTK-box",
-          "UNKNOWN": "Onbekend"
+          "rtk_over_datalink": "Antenne via DataLink",
+          "rtk_over_internet": "Antenne via internet",
+          "inavi_net_rtk": "iNavi NetRTK",
+          "inavi_rtk_box": "iNavi RTK-box",
+          "unknown": "Onbekend"
         }
       },
       "rtk_app_connect_type": {
         "name": "Verbindingstype",
         "state": {
-          "UNKNOWN": "Onbekend",
-          "CON_BLE": "BLE",
-          "CON_WIFI": "Wi-Fi"
+          "unknown": "Onbekend",
+          "con_ble": "BLE",
+          "con_wifi": "Wi-Fi"
         }
       },
       "task_area_status": {
         "name": "Taakgebied {name}",
         "state": {
-          "NOT_STARTED": "Niet gestart",
-          "WAITING": "Wachtend",
-          "MOWING": "Aan het maaien",
-          "COMPLETE": "Voltooid",
-          "ABORTED": "Afgebroken"
+          "not_started": "Niet gestart",
+          "waiting": "Wachtend",
+          "mowing": "Aan het maaien",
+          "complete": "Voltooid",
+          "aborted": "Afgebroken"
         }
       },
       "spino_battery": {
@@ -338,29 +338,29 @@
       "spino_status": {
         "name": "Status",
         "state": {
-          "UNKNOWN": "Onbekend",
-          "IDLE": "Stand-by",
-          "PREPARE": "Stand-by",
-          "WAIT_WATER": "Vullen met water",
-          "WORKING": "Bezig",
-          "PAUSE_GO_CHARGE": "Terug naar laden (gepauzeerd)",
-          "END_GO_CHARGE": "Terug naar laden",
-          "CHARGING": "Aan het opladen",
-          "LEAVE_DOCK": "Verlaat dock",
-          "RECALLING": "Aan het terugkeren"
+          "unknown": "Onbekend",
+          "idle": "Stand-by",
+          "prepare": "Stand-by",
+          "wait_water": "Vullen met water",
+          "working": "Bezig",
+          "pause_go_charge": "Terug naar laden (gepauzeerd)",
+          "end_go_charge": "Terug naar laden",
+          "charging": "Aan het opladen",
+          "leave_dock": "Verlaat dock",
+          "recalling": "Aan het terugkeren"
         }
       },
       "spino_work_mode": {
         "name": "Reinigingsmodus",
         "state": {
-          "UNKNOWN": "Onbekend",
-          "RECHARGE": "Opladen",
-          "AUTO": "Alles",
-          "FLOOR": "Bodem",
-          "WALL": "Wand",
-          "ECO": "Eco",
-          "LINE": "Waterlijn",
-          "CUSTOM": "Aangepast"
+          "unknown": "Onbekend",
+          "recharge": "Opladen",
+          "auto": "Alles",
+          "floor": "Bodem",
+          "wall": "Wand",
+          "eco": "Eco",
+          "line": "Waterlijn",
+          "custom": "Aangepast"
         }
       },
       "spino_error_time": {
@@ -658,8 +658,8 @@
       "voice_gender": {
         "name": "Stemgeslacht",
         "state": {
-          "MAN": "Man",
-          "WOMAN": "Vrouw"
+          "man": "Man",
+          "woman": "Vrouw"
         }
       },
       "wildlife_safety": {
@@ -673,27 +673,27 @@
       "spino_work_mode": {
         "name": "Reinigingsmodus",
         "state": {
-          "UNKNOWN": "Onbekend",
-          "RECHARGE": "Opladen",
-          "AUTO": "Alles",
-          "FLOOR": "Bodem",
-          "WALL": "Wand",
-          "ECO": "Eco",
-          "LINE": "Waterlijn",
-          "CUSTOM": "Aangepast"
+          "unknown": "Onbekend",
+          "recharge": "Opladen",
+          "auto": "Alles",
+          "floor": "Bodem",
+          "wall": "Wand",
+          "eco": "Eco",
+          "line": "Waterlijn",
+          "custom": "Aangepast"
         }
       },
       "voice_language": {
         "name": "Voice language",
         "state": {
-          "ENGLISH": "English",
-          "GERMAN": "German",
-          "FRENCH": "French",
-          "ITALIAN": "Italian",
-          "SPANISH": "Spanish",
-          "PORTUGUESE": "Portuguese",
-          "DUTCH": "Dutch",
-          "SWEDISH": "Swedish"
+          "english": "English",
+          "german": "German",
+          "french": "French",
+          "italian": "Italian",
+          "spanish": "Spanish",
+          "portuguese": "Portuguese",
+          "dutch": "Dutch",
+          "swedish": "Swedish"
         }
       }
     },

@@ -129,29 +129,29 @@
       "position_type": {
         "name": "Tipo di posizionamento",
         "state": {
-          "AREA_BORDER_ON": "Sul perimetro",
-          "AREA_INSIDE": "Nell'area",
-          "AREA_OUT": "Fuori dall'area",
-          "CHANNEL_AREA_OVERLAP": "Percorso sovrapposto",
-          "CHANNEL_ON": "Sul percorso",
-          "CHARGE_ON": "Alla stazione di ricarica",
-          "DUMPING_AREA_INSIDE": "Nell'area di scarico",
-          "DUMPING_OUTSIDE": "Fuori dall'area di scarico",
-          "ABNORMAL_POSITIONING": "Errore di posizione",
-          "NO_AREAS": "Nessuna area definita",
-          "OBS_ON": "All'ostacolo",
-          "TURN_AREA_INSIDE": "Nell'area di svolta",
-          "VIRTUAL_INSIDE": "Nell'area virtuale"
+          "area_border_on": "Sul perimetro",
+          "area_inside": "Nell'area",
+          "area_out": "Fuori dall'area",
+          "channel_area_overlap": "Percorso sovrapposto",
+          "channel_on": "Sul percorso",
+          "charge_on": "Alla stazione di ricarica",
+          "dumping_area_inside": "Nell'area di scarico",
+          "dumping_outside": "Fuori dall'area di scarico",
+          "abnormal_positioning": "Errore di posizione",
+          "no_areas": "Nessuna area definita",
+          "obs_on": "All'ostacolo",
+          "turn_area_inside": "Nell'area di svolta",
+          "virtual_inside": "Nell'area virtuale"
         }
       },
       "visual_positioning_status": {
         "name": "Stato posizionamento visivo",
         "state": {
-          "SIGNAL_NONE": "Nessuno",
-          "SIGNAL_INIT": "Inizializzazione",
-          "SIGNAL_GOOD": "Buono",
-          "SIGNAL_BAD": "Scadente",
-          "SIGNAL_UNKNOWN": "Sconosciuto"
+          "signal_none": "Nessuno",
+          "signal_init": "Inizializzazione",
+          "signal_good": "Buono",
+          "signal_bad": "Scadente",
+          "signal_unknown": "Sconosciuto"
         }
       },
       "vio_heading": {
@@ -226,30 +226,30 @@
       "activity_mode": {
         "name": "Modalità attività",
         "state": {
-          "MODE_NOT_ACTIVE": "Inattivo",
-          "MODE_ONLINE": "Online",
-          "MODE_OFFLINE": "Offline",
-          "MODE_DISABLE": "Disabilitato",
-          "MODE_INITIALIZATION": "Inizializzazione",
-          "MODE_READY": "Pronto",
-          "MODE_WORKING": "In funzione",
-          "MODE_RETURNING": "Di ritorno",
-          "MODE_CHARGING": "In carica",
-          "MODE_UPDATING": "Aggiornamento",
-          "MODE_LOCK": "Bloccato",
-          "MODE_PAUSE": "In pausa",
-          "MODE_MANUAL_MOWING": "Taglio manuale",
-          "MODE_UPDATE_SUCCESS": "Aggiornamento riuscito",
-          "MODE_OTA_UPGRADE_FAIL": "Aggiornamento fallito",
-          "MODE_JOB_DRAW": "Disegno attività",
-          "MODE_OBSTACLE_DRAW": "Disegno ostacoli",
-          "MODE_CHANNEL_DRAW": "Disegno corridoio",
-          "MODE_ERASER_DRAW": "Cancellino da disegno",
-          "MODE_EDIT_BOUNDARY": "Modifica del confine",
-          "MODE_LOCATION_ERROR": "Errore di posizione",
-          "MODE_BOUNDARY_JUMP": "Confine attraversato",
-          "MODE_CHARGING_PAUSE": "Ricarica in pausa",
-          "MODE_POWER_OFF": "Spegnimento"
+          "mode_not_active": "Inattivo",
+          "mode_online": "Online",
+          "mode_offline": "Offline",
+          "mode_disable": "Disabilitato",
+          "mode_initialization": "Inizializzazione",
+          "mode_ready": "Pronto",
+          "mode_working": "In funzione",
+          "mode_returning": "Di ritorno",
+          "mode_charging": "In carica",
+          "mode_updating": "Aggiornamento",
+          "mode_lock": "Bloccato",
+          "mode_pause": "In pausa",
+          "mode_manual_mowing": "Taglio manuale",
+          "mode_update_success": "Aggiornamento riuscito",
+          "mode_ota_upgrade_fail": "Aggiornamento fallito",
+          "mode_job_draw": "Disegno attività",
+          "mode_obstacle_draw": "Disegno ostacoli",
+          "mode_channel_draw": "Disegno corridoio",
+          "mode_eraser_draw": "Cancellino da disegno",
+          "mode_edit_boundary": "Modifica del confine",
+          "mode_location_error": "Errore di posizione",
+          "mode_boundary_jump": "Confine attraversato",
+          "mode_charging_pause": "Ricarica in pausa",
+          "mode_power_off": "Spegnimento"
         }
       },
       "work_area": {
@@ -307,29 +307,29 @@
       "position_mode": {
         "name": "Modalità posizionamento",
         "state": {
-          "RTK_OVER_DATALINK": "Antenna su DataLink",
-          "RTK_OVER_INTERNET": "Antenna su Internet",
-          "INAVI_NET_RTK": "iNavi NetRTK",
-          "INAVI_RTK_BOX": "Scatola iNavi RTK",
-          "UNKNOWN": "Sconosciuto"
+          "rtk_over_datalink": "Antenna su DataLink",
+          "rtk_over_internet": "Antenna su Internet",
+          "inavi_net_rtk": "iNavi NetRTK",
+          "inavi_rtk_box": "Scatola iNavi RTK",
+          "unknown": "Sconosciuto"
         }
       },
       "rtk_app_connect_type": {
         "name": "Tipo di connessione",
         "state": {
-          "UNKNOWN": "Sconosciuto",
-          "CON_BLE": "BLE",
-          "CON_WIFI": "Wi-Fi"
+          "unknown": "Sconosciuto",
+          "con_ble": "BLE",
+          "con_wifi": "Wi-Fi"
         }
       },
       "task_area_status": {
         "name": "Area attività {name}",
         "state": {
-          "NOT_STARTED": "Non avviato",
-          "WAITING": "In attesa",
-          "MOWING": "In falciatura",
-          "COMPLETE": "Completato",
-          "ABORTED": "Interrotto"
+          "not_started": "Non avviato",
+          "waiting": "In attesa",
+          "mowing": "In falciatura",
+          "complete": "Completato",
+          "aborted": "Interrotto"
         }
       },
       "spino_battery": {
@@ -338,29 +338,29 @@
       "spino_status": {
         "name": "Stato",
         "state": {
-          "UNKNOWN": "Sconosciuto",
-          "IDLE": "Standby",
-          "PREPARE": "Standby",
-          "WAIT_WATER": "Riempimento d'acqua",
-          "WORKING": "In funzione",
-          "PAUSE_GO_CHARGE": "Ritorno alla ricarica (in pausa)",
-          "END_GO_CHARGE": "Ritorno alla ricarica",
-          "CHARGING": "In carica",
-          "LEAVE_DOCK": "Lascia la base",
-          "RECALLING": "Di ritorno"
+          "unknown": "Sconosciuto",
+          "idle": "Standby",
+          "prepare": "Standby",
+          "wait_water": "Riempimento d'acqua",
+          "working": "In funzione",
+          "pause_go_charge": "Ritorno alla ricarica (in pausa)",
+          "end_go_charge": "Ritorno alla ricarica",
+          "charging": "In carica",
+          "leave_dock": "Lascia la base",
+          "recalling": "Di ritorno"
         }
       },
       "spino_work_mode": {
         "name": "Modalità di pulizia",
         "state": {
-          "UNKNOWN": "Sconosciuto",
-          "RECHARGE": "Ricarica",
-          "AUTO": "Tutto",
-          "FLOOR": "Fondo",
-          "WALL": "Parete",
-          "ECO": "Eco",
-          "LINE": "Linea di galleggiamento",
-          "CUSTOM": "Personalizzato"
+          "unknown": "Sconosciuto",
+          "recharge": "Ricarica",
+          "auto": "Tutto",
+          "floor": "Fondo",
+          "wall": "Parete",
+          "eco": "Eco",
+          "line": "Linea di galleggiamento",
+          "custom": "Personalizzato"
         }
       },
       "spino_error_time": {
@@ -658,8 +658,8 @@
       "voice_gender": {
         "name": "Genere della voce",
         "state": {
-          "MAN": "Maschile",
-          "WOMAN": "Femminile"
+          "man": "Maschile",
+          "woman": "Femminile"
         }
       },
       "wildlife_safety": {
@@ -673,27 +673,27 @@
       "spino_work_mode": {
         "name": "Modalità di pulizia",
         "state": {
-          "UNKNOWN": "Sconosciuto",
-          "RECHARGE": "Ricarica",
-          "AUTO": "Tutto",
-          "FLOOR": "Fondo",
-          "WALL": "Parete",
-          "ECO": "Eco",
-          "LINE": "Linea di galleggiamento",
-          "CUSTOM": "Personalizzato"
+          "unknown": "Sconosciuto",
+          "recharge": "Ricarica",
+          "auto": "Tutto",
+          "floor": "Fondo",
+          "wall": "Parete",
+          "eco": "Eco",
+          "line": "Linea di galleggiamento",
+          "custom": "Personalizzato"
         }
       },
       "voice_language": {
         "name": "Voice language",
         "state": {
-          "ENGLISH": "English",
-          "GERMAN": "German",
-          "FRENCH": "French",
-          "ITALIAN": "Italian",
-          "SPANISH": "Spanish",
-          "PORTUGUESE": "Portuguese",
-          "DUTCH": "Dutch",
-          "SWEDISH": "Swedish"
+          "english": "English",
+          "german": "German",
+          "french": "French",
+          "italian": "Italian",
+          "spanish": "Spanish",
+          "portuguese": "Portuguese",
+          "dutch": "Dutch",
+          "swedish": "Swedish"
         }
       }
     },

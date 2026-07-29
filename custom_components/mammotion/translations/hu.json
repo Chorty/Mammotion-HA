@@ -129,29 +129,29 @@
       "position_type": {
         "name": "Eszköz pozíciótípusa",
         "state": {
-          "AREA_BORDER_ON": "Kerületen",
-          "AREA_INSIDE": "Területen belül",
-          "AREA_OUT": "Területen kívül",
-          "CHANNEL_AREA_OVERLAP": "Útvonalterület átfedés",
-          "CHANNEL_ON": "Útvonalon",
-          "CHARGE_ON": "Töltőállomáson",
-          "DUMPING_AREA_INSIDE": "Ürítőterületen belül",
-          "DUMPING_OUTSIDE": "Ürítőterületen kívül",
-          "ABNORMAL_POSITIONING": "Pozícióhiba",
-          "NO_AREAS": "Nincs terület definiálva",
-          "OBS_ON": "Akadálynál",
-          "TURN_AREA_INSIDE": "Fordulóterületen",
-          "VIRTUAL_INSIDE": "Virtuális területen"
+          "area_border_on": "Kerületen",
+          "area_inside": "Területen belül",
+          "area_out": "Területen kívül",
+          "channel_area_overlap": "Útvonalterület átfedés",
+          "channel_on": "Útvonalon",
+          "charge_on": "Töltőállomáson",
+          "dumping_area_inside": "Ürítőterületen belül",
+          "dumping_outside": "Ürítőterületen kívül",
+          "abnormal_positioning": "Pozícióhiba",
+          "no_areas": "Nincs terület definiálva",
+          "obs_on": "Akadálynál",
+          "turn_area_inside": "Fordulóterületen",
+          "virtual_inside": "Virtuális területen"
         }
       },
       "visual_positioning_status": {
         "name": "Vizuális pozicionálás állapota",
         "state": {
-          "SIGNAL_NONE": "Nincs",
-          "SIGNAL_INIT": "Inicializálás",
-          "SIGNAL_GOOD": "Jó",
-          "SIGNAL_BAD": "Rossz",
-          "SIGNAL_UNKNOWN": "Ismeretlen"
+          "signal_none": "Nincs",
+          "signal_init": "Inicializálás",
+          "signal_good": "Jó",
+          "signal_bad": "Rossz",
+          "signal_unknown": "Ismeretlen"
         }
       },
       "vio_heading": {
@@ -226,30 +226,30 @@
       "activity_mode": {
         "name": "Működési mód",
         "state": {
-          "MODE_NOT_ACTIVE": "Nem aktív",
-          "MODE_ONLINE": "Online",
-          "MODE_OFFLINE": "Offline",
-          "MODE_DISABLE": "Letiltva",
-          "MODE_INITIALIZATION": "Inicializálás",
-          "MODE_READY": "Kész",
-          "MODE_WORKING": "Dolgozik",
-          "MODE_RETURNING": "Visszatér",
-          "MODE_CHARGING": "Töltés",
-          "MODE_UPDATING": "Frissítés",
-          "MODE_LOCK": "Zárolva",
-          "MODE_PAUSE": "Szünet",
-          "MODE_MANUAL_MOWING": "Kézi nyírás",
-          "MODE_UPDATE_SUCCESS": "Frissítés sikeres",
-          "MODE_OTA_UPGRADE_FAIL": "Frissítés sikertelen",
-          "MODE_JOB_DRAW": "Rajzolási feladat",
-          "MODE_OBSTACLE_DRAW": "Akadályok rajzolása",
-          "MODE_CHANNEL_DRAW": "Útvonal rajzolása",
-          "MODE_ERASER_DRAW": "Törlőterület rajzolása",
-          "MODE_EDIT_BOUNDARY": "Határ szerkesztése",
-          "MODE_LOCATION_ERROR": "Helymeghatározási hiba",
-          "MODE_BOUNDARY_JUMP": "Határ átlépve",
-          "MODE_CHARGING_PAUSE": "Töltés szünetel",
-          "MODE_POWER_OFF": "Kikapcsolás"
+          "mode_not_active": "Nem aktív",
+          "mode_online": "Online",
+          "mode_offline": "Offline",
+          "mode_disable": "Letiltva",
+          "mode_initialization": "Inicializálás",
+          "mode_ready": "Kész",
+          "mode_working": "Dolgozik",
+          "mode_returning": "Visszatér",
+          "mode_charging": "Töltés",
+          "mode_updating": "Frissítés",
+          "mode_lock": "Zárolva",
+          "mode_pause": "Szünet",
+          "mode_manual_mowing": "Kézi nyírás",
+          "mode_update_success": "Frissítés sikeres",
+          "mode_ota_upgrade_fail": "Frissítés sikertelen",
+          "mode_job_draw": "Rajzolási feladat",
+          "mode_obstacle_draw": "Akadályok rajzolása",
+          "mode_channel_draw": "Útvonal rajzolása",
+          "mode_eraser_draw": "Törlőterület rajzolása",
+          "mode_edit_boundary": "Határ szerkesztése",
+          "mode_location_error": "Helymeghatározási hiba",
+          "mode_boundary_jump": "Határ átlépve",
+          "mode_charging_pause": "Töltés szünetel",
+          "mode_power_off": "Kikapcsolás"
         }
       },
       "work_area": {
@@ -273,11 +273,11 @@
       "task_area_status": {
         "name": "Feladatterület {name}",
         "state": {
-          "NOT_STARTED": "Nem indult",
-          "WAITING": "Várakozik",
-          "MOWING": "Nyírás",
-          "COMPLETE": "Kész",
-          "ABORTED": "Megszakítva"
+          "not_started": "Nem indult",
+          "waiting": "Várakozik",
+          "mowing": "Nyírás",
+          "complete": "Kész",
+          "aborted": "Megszakítva"
         }
       },
       "maintenance_distance": {
@@ -317,19 +317,19 @@
       "position_mode": {
         "name": "Pozicionálási mód",
         "state": {
-          "RTK_OVER_DATALINK": "Antenna adatkapcsolaton",
-          "RTK_OVER_INTERNET": "Antenna interneten",
-          "INAVI_NET_RTK": "iNavi NetRTK",
-          "INAVI_RTK_BOX": "iNavi RTK doboz",
-          "UNKNOWN": "Ismeretlen"
+          "rtk_over_datalink": "Antenna adatkapcsolaton",
+          "rtk_over_internet": "Antenna interneten",
+          "inavi_net_rtk": "iNavi NetRTK",
+          "inavi_rtk_box": "iNavi RTK doboz",
+          "unknown": "Ismeretlen"
         }
       },
       "rtk_app_connect_type": {
         "name": "Kapcsolat típusa",
         "state": {
-          "UNKNOWN": "Ismeretlen",
-          "CON_BLE": "BLE",
-          "CON_WIFI": "Wi-Fi"
+          "unknown": "Ismeretlen",
+          "con_ble": "BLE",
+          "con_wifi": "Wi-Fi"
         }
       },
       "spino_battery": {
@@ -338,29 +338,29 @@
       "spino_status": {
         "name": "Állapot",
         "state": {
-          "UNKNOWN": "Ismeretlen",
-          "IDLE": "Készenlét",
-          "PREPARE": "Készenlét",
-          "WAIT_WATER": "Vízzel töltés",
-          "WORKING": "Dolgozik",
-          "PAUSE_GO_CHARGE": "Visszatérés töltésre (szüneteltetve)",
-          "END_GO_CHARGE": "Visszatérés töltésre",
-          "CHARGING": "Töltés",
-          "LEAVE_DOCK": "Elhagyja a dokkolót",
-          "RECALLING": "Visszatér"
+          "unknown": "Ismeretlen",
+          "idle": "Készenlét",
+          "prepare": "Készenlét",
+          "wait_water": "Vízzel töltés",
+          "working": "Dolgozik",
+          "pause_go_charge": "Visszatérés töltésre (szüneteltetve)",
+          "end_go_charge": "Visszatérés töltésre",
+          "charging": "Töltés",
+          "leave_dock": "Elhagyja a dokkolót",
+          "recalling": "Visszatér"
         }
       },
       "spino_work_mode": {
         "name": "Tisztítási mód",
         "state": {
-          "UNKNOWN": "Ismeretlen",
-          "RECHARGE": "Újratöltés",
-          "AUTO": "Mind",
-          "FLOOR": "Fenék",
-          "WALL": "Fal",
-          "ECO": "Eco",
-          "LINE": "Vízvonal",
-          "CUSTOM": "Egyéni"
+          "unknown": "Ismeretlen",
+          "recharge": "Újratöltés",
+          "auto": "Mind",
+          "floor": "Fenék",
+          "wall": "Fal",
+          "eco": "Eco",
+          "line": "Vízvonal",
+          "custom": "Egyéni"
         }
       },
       "spino_error_time": {
@@ -666,34 +666,34 @@
       "voice_gender": {
         "name": "Hang neme",
         "state": {
-          "MAN": "Férfi",
-          "WOMAN": "Nő"
+          "man": "Férfi",
+          "woman": "Nő"
         }
       },
       "spino_work_mode": {
         "name": "Tisztítási mód",
         "state": {
-          "UNKNOWN": "Ismeretlen",
-          "RECHARGE": "Újratöltés",
-          "AUTO": "Mind",
-          "FLOOR": "Fenék",
-          "WALL": "Fal",
-          "ECO": "Eco",
-          "LINE": "Vízvonal",
-          "CUSTOM": "Egyéni"
+          "unknown": "Ismeretlen",
+          "recharge": "Újratöltés",
+          "auto": "Mind",
+          "floor": "Fenék",
+          "wall": "Fal",
+          "eco": "Eco",
+          "line": "Vízvonal",
+          "custom": "Egyéni"
         }
       },
       "voice_language": {
         "name": "Voice language",
         "state": {
-          "ENGLISH": "English",
-          "GERMAN": "German",
-          "FRENCH": "French",
-          "ITALIAN": "Italian",
-          "SPANISH": "Spanish",
-          "PORTUGUESE": "Portuguese",
-          "DUTCH": "Dutch",
-          "SWEDISH": "Swedish"
+          "english": "English",
+          "german": "German",
+          "french": "French",
+          "italian": "Italian",
+          "spanish": "Spanish",
+          "portuguese": "Portuguese",
+          "dutch": "Dutch",
+          "swedish": "Swedish"
         }
       }
     },

@@ -129,29 +129,29 @@
       "position_type": {
         "name": "Type de position de l'appareil",
         "state": {
-          "AREA_BORDER_ON": "Au périmètre",
-          "AREA_INSIDE": "Dans la zone",
-          "AREA_OUT": "Hors zone",
-          "CHANNEL_AREA_OVERLAP": "Chevauchement de zone de chemin",
-          "CHANNEL_ON": "Sur le chemin",
-          "CHARGE_ON": "À la station de recharge",
-          "DUMPING_AREA_INSIDE": "Dans la zone de dépôt",
-          "DUMPING_OUTSIDE": "Hors zone de dépôt",
-          "ABNORMAL_POSITIONING": "Erreur de position",
-          "NO_AREAS": "Aucune zone définie",
-          "OBS_ON": "À l'obstacle",
-          "TURN_AREA_INSIDE": "Dans la zone de demi-tour",
-          "VIRTUAL_INSIDE": "Dans la zone virtuelle"
+          "area_border_on": "Au périmètre",
+          "area_inside": "Dans la zone",
+          "area_out": "Hors zone",
+          "channel_area_overlap": "Chevauchement de zone de chemin",
+          "channel_on": "Sur le chemin",
+          "charge_on": "À la station de recharge",
+          "dumping_area_inside": "Dans la zone de dépôt",
+          "dumping_outside": "Hors zone de dépôt",
+          "abnormal_positioning": "Erreur de position",
+          "no_areas": "Aucune zone définie",
+          "obs_on": "À l'obstacle",
+          "turn_area_inside": "Dans la zone de demi-tour",
+          "virtual_inside": "Dans la zone virtuelle"
         }
       },
       "visual_positioning_status": {
         "name": "État du positionnement visuel",
         "state": {
-          "SIGNAL_NONE": "Aucun",
-          "SIGNAL_INIT": "Initialisation",
-          "SIGNAL_GOOD": "Bon",
-          "SIGNAL_BAD": "Mauvais",
-          "SIGNAL_UNKNOWN": "Inconnu"
+          "signal_none": "Aucun",
+          "signal_init": "Initialisation",
+          "signal_good": "Bon",
+          "signal_bad": "Mauvais",
+          "signal_unknown": "Inconnu"
         }
       },
       "vio_heading": {
@@ -226,30 +226,30 @@
       "activity_mode": {
         "name": "Mode activité",
         "state": {
-          "MODE_NOT_ACTIVE": "Inactif",
-          "MODE_ONLINE": "En ligne",
-          "MODE_OFFLINE": "Hors ligne",
-          "MODE_DISABLE": "Désactivé",
-          "MODE_INITIALIZATION": "Initialisation",
-          "MODE_READY": "Prêt",
-          "MODE_WORKING": "En marche",
-          "MODE_RETURNING": "Retour",
-          "MODE_CHARGING": "En charge",
-          "MODE_UPDATING": "Mise à jour",
-          "MODE_LOCK": "Verrouillé",
-          "MODE_PAUSE": "En pause",
-          "MODE_MANUAL_MOWING": "Tonte manuelle",
-          "MODE_UPDATE_SUCCESS": "Mise à jour réussie",
-          "MODE_OTA_UPGRADE_FAIL": "Mise à jour échouée",
-          "MODE_JOB_DRAW": "Dessin de tâche",
-          "MODE_OBSTACLE_DRAW": "Dessin d'obstacles",
-          "MODE_CHANNEL_DRAW": "Dessin de voie",
-          "MODE_ERASER_DRAW": "Dessin de gomme",
-          "MODE_EDIT_BOUNDARY": "Édition des limites",
-          "MODE_LOCATION_ERROR": "Erreur de localisation",
-          "MODE_BOUNDARY_JUMP": "Limite franchie",
-          "MODE_CHARGING_PAUSE": "Charge en pause",
-          "MODE_POWER_OFF": "Extinction en cours"
+          "mode_not_active": "Inactif",
+          "mode_online": "En ligne",
+          "mode_offline": "Hors ligne",
+          "mode_disable": "Désactivé",
+          "mode_initialization": "Initialisation",
+          "mode_ready": "Prêt",
+          "mode_working": "En marche",
+          "mode_returning": "Retour",
+          "mode_charging": "En charge",
+          "mode_updating": "Mise à jour",
+          "mode_lock": "Verrouillé",
+          "mode_pause": "En pause",
+          "mode_manual_mowing": "Tonte manuelle",
+          "mode_update_success": "Mise à jour réussie",
+          "mode_ota_upgrade_fail": "Mise à jour échouée",
+          "mode_job_draw": "Dessin de tâche",
+          "mode_obstacle_draw": "Dessin d'obstacles",
+          "mode_channel_draw": "Dessin de voie",
+          "mode_eraser_draw": "Dessin de gomme",
+          "mode_edit_boundary": "Édition des limites",
+          "mode_location_error": "Erreur de localisation",
+          "mode_boundary_jump": "Limite franchie",
+          "mode_charging_pause": "Charge en pause",
+          "mode_power_off": "Extinction en cours"
         }
       },
       "work_area": {
@@ -307,29 +307,29 @@
       "position_mode": {
         "name": "Mode de positionnement",
         "state": {
-          "RTK_OVER_DATALINK": "Antenne par DataLink",
-          "RTK_OVER_INTERNET": "Antenne sur Internet",
-          "INAVI_NET_RTK": "iNavi NetRTK",
-          "INAVI_RTK_BOX": "Boîtier iNavi RTK",
-          "UNKNOWN": "Inconnu"
+          "rtk_over_datalink": "Antenne par DataLink",
+          "rtk_over_internet": "Antenne sur Internet",
+          "inavi_net_rtk": "iNavi NetRTK",
+          "inavi_rtk_box": "Boîtier iNavi RTK",
+          "unknown": "Inconnu"
         }
       },
       "rtk_app_connect_type": {
         "name": "Type de connexion",
         "state": {
-          "UNKNOWN": "Inconnu",
-          "CON_BLE": "BLE",
-          "CON_WIFI": "Wi-Fi"
+          "unknown": "Inconnu",
+          "con_ble": "BLE",
+          "con_wifi": "Wi-Fi"
         }
       },
       "task_area_status": {
         "name": "Zone de tâche {name}",
         "state": {
-          "NOT_STARTED": "Non démarré",
-          "WAITING": "En attente",
-          "MOWING": "En cours de tonte",
-          "COMPLETE": "Terminé",
-          "ABORTED": "Abandonné"
+          "not_started": "Non démarré",
+          "waiting": "En attente",
+          "mowing": "En cours de tonte",
+          "complete": "Terminé",
+          "aborted": "Abandonné"
         }
       },
       "spino_battery": {
@@ -338,29 +338,29 @@
       "spino_status": {
         "name": "Statut",
         "state": {
-          "UNKNOWN": "Inconnu",
-          "IDLE": "Veille",
-          "PREPARE": "Veille",
-          "WAIT_WATER": "Remplissage d'eau",
-          "WORKING": "En marche",
-          "PAUSE_GO_CHARGE": "Retour en charge (en pause)",
-          "END_GO_CHARGE": "Retour en charge",
-          "CHARGING": "En charge",
-          "LEAVE_DOCK": "Quitte la station",
-          "RECALLING": "Retour"
+          "unknown": "Inconnu",
+          "idle": "Veille",
+          "prepare": "Veille",
+          "wait_water": "Remplissage d'eau",
+          "working": "En marche",
+          "pause_go_charge": "Retour en charge (en pause)",
+          "end_go_charge": "Retour en charge",
+          "charging": "En charge",
+          "leave_dock": "Quitte la station",
+          "recalling": "Retour"
         }
       },
       "spino_work_mode": {
         "name": "Mode de nettoyage",
         "state": {
-          "UNKNOWN": "Inconnu",
-          "RECHARGE": "Recharge",
-          "AUTO": "Tout",
-          "FLOOR": "Fond",
-          "WALL": "Paroi",
-          "ECO": "Eco",
-          "LINE": "Ligne d'eau",
-          "CUSTOM": "Personnalisé"
+          "unknown": "Inconnu",
+          "recharge": "Recharge",
+          "auto": "Tout",
+          "floor": "Fond",
+          "wall": "Paroi",
+          "eco": "Eco",
+          "line": "Ligne d'eau",
+          "custom": "Personnalisé"
         }
       },
       "spino_error_time": {
@@ -658,8 +658,8 @@
       "voice_gender": {
         "name": "Genre de la voix",
         "state": {
-          "MAN": "Masculin",
-          "WOMAN": "Féminin"
+          "man": "Masculin",
+          "woman": "Féminin"
         }
       },
       "wildlife_safety": {
@@ -673,27 +673,27 @@
       "spino_work_mode": {
         "name": "Mode de nettoyage",
         "state": {
-          "UNKNOWN": "Inconnu",
-          "RECHARGE": "Recharge",
-          "AUTO": "Tout",
-          "FLOOR": "Fond",
-          "WALL": "Paroi",
-          "ECO": "Eco",
-          "LINE": "Ligne d'eau",
-          "CUSTOM": "Personnalisé"
+          "unknown": "Inconnu",
+          "recharge": "Recharge",
+          "auto": "Tout",
+          "floor": "Fond",
+          "wall": "Paroi",
+          "eco": "Eco",
+          "line": "Ligne d'eau",
+          "custom": "Personnalisé"
         }
       },
       "voice_language": {
         "name": "Voice language",
         "state": {
-          "ENGLISH": "English",
-          "GERMAN": "German",
-          "FRENCH": "French",
-          "ITALIAN": "Italian",
-          "SPANISH": "Spanish",
-          "PORTUGUESE": "Portuguese",
-          "DUTCH": "Dutch",
-          "SWEDISH": "Swedish"
+          "english": "English",
+          "german": "German",
+          "french": "French",
+          "italian": "Italian",
+          "spanish": "Spanish",
+          "portuguese": "Portuguese",
+          "dutch": "Dutch",
+          "swedish": "Swedish"
         }
       }
     },

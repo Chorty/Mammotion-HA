@@ -341,7 +341,12 @@ class CameraAgoraCard extends HTMLElement {
       const savedCameraUid = localStorage.getItem('preferredMammotionCameraUid');
       let preferredCameraIndex = null;
 
-      // Update tokens and start streaming
+      // Browser-direct Agora playback is retired: exposing the subscription
+      // token through a public HA service made camera credentials available to
+      // every dashboard caller. Use the integration's native camera/WebRTC
+      // entity, which keeps credentials server-side.
+      throw new Error("Direct Agora card retired; use the Mammotion camera entity");
+      /*
       await this._hass.callService('mammotion', 'refresh_stream', { entity_id: entityId });
       await this._hass.callService('mammotion', 'start_video', { entity_id: entityId });
       const { response } = await this._hass.callService('mammotion', 'get_tokens', { entity_id: entityId, return_response: true }, {}, true, true);
@@ -446,11 +451,6 @@ class CameraAgoraCard extends HTMLElement {
 
       client.setClientRole("host");
 
-      console.log("App ID: " + response.appid);
-      console.log("App Channel: " + response.channelName);
-      console.log("App Token: " + response.token);
-      console.log("App UID: " + response.uid);
-
       // Set timeout for connection
       const connectionTimeout = setTimeout(() => {
         if (!this._isPlaying) {
@@ -468,6 +468,7 @@ class CameraAgoraCard extends HTMLElement {
       this._isConnecting = false;
       
       // Show joystick controls if enabled
+      */
       if (this._config.enableJoystick) {
         this._toggleJoystickVisibility(true);
       }

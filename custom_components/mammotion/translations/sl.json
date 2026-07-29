@@ -129,29 +129,29 @@
       "position_type": {
         "name": "Vrsta pozicioniranja",
         "state": {
-          "AREA_BORDER_ON": "Na obodu",
-          "AREA_INSIDE": "Znotraj področja",
-          "AREA_OUT": "Zunaj področja",
-          "CHANNEL_AREA_OVERLAP": "Prekrivanje področja poti",
-          "CHANNEL_ON": "Na poti",
-          "CHARGE_ON": "Na polnilni postaji",
-          "DUMPING_AREA_INSIDE": "V področju odlaganja",
-          "DUMPING_OUTSIDE": "Zunaj področja odlaganja",
-          "ABNORMAL_POSITIONING": "Napaka pozicije",
-          "NO_AREAS": "Ni definiranih področij",
-          "OBS_ON": "Pri oviri",
-          "TURN_AREA_INSIDE": "V področju obračanja",
-          "VIRTUAL_INSIDE": "V virtualnem področju"
+          "area_border_on": "Na obodu",
+          "area_inside": "Znotraj področja",
+          "area_out": "Zunaj področja",
+          "channel_area_overlap": "Prekrivanje področja poti",
+          "channel_on": "Na poti",
+          "charge_on": "Na polnilni postaji",
+          "dumping_area_inside": "V področju odlaganja",
+          "dumping_outside": "Zunaj področja odlaganja",
+          "abnormal_positioning": "Napaka pozicije",
+          "no_areas": "Ni definiranih področij",
+          "obs_on": "Pri oviri",
+          "turn_area_inside": "V področju obračanja",
+          "virtual_inside": "V virtualnem področju"
         }
       },
       "visual_positioning_status": {
         "name": "Stanje vizualnega pozicioniranja",
         "state": {
-          "SIGNAL_NONE": "Brez",
-          "SIGNAL_INIT": "Inicializacija",
-          "SIGNAL_GOOD": "Dobro",
-          "SIGNAL_BAD": "Slabo",
-          "SIGNAL_UNKNOWN": "Neznano"
+          "signal_none": "Brez",
+          "signal_init": "Inicializacija",
+          "signal_good": "Dobro",
+          "signal_bad": "Slabo",
+          "signal_unknown": "Neznano"
         }
       },
       "vio_heading": {
@@ -226,30 +226,30 @@
       "activity_mode": {
         "name": "Vrsta dejavnosti",
         "state": {
-          "MODE_NOT_ACTIVE": "Neaktivno",
-          "MODE_ONLINE": "Online",
-          "MODE_OFFLINE": "Offline",
-          "MODE_DISABLE": "Onemogočeno",
-          "MODE_INITIALIZATION": "Inicializacija",
-          "MODE_READY": "Pripravljeno",
-          "MODE_WORKING": "Deluje",
-          "MODE_RETURNING": "Vrača se",
-          "MODE_CHARGING": "Polnjenje",
-          "MODE_UPDATING": "Posodabljanje",
-          "MODE_LOCK": "Zaklenjeno",
-          "MODE_PAUSE": "Zaustavljeno",
-          "MODE_MANUAL_MOWING": "Ročna košnja",
-          "MODE_UPDATE_SUCCESS": "Posodobitev uspešna",
-          "MODE_OTA_UPGRADE_FAIL": "Posodobitev neuspešna",
-          "MODE_JOB_DRAW": "Risanje naloge",
-          "MODE_OBSTACLE_DRAW": "Risanje ovir",
-          "MODE_CHANNEL_DRAW": "Risanje kanala",
-          "MODE_ERASER_DRAW": "Risanje radirke",
-          "MODE_EDIT_BOUNDARY": "Urejanje meje",
-          "MODE_LOCATION_ERROR": "Napaka lokacije",
-          "MODE_BOUNDARY_JUMP": "Prečkanje meje",
-          "MODE_CHARGING_PAUSE": "Polnjenje zaustavljeno",
-          "MODE_POWER_OFF": "Izklop"
+          "mode_not_active": "Neaktivno",
+          "mode_online": "Online",
+          "mode_offline": "Offline",
+          "mode_disable": "Onemogočeno",
+          "mode_initialization": "Inicializacija",
+          "mode_ready": "Pripravljeno",
+          "mode_working": "Deluje",
+          "mode_returning": "Vrača se",
+          "mode_charging": "Polnjenje",
+          "mode_updating": "Posodabljanje",
+          "mode_lock": "Zaklenjeno",
+          "mode_pause": "Zaustavljeno",
+          "mode_manual_mowing": "Ročna košnja",
+          "mode_update_success": "Posodobitev uspešna",
+          "mode_ota_upgrade_fail": "Posodobitev neuspešna",
+          "mode_job_draw": "Risanje naloge",
+          "mode_obstacle_draw": "Risanje ovir",
+          "mode_channel_draw": "Risanje kanala",
+          "mode_eraser_draw": "Risanje radirke",
+          "mode_edit_boundary": "Urejanje meje",
+          "mode_location_error": "Napaka lokacije",
+          "mode_boundary_jump": "Prečkanje meje",
+          "mode_charging_pause": "Polnjenje zaustavljeno",
+          "mode_power_off": "Izklop"
         }
       },
       "work_area": {
@@ -307,29 +307,29 @@
       "position_mode": {
         "name": "Način pozicioniranja",
         "state": {
-          "RTK_OVER_DATALINK": "Antena prek DataLink",
-          "RTK_OVER_INTERNET": "Antena prek interneta",
-          "INAVI_NET_RTK": "iNavi NetRTK",
-          "INAVI_RTK_BOX": "iNavi RTK škatla",
-          "UNKNOWN": "Neznano"
+          "rtk_over_datalink": "Antena prek DataLink",
+          "rtk_over_internet": "Antena prek interneta",
+          "inavi_net_rtk": "iNavi NetRTK",
+          "inavi_rtk_box": "iNavi RTK škatla",
+          "unknown": "Neznano"
         }
       },
       "rtk_app_connect_type": {
         "name": "Vrsta povezave",
         "state": {
-          "UNKNOWN": "Neznano",
-          "CON_BLE": "BLE",
-          "CON_WIFI": "Wi-Fi"
+          "unknown": "Neznano",
+          "con_ble": "BLE",
+          "con_wifi": "Wi-Fi"
         }
       },
       "task_area_status": {
         "name": "Področje naloge {name}",
         "state": {
-          "NOT_STARTED": "Ni začeto",
-          "WAITING": "Čaka",
-          "MOWING": "Košnja",
-          "COMPLETE": "Dokončano",
-          "ABORTED": "Prekinjeno"
+          "not_started": "Ni začeto",
+          "waiting": "Čaka",
+          "mowing": "Košnja",
+          "complete": "Dokončano",
+          "aborted": "Prekinjeno"
         }
       },
       "spino_battery": {
@@ -338,29 +338,29 @@
       "spino_status": {
         "name": "Stanje",
         "state": {
-          "UNKNOWN": "Neznano",
-          "IDLE": "Pripravljenost",
-          "PREPARE": "Pripravljenost",
-          "WAIT_WATER": "Polnjenje z vodo",
-          "WORKING": "Deluje",
-          "PAUSE_GO_CHARGE": "Vračanje na polnjenje (zaustavljeno)",
-          "END_GO_CHARGE": "Vračanje na polnjenje",
-          "CHARGING": "Polnjenje",
-          "LEAVE_DOCK": "Zapušča postajo",
-          "RECALLING": "Vrača se"
+          "unknown": "Neznano",
+          "idle": "Pripravljenost",
+          "prepare": "Pripravljenost",
+          "wait_water": "Polnjenje z vodo",
+          "working": "Deluje",
+          "pause_go_charge": "Vračanje na polnjenje (zaustavljeno)",
+          "end_go_charge": "Vračanje na polnjenje",
+          "charging": "Polnjenje",
+          "leave_dock": "Zapušča postajo",
+          "recalling": "Vrača se"
         }
       },
       "spino_work_mode": {
         "name": "Način čiščenja",
         "state": {
-          "UNKNOWN": "Neznano",
-          "RECHARGE": "Ponovno polnjenje",
-          "AUTO": "Vse",
-          "FLOOR": "Dno",
-          "WALL": "Stena",
-          "ECO": "Eko",
-          "LINE": "Vodna gladina",
-          "CUSTOM": "Po meri"
+          "unknown": "Neznano",
+          "recharge": "Ponovno polnjenje",
+          "auto": "Vse",
+          "floor": "Dno",
+          "wall": "Stena",
+          "eco": "Eko",
+          "line": "Vodna gladina",
+          "custom": "Po meri"
         }
       },
       "spino_error_time": {
@@ -658,8 +658,8 @@
       "voice_gender": {
         "name": "Spol glasu",
         "state": {
-          "MAN": "Moški",
-          "WOMAN": "Ženski"
+          "man": "Moški",
+          "woman": "Ženski"
         }
       },
       "wildlife_safety": {
@@ -673,27 +673,27 @@
       "spino_work_mode": {
         "name": "Način čiščenja",
         "state": {
-          "UNKNOWN": "Neznano",
-          "RECHARGE": "Ponovno polnjenje",
-          "AUTO": "Vse",
-          "FLOOR": "Dno",
-          "WALL": "Stena",
-          "ECO": "Eko",
-          "LINE": "Vodna gladina",
-          "CUSTOM": "Po meri"
+          "unknown": "Neznano",
+          "recharge": "Ponovno polnjenje",
+          "auto": "Vse",
+          "floor": "Dno",
+          "wall": "Stena",
+          "eco": "Eko",
+          "line": "Vodna gladina",
+          "custom": "Po meri"
         }
       },
       "voice_language": {
         "name": "Voice language",
         "state": {
-          "ENGLISH": "English",
-          "GERMAN": "German",
-          "FRENCH": "French",
-          "ITALIAN": "Italian",
-          "SPANISH": "Spanish",
-          "PORTUGUESE": "Portuguese",
-          "DUTCH": "Dutch",
-          "SWEDISH": "Swedish"
+          "english": "English",
+          "german": "German",
+          "french": "French",
+          "italian": "Italian",
+          "spanish": "Spanish",
+          "portuguese": "Portuguese",
+          "dutch": "Dutch",
+          "swedish": "Swedish"
         }
       }
     },
