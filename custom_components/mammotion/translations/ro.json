@@ -461,6 +461,12 @@
       },
       "last_camera_stream_failure_code": {
         "name": "Ultimul cod de eroare al fluxului camerei"
+      },
+      "spino_ble_rssi": {
+        "name": "BLE RSSI"
+      },
+      "spino_wifi_rssi": {
+        "name": "Wi-Fi RSSI"
       }
     },
     "button": {
@@ -511,6 +517,12 @@
       },
       "refresh_cloud_session": {
         "name": "Reîmprospătează sesiunea cloud"
+      },
+      "spino_fetch_map": {
+        "name": "Preia harta piscinei"
+      },
+      "spino_fetch_line": {
+        "name": "Preia traseul de curățare"
       }
     },
     "switch": {
@@ -695,6 +707,24 @@
           "dutch": "Dutch",
           "swedish": "Swedish"
         }
+      },
+      "spino_wall_material": {
+        "name": "Materialul pereților",
+        "state": {
+          "glass": "Sticlă",
+          "ceramics": "Faianță",
+          "sand_stone": "Agregat",
+          "vinyl": "Vinil"
+        }
+      },
+      "spino_bottom_type": {
+        "name": "Forma fundului piscinei",
+        "state": {
+          "right_angle_simple": "Unghi drept (simplu)",
+          "right_angle_complex": "Unghi drept (complex)",
+          "curve_simple": "Curbat (simplu)",
+          "curve_complex": "Curbat (complex)"
+        }
       }
     },
     "number": {
@@ -730,12 +760,16 @@
       },
       "prompt_volume": {
         "name": "Prompt volume"
+      },
+      "spino_floor_speed": {
+        "name": "Viteza pe fundul piscinei"
       }
     },
     "device_tracker": {
       "device_tracker": {
         "name": "Monitorizarea dispozitivului"
-      }
+      },
+      "name": "Monitorizarea dispozitivului"
     }
   },
   "selector": {

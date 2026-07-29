@@ -8873,8 +8873,6 @@ def test_services_yaml_has_matching_strings_entries() -> None:
         "raw_pymammotion_turn_to_heading",
         "raw_vector_readiness_test",
         "refresh_stream",
-        "set_non_work_hours",
-        "start_stop_blades",
         "start_video",
         "stop_video",
         "vio_motion_probe",

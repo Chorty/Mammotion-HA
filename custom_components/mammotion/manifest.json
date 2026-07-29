@@ -1,6 +1,9 @@
 {
   "domain": "mammotion",
   "name": "Mammotion",
+  "version": "0.6.4-beta11",
+  "issue_tracker": "https://github.com/mikey0000/Mammotion-HA/issues",
+  "integration_type": "device",
   "bluetooth": [
     {
       "local_name": "Luba-*",
@@ -32,6 +35,5 @@
   ],
   "requirements": [
     "pymammotion==0.8.12"
-  ],
-  "version": "0.6.4-beta11"
+  ]
 }

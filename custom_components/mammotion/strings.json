@@ -68,7 +68,7 @@
           "title": "Update Configuration",
           "stay_connected_bluetooth": "Keep Bluetooth connected",
           "prefer_ble_over_wifi": "Prefer Bluetooth over Wi-Fi when available",
-          "movement_use_wifi": "Deprecated: send movement commands over Wi-Fi (ignored for manual motion)",
+          "movement_use_wifi": "Send movement commands over Wi-Fi",
           "enable_experimental_motion": "Enable experimental BLE-only manual motion",
           "mow_path_fetch_enabled": "Enable mow path fetching (cloud)",
           "full_map_fetch_enabled": "Enable full map fetching (cloud) — when off, only area names are fetched"
@@ -187,7 +187,22 @@
         }
       },
       "position_type": {
-        "name": "Device position type"
+        "name": "Device position type",
+        "state": {
+          "area_border_on": "At perimeter",
+          "area_inside": "Inside area",
+          "area_out": "Outside area",
+          "channel_area_overlap": "Path area overlap",
+          "channel_on": "On path",
+          "charge_on": "At charging station",
+          "dumping_area_inside": "In dump area",
+          "dumping_outside": "Outside dump area",
+          "abnormal_positioning": "Position error",
+          "no_areas": "No areas defined",
+          "obs_on": "At obstacle",
+          "turn_area_inside": "In turn area",
+          "virtual_inside": "In virtual area"
+        }
       },
       "visual_positioning_status": {
         "name": "Visual positioning status",
@@ -269,7 +284,33 @@
         "name": "Lock state"
       },
       "activity_mode": {
-        "name": "Activity mode"
+        "name": "Activity mode",
+        "state": {
+          "mode_not_active": "Not active",
+          "mode_online": "Online",
+          "mode_offline": "Offline",
+          "mode_disable": "Disabled",
+          "mode_initialization": "Initializing",
+          "mode_ready": "Ready",
+          "mode_working": "Working",
+          "mode_returning": "Returning",
+          "mode_charging": "Charging",
+          "mode_updating": "Updating",
+          "mode_lock": "Locked",
+          "mode_pause": "Paused",
+          "mode_manual_mowing": "Manual mowing",
+          "mode_update_success": "Update successful",
+          "mode_ota_upgrade_fail": "Update failed",
+          "mode_job_draw": "Drawing job",
+          "mode_obstacle_draw": "Drawing obstacles",
+          "mode_channel_draw": "Drawing channel",
+          "mode_eraser_draw": "Drawing eraser",
+          "mode_edit_boundary": "Editing boundary",
+          "mode_location_error": "Location error",
+          "mode_boundary_jump": "Boundary crossed",
+          "mode_charging_pause": "Charging paused",
+          "mode_power_off": "Powering off"
+        }
       },
       "work_area": {
         "name": "Current location"
@@ -376,7 +417,7 @@
       "spino_work_mode": {
         "name": "Cleaning mode",
         "state": {
-          "unknown": "Unknown",
+          "unknown": "None",
           "recharge": "Recharge",
           "auto": "All",
           "floor": "Floor",
@@ -384,6 +425,59 @@
           "eco": "Eco",
           "line": "Waterline",
           "custom": "Custom"
+        }
+      },
+      "camera_brightness": {
+        "name": "Camera Brightness"
+      },
+      "maintenance_distance": {
+        "name": "Total mileage"
+      },
+      "maintenance_work_time": {
+        "name": "Total work time"
+      },
+      "maintenance_bat_cycles": {
+        "name": "Battery cycles",
+        "unit_of_measurement": "cycles"
+      },
+      "blade_used_time": {
+        "name": "Blade used time"
+      },
+      "blade_used_warn_time": {
+        "name": "Blade wear warning time"
+      },
+      "non_work_hours": {
+        "name": "Non-work hours"
+      },
+      "rtk_lora": {
+        "name": "LoRa version"
+      },
+      "rtk_wifi_rssi": {
+        "name": "Wi-Fi RSSI"
+      },
+      "rtk_sats_num": {
+        "name": "Satellites"
+      },
+      "spino_ble_rssi": {
+        "name": "BLE RSSI"
+      },
+      "spino_wifi_rssi": {
+        "name": "WiFi RSSI"
+      },
+      "spino_error_time": {
+        "name": "Last error time"
+      },
+      "spino_error_message": {
+        "name": "Last error"
+      },
+      "spino_error_code": {
+        "name": "Last error code"
+      },
+      "spino_mqtt_status": {
+        "name": "MQTT status",
+        "state": {
+          "online": "Online",
+          "offline": "Offline"
         }
       }
     },
@@ -435,6 +529,12 @@
       },
       "spino_refresh_status": {
         "name": "Refresh status"
+      },
+      "start_schedule_sync": {
+        "name": "Synchronize schedules"
+      },
+      "restart_mower": {
+        "name": "Restart mower"
       }
     },
     "switch": {
@@ -488,6 +588,18 @@
       },
       "spino_waterline_parking": {
         "name": "Waterline parking"
+      },
+      "bluetooth_enabled": {
+        "name": "Bluetooth"
+      },
+      "cloud_enabled": {
+        "name": "Cloud"
+      },
+      "manual_light": {
+        "name": "Manual light on/off"
+      },
+      "night_light": {
+        "name": "Auto lighting on/off"
       }
     },
     "select": {
@@ -568,7 +680,7 @@
       "spino_work_mode": {
         "name": "Cleaning mode",
         "state": {
-          "unknown": "Unknown",
+          "unknown": "None",
           "recharge": "Recharge",
           "auto": "All",
           "floor": "Floor",
@@ -583,7 +695,8 @@
         "state": {
           "glass": "Glass",
           "ceramics": "Tile",
-          "sand_stone": "Mosaic"
+          "sand_stone": "Aggregate",
+          "vinyl": "Vinyl"
         }
       },
       "spino_bottom_type": {
@@ -593,6 +706,36 @@
           "right_angle_complex": "Right angle (complex)",
           "curve_simple": "Curved (simple)",
           "curve_complex": "Curved (complex)"
+        }
+      },
+      "traversal_mode": {
+        "name": "Traversal Mode",
+        "state": {
+          "direct": "Direct",
+          "follow_perimeter": "Follow the perimeter"
+        }
+      },
+      "turning_mode": {
+        "name": "Turnaround Mode",
+        "state": {
+          "multipoint": "Multipoint turn",
+          "zero_turn": "Zero turn"
+        }
+      },
+      "wildlife_safety": {
+        "name": "Wildlife Safety",
+        "state": {
+          "off": "Off",
+          "stop_mowing": "Stop Mowing",
+          "low_speed_mowing": "Low-Speed Mowing"
+        }
+      },
+      "cutter_mode": {
+        "name": "Cutter Speed",
+        "state": {
+          "normal": "Medium",
+          "slow": "Slow",
+          "fast": "Fast"
         }
       }
     },
@@ -637,7 +780,8 @@
     "device_tracker": {
       "device_tracker": {
         "name": "Device Tracking"
-      }
+      },
+      "name": "Device Tracking"
     }
   },
   "selector": {
@@ -2058,6 +2202,34 @@
     "start_task": {
       "name": "Start task",
       "description": "Run a stored schedule immediately (also known as 'start schedule'). Mower-only — the Spino pool cleaner has no equivalent command, so targeting a Spino task entity raises an error."
+    },
+    "start_stop_blades": {
+      "name": "Start or stop blades",
+      "description": "Start or stop the blades manually.",
+      "fields": {
+        "start_stop": {
+          "name": "Start or stop",
+          "description": "Whether blades are on or off."
+        },
+        "blade_height": {
+          "name": "Blade height",
+          "description": "Height of the blade."
+        }
+      }
+    },
+    "set_non_work_hours": {
+      "name": "Set non-work hours",
+      "description": "Set the hours when the mower is not working.",
+      "fields": {
+        "start_time": {
+          "name": "Start time",
+          "description": "Start time of the non-work hours."
+        },
+        "end_time": {
+          "name": "End time",
+          "description": "End time of the non-work hours."
+        }
+      }
     }
   },
   "exceptions": {

@@ -461,6 +461,12 @@
       },
       "last_camera_stream_failure_code": {
         "name": "Ostatni kod błędu strumienia kamery"
+      },
+      "spino_ble_rssi": {
+        "name": "BLE RSSI"
+      },
+      "spino_wifi_rssi": {
+        "name": "Wi-Fi RSSI"
       }
     },
     "button": {
@@ -511,6 +517,12 @@
       },
       "refresh_cloud_session": {
         "name": "Odśwież sesję chmury"
+      },
+      "spino_fetch_map": {
+        "name": "Pobierz mapę basenu"
+      },
+      "spino_fetch_line": {
+        "name": "Pobierz trasę czyszczenia"
       }
     },
     "switch": {
@@ -695,6 +707,24 @@
           "dutch": "Dutch",
           "swedish": "Swedish"
         }
+      },
+      "spino_wall_material": {
+        "name": "Materiał ścian",
+        "state": {
+          "glass": "Szkło",
+          "ceramics": "Płytki",
+          "sand_stone": "Kruszywo",
+          "vinyl": "Winyl"
+        }
+      },
+      "spino_bottom_type": {
+        "name": "Kształt dna basenu",
+        "state": {
+          "right_angle_simple": "Prostokątne (proste)",
+          "right_angle_complex": "Prostokątne (złożone)",
+          "curve_simple": "Zaokrąglone (proste)",
+          "curve_complex": "Zaokrąglone (złożone)"
+        }
       }
     },
     "number": {
@@ -730,12 +760,16 @@
       },
       "prompt_volume": {
         "name": "Prompt volume"
+      },
+      "spino_floor_speed": {
+        "name": "Prędkość na dnie basenu"
       }
     },
     "device_tracker": {
       "device_tracker": {
         "name": "Śledzenie urządzenia"
-      }
+      },
+      "name": "Śledzenie urządzenia"
     }
   },
   "selector": {

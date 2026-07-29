@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.components.device_tracker import SourceType, TrackerEntity
 from homeassistant.core import HomeAssistant
@@ -83,10 +83,7 @@ class MammotionTracker(MammotionBaseEntity, TrackerEntity, RestoreEntity):
             return None
         cos_lat = math.cos(math.radians(lat))
         if cos_lat == 0:
-            return lon
-        return lon + self.coordinator.map_offset_lon / (111_111.0 * cos_lat)
-
-    @property
-    def battery_level(self) -> int | None:
-        """Return the battery level of the device."""
-        return self.coordinator.data.report_data.dev.battery_val
+            return cast(float, lon)
+        return cast(float, lon) + self.coordinator.map_offset_lon / (
+            111_111.0 * cos_lat
+        )

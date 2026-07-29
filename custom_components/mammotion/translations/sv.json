@@ -461,6 +461,12 @@
       },
       "last_camera_stream_failure_code": {
         "name": "Senaste felkod för kamerastream"
+      },
+      "spino_ble_rssi": {
+        "name": "BLE RSSI"
+      },
+      "spino_wifi_rssi": {
+        "name": "Wi-Fi RSSI"
       }
     },
     "button": {
@@ -511,6 +517,12 @@
       },
       "refresh_cloud_session": {
         "name": "Uppdatera molnsession"
+      },
+      "spino_fetch_map": {
+        "name": "Hämta poolkarta"
+      },
+      "spino_fetch_line": {
+        "name": "Hämta rengöringsrutt"
       }
     },
     "switch": {
@@ -695,6 +707,24 @@
           "dutch": "Dutch",
           "swedish": "Swedish"
         }
+      },
+      "spino_wall_material": {
+        "name": "Väggmaterial",
+        "state": {
+          "glass": "Glas",
+          "ceramics": "Kakel",
+          "sand_stone": "Stenmaterial",
+          "vinyl": "Vinyl"
+        }
+      },
+      "spino_bottom_type": {
+        "name": "Poolbottens form",
+        "state": {
+          "right_angle_simple": "Rätvinklig (enkel)",
+          "right_angle_complex": "Rätvinklig (komplex)",
+          "curve_simple": "Böjd (enkel)",
+          "curve_complex": "Böjd (komplex)"
+        }
       }
     },
     "number": {
@@ -730,12 +760,16 @@
       },
       "prompt_volume": {
         "name": "Prompt volume"
+      },
+      "spino_floor_speed": {
+        "name": "Hastighet på poolbotten"
       }
     },
     "device_tracker": {
       "device_tracker": {
         "name": "Spårning av enhet"
-      }
+      },
+      "name": "Spårning av enhet"
     }
   },
   "selector": {

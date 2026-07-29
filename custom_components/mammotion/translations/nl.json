@@ -461,6 +461,12 @@
       },
       "last_camera_stream_failure_code": {
         "name": "Laatste foutcode van camerastream"
+      },
+      "spino_ble_rssi": {
+        "name": "BLE RSSI"
+      },
+      "spino_wifi_rssi": {
+        "name": "WiFi RSSI"
       }
     },
     "button": {
@@ -511,6 +517,12 @@
       },
       "refresh_cloud_session": {
         "name": "Cloudsessie vernieuwen"
+      },
+      "spino_fetch_map": {
+        "name": "Zwembadkaart ophalen"
+      },
+      "spino_fetch_line": {
+        "name": "Schoonmaakroute ophalen"
       }
     },
     "switch": {
@@ -695,6 +707,24 @@
           "dutch": "Dutch",
           "swedish": "Swedish"
         }
+      },
+      "spino_wall_material": {
+        "name": "Wandmateriaal",
+        "state": {
+          "glass": "Glas",
+          "ceramics": "Tegels",
+          "sand_stone": "Aggregaat",
+          "vinyl": "Vinyl"
+        }
+      },
+      "spino_bottom_type": {
+        "name": "Vorm van de zwembadbodem",
+        "state": {
+          "right_angle_simple": "Rechte hoek (eenvoudig)",
+          "right_angle_complex": "Rechte hoek (complex)",
+          "curve_simple": "Gebogen (eenvoudig)",
+          "curve_complex": "Gebogen (complex)"
+        }
       }
     },
     "number": {
@@ -730,12 +760,16 @@
       },
       "prompt_volume": {
         "name": "Prompt volume"
+      },
+      "spino_floor_speed": {
+        "name": "Snelheid op de zwembadbodem"
       }
     },
     "device_tracker": {
       "device_tracker": {
         "name": "Apparaat volgen"
-      }
+      },
+      "name": "Apparaat volgen"
     }
   },
   "selector": {

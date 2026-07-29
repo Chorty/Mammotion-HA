@@ -461,6 +461,12 @@
       },
       "last_camera_stream_failure_code": {
         "name": "Poslední kód chyby streamu kamery"
+      },
+      "spino_ble_rssi": {
+        "name": "BLE RSSI"
+      },
+      "spino_wifi_rssi": {
+        "name": "WiFi RSSI"
       }
     },
     "button": {
@@ -511,6 +517,12 @@
       },
       "refresh_cloud_session": {
         "name": "Obnovit cloud relaci"
+      },
+      "spino_fetch_map": {
+        "name": "Načíst mapu bazénu"
+      },
+      "spino_fetch_line": {
+        "name": "Načíst trasu čištění"
       }
     },
     "switch": {
@@ -695,6 +707,24 @@
           "dutch": "Dutch",
           "swedish": "Swedish"
         }
+      },
+      "spino_wall_material": {
+        "name": "Materiál stěn",
+        "state": {
+          "glass": "Sklo",
+          "ceramics": "Dlaždice",
+          "sand_stone": "Kamenivo",
+          "vinyl": "Vinyl"
+        }
+      },
+      "spino_bottom_type": {
+        "name": "Tvar dna bazénu",
+        "state": {
+          "right_angle_simple": "Pravoúhlé (jednoduché)",
+          "right_angle_complex": "Pravoúhlé (složité)",
+          "curve_simple": "Zaoblené (jednoduché)",
+          "curve_complex": "Zaoblené (složité)"
+        }
       }
     },
     "number": {
@@ -730,12 +760,16 @@
       },
       "prompt_volume": {
         "name": "Prompt volume"
+      },
+      "spino_floor_speed": {
+        "name": "Rychlost na dně bazénu"
       }
     },
     "device_tracker": {
       "device_tracker": {
         "name": "Sledování zařízení"
-      }
+      },
+      "name": "Sledování zařízení"
     }
   },
   "selector": {

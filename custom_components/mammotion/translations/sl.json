@@ -461,6 +461,12 @@
       },
       "last_camera_stream_failure_code": {
         "name": "Zadnja koda napake toka kamere"
+      },
+      "spino_ble_rssi": {
+        "name": "BLE RSSI"
+      },
+      "spino_wifi_rssi": {
+        "name": "Wifi RSSI"
       }
     },
     "button": {
@@ -511,6 +517,12 @@
       },
       "refresh_cloud_session": {
         "name": "Osveži sejo v oblaku"
+      },
+      "spino_fetch_map": {
+        "name": "Pridobi zemljevid bazena"
+      },
+      "spino_fetch_line": {
+        "name": "Pridobi pot čiščenja"
       }
     },
     "switch": {
@@ -695,6 +707,24 @@
           "dutch": "Dutch",
           "swedish": "Swedish"
         }
+      },
+      "spino_wall_material": {
+        "name": "Material sten",
+        "state": {
+          "glass": "Steklo",
+          "ceramics": "Ploščice",
+          "sand_stone": "Agregat",
+          "vinyl": "Vinil"
+        }
+      },
+      "spino_bottom_type": {
+        "name": "Oblika dna bazena",
+        "state": {
+          "right_angle_simple": "Pravokotno (enostavno)",
+          "right_angle_complex": "Pravokotno (zapleteno)",
+          "curve_simple": "Zaobljeno (enostavno)",
+          "curve_complex": "Zaobljeno (zapleteno)"
+        }
       }
     },
     "number": {
@@ -730,12 +760,16 @@
       },
       "prompt_volume": {
         "name": "Prompt volume"
+      },
+      "spino_floor_speed": {
+        "name": "Hitrost na dnu bazena"
       }
     },
     "device_tracker": {
       "device_tracker": {
         "name": "Sledenje"
-      }
+      },
+      "name": "Sledenje"
     }
   },
   "selector": {

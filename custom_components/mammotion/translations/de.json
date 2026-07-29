@@ -461,6 +461,12 @@
       },
       "last_camera_stream_failure_code": {
         "name": "Letzter Fehlercode des Kamera-Streams"
+      },
+      "spino_ble_rssi": {
+        "name": "Bluetooth Signalqualität (RSSI)"
+      },
+      "spino_wifi_rssi": {
+        "name": "WLAN Signalqualität (RSSI)"
       }
     },
     "button": {
@@ -511,6 +517,12 @@
       },
       "refresh_cloud_session": {
         "name": "Cloud-Sitzung aktualisieren"
+      },
+      "spino_fetch_map": {
+        "name": "Poolkarte abrufen"
+      },
+      "spino_fetch_line": {
+        "name": "Reinigungsroute abrufen"
       }
     },
     "switch": {
@@ -695,6 +707,24 @@
           "dutch": "Dutch",
           "swedish": "Swedish"
         }
+      },
+      "spino_wall_material": {
+        "name": "Wandmaterial",
+        "state": {
+          "glass": "Glas",
+          "ceramics": "Fliesen",
+          "sand_stone": "Steinbeschichtung",
+          "vinyl": "Vinyl"
+        }
+      },
+      "spino_bottom_type": {
+        "name": "Form des Poolbodens",
+        "state": {
+          "right_angle_simple": "Rechtwinklig (einfach)",
+          "right_angle_complex": "Rechtwinklig (komplex)",
+          "curve_simple": "Gewölbt (einfach)",
+          "curve_complex": "Gewölbt (komplex)"
+        }
       }
     },
     "number": {
@@ -730,12 +760,16 @@
       },
       "prompt_volume": {
         "name": "Prompt volume"
+      },
+      "spino_floor_speed": {
+        "name": "Geschwindigkeit am Poolboden"
       }
     },
     "device_tracker": {
       "device_tracker": {
         "name": "Geräteverfolgung"
-      }
+      },
+      "name": "Geräteverfolgung"
     }
   },
   "selector": {
