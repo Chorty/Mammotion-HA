@@ -495,7 +495,61 @@ hardware.** Three `go`-authorised attempts tonight: two aborted at the BLE gate
 before sending anything, one reached the mower and found no actuation. The code
 is deployed and unit-tested; nothing about it has been proven live.
 
-## 🚨 2026-07-28 BLE ROOT-CAUSE LEAD: the keepalive stops SILENTLY (top priority)
+## 🚨🚨 2026-07-28 ROOT CAUSE: BLE commands are QUEUED AND DELIVERED ~20s LATE
+
+**This supersedes the "keepalive stops silently" framing below.** The commands are
+not lost and the link is not dead. **They are queued and flush ~20 seconds
+later.** Proven, not inferred:
+
+```
+21:06:20.090  ONE 40-byte send          <- command issued
+21:06:20-33   command window; RTK shows < 3 mm  -> looked like NO ACTUATION
+21:06:41-43   21x 40-byte sends BURST   <- the queue flushes, ~21 s late
+21:07:16      mower has moved 1.0778 m  <- it drove AFTER sampling ended
+```
+
+The same signature appears in the earlier failure: one send at 20:47:25, silence
+through the whole run, then a 29/32/50/53-byte burst at 20:47:52-53.
+
+### Why this matters more than any accuracy bug
+
+🔴 **BOUNDED PULSES ARE NOT BOUNDED.** The safety model is "send a bounded pulse,
+then deliver a mandatory explicit stop." When the queue stalls, the movement
+commands *and the stop* flush together ~20 s late. The mower therefore executes
+motion on its own schedule, **after** the operator and the executor both believe
+the window closed and the mower was reported stationary. On 2026-07-28 the mower
+was reported unmoved, then drove 1.08 m unattended.
+
+**No motion testing until this is understood.** Not a "work around it" bug.
+
+### What it retroactively explains
+
+- Every `no_actuation_detected` / 0.9 mm reading tonight: the measurement window
+  closed before the commands were delivered. **The mower was never at fault, and
+  neither was the e-stop the operator was sent to check.**
+- The apparent "keepalive stops" pattern: the transport is not idle, it is
+  BLOCKED. Sends queue up and burst on release.
+- Why `active_transport` stays `ble` and no GATT disconnect is ever logged — the
+  link is genuinely fine the whole time.
+
+### The gate does NOT catch this
+
+The motion pre-flight samples `BLETransport send` over the last 20-25 s and
+requires >= 2. During the failed run the count was **2** — technically passing,
+while the transport was already stalling. **A count-based liveness check cannot
+detect a queue stall.** It needs to verify sends are landing *inside the command
+window*, or better, that the queue depth is zero before issuing motion.
+
+### Prime suspect (NOT yet confirmed)
+
+The exclusive `MapFetchSaga`: motion commands are `Priority.NORMAL` and wait on
+the exclusive slot, and >120 s are silently dropped. `_exclusive_saga_active()`
+was added to guard `_wrap_exclusive_manual_motion`, so either it is not wired
+into this path or something else holds the queue. ~20 s is also suspiciously
+close to a timeout constant. **Off-mower next step:** instrument the pymammotion
+command queue (depth + time-to-flush), and find what holds it for ~20 s.
+
+## 2026-07-28 (superseded framing): the keepalive appears to stop
 
 The best lead yet on the BLE instability, and it reframes it. **The link is not
 dropping — the keepalive task stops.**
