@@ -380,6 +380,121 @@ compare first-pulse distance.
 **And 1.06 was a good constant after all** — run 4's pulses averaged 1.00 and
 self-calibration converged to 1.0374, within 2% of the baked-in default.
 
+## 🚨 2026-07-28: EVERY MAP CONTAINMENT CHECK WAS INERT (fixed `0a591eb4`, DEPLOYED)
+
+The single most important find of the project so far, and it was found by
+accident. The operator moved the mower off a fence; asking "what does telemetry
+look like near a boundary?" led to measuring the real polygon, which exposed
+this.
+
+**`_point_in_polygon` returned True for the entire plane.** So
+`validate_custom_path` could never emit
+`path_points_outside_known_area_geometry`, and **every "path valid: true" this
+project has ever relied on proved nothing about containment** — including the
+ones used to justify the 2026-07-27 runs.
+
+Root cause: the mower sends area polygons as **CLOSED RINGS** (first vertex ==
+last). `_point_in_polygon` seeds its loop with `previous = polygon[-1]`,
+`current = polygon[0]` — the same point, a zero-length segment. In
+`_point_on_segment` that made `cross` and `dot` identically zero and reduced the
+final check to `0 <= 0 + tolerance`, returning True for any point. Containment
+short-circuited to True before casting a single ray.
+
+Live evidence: a target **1.97 m outside every mapped area** was reported inside
+**all four** areas at once — including Front Main and Front Right at 19 m and
+28 m — and `validate_custom_path` returned `valid: true`, `errors: []`,
+`warnings: []`. It was about to be used as a real motion target.
+
+**Why the tests missed it:** all four existing containment tests build **OPEN**
+polygons (first vertex != last), so the degenerate closing segment never existed
+in a test. The new tests use a closed ring as the device does, and assert both
+that an outside point is rejected AND an interior point still accepted (so the
+fix cannot degrade to "reject everything"). Both were verified to fail against
+the previous behaviour.
+
+**Verified live after deploy:** the same 2 m-outside target now returns
+`valid: false` with `path_points_outside_known_area_geometry`. First time that
+check has ever done anything.
+
+⚠️ Same shape as the 2026-07-24 `zone_hash`/`bol_hash` defect: a guard that
+reads as working while being a no-op. **Worth auditing every other guard on this
+basis** — "is there an input shape the real device sends that makes this
+vacuously true?"
+
+### `pos_type` is NOT a boundary-proximity signal
+
+Measured 2026-07-28: `pos_type` read **`AREA_INSIDE`** while the mower sat
+**79.5 cm** from its mapped area edge. It evidently only flips to
+`AREA_BORDER_ON` when actually on/over the line, so it cannot serve as an
+early-warning "approaching the boundary" signal. Any such guard must be computed
+from the polygon geometry directly.
+
+### Deploy state 2026-07-28 (all 41 files checksum-matched)
+
+Full-directory deploy + restart. API up in 36 s, 121 entities at 129 s, 59
+services, `turn_degrees_per_second` registered on both motion services. Also
+deployed: the `device_tracker` translation nesting fix, and `manifest.json` now
+declaring `camera`/`http`/`web_rtc`.
+
+🪤 **macOS `tar` trap:** `tar czf` smuggled AppleDouble `._*` files into the
+tarball and they extracted onto the host (82 files instead of 41). Harmless but
+filthy. Use `COPYFILE_DISABLE=1 tar czf …` next time, and verify the host file
+COUNT, not just the checksums of files you expected.
+
+🪤 A burst of `Could not find entity lawn_mower.…` errors right after restart is
+a **startup race**, not a fault — they stop the instant the platform finishes
+loading (90 of them, ending at the exact second the entity appeared).
+
+### 🔴 BLE dropped twice tonight; the motion gate refused both times (correct)
+
+Two `go`-authorised runs were aborted **before sending any command** because the
+pre-flight keepalive check read 0. Both aborts were correct, and verified not to
+be the DEBUG-logging trap (45 DEBUG lines from `pymammotion.transport.ble` in the
+same 5 minutes; last keepalive at 20:44:42, ~18 s before the check).
+
+**Open question, NOT a diagnosis:** no GATT disconnect was logged for the mower
+MAC at all — the keepalives simply stopped. Meanwhile 8 ESPHome devices showed
+`reconnect_logic` churn in 10 minutes (`esphomes3-irk` 5, `garage-outlet-kmc` 4,
+2 unexpected disconnects). That is suggestive of network/proxy instability
+rather than the mower's advertising rate, but the causal link is unproven.
+**Next time this happens, run `scripts/ble_advert_monitor.py`** — it distinguishes
+"mower radio off air" from "link held/killed by something else", which is the
+discriminator we lack.
+
+### 🔴 Third attempt: `vio_calibration_failed` — NO ACTUATION (unresolved)
+
+After an operator mower-restart brought BLE back (4 keepalives/20 s, VIO 61
+features, blockers `[]`), the run fired and died in the calibration drive:
+
+```
+stop_reason  : vio_calibration_failed
+reason       : insufficient_calibration_distance
+distance_m   : 0.0009055        <- 0.9 MM over 2 pulses
+pulses_sent  : 2                 (both command_result ok: True)
+vio_state    : 2                 vision_heading 90.077
+```
+
+0.9 mm is noise, not movement. The calibration drive runs single-shot (refresh
+count 0), which by the H-watchdog finding should still give ~10 cm/pulse. **The
+mower accepted the commands and did not move.**
+
+Every indicator green at the time: `MODE_READY`, `lock_state 0`, `fuse_status 1`,
+`bumper ok`, `last_error_code 5002` stale from the afternoon mow, battery 67%.
+
+**This is the 2026-07-19 invisible-e-stop signature** — commands accepted,
+nothing moves, all health fields green, `lock_state` is NOT e-stop. Operator was
+asked to check the physical e-stop. **UNRESOLVED at session end.**
+
+Other candidates not ruled out: a post-restart state that accepts but ignores
+motion; a physical obstruction. Note the mower had been restarted moments
+earlier, so "needs longer to become motion-ready after restart" is a live
+hypothesis worth testing before assuming e-stop.
+
+**The turn-scaling regression test (`d39e3cdd`) is therefore STILL UNVERIFIED on
+hardware.** Three `go`-authorised attempts tonight: two aborted at the BLE gate
+before sending anything, one reached the mower and found no actuation. The code
+is deployed and unit-tested; nothing about it has been proven live.
+
 ### PR #10 CI: green except one deliberate deferral (2026-07-27)
 
 `python` **passes** — ruff clean, format clean, mypy clean, 370 tests, 42%
