@@ -35,6 +35,7 @@ from .const import (
     CONF_ACCOUNTNAME,
     CONF_BLE_DEVICES,
     CONF_DEVICE_NAME,
+    CONF_ENABLE_EXPERIMENTAL_MOTION,
     CONF_HAS_CLOUD_ACCOUNT,
     CONF_MOVEMENT_USE_WIFI,
     CONF_MOW_PATH_FETCH_ENABLED,
@@ -499,6 +500,9 @@ class MammotionConfigFlowHandler(OptionsFlow):
         self._config_entry = config_entry
         self.prefer_ble = config_entry.options.get(CONF_PREFER_BLE, True)
         self.movement_use_wifi = config_entry.options.get(CONF_MOVEMENT_USE_WIFI, False)
+        self.enable_experimental_motion = config_entry.options.get(
+            CONF_ENABLE_EXPERIMENTAL_MOTION, False
+        )
         self.mow_path_fetch_enabled = config_entry.options.get(
             CONF_MOW_PATH_FETCH_ENABLED, False
         )
@@ -531,6 +535,10 @@ class MammotionConfigFlowHandler(OptionsFlow):
                 vol.Optional(
                     CONF_MOVEMENT_USE_WIFI,
                     default=self.movement_use_wifi,
+                ): cv.boolean,
+                vol.Optional(
+                    CONF_ENABLE_EXPERIMENTAL_MOTION,
+                    default=self.enable_experimental_motion,
                 ): cv.boolean,
                 vol.Optional(
                     CONF_MOW_PATH_FETCH_ENABLED,

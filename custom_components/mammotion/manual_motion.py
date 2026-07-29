@@ -1,0 +1,173 @@
+"""Fail-closed authorization and session state for experimental manual motion."""
+
+from __future__ import annotations
+
+import asyncio
+import importlib.metadata
+import re
+import time
+import uuid
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
+
+from .const import CONF_ENABLE_EXPERIMENTAL_MOTION
+
+# PyMammotion 0.8.12 fixes cleanup when ``start_notify`` raises BleakError, but
+# the write-failure and non-BleakError setup leak paths are still present. Keep
+# this deliberately unreachable by the current pin until an upstream release
+# containing both teardown fixes has been inspected and hardware-verified.
+MINIMUM_VERIFIED_PYMAMMOTION_MOTION_VERSION = "0.8.13"
+REAL_CLICK_TO_GO_SEGMENT_LIMIT = 2
+
+
+class ManualMotionCancelledError(RuntimeError):
+    """Raised before a cancelled session can send another nonzero command."""
+
+
+def installed_pymammotion_version() -> str:
+    """Return the installed PyMammotion distribution version."""
+    try:
+        return importlib.metadata.version("pymammotion")
+    except importlib.metadata.PackageNotFoundError:
+        return "not-installed"
+
+
+def _version_tuple(value: str) -> tuple[int, ...] | None:
+    """Return the numeric release prefix, ignoring pre-release labels."""
+    match = re.match(r"^(\d+(?:\.\d+)*)", value)
+    if match is None:
+        return None
+    return tuple(int(part) for part in match.group(1).split("."))
+
+
+def motion_backend_verified(version: str | None = None) -> bool:
+    """Return whether the installed backend meets the audited motion floor."""
+    installed = _version_tuple(version or installed_pymammotion_version())
+    minimum = _version_tuple(MINIMUM_VERIFIED_PYMAMMOTION_MOTION_VERSION)
+    return installed is not None and minimum is not None and installed >= minimum
+
+
+def experimental_motion_enabled(coordinator: Any) -> bool:
+    """Return the explicit opt-in value; absence is always disabled."""
+    entry = getattr(coordinator, "config_entry", None)
+    options = getattr(entry, "options", None)
+    return bool(
+        isinstance(options, dict)
+        and options.get(CONF_ENABLE_EXPERIMENTAL_MOTION, False)
+    )
+
+
+@dataclass(slots=True)
+class ManualMotionSession:
+    """One exclusive real-motion run owned by a mower coordinator."""
+
+    owner: str
+    session_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    phase: str = "starting"
+    started_monotonic: float = field(default_factory=time.monotonic)
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    cancelled: bool = False
+    cancel_reason: str | None = None
+    last_completed_dispatch: dict[str, Any] | None = None
+    stop_result: dict[str, Any] | None = None
+    error: str | None = None
+    owner_done: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return a service-safe session snapshot."""
+        return {
+            "session_id": self.session_id,
+            "owner": self.owner,
+            "phase": self.phase,
+            "started_at": self.started_at.isoformat(),
+            "elapsed_seconds": round(time.monotonic() - self.started_monotonic, 3),
+            "cancelled": self.cancelled,
+            "cancel_reason": self.cancel_reason,
+            "last_completed_dispatch": self.last_completed_dispatch,
+            "stop_result": self.stop_result,
+            "error": self.error,
+        }
+
+
+def active_motion_session(coordinator: Any) -> ManualMotionSession | None:
+    """Return the active session when it has the expected type."""
+    session = getattr(coordinator, "manual_motion_session", None)
+    return session if isinstance(session, ManualMotionSession) else None
+
+
+def assert_session_can_dispatch(coordinator: Any, *, is_stop: bool) -> None:
+    """Prevent every later nonzero dispatch after an operator abort."""
+    if is_stop:
+        return
+    session = active_motion_session(coordinator)
+    if session is not None and session.cancelled:
+        raise ManualMotionCancelledError(
+            f"manual motion session {session.session_id} was cancelled"
+        )
+
+
+def record_completed_dispatch(
+    coordinator: Any,
+    *,
+    command: str,
+    is_stop: bool,
+) -> None:
+    """Record the last GATT-confirmed write for card/runtime diagnostics."""
+    session = active_motion_session(coordinator)
+    if session is None:
+        return
+    session.last_completed_dispatch = {
+        "command": command,
+        "is_stop": is_stop,
+        "completed_at": datetime.now(UTC).isoformat(),
+        "elapsed_seconds": round(time.monotonic() - session.started_monotonic, 3),
+    }
+
+
+def experimental_motion_status(
+    coordinator: Any,
+    *,
+    ble_liveness: dict[str, Any] | None,
+    safety: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Return the shared fail-closed backend state consumed by services/card."""
+    version = installed_pymammotion_version()
+    enabled = experimental_motion_enabled(coordinator)
+    verified = motion_backend_verified(version)
+    blockers: list[str] = []
+    if not enabled:
+        blockers.append("experimental_motion_disabled")
+    if not verified:
+        blockers.append("pymammotion_backend_unverified")
+    if not ble_liveness or ble_liveness.get("live") is not True:
+        blockers.append(
+            str((ble_liveness or {}).get("reason") or "ble_link_liveness_unavailable")
+        )
+    if not safety or safety.get("allowed_for_manual_motion") is not True:
+        blockers.extend(
+            str(blocker)
+            for blocker in (safety or {}).get(
+                "blockers", ["runtime_safety_unavailable"]
+            )
+        )
+    session = active_motion_session(coordinator)
+    last_session = getattr(coordinator, "last_manual_motion_session", None)
+    return {
+        "enabled": enabled,
+        "installed_pymammotion_version": version,
+        "minimum_verified_pymammotion_version": (
+            MINIMUM_VERIFIED_PYMAMMOTION_MOTION_VERSION
+        ),
+        "backend_verified": verified,
+        "ble_only": True,
+        "real_click_to_go_segment_limit": REAL_CLICK_TO_GO_SEGMENT_LIMIT,
+        "active_session": session.as_dict() if session is not None else None,
+        "last_session": (
+            last_session.as_dict()
+            if isinstance(last_session, ManualMotionSession)
+            else None
+        ),
+        "real_motion_allowed": not blockers and session is None,
+        "blockers": list(dict.fromkeys(blockers)),
+    }

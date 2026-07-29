@@ -3332,11 +3332,11 @@ stop_video:
       integration: mammotion
       domain: camera
 
-get_tokens:
+stop_manual_motion:
   target:
     entity:
       integration: mammotion
-      domain: camera
+      domain: lawn_mower
 
 move_forward: &movement_service
   target:
@@ -3353,6 +3353,16 @@ move_forward: &movement_service
           step: 0.1
     use_wifi:
       required: false
+      default: false
+      selector:
+        boolean:
+    confirm_blades_off:
+      required: true
+      default: false
+      selector:
+        boolean:
+    confirm_clear_area:
+      required: true
       default: false
       selector:
         boolean:

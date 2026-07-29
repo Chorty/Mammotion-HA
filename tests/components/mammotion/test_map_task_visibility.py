@@ -5,7 +5,10 @@ import asyncio
 import datetime
 import json
 import pathlib
+import time
+from collections.abc import Callable, Coroutine
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,6 +18,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.service import _validate_entity_service_schema
 from pymammotion.data.model.hash_list import Plan
+from pymammotion.messaging.command_queue import DeviceCommandQueue
 from pymammotion.transport.base import NoTransportAvailableError, TransportType
 from pymammotion.transport.ble import BLETransport, BLETransportConfig
 from pymammotion.utility.constant import WorkMode
@@ -29,6 +33,7 @@ from custom_components.mammotion.coordinator import (
 )
 from custom_components.mammotion.sensor import WORK_SENSOR_TYPES
 from custom_components.mammotion.services import (
+    _BLE_SEND_STALL_SECONDS,
     _VIO_HEADING_FRESH_EPSILON_DEGREES,
     DEFAULT_HEADING_OFFSET_CANDIDATES,
     EXPERIMENTAL_EXECUTE_SEGMENT_BURST_SCHEMA,
@@ -53,6 +58,7 @@ from custom_components.mammotion.services import (
     _app_scale_speeds,
     _app_speed_scale_report,
     _ble_connect_cooldown_active,
+    _ble_link_liveness,
     _ble_ready_for_motion,
     _ble_transport_usable,
     _custom_path_telemetry_snapshot,
@@ -165,24 +171,82 @@ def _pulse_coordinator(
     pos_level: int = 0,
     rtk_status: int = 4,
     position: tuple[float | None, float | None, float | None] = (1.0, 1.0, 0.0),
+    ble_connected: bool = True,
+    ble_usable: bool = True,
+    ble_last_send_age: float | None = 1.0,
+    ble_queue_depth: int = 0,
+    ble_queue_paused: bool = False,
 ) -> SimpleNamespace:
-    """Build a coordinator fixture for manual velocity pulse tests."""
+    """Build a coordinator fixture for manual velocity pulse tests.
+
+    The ``ble_*`` knobs model what ``_ble_link_liveness`` reads. Defaults
+    describe a healthy link (connected, drained queue, a send 1s ago); override
+    them to exercise the ``ble_link_live`` gate.
+    """
     pos_x, pos_y, toward = position
+    now = time.monotonic()
+    transport = SimpleNamespace(
+        # The real BLE connect cooldown lives on the transport, not on
+        # availability; expose it the way pymammotion's DeviceHandle does. 0.0 =
+        # no cooldown armed.
+        _connect_cooldown_until=0.0,
+        # ``is_usable`` is a real BLETransport property: a transport can be the
+        # active routing choice while being unusable (no BLEDevice / weak RSSI /
+        # armed cooldown), which is why the motion gate checks it separately.
+        is_usable=ble_usable,
+        # ``is_usable`` is routing eligibility, not liveness -- it stays True
+        # while the command queue is gated and commands pile up undelivered.
+        # These two are what actually discriminate a live link.
+        is_connected=ble_connected,
+        last_send_monotonic=(
+            0.0 if ble_last_send_age is None else now - ble_last_send_age
+        ),
+    )
+
+    async def enqueue_immediately(
+        work: object,
+        priority: object = None,
+        **_kwargs: object,
+    ) -> None:
+        """Run fixture queue work immediately while preserving the queue API."""
+        del priority
+        await cast(Callable[[], Coroutine[object, object, None]], work)()
+
+    def build_command(
+        command_name: str,
+    ) -> Callable[..., tuple[str, dict[str, object]]]:
+        """Return a fixture command builder that preserves its arguments."""
+
+        def build(**kwargs: object) -> tuple[str, dict[str, object]]:
+            return command_name, kwargs
+
+        return build
+
+    commands = MagicMock()
+    for command_name in (
+        "send_movement",
+        "move_forward",
+        "move_back",
+        "move_left",
+        "move_right",
+    ):
+        getattr(commands, command_name).side_effect = build_command(command_name)
     handle = SimpleNamespace(
         last_report_at=123.0,
         availability=SimpleNamespace(
             mqtt_reported_offline=False,
         ),
-        # The real BLE connect cooldown lives on the transport, not on
-        # availability; expose it the way pymammotion's DeviceHandle does. 0.0 =
-        # no cooldown armed.
-        # ``is_usable`` is a real BLETransport property: a transport can be the
-        # active routing choice while being unusable (no BLEDevice / weak RSSI /
-        # armed cooldown), which is why the motion gate checks it separately.
-        get_transport=lambda _transport_type: SimpleNamespace(
-            _connect_cooldown_until=0.0,
-            is_usable=True,
+        get_transport=lambda _transport_type: transport,
+        # DeviceCommandQueue: depth and the dispatch gate are private in
+        # pymammotion 0.8.8, so mirror the attribute names the helper reads.
+        queue=SimpleNamespace(
+            is_saga_active=False,
+            _transport_gate=SimpleNamespace(is_set=lambda: not ble_queue_paused),
+            _queue=SimpleNamespace(qsize=lambda: ble_queue_depth),
+            enqueue=enqueue_immediately,
         ),
+        commands=commands,
+        _send_marked=AsyncMock(),
         active_transport=lambda: "ble",
     )
     manager = SimpleNamespace(
@@ -193,7 +257,7 @@ def _pulse_coordinator(
         request_iot_sync_continuous_stop=AsyncMock(),
         mower=lambda _device_name: handle,
     )
-    return SimpleNamespace(
+    coordinator = SimpleNamespace(
         async_move_forward=AsyncMock(),
         async_move_back=AsyncMock(),
         async_move_left=AsyncMock(),
@@ -261,6 +325,39 @@ def _pulse_coordinator(
             "Backyard Right" if area_hash == 123 else f"area {area_hash}"
         ),
     )
+
+    async def simulate_confirmed_write(
+        _transport: object,
+        payload: tuple[str, dict[str, object]],
+    ) -> None:
+        """Preserve existing observation hooks after confirmed dispatch."""
+        command_name, kwargs = payload
+        if command_name == "send_movement":
+            if kwargs == {"linear_speed": 0, "angular_speed": 0}:
+                await coordinator.async_stop_manual_motion()
+                return
+            await manager.send_command_with_args(
+                coordinator.device_name,
+                command_name,
+                prefer_ble=True,
+                **kwargs,
+            )
+            return
+        method_name, speed_key = {
+            "move_forward": ("async_move_forward", "linear"),
+            "move_back": ("async_move_back", "linear"),
+            "move_left": ("async_move_left", "angular"),
+            "move_right": ("async_move_right", "angular"),
+        }[command_name]
+        ack = await getattr(coordinator, method_name)(
+            speed=kwargs[speed_key],
+            use_wifi=False,
+        )
+        if ack is False:
+            raise RuntimeError(f"{command_name} write failed")
+
+    handle._send_marked.side_effect = simulate_confirmed_write  # noqa: SLF001
+    return coordinator
 
 
 def test_get_tasks_normalizes_plan_fields_and_stringifies_raw_hashes() -> None:
@@ -1902,9 +1999,13 @@ async def test_vio_motion_probe_drives_samples_vio_and_always_stops(
     )
 
     # A single continuous velocity command, not one command per sample.
-    assert coordinator.manager.send_command_with_args.await_count == 1
+    handle = coordinator.manager.mower(coordinator.device_name)
+    assert handle._send_marked.await_count == 2  # noqa: SLF001
     # The explicit stop is mandatory even on the happy path.
-    coordinator.async_stop_manual_motion.assert_awaited_once()
+    assert handle.commands.send_movement.call_args_list[-1].kwargs == {
+        "linear_speed": 0,
+        "angular_speed": 0,
+    }
     assert result["command_ok"] is True
     assert result["reason"] == "vio_initialized_during_motion"
     assert result["verdict"]["motion_confirmed"] is True
@@ -1944,9 +2045,9 @@ async def test_vio_motion_probe_reports_settled_post_stop_displacement(
             telemetry["position"]["y"] = float(telemetry["position"]["y"]) - 0.10
         return telemetry
 
-    async def fake_stop() -> dict:
+    async def fake_stop(_coordinator: object) -> dict:
         phase["stopped"] = True
-        return {"linear_ok": True, "angular_ok": True}
+        return {"movement_ok": True}
 
     async def fake_get_reports(count: int = 5) -> None:
         return None  # VIO stays cold the whole time
@@ -1956,7 +2057,7 @@ async def test_vio_motion_probe_reports_settled_post_stop_displacement(
     monkeypatch.setattr(
         mammotion_services, "_custom_path_telemetry_snapshot", fake_snapshot
     )
-    coordinator.async_stop_manual_motion.side_effect = fake_stop
+    monkeypatch.setattr(mammotion_services, "_stop_manual_motion_confirmed", fake_stop)
     coordinator.async_get_reports.side_effect = fake_get_reports
 
     result = await _vio_motion_probe(
@@ -2014,9 +2115,9 @@ async def test_vio_motion_probe_active_vio_lagged_motion_not_mislabelled(
             telemetry["position"]["y"] = float(telemetry["position"]["y"]) - 0.10
         return telemetry
 
-    async def fake_stop() -> dict:
+    async def fake_stop(_coordinator: object) -> dict:
         phase["stopped"] = True
-        return {"linear_ok": True, "angular_ok": True}
+        return {"movement_ok": True}
 
     async def fake_get_reports(count: int = 5) -> None:
         return None  # VIO stays active (state 2) the whole time
@@ -2026,7 +2127,7 @@ async def test_vio_motion_probe_active_vio_lagged_motion_not_mislabelled(
     monkeypatch.setattr(
         mammotion_services, "_custom_path_telemetry_snapshot", fake_snapshot
     )
-    coordinator.async_stop_manual_motion.side_effect = fake_stop
+    monkeypatch.setattr(mammotion_services, "_stop_manual_motion_confirmed", fake_stop)
     coordinator.async_get_reports.side_effect = fake_get_reports
 
     result = await _vio_motion_probe(
@@ -2178,9 +2279,13 @@ async def test_vio_turn_probe_detects_heading_tracking_rotation(
     )
 
     # A single continuous angular command, then a mandatory explicit stop.
-    assert coordinator.manager.send_command_with_args.await_count == 1
+    handle = coordinator.manager.mower(coordinator.device_name)
+    assert handle._send_marked.await_count == 2  # noqa: SLF001
     assert result["command"]["kwargs"] == {"linear_speed": 0, "angular_speed": 180}
-    coordinator.async_stop_manual_motion.assert_awaited_once()
+    assert handle.commands.send_movement.call_args_list[-1].kwargs == {
+        "linear_speed": 0,
+        "angular_speed": 0,
+    }
     assert result["reason"] == "vision_heading_tracks_rotation"
     assert result["verdict"]["vision_heading_change"]["total_abs_degrees"] >= 3.0
     assert result["verdict"]["course_over_ground_change"]["total_abs_degrees"] == 0.0
@@ -2234,9 +2339,13 @@ async def test_vio_turn_probe_app_parity_refresh_resends_the_turn(
     assert result["motion_refresh_interval_ms"] == 200
     assert refreshes > 0
     # Every send is the initial one plus one per refresh; all identical turn commands.
-    assert coordinator.manager.send_command_with_args.await_count == refreshes + 1
+    handle = coordinator.manager.mower(coordinator.device_name)
+    assert handle._send_marked.await_count == refreshes + 2  # noqa: SLF001
     assert result["command"]["kwargs"] == {"linear_speed": 0, "angular_speed": 500}
-    coordinator.async_stop_manual_motion.assert_awaited_once()
+    assert handle.commands.send_movement.call_args_list[-1].kwargs == {
+        "linear_speed": 0,
+        "angular_speed": 0,
+    }
 
 
 @pytest.mark.asyncio
@@ -2262,8 +2371,9 @@ async def test_vio_turn_probe_counts_rotation_that_lands_after_the_stop(
     async def fake_sleep(delay: float) -> None:
         clock["now"] += delay
 
-    async def fake_stop() -> None:
+    async def fake_stop(_coordinator: object) -> dict:
         stopped["value"] = True
+        return {"movement_ok": True}
 
     async def fake_get_reports(count: int = 5) -> None:
         # Frozen during the command; the real rotation only registers post-stop.
@@ -2276,7 +2386,7 @@ async def test_vio_turn_probe_counts_rotation_that_lands_after_the_stop(
     monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
     monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
     coordinator.async_get_reports.side_effect = fake_get_reports
-    coordinator.async_stop_manual_motion.side_effect = fake_stop
+    monkeypatch.setattr(mammotion_services, "_stop_manual_motion_confirmed", fake_stop)
     coordinator.data.report_data.vision_info = SimpleNamespace(
         heading=90.0, vio_state=2
     )
@@ -3352,7 +3462,7 @@ async def test_raw_pymammotion_execute_segment_sends_explicit_stop_after_pulse(
     )
 
     assert result["commands_sent"] == 1
-    coordinator.async_stop_manual_motion.assert_awaited_once_with(use_wifi=False)
+    coordinator.async_stop_manual_motion.assert_awaited_once()
     command_result = result["command_results"][0]
     assert command_result["stop_result"]["ok"] is True
     assert command_result["position_settled"] is False
@@ -3364,7 +3474,7 @@ async def test_raw_pymammotion_execute_segment_aborts_when_stop_fails(
 ) -> None:
     """An undeliverable stop aborts the raw segment run immediately."""
     coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
-    coordinator.async_stop_manual_motion.return_value = False
+    coordinator.async_stop_manual_motion.side_effect = RuntimeError("stop write failed")
 
     async def no_sleep(_: float) -> None:
         return None
@@ -3695,7 +3805,7 @@ async def test_raw_pymammotion_turn_to_heading_sends_explicit_stop_after_pulse(
         sample_delays=(0,),
     )
 
-    coordinator.async_stop_manual_motion.assert_awaited_once_with(use_wifi=False)
+    coordinator.async_stop_manual_motion.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -4043,7 +4153,7 @@ async def test_raw_pymammotion_execute_vector_segment_sends_explicit_stop_after_
         sample_delays=(0,),
     )
 
-    coordinator.async_stop_manual_motion.assert_awaited_once_with(use_wifi=False)
+    coordinator.async_stop_manual_motion.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -6177,6 +6287,298 @@ def test_pinned_pymammotion_ble_transport_exposes_connect_cooldown_until() -> No
     assert getattr(transport, cooldown_attr) == 0.0
 
 
+def test_pinned_pymammotion_exposes_ble_liveness_fields() -> None:
+    """Pin every field _ble_link_liveness reads against pymammotion drift.
+
+    Two of them are private. If a bump renames them the helper would report
+    "cannot read" -- which refuses motion rather than passing it, so drift is
+    loud rather than silent. This test makes it loud at CI time instead.
+    """
+    transport = BLETransport(BLETransportConfig(device_id="test"))
+    assert transport.is_connected is False
+    assert transport.is_usable is False
+    # Public on the Transport ABC; BLETransport.send() is its only writer.
+    # It is an attempt timestamp (stamped before the awaited write), so the
+    # confirmed-dispatch tests below—not this field—prove completion.
+    assert transport.last_send_monotonic == 0.0
+
+    queue = DeviceCommandQueue("test")
+    assert queue.is_saga_active is False
+    # Private on purpose -- pinning them here is the point of this test.
+    assert queue._transport_gate.is_set() is True  # noqa: SLF001
+    assert queue._queue.qsize() == 0  # noqa: SLF001
+
+
+def test_ble_link_liveness_passes_on_a_healthy_link() -> None:
+    """A connected transport with a drained queue and a recent send is live."""
+    report = _ble_link_liveness(_pulse_coordinator())
+
+    assert report["live"] is True
+    assert report["reason"] is None
+    assert report["queue_depth"] == 0
+    assert report["queue_dispatch_paused"] is False
+    assert report["last_send_age_seconds"] < _BLE_SEND_STALL_SECONDS
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "reason"),
+    [
+        ({"ble_connected": False}, "ble_client_not_connected"),
+        ({"ble_usable": False}, "ble_transport_not_usable"),
+        ({"ble_queue_paused": True}, "command_queue_dispatch_paused"),
+        ({"ble_queue_depth": 21}, "command_queue_backlogged"),
+        ({"ble_last_send_age": 30.0}, "ble_send_stalled"),
+        ({"ble_last_send_age": None}, "no_ble_send_observed"),
+    ],
+)
+def test_ble_link_liveness_names_the_failing_check(
+    kwargs: dict[str, object], reason: str
+) -> None:
+    """Each stall signature is refused and reported by name."""
+    report = _ble_link_liveness(_pulse_coordinator(**kwargs))
+
+    assert report["live"] is False
+    assert report["reason"] == reason
+
+
+def test_ble_link_liveness_refuses_when_it_cannot_see() -> None:
+    """Unreadable introspection must refuse, not pass.
+
+    The inverse of _ble_transport_usable's deliberate permissiveness. A liveness
+    gate that degrades to "live" is vacuously true -- the exact failure mode that
+    has already bitten this project twice (zone_hash/bol_hash, _point_in_polygon).
+    """
+    coordinator = _pulse_coordinator()
+
+    coordinator.manager.mower = lambda _device_name: None
+    assert _ble_link_liveness(coordinator)["reason"] == "device_handle_unavailable"
+
+    coordinator.manager.mower = lambda _device_name: SimpleNamespace()
+    assert _ble_link_liveness(coordinator)["reason"] == "get_transport_unavailable"
+
+    coordinator.manager.mower = lambda _device_name: SimpleNamespace(
+        get_transport=lambda _transport_type: None
+    )
+    assert _ble_link_liveness(coordinator)["reason"] == "ble_transport_not_registered"
+
+    def raising_mower(_device_name: str) -> object:
+        raise RuntimeError("handle unavailable")
+
+    coordinator.manager.mower = raising_mower
+    assert _ble_link_liveness(coordinator)["live"] is False
+
+    # A handle whose queue introspection is gone entirely: depth unknown, refuse.
+    coordinator.manager.mower = lambda _device_name: SimpleNamespace(
+        get_transport=lambda _transport_type: SimpleNamespace(
+            _connect_cooldown_until=0.0,
+            is_usable=True,
+            is_connected=True,
+            last_send_monotonic=time.monotonic(),
+        ),
+    )
+    report = _ble_link_liveness(coordinator)
+    assert report["live"] is False
+    # Both queue reads are unavailable; reason names the first one checked.
+    assert report["reason"] == "command_queue_dispatch_paused"
+    assert report["queue_dispatch_paused"] is None
+    assert report["queue_depth"] is None
+
+
+@pytest.mark.asyncio
+async def test_confirmed_ble_motion_waits_for_gatt_write() -> None:
+    """A motion send does not complete merely because queue insertion succeeded."""
+    coordinator = _pulse_coordinator()
+    handle = coordinator.manager.mower(coordinator.device_name)
+    release_write = asyncio.Event()
+
+    async def blocked_write(_transport: object, _payload: bytes) -> None:
+        await release_write.wait()
+
+    handle._send_marked.side_effect = blocked_write  # noqa: SLF001
+    send_task = asyncio.create_task(
+        mammotion_services._send_ble_motion_command_confirmed(  # noqa: SLF001
+            coordinator,
+            "send_movement",
+            command_kwargs={"linear_speed": 200, "angular_speed": 0},
+        )
+    )
+
+    await asyncio.sleep(0)
+    assert send_task.done() is False
+
+    release_write.set()
+    await send_task
+    handle._send_marked.assert_awaited_once()  # noqa: SLF001
+
+
+@pytest.mark.asyncio
+async def test_confirmed_ble_motion_disarms_an_item_that_cannot_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A post-preflight queue stall cannot replay the motion item later."""
+    coordinator = _pulse_coordinator()
+    handle = coordinator.manager.mower(coordinator.device_name)
+    queued_work: list[Callable[[], Coroutine[object, object, None]]] = []
+
+    async def hold_in_queue(
+        work: Callable[[], Coroutine[object, object, None]],
+        **_kwargs: object,
+    ) -> None:
+        queued_work.append(work)
+
+    handle.queue.enqueue = hold_in_queue
+    monkeypatch.setattr(
+        mammotion_services,
+        "_BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS",
+        0.01,
+    )
+
+    with pytest.raises(RuntimeError, match="queued item was disarmed"):
+        await mammotion_services._send_ble_motion_command_confirmed(  # noqa: SLF001
+            coordinator,
+            "send_movement",
+            command_kwargs={"linear_speed": 200, "angular_speed": 0},
+        )
+
+    assert len(queued_work) == 1
+    await queued_work[0]()
+    handle._send_marked.assert_not_awaited()  # noqa: SLF001
+
+
+@pytest.mark.asyncio
+async def test_confirmed_ble_motion_disarms_on_cancellation_before_start() -> None:
+    """Cancellation while queued cannot leave a command that executes later."""
+    coordinator = _pulse_coordinator()
+    handle = coordinator.manager.mower(coordinator.device_name)
+    queued_work: list[Callable[[], Coroutine[object, object, None]]] = []
+
+    async def hold_in_queue(
+        work: Callable[[], Coroutine[object, object, None]],
+        **_kwargs: object,
+    ) -> None:
+        queued_work.append(work)
+
+    handle.queue.enqueue = hold_in_queue
+    send_task = asyncio.create_task(
+        mammotion_services._send_ble_motion_command_confirmed(  # noqa: SLF001
+            coordinator,
+            "send_movement",
+            command_kwargs={"linear_speed": 200, "angular_speed": 0},
+        )
+    )
+    await asyncio.sleep(0)
+    send_task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await send_task
+
+    await queued_work[0]()
+    handle._send_marked.assert_not_awaited()  # noqa: SLF001
+
+
+@pytest.mark.asyncio
+async def test_confirmed_ble_motion_stops_on_cancellation_during_write() -> None:
+    """Cancellation after dispatch waits for the write and confirms a stop."""
+    coordinator = _pulse_coordinator()
+    handle = coordinator.manager.mower(coordinator.device_name)
+    write_started = asyncio.Event()
+    release_write = asyncio.Event()
+    payloads: list[tuple[str, dict[str, object]]] = []
+    queue_tasks: list[asyncio.Task[None]] = []
+
+    async def enqueue_in_background(
+        work: Callable[[], Coroutine[object, object, None]],
+        **_kwargs: object,
+    ) -> None:
+        queue_tasks.append(asyncio.create_task(work()))
+
+    async def block_first_write(
+        _transport: object,
+        payload: tuple[str, dict[str, object]],
+    ) -> None:
+        payloads.append(payload)
+        if len(payloads) == 1:
+            write_started.set()
+            await release_write.wait()
+
+    handle._send_marked.side_effect = block_first_write  # noqa: SLF001
+    handle.queue.enqueue = enqueue_in_background
+    send_task = asyncio.create_task(
+        mammotion_services._send_ble_motion_command_confirmed(  # noqa: SLF001
+            coordinator,
+            "send_movement",
+            command_kwargs={"linear_speed": 200, "angular_speed": 0},
+        )
+    )
+    await write_started.wait()
+    send_task.cancel()
+    release_write.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await send_task
+
+    assert payloads == [
+        ("send_movement", {"linear_speed": 200, "angular_speed": 0}),
+        ("send_movement", {"linear_speed": 0, "angular_speed": 0}),
+    ]
+    await asyncio.gather(*queue_tasks)
+
+
+@pytest.mark.asyncio
+async def test_motion_gate_blocks_a_stalled_command_queue() -> None:
+    """End-to-end regression for the 2026-07-28 late-burst incident.
+
+    A gated DeviceCommandQueue accumulates commands -- including the mandatory
+    stop that bounds a pulse -- and flushes them as a burst tens of seconds
+    later. On 2026-07-28 a command issued at 21:06:20 was reported as no
+    actuation; the queue flushed at 21:06:41-43 and the mower drove 1.0778 m at
+    21:07:16, unattended.
+
+    Every pre-existing indicator read healthy through this: active_transport
+    "ble", is_usable True, RSSI -64 dBm, command_result.ok True. Only the queue
+    depth and the age of the last send discriminate.
+    """
+    coordinator = _pulse_coordinator(
+        position=(1.0, 1.0, 0.0),
+        ble_queue_depth=21,
+        ble_last_send_age=21.0,
+    )
+
+    # The old gate is satisfied -- this is exactly why it did not catch it.
+    assert _ble_ready_for_motion(coordinator) is True
+
+    result = await _vio_turn_probe(
+        coordinator,
+        angular_speed=500,
+        drive_seconds=1.5,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+    )
+
+    assert "ble_link_live" in result["blockers"]
+    assert "ble_transport_required" not in result["blockers"]
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_motion_gate_ble_link_live_is_skipped_on_dry_runs() -> None:
+    """Dry runs send nothing, so they must not be blocked by link liveness."""
+    result = await _vio_turn_probe(
+        _pulse_coordinator(
+            position=(1.0, 1.0, 0.0),
+            ble_connected=False,
+            ble_queue_depth=21,
+            ble_last_send_age=None,
+        ),
+        angular_speed=500,
+        drive_seconds=1.5,
+        dry_run=True,
+    )
+
+    assert "ble_link_live" not in result["blockers"]
+
+
 @pytest.mark.asyncio
 async def test_raw_pymammotion_execute_multi_segment_real_rejects_missing_confirmations() -> (
     None
@@ -6727,14 +7129,14 @@ async def test_manual_velocity_pulse_test_real_probe_calls_move_then_stop() -> N
     assert result["stop_result"]["coordinator_method"] == "async_stop_manual_motion"
     assert result["real_pulse_completed"] is True
     coordinator.async_move_left.assert_awaited_once_with(speed=0.1, use_wifi=False)
-    coordinator.async_stop_manual_motion.assert_awaited_once_with(use_wifi=False)
+    coordinator.async_stop_manual_motion.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_manual_velocity_pulse_test_reports_false_command_ack() -> None:
     """A false coordinator command return is reported as an unsuccessful attempt."""
     coordinator = _pulse_coordinator()
-    coordinator.async_move_forward.return_value = False
+    coordinator.async_move_forward.side_effect = RuntimeError("motion write failed")
 
     result = await _manual_velocity_pulse_test(
         coordinator,
@@ -6749,7 +7151,8 @@ async def test_manual_velocity_pulse_test_reports_false_command_ack() -> None:
 
     assert result["command_result"]["attempted"] is True
     assert result["command_result"]["ok"] is False
-    assert result["command_result"]["ack"] is False
+    assert result["command_result"]["ack"] is None
+    assert result["command_result"]["error"] == "RuntimeError: motion write failed"
     assert result["real_pulse_completed"] is False
     assert result["stop_result"]["ok"] is True
 
@@ -8539,6 +8942,14 @@ def _fake_motion_mower(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         "_get_mower_by_entity_id",
         lambda _hass, _entity_id: mower,
     )
+    monkeypatch.setattr(
+        mammotion_services,
+        "_manual_motion_authorization",
+        lambda *_args, **_kwargs: {
+            "real_motion_allowed": True,
+            "blockers": [],
+        },
+    )
     return mower
 
 
@@ -8609,6 +9020,14 @@ def _saga_motion_mower(
         mammotion_services,
         "_get_mower_by_entity_id",
         lambda _hass, _entity_id: mower,
+    )
+    monkeypatch.setattr(
+        mammotion_services,
+        "_manual_motion_authorization",
+        lambda *_args, **_kwargs: {
+            "real_motion_allowed": True,
+            "blockers": [],
+        },
     )
     return mower
 

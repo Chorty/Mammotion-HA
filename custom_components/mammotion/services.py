@@ -20,6 +20,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from pymammotion.data.model.hash_list import CommDataCouple, Plan
 from pymammotion.data.model.pool_state import PoolPlan
+from pymammotion.messaging.command_queue import Priority
 from pymammotion.transport.base import TransportType
 from pymammotion.utility.constant.device_constant import (
     PosType,
@@ -29,8 +30,18 @@ from pymammotion.utility.constant.device_constant import (
 )
 from pymammotion.utility.device_type import DeviceType
 
+from .capabilities import capability_snapshot
 from .const import DOMAIN, LOGGER
 from .coordinator import MammotionReportUpdateCoordinator, MammotionSpinoCoordinator
+from .manual_motion import (
+    REAL_CLICK_TO_GO_SEGMENT_LIMIT,
+    ManualMotionCancelledError,
+    ManualMotionSession,
+    active_motion_session,
+    assert_session_can_dispatch,
+    experimental_motion_status,
+    record_completed_dispatch,
+)
 
 if TYPE_CHECKING:
     from . import MammotionConfigEntry
@@ -73,6 +84,7 @@ SERVICE_VIO_TURN_PROBE = "vio_turn_probe"
 SERVICE_VIO_TURN_TO_HEADING = "vio_turn_to_heading"
 SERVICE_RAW_MOTION_READINESS_TEST = "raw_motion_readiness_test"
 SERVICE_RAW_VECTOR_READINESS_TEST = "raw_vector_readiness_test"
+SERVICE_STOP_MANUAL_MOTION = "stop_manual_motion"
 SERVICE_EXPERIMENTAL_EXECUTE_SEGMENT = "experimental_execute_segment"
 SERVICE_EXPERIMENTAL_EXECUTE_SEGMENT_BURST = "experimental_execute_segment_burst"
 SERVICE_SVG_ADD = "svg_add"
@@ -81,7 +93,6 @@ SERVICE_SVG_DELETE = "svg_delete"
 SERVICE_REFRESH_STREAM = "refresh_stream"
 SERVICE_START_VIDEO = "start_video"
 SERVICE_STOP_VIDEO = "stop_video"
-SERVICE_GET_TOKENS = "get_tokens"
 SERVICE_MOVE_FORWARD = "move_forward"
 SERVICE_MOVE_LEFT = "move_left"
 SERVICE_MOVE_RIGHT = "move_right"
@@ -988,7 +999,8 @@ RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA = vol.Schema(
         # in sync with RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA.
         vol.Optional("ble_auto_recover", default=True): cv.boolean,
         vol.Optional("max_real_segments", default=1): vol.All(
-            vol.Coerce(int), vol.Range(min=0, max=7)
+            vol.Coerce(int),
+            vol.Range(min=0, max=REAL_CLICK_TO_GO_SEGMENT_LIMIT),
         ),
         vol.Optional("linear_speed_fast", default=400): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=1000)
@@ -1255,6 +1267,8 @@ MOVEMENT_SCHEMA = vol.Schema(
             vol.Coerce(float), vol.Range(min=0.1, max=1.0)
         ),
         vol.Optional("use_wifi", default=False): cv.boolean,
+        vol.Optional("confirm_blades_off", default=False): cv.boolean,
+        vol.Optional("confirm_clear_area", default=False): cv.boolean,
     },
     extra=vol.ALLOW_EXTRA,
 )
@@ -1910,6 +1924,8 @@ def _export_runtime_state(
         ha_state=ha_state,
         active_route=route,
     )
+    ble_liveness = _ble_link_liveness(coordinator)
+    capabilities = capability_snapshot(coordinator)
     route_status = safety["active_route_status"]
     return {
         "ha_state": ha_state,
@@ -1929,6 +1945,12 @@ def _export_runtime_state(
             "status": route_status,
         },
         "safety": safety,
+        "capability_registry": capabilities,
+        "experimental_motion": experimental_motion_status(
+            coordinator,
+            ble_liveness=ble_liveness,
+            safety=safety,
+        ),
         "manual_motion_execution_policy": _manual_motion_execution_policy(),
         "last_task_sync": _isoformat_or_none(
             getattr(coordinator, "last_task_sync", None)
@@ -2942,7 +2964,21 @@ async def _manual_velocity_command_attempt(
         "duration_ms": None,
     }
     try:
-        ack = await method(speed=speed, use_wifi=use_wifi)
+        if use_wifi:
+            ack = await method(speed=speed, use_wifi=True)
+        else:
+            command, command_kwargs = {
+                "forward": ("move_forward", {"linear": speed}),
+                "backward": ("move_back", {"linear": speed}),
+                "turn_left": ("move_left", {"angular": speed}),
+                "turn_right": ("move_right", {"angular": speed}),
+            }[action]
+            await _send_ble_motion_command_confirmed(
+                coordinator,
+                command,
+                command_kwargs=command_kwargs,
+            )
+            ack = True
         result["ack"] = ack
         result["ok"] = ack is not False
     except Exception as err:  # noqa: BLE001
@@ -2972,7 +3008,10 @@ async def _manual_velocity_stop_attempt(
         "duration_ms": None,
     }
     try:
-        ack = await coordinator.async_stop_manual_motion(use_wifi=use_wifi)
+        if use_wifi:
+            ack = await coordinator.async_stop_manual_motion(use_wifi=True)
+        else:
+            ack = await _stop_manual_motion_confirmed(coordinator)
         result["ack"] = ack
         if isinstance(ack, dict):
             result["ok"] = all(value is not False for value in ack.values())
@@ -2983,6 +3022,96 @@ async def _manual_velocity_stop_attempt(
         result["error"] = f"{type(err).__name__}: {err}"
     finally:
         result["duration_ms"] = round((time.monotonic() - started) * 1000, 3)
+    return result
+
+
+async def _stop_manual_motion_confirmed(
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    emergency: bool = False,
+) -> dict[str, bool]:
+    """Send one zero-velocity BLE command and await its GATT write."""
+    await _send_ble_motion_command_confirmed(
+        coordinator,
+        "send_movement",
+        command_kwargs={"linear_speed": 0, "angular_speed": 0},
+        emergency_stop=emergency,
+    )
+    return {"movement_ok": True}
+
+
+_OPERATOR_STOP_WRITE_ATTEMPTS = 3
+_OPERATOR_STOP_OWNER_TIMEOUT_SECONDS = 8.0
+
+
+async def _stop_active_manual_motion(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> dict[str, Any]:
+    """Abort the active session and deliver a bounded confirmed BLE stop."""
+    started = time.monotonic()
+    session = active_motion_session(coordinator)
+    if session is not None:
+        # Cancellation is visible before the first stop is queued. Every
+        # nonzero confirmed-dispatch path checks this flag immediately before
+        # building/queueing its write.
+        session.cancelled = True
+        session.cancel_reason = "operator_stop"
+        session.phase = "stopping"
+
+    attempts: list[dict[str, Any]] = []
+    for attempt_number in range(1, _OPERATOR_STOP_WRITE_ATTEMPTS + 1):
+        attempt_started = time.monotonic()
+        try:
+            await _stop_manual_motion_confirmed(coordinator, emergency=True)
+        except Exception as err:  # noqa: BLE001 - all attempts are reported
+            attempts.append(
+                {
+                    "attempt": attempt_number,
+                    "ok": False,
+                    "error": f"{type(err).__name__}: {err}",
+                    "duration_ms": round(
+                        (time.monotonic() - attempt_started) * 1000, 1
+                    ),
+                }
+            )
+        else:
+            attempts.append(
+                {
+                    "attempt": attempt_number,
+                    "ok": True,
+                    "duration_ms": round(
+                        (time.monotonic() - attempt_started) * 1000, 1
+                    ),
+                }
+            )
+
+    owner_exited = session is None
+    if session is not None:
+        try:
+            await asyncio.wait_for(
+                session.owner_done.wait(),
+                timeout=_OPERATOR_STOP_OWNER_TIMEOUT_SECONDS,
+            )
+            owner_exited = True
+        except TimeoutError:
+            owner_exited = False
+
+    result = {
+        "service": SERVICE_STOP_MANUAL_MOTION,
+        "session_id": session.session_id if session is not None else None,
+        "session_was_active": session is not None,
+        "aborted": session is not None,
+        "stop_confirmed": any(attempt["ok"] for attempt in attempts),
+        "all_stop_writes_confirmed": all(attempt["ok"] for attempt in attempts),
+        "attempts": attempts,
+        "owner_exited": owner_exited,
+        "owner_wait_timeout_seconds": _OPERATOR_STOP_OWNER_TIMEOUT_SECONDS,
+        "duration_ms": round((time.monotonic() - started) * 1000, 1),
+    }
+    if session is not None:
+        session.stop_result = result
+        if owner_exited:
+            session.phase = "aborted"
     return result
 
 
@@ -3481,6 +3610,173 @@ def _ble_ready_for_motion(coordinator: MammotionReportUpdateCoordinator) -> bool
     return _transport_is_ble(coordinator) and _ble_transport_usable(coordinator)
 
 
+#: pymammotion's ``ble_loop._KEEP_ALIVE_BLE_INTERVAL`` -- a healthy BLE transport
+#: writes a ``todev_ble_sync(2)`` heartbeat this often, so the age of the last
+#: outbound send is bounded by it whenever the link is genuinely carrying traffic.
+_BLE_KEEPALIVE_INTERVAL_SECONDS = 5.0
+#: Age of the last BLE send beyond which the transport is treated as stalled.
+#: Three missed heartbeats -- comfortably outside normal jitter, and far inside
+#: the ~20-55s queue stalls observed on 2026-07-28.
+_BLE_SEND_STALL_SECONDS = 3 * _BLE_KEEPALIVE_INTERVAL_SECONDS
+#: Real motion is never allowed behind existing queue work. The command API
+#: returns after enqueue, so even one predecessor makes the local pulse timer
+#: diverge from the mower's actual execution window.
+_BLE_QUEUE_DEPTH_LIMIT = 0
+#: Maximum time a motion item may wait to start in the command queue. If this
+#: expires the item is disarmed, so a later queue recovery cannot execute it.
+_BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS = 2.0
+#: Maximum time allowed for the BLE GATT write itself. Motion timing begins only
+#: after this awaited write completes.
+_BLE_MOTION_WRITE_TIMEOUT_SECONDS = 4.0
+
+
+def _ble_link_liveness(  # noqa: C901
+    coordinator: MammotionReportUpdateCoordinator,
+) -> dict[str, Any]:
+    """Report whether BLE is safe enough to enter confirmed motion dispatch.
+
+    This exists because ``_ble_transport_usable`` answers a different question
+    than it appears to. ``BLETransport.is_usable`` is a *routing-eligibility*
+    flag -- a ``BLEDevice`` is cached, its advertisement RSSI clears
+    ``min_rssi``, and no connect cooldown is armed. None of that requires a live
+    GATT link, and none of it notices that commands are piling up undelivered.
+
+    Live evidence (2026-07-28): pymammotion leaks proxy connection slots (see
+    ``docs/pymammotion-ble-slot-leak-bug.md``), so the ESPHome proxy runs out,
+    ``DeviceCommandQueue`` gates, and every command -- *including the mandatory
+    stop that bounds a motion pulse* -- accumulates. A command issued at 21:06:20
+    produced one send and silence; the queue flushed at 21:06:41-43 and the mower
+    drove 1.0778 m at 21:07:16, long after the executor had sampled the window
+    and reported it stationary. Throughout, ``active_transport`` read ``ble``,
+    ``is_usable`` was True, RSSI was -64 dBm, and ``command_result.ok`` was True.
+
+    This is a conservative preflight snapshot, not proof that the next write
+    will complete. In pinned pymammotion ``last_send_monotonic`` is stamped
+    before the GATT write is awaited, and queue state can change immediately
+    after inspection. Real motion therefore also uses
+    ``_send_ble_motion_command_confirmed``: it waits for queue start and GATT
+    completion, disarms late queue items, and never falls back to MQTT.
+
+    Unlike the other helpers here, missing introspection reads as **not live**
+    rather than as live. Degrading permissive is what let unbounded motion
+    through: a gate that silently passes when it cannot see is exactly the
+    vacuously-true failure this project has already been bitten by twice. The
+    cost of being wrong is asymmetric -- a false block wastes a run, a false pass
+    puts an unstoppable mower in a yard.
+
+    Returns:
+        A diagnostic mapping. ``live`` is the gate verdict; ``reason`` names the
+        first failing check (``None`` when live). The remaining keys are
+        ``None`` when that field could not be read.
+
+    """
+    report: dict[str, Any] = {
+        "live": False,
+        "reason": None,
+        "is_connected": None,
+        "is_usable": None,
+        "cooldown_active": None,
+        "cooldown_remaining_seconds": None,
+        "last_send_age_seconds": None,
+        "queue_depth": None,
+        "queue_dispatch_paused": None,
+        "saga_active": None,
+        "stall_threshold_seconds": _BLE_SEND_STALL_SECONDS,
+        "queue_depth_limit": _BLE_QUEUE_DEPTH_LIMIT,
+    }
+
+    try:
+        handle = coordinator.manager.mower(coordinator.device_name)
+    except Exception:  # noqa: BLE001
+        handle = None
+    if handle is None:
+        report["reason"] = "device_handle_unavailable"
+        return report
+
+    get_transport = getattr(handle, "get_transport", None)
+    if get_transport is None:
+        report["reason"] = "get_transport_unavailable"
+        return report
+    try:
+        transport = get_transport(TransportType.BLE)
+    except Exception:  # noqa: BLE001
+        transport = None
+    if transport is None:
+        report["reason"] = "ble_transport_not_registered"
+        return report
+
+    # --- transport-level reads (public Transport API) ---------------------
+    for key, attr in (
+        ("is_connected", "is_connected"),
+        ("is_usable", "is_usable"),
+    ):
+        try:
+            report[key] = bool(getattr(transport, attr))
+        except Exception:  # noqa: BLE001
+            report[key] = None
+
+    try:
+        deadline = float(transport._connect_cooldown_until)  # noqa: SLF001
+        remaining = deadline - time.monotonic()
+        report["cooldown_active"] = remaining > 0
+        report["cooldown_remaining_seconds"] = round(max(remaining, 0.0), 1)
+    except Exception:  # noqa: BLE001
+        pass
+
+    try:
+        last_send = float(transport.last_send_monotonic)
+    except Exception:  # noqa: BLE001
+        last_send = None
+    if last_send is not None and last_send > 0.0:
+        report["last_send_age_seconds"] = round(time.monotonic() - last_send, 1)
+
+    # --- queue-level reads -------------------------------------------------
+    queue = getattr(handle, "queue", None)
+    if queue is not None:
+        with contextlib.suppress(Exception):
+            report["saga_active"] = bool(queue.is_saga_active)
+        # Both are private in pymammotion 0.8.8; there is no public equivalent.
+        # Absence is handled below by refusing, not by passing.
+        gate = getattr(queue, "_transport_gate", None)
+        if gate is not None:
+            with contextlib.suppress(Exception):
+                report["queue_dispatch_paused"] = not gate.is_set()
+        pending = getattr(queue, "_queue", None)
+        if pending is not None:
+            with contextlib.suppress(Exception):
+                report["queue_depth"] = int(pending.qsize())
+
+    # --- verdict -----------------------------------------------------------
+    if report["is_connected"] is not True:
+        report["reason"] = "ble_client_not_connected"
+        return report
+    if report["is_usable"] is not True:
+        report["reason"] = "ble_transport_not_usable"
+        return report
+    if report["cooldown_active"] is not False:
+        report["reason"] = "ble_connect_cooldown_armed"
+        return report
+    if report["queue_dispatch_paused"] is not False:
+        report["reason"] = "command_queue_dispatch_paused"
+        return report
+    if report["saga_active"] is not False:
+        report["reason"] = "exclusive_saga_active"
+        return report
+    if report["queue_depth"] is None or report["queue_depth"] > _BLE_QUEUE_DEPTH_LIMIT:
+        report["reason"] = "command_queue_backlogged"
+        return report
+    age = report["last_send_age_seconds"]
+    if age is None:
+        report["reason"] = "no_ble_send_observed"
+        return report
+    if age > _BLE_SEND_STALL_SECONDS:
+        report["reason"] = "ble_send_stalled"
+        return report
+
+    report["live"] = True
+    return report
+
+
 async def _attempt_ble_recovery(  # noqa: C901
     coordinator: MammotionReportUpdateCoordinator,
     *,
@@ -3563,6 +3859,7 @@ def _manual_velocity_pulse_gates(
 ) -> list[dict[str, Any]]:
     """Return safety gates for a manual velocity pulse probe."""
     work_mode_label = before.get("work_mode_label")
+    ble_link = _ble_link_liveness(coordinator) if not dry_run else None
     return [
         {
             "name": "stop_primitive_available",
@@ -3578,6 +3875,21 @@ def _manual_velocity_pulse_gates(
                 "path execution. BLE must also report itself usable -- being "
                 "selected for routing does not mean a command can be delivered."
             ),
+        },
+        {
+            "name": "ble_link_live",
+            "passed": dry_run or bool(ble_link and ble_link["live"]),
+            "detail": (
+                "Real motion requires a conservative BLE preflight -- a live "
+                "client, an open dispatch gate, an empty command queue, and a "
+                "recent outbound attempt. 'Usable' only means BLE is "
+                "eligible for routing; it stays True while the command queue is "
+                "gated and commands (including the mandatory stop that bounds a "
+                "pulse) accumulate undelivered. The send path separately waits "
+                "for confirmed queue start and GATT-write completion. See "
+                "docs/pymammotion-ble-slot-leak-bug.md."
+            ),
+            "diagnostics": ble_link,
         },
         {
             "name": "operator_confirmed_blades_off",
@@ -3646,13 +3958,21 @@ async def _deliver_stop_despite_cancellation(
     is interrupted by a further cancellation; ``wait_for`` bounds it so a dead
     transport cannot hang teardown.
     """
-    with contextlib.suppress(Exception):
+    try:
         await asyncio.shield(
             asyncio.wait_for(
-                coordinator.async_stop_manual_motion(),
+                _stop_manual_motion_confirmed(coordinator),
                 timeout=_MOTION_CANCEL_STOP_TIMEOUT_SECONDS,
             )
         )
+    except Exception:  # noqa: BLE001 - teardown keeps a final best-effort fallback
+        with contextlib.suppress(Exception):
+            await asyncio.shield(
+                asyncio.wait_for(
+                    coordinator.async_stop_manual_motion(),
+                    timeout=_MOTION_CANCEL_STOP_TIMEOUT_SECONDS,
+                )
+            )
 
 
 async def _motion_open_sleep(
@@ -3870,6 +4190,71 @@ def _manual_motion_busy_result(service: str, owner: str) -> dict[str, Any]:
     }
 
 
+def _manual_motion_rejected_result(
+    service: str,
+    blockers: Sequence[str],
+    *,
+    diagnostics: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return a consistent fail-closed authorization rejection."""
+    return {
+        "service": service,
+        "mode": "rejected_safety_gate",
+        "valid": False,
+        "would_send": False,
+        "blockers": list(dict.fromkeys(blockers)),
+        "stop_reason": blockers[0] if blockers else "manual_motion_not_authorized",
+        "experimental_motion": dict(diagnostics or {}),
+    }
+
+
+def _manual_motion_authorization(
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    ha_state: str | None,
+    call_data: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Evaluate the common authorization boundary for every nonzero run."""
+    try:
+        route = _export_active_route(coordinator)
+    except Exception:  # noqa: BLE001 - unreadable safety state must fail closed
+        route = None
+    telemetry = _custom_path_telemetry_snapshot(coordinator)
+    safety = _runtime_motion_safety_summary(
+        telemetry,
+        ha_state=ha_state,
+        active_route=route,
+    )
+    liveness = _ble_link_liveness(coordinator)
+    status = experimental_motion_status(
+        coordinator,
+        ble_liveness=liveness,
+        safety=safety,
+    )
+    blockers = list(status["blockers"])
+
+    if call_data.get("use_wifi") is True or call_data.get("prefer_ble") is False:
+        blockers.append("manual_motion_requires_ble")
+    if call_data.get("confirm_blades_off") is not True:
+        blockers.append("operator_confirmation_blades_off_required")
+    if call_data.get("confirm_clear_area") is not True:
+        blockers.append("operator_confirmation_clear_area_required")
+
+    capabilities = capability_snapshot(coordinator)
+    if capabilities["capabilities"]["manual_motion"] != "yes":
+        blockers.append("manual_motion_capability_unknown")
+    if telemetry.get("online") is not True:
+        blockers.append("mower_online_state_not_fresh")
+    if telemetry.get("work_mode_label") not in {"MODE_READY", "MODE_PAUSE"}:
+        blockers.append("mower_not_ready_or_paused")
+    if telemetry.get("charge_state_label") != "not_charging":
+        blockers.append("mower_charging_state_not_safe")
+
+    status["blockers"] = list(dict.fromkeys(blockers))
+    status["real_motion_allowed"] = not status["blockers"]
+    return status
+
+
 def _exclusive_saga_active(coordinator: MammotionReportUpdateCoordinator) -> bool:
     """Return True only when an exclusive saga demonstrably holds the queue.
 
@@ -3918,12 +4303,13 @@ def _is_zero_motion_stop_nudge(
     )
 
 
-def _wrap_exclusive_manual_motion(
+def _wrap_exclusive_manual_motion(  # noqa: C901
     hass: HomeAssistant,
     service: str,
     handler: Callable[[ServiceCall], Coroutine[Any, Any, dict[str, Any]]],
     *,
     allow_stop_nudge: bool = False,
+    always_real: bool = False,
 ) -> Callable[[ServiceCall], Coroutine[Any, Any, dict[str, Any]]]:
     """Serialize a motion service's real runs per mower at registration time.
 
@@ -3934,8 +4320,8 @@ def _wrap_exclusive_manual_motion(
     path) so a stop can always preempt a running loop.
     """
 
-    async def wrapped(call: ServiceCall) -> dict[str, Any]:
-        real = call.data.get("dry_run", True) is False
+    async def wrapped(call: ServiceCall) -> dict[str, Any]:  # noqa: C901
+        real = always_real or call.data.get("dry_run", True) is False
         if (
             real
             and allow_stop_nudge
@@ -3972,10 +4358,54 @@ def _wrap_exclusive_manual_motion(
             # A *named* refusal answers the original objection -- the operator
             # is told it is a map sync and can retry in seconds.
             return _manual_motion_busy_result(service, "map_sync_saga")
+        states = getattr(hass, "states", None)
+        state = states.get(call.data[ATTR_ENTITY_ID]) if states is not None else None
+        authorization = _manual_motion_authorization(
+            coordinator,
+            ha_state=state.state if state is not None else None,
+            call_data=call.data,
+        )
+        if authorization["real_motion_allowed"] is not True:
+            return _manual_motion_rejected_result(
+                service,
+                authorization["blockers"],
+                diagnostics=authorization,
+            )
+        session = ManualMotionSession(owner=service)
         coordinator.manual_motion_owner = service
+        coordinator.manual_motion_session = session
+        session.phase = "running"
         try:
-            return await handler(call)
+            result = await handler(call)
+        except ManualMotionCancelledError:
+            session.phase = "aborted"
+            session.cancelled = True
+            session.cancel_reason = session.cancel_reason or "operator_stop"
+            return {
+                "service": service,
+                "mode": "aborted",
+                "valid": False,
+                "would_send": False,
+                "session": session.as_dict(),
+                "stop_reason": "operator_stop",
+            }
+        except asyncio.CancelledError:
+            session.phase = "cancelled"
+            session.cancelled = True
+            session.cancel_reason = session.cancel_reason or "task_cancelled"
+            raise
+        except Exception as err:
+            session.phase = "failed"
+            session.error = f"{type(err).__name__}: {err}"
+            raise
+        else:
+            session.phase = "completed"
+            return result
         finally:
+            session.owner_done.set()
+            coordinator.last_manual_motion_session = session
+            if coordinator.manual_motion_session is session:
+                coordinator.manual_motion_session = None
             coordinator.manual_motion_owner = None
 
     return wrapped
@@ -4197,6 +4627,154 @@ def _raw_pymammotion_motion_interpretation(
     }
 
 
+async def _send_ble_motion_command_confirmed(  # noqa: C901
+    coordinator: MammotionReportUpdateCoordinator,
+    command: str,
+    *,
+    command_kwargs: Mapping[str, Any],
+    emergency_stop: bool = False,
+) -> None:
+    """Send one motion command over BLE and wait for the GATT write to finish.
+
+    ``MammotionClient.send_command_with_args`` only waits for queue insertion.
+    Starting a pulse timer after that call is unsafe: the command may still be
+    behind a reconnect gate or an in-flight write, and its later stop can then
+    be replayed on a different timeline.
+
+    This helper keeps normal queue ordering but owns the queued work, allowing
+    it to report actual completion. It also sends through the already-selected
+    BLE transport directly, so a failed BLE write cannot silently fall back to
+    cloud MQTT. If the item cannot start promptly it is disarmed before raising;
+    a later queue recovery will consume it as a no-op instead of moving the
+    mower late.
+    """
+    is_stop = command == "send_movement" and all(
+        int(command_kwargs.get(key, 0)) == 0
+        for key in ("linear_speed", "angular_speed")
+    )
+    assert_session_can_dispatch(coordinator, is_stop=is_stop)
+
+    handle = coordinator.manager.mower(coordinator.device_name)
+    if handle is None:
+        raise RuntimeError("device handle unavailable for confirmed BLE motion")
+
+    liveness = _ble_link_liveness(coordinator)
+    if not emergency_stop and not liveness["live"]:
+        raise RuntimeError(f"BLE link is not ready for motion: {liveness['reason']}")
+    if emergency_stop and (
+        liveness.get("is_connected") is not True
+        or liveness.get("is_usable") is not True
+    ):
+        raise RuntimeError(
+            "BLE link cannot deliver emergency stop: "
+            f"{liveness.get('reason') or 'not_connected'}"
+        )
+
+    transport = handle.get_transport(TransportType.BLE)
+    if transport is None:
+        raise RuntimeError("BLE transport unavailable for confirmed motion")
+
+    command_bytes: bytes = getattr(handle.commands, command)(**dict(command_kwargs))
+    loop = asyncio.get_running_loop()
+    started = asyncio.Event()
+    completed: asyncio.Future[None] = loop.create_future()
+    armed = True
+
+    async def _dispatch() -> None:
+        nonlocal armed
+        if not armed:
+            return
+        started.set()
+        dispatch_liveness = _ble_link_liveness(coordinator)
+        dispatch_ready = (
+            dispatch_liveness.get("is_connected") is True
+            and dispatch_liveness.get("is_usable") is True
+            if emergency_stop
+            else dispatch_liveness["live"]
+        )
+        if not dispatch_ready:
+            error = RuntimeError(
+                "BLE link stopped being ready before motion dispatch: "
+                f"{dispatch_liveness['reason']}"
+            )
+            if not completed.done():
+                completed.set_exception(error)
+            raise error
+        try:
+            await asyncio.wait_for(
+                handle._send_marked(transport, command_bytes),  # noqa: SLF001
+                timeout=_BLE_MOTION_WRITE_TIMEOUT_SECONDS,
+            )
+        except BaseException as err:
+            if not completed.done():
+                completed.set_exception(err)
+            raise
+        else:
+            if not completed.done():
+                completed.set_result(None)
+
+    try:
+        await handle.queue.enqueue(
+            _dispatch,
+            priority=Priority.EMERGENCY if emergency_stop else Priority.NORMAL,
+        )
+    except BaseException:
+        # The real DeviceCommandQueue only inserts here, but eager test/dummy
+        # queues may execute the work inline. Consume the mirrored future
+        # exception before propagating so it cannot become an un-retrieved
+        # event-loop warning.
+        if completed.done() and not completed.cancelled():
+            completed.exception()
+        raise
+    try:
+        await asyncio.wait_for(
+            started.wait(),
+            timeout=(
+                _BLE_MOTION_WRITE_TIMEOUT_SECONDS + 1.0
+                if emergency_stop
+                else _BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS
+            ),
+        )
+    except TimeoutError:
+        armed = False
+        if not completed.done():
+            completed.cancel()
+        raise RuntimeError(
+            "BLE motion command did not start before the queue deadline; "
+            "the queued item was disarmed"
+        ) from None
+    except asyncio.CancelledError:
+        armed = False
+        if not completed.done():
+            completed.cancel()
+        raise
+
+    try:
+        await asyncio.shield(completed)
+    except asyncio.CancelledError:
+        # If cancellation lands after dispatch started, the queue task owns the
+        # write and keeps running independently of this caller. Wait briefly for
+        # it to settle, then enqueue a confirmed zero-velocity command before
+        # propagating cancellation. Without this, the movement could arrive
+        # after its caller has exited and no outer finally block would know it
+        # needs to stop.
+        with contextlib.suppress(BaseException):
+            await asyncio.wait_for(
+                asyncio.shield(completed),
+                timeout=_BLE_MOTION_WRITE_TIMEOUT_SECONDS + 0.5,
+            )
+        if not is_stop:
+            with contextlib.suppress(BaseException):
+                await _stop_manual_motion_confirmed(coordinator)
+        raise
+    else:
+        record_completed_dispatch(
+            coordinator,
+            command=command,
+            is_stop=is_stop,
+        )
+
+
 async def _send_manager_command_with_args(
     coordinator: MammotionReportUpdateCoordinator,
     command: str,
@@ -4204,7 +4782,14 @@ async def _send_manager_command_with_args(
     prefer_ble: bool,
     command_kwargs: Mapping[str, Any],
 ) -> None:
-    """Send a raw manager command with dynamic kwargs."""
+    """Send a manager command, confirming BLE dispatch for motion commands."""
+    if prefer_ble and command in RAW_PYMAMMOTION_MOTION_COMMANDS:
+        await _send_ble_motion_command_confirmed(
+            coordinator,
+            command,
+            command_kwargs=command_kwargs,
+        )
+        return
     await cast(Any, coordinator.manager.send_command_with_args)(
         coordinator.device_name,
         command,
@@ -5152,7 +5737,7 @@ async def _vio_motion_probe(  # noqa: C901, PLR0912, PLR0913, PLR0915
     finally:
         if command_started:
             try:
-                result["stop_ack"] = await coordinator.async_stop_manual_motion()
+                result["stop_ack"] = await _stop_manual_motion_confirmed(coordinator)
             except Exception as err:  # noqa: BLE001
                 result["stop_ack"] = {"error": f"{type(err).__name__}: {err}"}
 
@@ -5445,7 +6030,7 @@ async def _vio_turn_probe(  # noqa: C901, PLR0912, PLR0913, PLR0915
     finally:
         if command_started:
             try:
-                result["stop_ack"] = await coordinator.async_stop_manual_motion()
+                result["stop_ack"] = await _stop_manual_motion_confirmed(coordinator)
             except Exception as err:  # noqa: BLE001
                 result["stop_ack"] = {"error": f"{type(err).__name__}: {err}"}
 
@@ -6236,7 +6821,9 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
             "refresh_commands_sent"
         ]
         try:
-            command_result["stop_ack"] = await coordinator.async_stop_manual_motion()
+            command_result["stop_ack"] = await _stop_manual_motion_confirmed(
+                coordinator
+            )
         except Exception as err:  # noqa: BLE001
             # Never keep turning when stops are not deliverable (live 2026-07-12:
             # BLE connect cooldown raised mid-run and motion continued unstopped).
@@ -9515,6 +10102,17 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
                 "detail": "Real multi-segment execution requires max_real_segments >= 1.",
             }
         )
+    if not dry_run and max_real_segments > REAL_CLICK_TO_GO_SEGMENT_LIMIT:
+        gates.append(
+            {
+                "name": "real_segment_limit",
+                "passed": False,
+                "detail": (
+                    "Real click-to-go execution is limited to "
+                    f"{REAL_CLICK_TO_GO_SEGMENT_LIMIT} segments."
+                ),
+            }
+        )
     if not preview["valid"]:
         gates.append(
             {
@@ -11380,31 +11978,45 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
                 translation_key="camera_temporarily_unavailable",
             ) from err
 
-    async def handle_get_tokens(call: ServiceCall) -> dict[str, Any]:
-        mower = _require_camera_mower(hass, call.data[ATTR_ENTITY_ID])
-        coordinator = mower.reporting_coordinator
-        cached = coordinator.get_stream_data()
-        if cached is None or cached.data is None:
-            stream_data, agora_response = await coordinator.async_check_stream_expiry(
-                force=True
-            )
-            if stream_data is None or agora_response is None:
-                raise HomeAssistantError(
-                    translation_domain=DOMAIN,
-                    translation_key="camera_temporarily_unavailable",
-                )
-            return stream_data.to_dict()
-        return cached.data.to_dict()
-
-    async def handle_movement(call: ServiceCall, direction: str) -> None:
+    async def handle_movement(call: ServiceCall, direction: str) -> dict[str, Any]:
         mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
         if mower is None:
             raise HomeAssistantError(
                 translation_domain=DOMAIN,
                 translation_key="mower_target_not_found",
             )
-        method = getattr(mower.reporting_coordinator, direction)
-        await method(speed=call.data["speed"], use_wifi=call.data["use_wifi"])
+        coordinator = mower.reporting_coordinator
+        command, command_kwargs = {
+            "async_move_forward": (
+                "move_forward",
+                {"linear": call.data["speed"]},
+            ),
+            "async_move_left": (
+                "move_left",
+                {"angular": call.data["speed"]},
+            ),
+            "async_move_right": (
+                "move_right",
+                {"angular": call.data["speed"]},
+            ),
+            "async_move_back": (
+                "move_back",
+                {"linear": call.data["speed"]},
+            ),
+        }[direction]
+        await _send_ble_motion_command_confirmed(
+            coordinator,
+            command,
+            command_kwargs=command_kwargs,
+        )
+        await _stop_manual_motion_confirmed(coordinator)
+        session = active_motion_session(coordinator)
+        return {
+            "service": command,
+            "ok": True,
+            "stop_confirmed": True,
+            "session": session.as_dict() if session is not None else None,
+        }
 
     hass.services.async_register(
         DOMAIN, SERVICE_REFRESH_STREAM, handle_refresh_stream, schema=CAMERA_SCHEMA
@@ -11414,13 +12026,6 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
     )
     hass.services.async_register(
         DOMAIN, SERVICE_STOP_VIDEO, handle_stop_video, schema=CAMERA_SCHEMA
-    )
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_GET_TOKENS,
-        handle_get_tokens,
-        schema=CAMERA_SCHEMA,
-        supports_response=SupportsResponse.ONLY,
     )
     for service_name, method_name in (
         (SERVICE_MOVE_FORWARD, "async_move_forward"),
@@ -11432,15 +12037,38 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         async def handle_directional_movement(
             call: ServiceCall,
             method_name: str = method_name,
-        ) -> None:
-            await handle_movement(call, method_name)
+        ) -> dict[str, Any]:
+            return await handle_movement(call, method_name)
 
         hass.services.async_register(
             DOMAIN,
             service_name,
-            handle_directional_movement,
+            _wrap_exclusive_manual_motion(
+                hass,
+                service_name,
+                handle_directional_movement,
+                always_real=True,
+            ),
             schema=MOVEMENT_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
         )
+
+    async def handle_stop_manual_motion(call: ServiceCall) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="mower_target_not_found",
+            )
+        return await _stop_active_manual_motion(mower.reporting_coordinator)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_STOP_MANUAL_MOTION,
+        handle_stop_manual_motion,
+        schema=CAMERA_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
 
     async def handle_force_map_resync(call: ServiceCall) -> dict[str, Any]:
         """Force a full map re-fetch + GeoJSON re-projection (recovery lever).

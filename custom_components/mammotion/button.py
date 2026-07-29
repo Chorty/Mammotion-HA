@@ -14,11 +14,10 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pymammotion.data.model.hash_list import Plan
 from pymammotion.data.model.pool_state import PoolPlan
-from pymammotion.transport.base import TransportType
 from pymammotion.utility.device_type import DeviceType
 
 from . import MammotionConfigEntry
-from .const import CONF_MOVEMENT_USE_WIFI, DOMAIN
+from .const import DOMAIN
 from .coordinator import (
     MammotionBaseUpdateCoordinator,
     MammotionReportUpdateCoordinator,
@@ -64,15 +63,6 @@ class MammotionSpinoTaskButtonEntityDescription(ButtonEntityDescription):
     press_fn: Callable[[MammotionSpinoCoordinator, int], Awaitable[Any]]
 
 
-def _movement_use_wifi_option(coordinator: MammotionBaseUpdateCoordinator) -> bool:
-    """Return movement Wi-Fi option, tolerating absent config entry."""
-    config_entry = coordinator.config_entry
-    return bool(
-        config_entry is not None
-        and config_entry.options.get(CONF_MOVEMENT_USE_WIFI, False)
-    )
-
-
 SPINO_BUTTON_SENSORS: tuple[MammotionSpinoButtonEntityDescription, ...] = (
     MammotionSpinoButtonEntityDescription(
         key="spino_fetch_map",
@@ -93,14 +83,18 @@ SPINO_BUTTON_SENSORS: tuple[MammotionSpinoButtonEntityDescription, ...] = (
 
 
 def _nudge_available(coordinator: MammotionBaseUpdateCoordinator) -> bool:
-    """Return True when movement via BLE or Wi-Fi is possible."""
-    if _movement_use_wifi_option(coordinator):
-        return True
-    handle = coordinator.manager.mower(coordinator.device_name)
-    if handle is None:
-        return False
-    ble = handle.get_transport(TransportType.BLE)
-    return ble is not None and ble.is_usable
+    """Keep one-click movement unavailable because it cannot confirm safety."""
+    return False
+
+
+async def _reject_unguarded_nudge(
+    coordinator: MammotionBaseUpdateCoordinator,
+) -> None:
+    """Prevent button presses from bypassing the service safety boundary."""
+    raise RuntimeError(
+        "Emergency nudge buttons are disabled; use the guarded manual-motion "
+        "services with both operator confirmations"
+    )
 
 
 BUTTON_SENSORS: tuple[MammotionButtonSensorEntityDescription, ...] = (
@@ -125,34 +119,22 @@ BUTTON_SENSORS: tuple[MammotionButtonSensorEntityDescription, ...] = (
     ),
     MammotionButtonSensorEntityDescription(
         key="emergency_nudge_forward",
-        press_fn=lambda coordinator: coordinator.async_move_forward(
-            0.4,
-            _movement_use_wifi_option(coordinator),
-        ),
+        press_fn=_reject_unguarded_nudge,
         available_fn=_nudge_available,
     ),
     MammotionButtonSensorEntityDescription(
         key="emergency_nudge_left",
-        press_fn=lambda coordinator: coordinator.async_move_left(
-            0.4,
-            _movement_use_wifi_option(coordinator),
-        ),
+        press_fn=_reject_unguarded_nudge,
         available_fn=_nudge_available,
     ),
     MammotionButtonSensorEntityDescription(
         key="emergency_nudge_right",
-        press_fn=lambda coordinator: coordinator.async_move_right(
-            0.4,
-            _movement_use_wifi_option(coordinator),
-        ),
+        press_fn=_reject_unguarded_nudge,
         available_fn=_nudge_available,
     ),
     MammotionButtonSensorEntityDescription(
         key="emergency_nudge_back",
-        press_fn=lambda coordinator: coordinator.async_move_back(
-            0.4,
-            _movement_use_wifi_option(coordinator),
-        ),
+        press_fn=_reject_unguarded_nudge,
         available_fn=_nudge_available,
     ),
     MammotionButtonSensorEntityDescription(

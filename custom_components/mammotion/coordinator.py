@@ -191,6 +191,10 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         #: middle of a guarded motion run (the saga would block the mower's command
         #: queue and stall the run's pulses).
         self.manual_motion_owner: str | None = None
+        # The service layer owns the concrete ManualMotionSession type to avoid
+        # coupling normal mower operation to experimental motion internals.
+        self.manual_motion_session: Any | None = None
+        self.last_manual_motion_session: Any | None = None
         self.last_task_sync: datetime.datetime | None = None
         self.last_map_task_error: str | None = None
         self.last_cloud_login_success: datetime.datetime | None = None
