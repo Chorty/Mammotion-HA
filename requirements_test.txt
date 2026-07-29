@@ -8,7 +8,7 @@ ruff==0.15.16
 mypy==2.1.0
 
 # The integration's own runtime requirements.
-pymammotion==0.8.8
+pymammotion==0.8.12
 websockets==16.0
 sdp-transform==1.1.0
 autotyping==24.9.0
