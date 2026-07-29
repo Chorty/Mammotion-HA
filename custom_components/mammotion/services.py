@@ -1451,6 +1451,21 @@ def _point_on_segment(
     tolerance: float = 1e-9,
 ) -> bool:
     """Return True if *point* lies on the line segment from *start* to *end*."""
+    squared_len = (end["x"] - start["x"]) ** 2 + (end["y"] - start["y"]) ** 2
+    if squared_len <= tolerance:
+        # Degenerate "segment": start == end, so it is a point, and only the
+        # same point lies on it. Without this guard every test below passes for
+        # ANY point -- cross and dot are both identically zero, and the final
+        # comparison becomes `0 <= 0`. That made `_point_in_polygon` return True
+        # for the entire plane, because the mower's area polygons are CLOSED
+        # RINGS (first vertex == last), so the loop's very first segment is
+        # `polygon[-1] -> polygon[0]` -- always degenerate. Every containment
+        # check in the integration was therefore inert: live 2026-07-28, a point
+        # 2 m outside the lawn tested as inside all four areas at once,
+        # including two that were 19 m and 28 m away.
+        return (point["x"] - start["x"]) ** 2 + (
+            point["y"] - start["y"]
+        ) ** 2 <= tolerance
     cross = (point["y"] - start["y"]) * (end["x"] - start["x"]) - (
         point["x"] - start["x"]
     ) * (end["y"] - start["y"])
@@ -1461,7 +1476,6 @@ def _point_on_segment(
     ) * (end["y"] - start["y"])
     if dot < -tolerance:
         return False
-    squared_len = (end["x"] - start["x"]) ** 2 + (end["y"] - start["y"]) ** 2
     return dot <= squared_len + tolerance
 
 

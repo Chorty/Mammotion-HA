@@ -77,6 +77,7 @@ from custom_components.mammotion.services import (
     _motion_refresh_window,
     _normalize_mower_areas,
     _normalize_mower_tasks,
+    _point_on_segment,
     _position_feedback_diagnostic,
     _position_source_comparison,
     _preview_custom_path,
@@ -705,6 +706,77 @@ def test_validate_custom_path_rejects_unsafe_or_outside_path() -> None:
     assert "blade_mode_must_be_off" in result["errors"]
     assert "path_points_outside_known_area_geometry" in result["errors"]
     assert "speed_above_recommended_validation_default" in result["warnings"]
+
+
+def test_validate_custom_path_rejects_outside_point_on_a_closed_ring() -> None:
+    """A CLOSED polygon ring must still reject points outside it.
+
+    Regression for 2026-07-28, found on the mower. Every existing containment
+    test used an OPEN polygon (first vertex != last), but the device sends
+    CLOSED RINGS. With a closed ring, ``_point_in_polygon`` starts at
+    ``previous = polygon[-1]``, ``current = polygon[0]`` -- the same point, a
+    zero-length segment. ``_point_on_segment`` then had cross == 0 and dot == 0
+    identically, and its final check reduced to ``0 <= 0``, so it returned True
+    for ANY point and containment short-circuited to True before casting a
+    single ray.
+
+    Live effect: a target 2 m outside the lawn tested as inside all four mapped
+    areas at once, including two that were 19 m and 28 m away, and
+    ``validate_custom_path`` reported ``valid: True`` with no errors. Every
+    containment check in the integration was inert.
+    """
+    coordinator = _coordinator()
+    coordinator.data.map.area = {
+        123: SimpleNamespace(
+            data=[
+                SimpleNamespace(
+                    current_frame=0,
+                    data_couple=[
+                        SimpleNamespace(x=0.0, y=0.0),
+                        SimpleNamespace(x=10.0, y=0.0),
+                        SimpleNamespace(x=10.0, y=10.0),
+                        SimpleNamespace(x=0.0, y=10.0),
+                        # The closing vertex the real device sends.
+                        SimpleNamespace(x=0.0, y=0.0),
+                    ],
+                )
+            ]
+        )
+    }
+
+    outside = _validate_custom_path(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 40.0, "y": 40.0}],
+        area_hash=123,
+        speed=0.2,
+        blade_mode="off",
+    )
+
+    assert outside["valid"] is False
+    assert "path_points_outside_known_area_geometry" in outside["errors"]
+
+    # ...and the same ring must still ACCEPT genuinely interior points, so the
+    # fix cannot be "reject everything".
+    inside = _validate_custom_path(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 9.0, "y": 9.0}],
+        area_hash=123,
+        speed=0.2,
+        blade_mode="off",
+    )
+
+    assert inside["valid"] is True
+    assert inside["errors"] == []
+
+
+def test_point_on_segment_rejects_far_points_on_a_degenerate_segment() -> None:
+    """A zero-length segment is a point: only that point lies on it."""
+    origin = {"x": 3.0, "y": -4.0}
+
+    assert _point_on_segment(origin, origin, origin) is True
+    assert _point_on_segment({"x": 3.0, "y": -4.0}, origin, origin) is True
+    assert _point_on_segment({"x": 100.0, "y": 100.0}, origin, origin) is False
+    assert _point_on_segment({"x": 3.1, "y": -4.0}, origin, origin) is False
 
 
 def test_validate_custom_path_accepts_point_on_polygon_boundary() -> None:
