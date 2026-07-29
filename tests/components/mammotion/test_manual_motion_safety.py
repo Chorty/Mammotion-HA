@@ -9,6 +9,11 @@ from unittest.mock import AsyncMock
 import pytest
 
 from custom_components.mammotion import manual_motion
+from custom_components.mammotion.backend_capability import (
+    CAPABILITY_BLE_TEARDOWN,
+    CAPABILITY_BLUFI_REASSEMBLY,
+    REQUIRED_MOTION_CAPABILITIES,
+)
 from custom_components.mammotion.manual_motion import (
     ManualMotionCancelledError,
     ManualMotionSession,
@@ -27,11 +32,71 @@ def _coordinator(*, enabled: bool = False) -> SimpleNamespace:
     )
 
 
-def test_backend_floor_keeps_pymammotion_0812_locked() -> None:
-    """The currently pinned backend must not unlock real motion."""
-    assert motion_backend_verified("0.8.12") is False
-    assert motion_backend_verified("not-installed") is False
-    assert motion_backend_verified("0.8.13") is True
+def _capabilities(**present: bool) -> dict[str, object]:
+    """Build a capability report with the named capabilities present."""
+    capabilities = {
+        name: bool(present.get(name, False)) for name in REQUIRED_MOTION_CAPABILITIES
+    }
+    missing = [name for name, ok in capabilities.items() if not ok]
+    return {
+        "probed": True,
+        "capabilities": capabilities,
+        "missing": missing,
+        "verified": not missing,
+        "reasons": [f"backend_missing_{name}" for name in missing],
+    }
+
+
+def test_a_version_number_alone_never_verifies_the_backend() -> None:
+    """Any version with unproven capabilities stays locked, however new."""
+    unproven = _capabilities()
+
+    assert motion_backend_verified("0.8.12", capabilities=unproven) is False
+    assert motion_backend_verified("0.8.13", capabilities=unproven) is False
+    assert motion_backend_verified("99.0.0", capabilities=unproven) is False
+
+
+def test_partial_backend_fixes_do_not_verify() -> None:
+    """Both audited fixes are required; a cherry-pick of one is not enough."""
+    proven = _capabilities(**dict.fromkeys(REQUIRED_MOTION_CAPABILITIES, True))
+
+    assert (
+        motion_backend_verified(
+            "0.8.12",
+            capabilities=_capabilities(**{CAPABILITY_BLE_TEARDOWN: True}),
+        )
+        is False
+    )
+    assert (
+        motion_backend_verified(
+            "0.8.12",
+            capabilities=_capabilities(**{CAPABILITY_BLUFI_REASSEMBLY: True}),
+        )
+        is False
+    )
+    assert motion_backend_verified("0.8.12", capabilities=proven) is True
+
+
+def test_backend_below_the_audited_base_never_verifies() -> None:
+    """Proven capabilities cannot rescue a release nobody has read."""
+    proven = _capabilities(**dict.fromkeys(REQUIRED_MOTION_CAPABILITIES, True))
+
+    assert motion_backend_verified("0.8.11", capabilities=proven) is False
+    assert motion_backend_verified("not-installed", capabilities=proven) is False
+
+
+def test_unprobed_backend_is_never_verified() -> None:
+    """Absence of evidence must read as absence of the fix."""
+    never_probed = {
+        "probed": False,
+        "capabilities": dict.fromkeys(REQUIRED_MOTION_CAPABILITIES, False),
+        "missing": list(REQUIRED_MOTION_CAPABILITIES),
+        "verified": False,
+        "reasons": ["backend_capability_probe_not_run"],
+    }
+
+    assert motion_backend_verified("0.8.12", capabilities=never_probed) is False
+    assert motion_backend_verified("0.8.99", capabilities=never_probed) is False
 
 
 def test_status_is_fail_closed_and_reports_actionable_blockers(
@@ -42,6 +107,11 @@ def test_status_is_fail_closed_and_reports_actionable_blockers(
         manual_motion,
         "installed_pymammotion_version",
         lambda: "0.8.12",
+    )
+    monkeypatch.setattr(
+        manual_motion,
+        "backend_capability_report",
+        _capabilities,
     )
     status = experimental_motion_status(
         _coordinator(),
@@ -56,10 +126,13 @@ def test_status_is_fail_closed_and_reports_actionable_blockers(
     assert status["blockers"] == [
         "experimental_motion_disabled",
         "pymammotion_backend_unverified",
+        f"backend_missing_{CAPABILITY_BLE_TEARDOWN}",
+        f"backend_missing_{CAPABILITY_BLUFI_REASSEMBLY}",
         "command_queue_backlogged",
         "blade_reported_on",
     ]
     assert status["real_click_to_go_segment_limit"] == 2
+    assert status["backend_capabilities"]["verified"] is False
 
 
 def test_cancelled_session_blocks_nonzero_but_never_stop() -> None:

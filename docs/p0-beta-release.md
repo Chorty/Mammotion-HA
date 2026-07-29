@@ -3,9 +3,14 @@
 ## Safety model
 
 - Experimental manual motion defaults off and is BLE-only.
-- PyMammotion 0.8.12 is installed for its released notification cleanup, but
-  remains below the verified motion floor. Real motion stays locked until an
-  official release contains the remaining teardown fixes.
+- PyMammotion 0.8.12 is installed for its released notification cleanup. Real
+  motion stays locked because the loaded backend is *probed* and demonstrably
+  lacks both audited BLE fixes -- not because of its version number. See
+  `custom_components/mammotion/backend_capability.py`: authorization requires
+  `ble_teardown_failure_atomic` and `blufi_reassembly_reset` to be observed in
+  the installed code, plus a release at or above the audited base 0.8.12. A
+  version label alone never authorizes motion, so a fork, a rebuild, or a future
+  upstream release carrying the same number cannot self-certify.
 - Every real service run requires positive LUBA capability evidence, fresh BLE
   queue/liveness evidence, safe runtime state, both operator confirmations, and
   an exclusive backend session.
@@ -43,7 +48,8 @@
 ## Verified limitations
 
 - Only LUBA is eligible for supervised live acceptance in this release.
-- Real motion remains unavailable on the current PyMammotion 0.8.12 pin.
+- Real motion remains unavailable on the current PyMammotion 0.8.12 pin: both
+  capability probes report absent against it.
 - No P1/P2 feature additions are included.
 - RTK and SPINO firmware installation remains blocked pending hardware-derived
   prerequisite acceptance.

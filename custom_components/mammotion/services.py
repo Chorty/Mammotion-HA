@@ -30,6 +30,7 @@ from pymammotion.utility.constant.device_constant import (
 )
 from pymammotion.utility.device_type import DeviceType
 
+from .backend_capability import async_probe_backend_capabilities
 from .capabilities import capability_snapshot
 from .const import DOMAIN, LOGGER
 from .coordinator import MammotionReportUpdateCoordinator, MammotionSpinoCoordinator
@@ -4334,6 +4335,10 @@ def _wrap_exclusive_manual_motion(  # noqa: C901
             real = False
         if not real:
             return await handler(call)
+        # Prove the loaded backend carries the audited BLE fixes before the
+        # claim block below, which must stay await-free. Cached after the first
+        # call, so this costs nothing on later runs.
+        await async_probe_backend_capabilities()
         mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
         if mower is None:
             # The wrapped handler logs the unknown entity and returns {}.

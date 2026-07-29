@@ -11,13 +11,15 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from .backend_capability import backend_capability_report
 from .const import CONF_ENABLE_EXPERIMENTAL_MOTION
 
-# PyMammotion 0.8.12 fixes cleanup when ``start_notify`` raises BleakError, but
-# the write-failure and non-BleakError setup leak paths are still present. Keep
-# this deliberately unreachable by the current pin until an upstream release
-# containing both teardown fixes has been inspected and hardware-verified.
-MINIMUM_VERIFIED_PYMAMMOTION_MOTION_VERSION = "0.8.13"
+# The oldest release whose BLE transport has been read end to end here. It is a
+# floor, never an authorization: any build at or above it must *additionally*
+# prove it carries the audited teardown and reassembly fixes, because the same
+# version number can be produced with or without them (a fork, a rebuild, or a
+# future upstream release). See ``backend_capability.py`` for the probes.
+MINIMUM_AUDITED_PYMAMMOTION_BASE_VERSION = "0.8.12"
 REAL_CLICK_TO_GO_SEGMENT_LIMIT = 2
 
 
@@ -41,11 +43,29 @@ def _version_tuple(value: str) -> tuple[int, ...] | None:
     return tuple(int(part) for part in match.group(1).split("."))
 
 
-def motion_backend_verified(version: str | None = None) -> bool:
-    """Return whether the installed backend meets the audited motion floor."""
+def backend_base_version_audited(version: str | None = None) -> bool:
+    """Return whether the installed release is at or above the audited base."""
     installed = _version_tuple(version or installed_pymammotion_version())
-    minimum = _version_tuple(MINIMUM_VERIFIED_PYMAMMOTION_MOTION_VERSION)
+    minimum = _version_tuple(MINIMUM_AUDITED_PYMAMMOTION_BASE_VERSION)
     return installed is not None and minimum is not None and installed >= minimum
+
+
+def motion_backend_verified(
+    version: str | None = None,
+    *,
+    capabilities: dict[str, Any] | None = None,
+) -> bool:
+    """Return whether the installed backend is proven safe for real motion.
+
+    Two independent conditions, both required: the release is at or above the
+    audited base, and the loaded code demonstrably carries both audited BLE
+    fixes. The second is measured against the installed code, never inferred
+    from the version string.
+    """
+    if not backend_base_version_audited(version):
+        return False
+    report = capabilities if capabilities is not None else backend_capability_report()
+    return report.get("verified") is True
 
 
 def experimental_motion_enabled(coordinator: Any) -> bool:
@@ -134,12 +154,16 @@ def experimental_motion_status(
     """Return the shared fail-closed backend state consumed by services/card."""
     version = installed_pymammotion_version()
     enabled = experimental_motion_enabled(coordinator)
-    verified = motion_backend_verified(version)
+    capabilities = backend_capability_report()
+    verified = motion_backend_verified(version, capabilities=capabilities)
     blockers: list[str] = []
     if not enabled:
         blockers.append("experimental_motion_disabled")
     if not verified:
         blockers.append("pymammotion_backend_unverified")
+        if not backend_base_version_audited(version):
+            blockers.append("pymammotion_below_audited_base_version")
+        blockers.extend(capabilities["reasons"])
     if not ble_liveness or ble_liveness.get("live") is not True:
         blockers.append(
             str((ble_liveness or {}).get("reason") or "ble_link_liveness_unavailable")
@@ -157,9 +181,10 @@ def experimental_motion_status(
         "enabled": enabled,
         "installed_pymammotion_version": version,
         "minimum_verified_pymammotion_version": (
-            MINIMUM_VERIFIED_PYMAMMOTION_MOTION_VERSION
+            MINIMUM_AUDITED_PYMAMMOTION_BASE_VERSION
         ),
         "backend_verified": verified,
+        "backend_capabilities": capabilities,
         "ble_only": True,
         "real_click_to_go_segment_limit": REAL_CLICK_TO_GO_SEGMENT_LIMIT,
         "active_session": session.as_dict() if session is not None else None,

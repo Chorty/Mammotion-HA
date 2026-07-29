@@ -49,6 +49,7 @@ from pymammotion.transport.base import (
 from pymammotion.utility.device_type import DeviceType
 from Tea.exceptions import UnretryableException
 
+from .backend_capability import async_probe_backend_capabilities
 from .const import (
     CONF_ACCOUNTNAME,
     CONF_AEP_DATA,
@@ -296,6 +297,10 @@ def _register_ble_reconnect_callback(
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     """Set up the Mammotion integration."""
     apply_pymammotion_compat_patches()
+    # Probe after the compat patches so the report describes the backend that
+    # will actually run. Warming it here means the card and every read-only
+    # runtime export show real capability state, not "not probed yet".
+    await async_probe_backend_capabilities()
     async_setup_services(hass)
     await hass.http.async_register_static_paths(
         [
