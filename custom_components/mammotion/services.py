@@ -653,7 +653,7 @@ VIO_MOTION_PROBE_SCHEMA = vol.Schema(
 VIO_TURN_PROBE_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_ENTITY_ID): cv.entity_id,
-        vol.Optional("angular_speed", default=180): vol.All(
+        vol.Optional("angular_speed", default=500): vol.All(
             vol.Coerce(int), vol.Range(min=-1000, max=1000)
         ),
         vol.Optional("linear_speed", default=0): vol.All(
@@ -5852,7 +5852,7 @@ def _angle_series_change(values: list[Any]) -> dict[str, Any]:
 async def _vio_turn_probe(  # noqa: C901, PLR0912, PLR0913, PLR0915
     coordinator: MammotionReportUpdateCoordinator,
     *,
-    angular_speed: int = 180,
+    angular_speed: int = 500,
     linear_speed: int = 0,
     drive_seconds: float = 6.0,
     sample_interval_seconds: float = 1.5,

@@ -2235,7 +2235,7 @@ async def test_vio_turn_probe_defaults_to_dry_run() -> None:
     assert result["dry_run"] is True
     assert result["would_send"] is False
     assert result["reason"] == "dry_run"
-    assert result["command"]["kwargs"] == {"linear_speed": 0, "angular_speed": 180}
+    assert result["command"]["kwargs"] == {"linear_speed": 0, "angular_speed": 500}
     assert result["samples"] == []
     coordinator.manager.send_command_with_args.assert_not_called()
     coordinator.async_stop_manual_motion.assert_not_called()
@@ -2272,7 +2272,7 @@ async def test_vio_turn_probe_detects_heading_tracking_rotation(
         dry_run=False,
         confirm_blades_off=True,
         confirm_clear_area=True,
-        angular_speed=180,
+        angular_speed=500,
         drive_seconds=3.0,
         sample_interval_seconds=1.0,
         post_stop_samples=0,
@@ -2281,7 +2281,7 @@ async def test_vio_turn_probe_detects_heading_tracking_rotation(
     # A single continuous angular command, then a mandatory explicit stop.
     handle = coordinator.manager.mower(coordinator.device_name)
     assert handle._send_marked.await_count == 2  # noqa: SLF001
-    assert result["command"]["kwargs"] == {"linear_speed": 0, "angular_speed": 180}
+    assert result["command"]["kwargs"] == {"linear_speed": 0, "angular_speed": 500}
     assert handle.commands.send_movement.call_args_list[-1].kwargs == {
         "linear_speed": 0,
         "angular_speed": 0,

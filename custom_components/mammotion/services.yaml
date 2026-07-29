@@ -923,6 +923,10 @@ position_feedback_diagnostic:
         boolean:
 
 vio_motion_probe:
+  description: >-
+    Run a bounded straight-line motion probe while sampling VIO and position
+    telemetry. Real movement requires experimental-motion authorization and
+    both operator confirmations.
   fields:
     entity_id:
       required: true
@@ -994,6 +998,10 @@ vio_motion_probe:
         boolean:
 
 vio_turn_probe:
+  description: >-
+    Run a bounded in-place turn while comparing VIO heading with
+    course-over-ground. Real movement requires experimental-motion
+    authorization and both operator confirmations.
   fields:
     entity_id:
       required: true
@@ -1002,7 +1010,7 @@ vio_turn_probe:
           integration: mammotion
     angular_speed:
       required: false
-      default: 180
+      default: 500
       selector:
         number:
           min: -1000
@@ -1090,6 +1098,10 @@ vio_turn_probe:
         boolean:
 
 vio_turn_to_heading:
+  description: >-
+    Turn toward a requested VIO heading using bounded pulses and an explicit
+    final stop. Real movement requires experimental-motion authorization and
+    both operator confirmations.
   fields:
     entity_id:
       required: true
