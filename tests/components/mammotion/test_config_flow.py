@@ -8,13 +8,32 @@ from homeassistant.const import CONF_PASSWORD
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.mammotion.config_flow import MammotionConfigFlow
+from custom_components.mammotion.config_flow import (
+    MammotionConfigFlow,
+    MammotionConfigFlowHandler,
+)
 from custom_components.mammotion.const import (
     CONF_ACCOUNT_ID,
     CONF_ACCOUNTNAME,
     CONF_BLE_DEVICES,
+    CONF_ENABLE_EXPERIMENTAL_MOTION,
     DOMAIN,
 )
+
+
+@pytest.mark.asyncio
+async def test_experimental_motion_option_defaults_disabled(hass) -> None:
+    """A new or migrated entry never opts into real motion implicitly."""
+    entry = MockConfigEntry(domain=DOMAIN, data={}, options={})
+    entry.add_to_hass(hass)
+    flow = MammotionConfigFlowHandler(entry)
+    flow.hass = hass
+
+    result = await flow.async_step_init()
+
+    assert result["type"] is FlowResultType.FORM
+    validated = result["data_schema"]({})
+    assert validated[CONF_ENABLE_EXPERIMENTAL_MOTION] is False
 
 
 def _authenticated_client(account_id: str) -> MagicMock:
