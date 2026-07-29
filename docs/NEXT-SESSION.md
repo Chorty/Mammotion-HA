@@ -495,6 +495,82 @@ hardware.** Three `go`-authorised attempts tonight: two aborted at the BLE gate
 before sending anything, one reached the mower and found no actuation. The code
 is deployed and unit-tested; nothing about it has been proven live.
 
+## 🚨 2026-07-28 BLE ROOT-CAUSE LEAD: the keepalive stops SILENTLY (top priority)
+
+The best lead yet on the BLE instability, and it reframes it. **The link is not
+dropping — the keepalive task stops.**
+
+`pymammotion` holds the GATT link with a `todev_ble_sync(2)` heartbeat every
+`_KEEP_ALIVE_BLE_INTERVAL` (5.0 s), so a healthy link shows **11-12
+`BLETransport send` per minute**. Measured tonight:
+
+```
+20:42  2     20:47 16     20:52 27
+20:43 11     20:48 11     20:53  3   <- LAST SEND 20:53:12.727
+20:44  9     20:49 12     20:54  0
+20:45  0 <-  20:50 34     20:55  0
+20:46  7     20:51 11
+```
+
+When it stops:
+- **No GATT disconnect is logged for the mower MAC.** Last GATT event was a
+  reconnect at 20:46; nothing at 20:53.
+- **No error, no exception, no task-cancellation** anywhere in the 20:53:05-40
+  window.
+- **Reports were still arriving 5 s before** ("Manually updated mammotion data",
+  "activity mode 11" at 20:53:07).
+- `sensor.<mower>_active_transport` **keeps reporting `ble`** and goes stale —
+  it does NOT reflect the stall. Another field that must not be trusted.
+- RSSI is NOT the cause: proxy-measured **−64 dBm** on `p1s-printer-a5774c` at
+  the time, well above the ~−70 working threshold and far from the ~−76 wall.
+
+**This explains all three failed motion attempts tonight**, including the one
+that reached the mower: the two `send_movement` commands were accepted
+(`ok: True`) and never transmitted — the transport was silent 20:47:25-20:47:52,
+straight through the run — and the mower moved **0.9 mm**, which is the correct
+response to being told nothing.
+
+⚠️ **`command_result.ok` proves NOTHING about delivery.** It only means the send
+call did not raise (`needAck=false`). Tonight it read `True` for commands that
+never went on the wire. Any future "the mower did not move" diagnosis MUST check
+`BLETransport send` timestamps spanning the command window before blaming the
+mower, an e-stop, or actuation.
+
+**What is NOT yet known:** why the keepalive stops. No evidence gathered yet for
+the loop dying vs. being starved vs. an await that never returns. Next session,
+off-mower: read `pymammotion`'s keepalive task (`ble_loop` /
+`_KEEP_ALIVE_BLE_INTERVAL`), find whether its exception path is swallowed, and
+add a transport-side watchdog that detects "no send in >15 s while nominally
+connected" and forces a reconnect. That is also the honest fix for the motion
+gate, which currently only samples the last 20-25 s.
+
+Recovery observed: an operator mower-restart brought it back once, and an
+automatic proxy reconnect at 20:46 brought it back once.
+
+### ✅ The mower and BLE delivery are both FINE (proven by the reverse test)
+
+With the transport alive, two `manual_velocity_pulse_test` backward pulses ran
+clean and were measured by **RTK position, which works in full darkness** (VIO
+was dead: this is the tool for night-time linear tests):
+
+| pulse | duration | moved | implied rate |
+|---|---|---|---|
+| 1 | 4000 ms | 1.250 m | 0.313 m/s |
+| 2 | 2400 ms | **0.938 m** | 0.391 m/s |
+
+⚠️ **Distance is NOT proportional to duration** — 60% of the duration gave 75%
+of the distance. Two points fit ≈ a fixed 0.47 m component plus 0.195 m/s.
+**Both `_final_approach_pulse_ms` and `_turn_final_approach_pulse_ms` assume
+pure proportionality**, so if a fixed component is real, a scaled short final
+pulse systematically OVERSHOOTS and both need an intercept term.
+
+**n=2, NOT a finding.** Both could be settle-lag artifacts: in each run the feed
+showed only 20-79% of the final distance at `after_stop` and did not settle
+until +3 s. The planned duration sweep (1600/1000/700/500/400/300 ms, alternating
+direction, RTK-measured) aborted at pulse 1 on the BLE stall. **Re-run it** — it
+answers both the proportionality question and the linear actuation floor, and it
+does not need daylight.
+
 ### PR #10 CI: green except one deliberate deferral (2026-07-27)
 
 `python` **passes** — ruff clean, format clean, mypy clean, 370 tests, 42%
