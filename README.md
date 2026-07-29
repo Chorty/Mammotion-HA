@@ -100,6 +100,67 @@ Useful options:
 - `--max-turn-commands` and `--max-linear-commands` to keep command caps conservative
 - `--sample-delays` to control telemetry sample timing
 
+### Experimental Click-to-Go Card
+
+Click-to-go is an operator-supervised experiment, not an autonomous navigation
+feature. Preview and dry-run support up to seven destinations. Real execution
+is limited to two segments and is disabled unless every backend safety gate
+passes.
+
+Add the integration-served JavaScript as a dashboard resource:
+
+```text
+/mammotion/mammotion-custom-path-card.js?v=0.6.4-beta11
+```
+
+Use resource type `JavaScript module`. The version query is required because
+Home Assistant serves integration static files with cache headers; update it to
+the installed release version after every upgrade.
+
+Complete card YAML:
+
+```yaml
+type: custom:mammotion-custom-path-card
+entity: lawn_mower.your_mower
+card_height: 520
+speed: 0.2
+prefer_ble: true
+max_turn_commands: 1
+max_linear_commands: 3
+max_linear_pulse_ceiling: 30
+max_no_progress_pulses: 3
+heading_tolerance_degrees: 18
+waypoint_tolerance: 0.15
+min_progress_distance: 0.06
+calibrated_forward_heading_offset_degrees: 116.5
+turn_mode: vio
+vio_turn_max_commands: 16
+turn_pulse_duration_ms: 1500
+linear_pulse_duration_ms: 3500
+motion_refresh_interval_ms: 200
+final_approach_metres_per_pulse: 1.06
+turn_degrees_per_second: 37
+ble_auto_recover: true
+sample_delays:
+  - 0
+  - 3
+```
+
+Real motion additionally requires the integration option **Enable experimental
+BLE-only manual motion**, a positively verified PyMammotion backend, a fresh
+and idle LUBA, live BLE/queue evidence, blades off, a clear mapped area, and
+both per-run confirmations. PyMammotion 0.8.12 remains intentionally locked
+because two BLE teardown leaks are not yet fixed in an official release.
+`movement_use_wifi` is retained only for option migration and cannot bypass
+the BLE-only gate.
+
+Abort calls `mammotion.stop_manual_motion`. It marks the backend session
+cancelled before issuing a bounded confirmed zero-velocity sequence, so the
+aborted owner cannot later replay a nonzero command.
+
+To roll back, first disable **Enable experimental BLE-only manual motion**,
+then restore the prior integration release in HACS and restart Home Assistant.
+
 ## Map Position Offset
 
 Satellite map tiles (Google Maps, OpenStreetMap, etc.) are sometimes misaligned relative to RTK GPS coordinates by several metres. Each mower exposes two number entities to correct this:

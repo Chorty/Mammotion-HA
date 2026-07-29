@@ -63,6 +63,8 @@ jobs:
         run: mypy --follow-imports=skip custom_components/mammotion
       - name: Tests
         run: pytest --cov=custom_components.mammotion --cov-report=term-missing tests
+      - name: Frontend card tests
+        run: npm run test:frontend
       - name: Validate JSON
         run: |
           python - <<'PY'

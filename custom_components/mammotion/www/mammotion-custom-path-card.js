@@ -1,7 +1,8 @@
 const MAX_WAYPOINTS = 7;
+const MAX_REAL_SEGMENTS = 2;
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
-const CARD_VERSION = "2026.07.18b2";
+const CARD_VERSION = "0.6.4-beta11";
 
 console.info(
   `%c MAMMOTION-CUSTOM-PATH-CARD %c v${CARD_VERSION} `,
@@ -19,13 +20,14 @@ class MammotionCustomPathCard extends HTMLElement {
     this._waypoints = [];
     this._runTicker = null;
     this._runStartedAt = null;
+    this._submittingRealRun = false;
     this._livePosition = null;
     this._runtimeState = null;
     this._areaHash = "";
     this._mapT = null;
     this._draggingIndex = null;
     this._height = 520;
-    this._status = "Load map/runtime, then click up to 3 waypoints to build a path. Movement requires explicit Real Go confirmation.";
+    this._status = "Load map/runtime, then click up to 7 destinations. Real Go is experimental and limited to two segments.";
     this._validation = null;
     this._dryRun = null;
     this._realRun = null;
@@ -138,6 +140,10 @@ class MammotionCustomPathCard extends HTMLElement {
       min_progress_distance: 0.06,
       turn_pulse_duration_ms: 1500,
       sample_delays: [0, 3],
+      motion_refresh_interval_ms: 200,
+      final_approach_metres_per_pulse: 1.06,
+      turn_degrees_per_second: 37,
+      ble_auto_recover: true,
       ...config,
     };
     this._height = Number(this._config.card_height || 520);
@@ -219,6 +225,12 @@ class MammotionCustomPathCard extends HTMLElement {
     this._loadingRuntime = true;
     try {
       this._runtimeState = await this._callService("export_runtime_state", {});
+      const backendSession = this._activeBackendSession();
+      if (backendSession && !this._runTicker) {
+        this._startRunTicker(this._segmentCount() || "?");
+      } else if (!backendSession && this._runTicker && !this._submittingRealRun) {
+        this._stopRunTicker();
+      }
       this._render();
       await this._validateAndPreview();
     } catch (err) {
@@ -248,7 +260,7 @@ class MammotionCustomPathCard extends HTMLElement {
   }
 
   _currentPositionPoint() {
-    const pos = this._runtimeState?.position || {};
+    const pos = this._livePosition || this._runtimeState?.position || {};
     if (pos.x == null || pos.y == null) {
       return null;
     }
@@ -274,12 +286,23 @@ class MammotionCustomPathCard extends HTMLElement {
     const blockers = [];
     const runtime = this._runtimeState || {};
     const safety = runtime.safety || {};
+    const experimental = runtime.experimental_motion || {};
     const start = this._currentPositionPoint();
     if (!start) {
       blockers.push("position_unavailable");
     }
     if (!this._waypoints.length) {
       blockers.push("path_unset");
+    }
+    if (this._segmentCount() > MAX_REAL_SEGMENTS) {
+      blockers.push(`real_segment_limit_${MAX_REAL_SEGMENTS}`);
+    }
+    if (experimental.real_motion_allowed !== true) {
+      if (Array.isArray(experimental.blockers) && experimental.blockers.length) {
+        blockers.push(...experimental.blockers);
+      } else {
+        blockers.push("experimental_motion_backend_not_ready");
+      }
     }
     if (safety.allowed_for_manual_motion === false) {
       if (Array.isArray(safety.blockers) && safety.blockers.length) {
@@ -296,6 +319,14 @@ class MammotionCustomPathCard extends HTMLElement {
       blockers,
       runtime,
     };
+  }
+
+  _activeBackendSession() {
+    return this._runtimeState?.experimental_motion?.active_session || null;
+  }
+
+  _motionRunActive() {
+    return Boolean(this._submittingRealRun || this._activeBackendSession());
   }
 
   _runtimePreflightDetails() {
@@ -324,6 +355,16 @@ class MammotionCustomPathCard extends HTMLElement {
       haState: runtime.ha_state ?? "unknown",
       workMode: runtime.work_mode_label ?? runtime.work_mode ?? "unknown",
       chargeState: runtime.charge_state_label ?? runtime.charge_state ?? "unknown",
+      motionEnabled: runtime.experimental_motion?.enabled === true ? "enabled" : "disabled",
+      backendVerified: runtime.experimental_motion?.backend_verified === true ? "verified" : "unverified",
+      backendVersion: runtime.experimental_motion?.installed_pymammotion_version ?? "unknown",
+      motionBlockers: (runtime.experimental_motion?.blockers || []).join(", ") || "none",
+      activeSession: runtime.experimental_motion?.active_session?.session_id ?? "none",
+      sessionPhase: runtime.experimental_motion?.active_session?.phase ?? "idle",
+      lastDispatch: runtime.experimental_motion?.active_session?.last_completed_dispatch?.completed_at ?? "none",
+      stopOutcome: runtime.experimental_motion?.active_session?.stop_result?.stop_confirmed
+        ?? runtime.experimental_motion?.last_session?.stop_result?.stop_confirmed
+        ?? "none",
     };
   }
 
@@ -455,6 +496,7 @@ class MammotionCustomPathCard extends HTMLElement {
   }
 
   _onMapClick(event) {
+    if (this._motionRunActive()) return;
     if (event.target?.dataset?.pointIndex != null || !this._mapT) return;
     const point = this._svgPointFromEvent(event);
     if (!point) return;
@@ -470,6 +512,7 @@ class MammotionCustomPathCard extends HTMLElement {
   }
 
   _onPointDown(event) {
+    if (this._motionRunActive()) return;
     event.stopPropagation();
     const idx = Number(event.target?.dataset?.pointIndex);
     if (Number.isNaN(idx)) return;
@@ -494,6 +537,7 @@ class MammotionCustomPathCard extends HTMLElement {
   }
 
   _clearTarget() {
+    if (this._motionRunActive()) return;
     this._waypoints = [];
     this._validation = null;
     this._dryRun = null;
@@ -503,6 +547,7 @@ class MammotionCustomPathCard extends HTMLElement {
   }
 
   _removeLastWaypoint() {
+    if (this._motionRunActive()) return;
     this._waypoints.pop();
     this._dryRun = null;
     this._realRun = null;
@@ -572,6 +617,12 @@ class MammotionCustomPathCard extends HTMLElement {
       sample_delays: Array.isArray(this._config.sample_delays)
         ? this._config.sample_delays
         : [0, 3],
+      motion_refresh_interval_ms: Number(this._config.motion_refresh_interval_ms ?? 200),
+      final_approach_metres_per_pulse: Number(
+        this._config.final_approach_metres_per_pulse ?? 1.06,
+      ),
+      turn_degrees_per_second: Number(this._config.turn_degrees_per_second ?? 37),
+      ble_auto_recover: Boolean(this._config.ble_auto_recover ?? true),
     };
     if (this._areaHash) {
       payload.area_hash = String(this._areaHash);
@@ -581,7 +632,9 @@ class MammotionCustomPathCard extends HTMLElement {
         service: "raw_pymammotion_execute_multi_segment",
         payload: {
           ...payload,
-          max_real_segments: Math.min(points.length - 1, 7),
+          max_real_segments: dryRun
+            ? Math.min(points.length - 1, MAX_WAYPOINTS)
+            : MAX_REAL_SEGMENTS,
         },
       };
     }
@@ -730,6 +783,7 @@ class MammotionCustomPathCard extends HTMLElement {
       let posText = "";
       try {
         const runtime = await this._callService("export_runtime_state", {});
+        this._runtimeState = runtime;
         const pos = runtime?.position;
         if (pos && pos.x != null) {
           this._livePosition = pos;
@@ -738,7 +792,11 @@ class MammotionCustomPathCard extends HTMLElement {
       } catch (err) {
         // Read-only poll; ignore transient failures while the run is in flight.
       }
-      this._status = `Running Real Go (${segmentCount} segment${segmentCount === 1 ? "" : "s"})… ${mins}:${secs}${posText}`;
+      const session = this._activeBackendSession();
+      const phase = session?.phase || (this._submittingRealRun ? "submitting" : "waiting");
+      const lastWrite = session?.last_completed_dispatch?.elapsed_seconds;
+      const lastWriteText = lastWrite == null ? "" : ` — last write ${Number(lastWrite).toFixed(1)}s`;
+      this._status = `Running Real Go (${segmentCount} segment${segmentCount === 1 ? "" : "s"}, ${phase})… ${mins}:${secs}${posText}${lastWriteText}`;
       this._render();
     };
     this._runTicker = setInterval(tick, 5000);
@@ -754,20 +812,33 @@ class MammotionCustomPathCard extends HTMLElement {
   }
 
   async _runRealGo() {
+    if (this._motionRunActive()) {
+      this._status = "Real Go blocked: a manual-motion session is already active.";
+      this._render();
+      return;
+    }
+    this._submittingRealRun = true;
+    this._status = "Refreshing runtime and path validation immediately before Real Go…";
+    this._render();
+    await this._loadRuntimeState();
+    await this._validateAndPreview();
     const preflight = this._preflight();
     const motion = this._motionPayload(false);
     if (!motion) {
       this._status = "Add at least one waypoint and ensure live mower position is available before Real Go.";
+      this._submittingRealRun = false;
       this._render();
       return;
     }
     if (!this._confirmBladesOff || !this._confirmClearArea) {
       this._status = "Real Go blocked: enable both confirmations first.";
+      this._submittingRealRun = false;
       this._render();
       return;
     }
     if (!preflight.safe) {
       this._status = `Real Go blocked by preflight: ${preflight.blockers.join(", ")}`;
+      this._submittingRealRun = false;
       this._render();
       return;
     }
@@ -809,6 +880,13 @@ class MammotionCustomPathCard extends HTMLElement {
         summary: String(err?.message || err),
       });
       this._render();
+    } finally {
+      this._submittingRealRun = false;
+      this._confirmBladesOff = false;
+      this._confirmClearArea = false;
+      this._stopRunTicker();
+      await this._loadRuntimeState();
+      this._render();
     }
   }
 
@@ -817,26 +895,19 @@ class MammotionCustomPathCard extends HTMLElement {
   }
 
   async _abortMotion() {
-    if (!this._confirmBladesOff || !this._confirmClearArea) {
-      this._status = "Abort requires both confirmations enabled.";
-      this._render();
-      return;
-    }
-    this._status = "Sending zero-motion stop nudge…";
+    this._status = "Aborting backend session and sending confirmed BLE stop sequence…";
     this._render();
     try {
-      const abortResult = await this._callService("raw_pymammotion_motion_probe", {
-        command: "send_movement",
-        linear_speed: 0,
-        angular_speed: 0,
-        prefer_ble: Boolean(this._config.prefer_ble ?? true),
-        dry_run: false,
-        confirm_blades_off: true,
-        confirm_clear_area: true,
-        sample_delays: [0],
-      });
-      const status = abortResult?.command_result?.ok === true ? "ok" : "failed";
-      this._status = `Abort result: ${status}`;
+      const abortResult = await this._callService("stop_manual_motion", {});
+      this._realRun = {
+        ...(this._realRun || {}),
+        stop_result: abortResult,
+        stop_reason: abortResult?.stop_confirmed ? "operator_stop" : "stop_unconfirmed",
+      };
+      const status = abortResult?.stop_confirmed === true ? "confirmed" : "not confirmed";
+      this._status = `Abort result: ${status}; owner exited=${Boolean(abortResult?.owner_exited)}`;
+      this._confirmBladesOff = false;
+      this._confirmClearArea = false;
       await this._loadRuntimeState();
       this._render();
     } catch (err) {
@@ -974,7 +1045,8 @@ class MammotionCustomPathCard extends HTMLElement {
   _render() {
     const areas = this._mapData?.areas || [];
     const pathSet = this._waypoints.length > 0;
-    const removeDisabled = pathSet ? "" : "disabled";
+    const runActive = this._motionRunActive();
+    const removeDisabled = pathSet && !runActive ? "" : "disabled";
     const preflight = this._preflight();
     const preflightText = preflight.safe
       ? "Preflight: safe"
@@ -982,6 +1054,7 @@ class MammotionCustomPathCard extends HTMLElement {
     const runtimePanel = this._runtimePreflightDetails();
     const realGoDisabled =
       !pathSet ||
+      runActive ||
       !this._confirmBladesOff ||
       !this._confirmClearArea ||
       !preflight.safe;
@@ -1018,13 +1091,13 @@ class MammotionCustomPathCard extends HTMLElement {
         <div class="toolbar">
           <button id="reload" type="button">Reload map/runtime</button>
           <button id="undo" type="button" ${removeDisabled}>Remove last waypoint</button>
-          <button id="clear" type="button">Reset path</button>
+          <button id="clear" type="button" ${runActive ? "disabled" : ""}>Reset path</button>
           <button id="copy-yaml" type="button" ${removeDisabled}>Copy YAML</button>
           <button id="copy-json" type="button" ${removeDisabled}>Copy JSON</button>
           <button id="copy-dry-run-yaml" type="button" ${removeDisabled}>Copy dry-run YAML</button>
-          <button id="dry-run" type="button" ${pathSet ? "" : "disabled"}>Run dry-run</button>
+          <button id="dry-run" type="button" ${pathSet && !runActive ? "" : "disabled"}>Run dry-run</button>
           <button id="real-go" type="button" ${realGoDisabled ? "disabled" : ""}>Real Go</button>
-          <button id="abort" type="button">Abort/Stop Nudge</button>
+          <button id="abort" type="button">Abort / Stop</button>
           <label><input id="confirm-blades-off" type="checkbox" ${this._confirmBladesOff ? "checked" : ""}/> confirm blades off</label>
           <label><input id="confirm-clear-area" type="checkbox" ${this._confirmClearArea ? "checked" : ""}/> confirm clear area</label>
           <label>Area
@@ -1051,6 +1124,12 @@ class MammotionCustomPathCard extends HTMLElement {
           <div class="preflight-row"><span class="label">ha_state</span><span class="value">${this._escapeHtml(runtimePanel.haState)}</span></div>
           <div class="preflight-row"><span class="label">work_mode</span><span class="value">${this._escapeHtml(runtimePanel.workMode)}</span></div>
           <div class="preflight-row"><span class="label">charge_state</span><span class="value">${this._escapeHtml(runtimePanel.chargeState)}</span></div>
+          <div class="preflight-row"><span class="label">experimental motion</span><span class="value">${this._escapeHtml(runtimePanel.motionEnabled)}</span></div>
+          <div class="preflight-row"><span class="label">PyMammotion backend</span><span class="value">${this._escapeHtml(`${runtimePanel.backendVersion} (${runtimePanel.backendVerified})`)}</span></div>
+          <div class="preflight-row"><span class="label">motion blockers</span><span class="value">${this._escapeHtml(runtimePanel.motionBlockers)}</span></div>
+          <div class="preflight-row"><span class="label">active session</span><span class="value">${this._escapeHtml(`${runtimePanel.activeSession} (${runtimePanel.sessionPhase})`)}</span></div>
+          <div class="preflight-row"><span class="label">last confirmed write</span><span class="value">${this._escapeHtml(runtimePanel.lastDispatch)}</span></div>
+          <div class="preflight-row"><span class="label">stop confirmed</span><span class="value">${this._escapeHtml(runtimePanel.stopOutcome)}</span></div>
         </div>
         ${(this._validation?.warnings || []).length ? `<div class="warnings">Warnings: ${this._escapeHtml(this._validation.warnings.join(", "))}</div>` : ""}
         ${pathSet ? `<details><summary>Preview service YAML</summary><pre>${this._escapeHtml(this._payloadYaml())}</pre></details>` : ""}
@@ -1101,13 +1180,22 @@ class MammotionCustomPathCard extends HTMLElement {
 
 // The card is served at two URLs (/mammotion/ and /hacsfiles/); if both end up
 // registered as dashboard resources the second define() throws. Guard it.
-if (!customElements.get("mammotion-custom-path-card")) {
+if (typeof customElements !== "undefined" && !customElements.get("mammotion-custom-path-card")) {
   customElements.define("mammotion-custom-path-card", MammotionCustomPathCard);
 }
 
-window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "mammotion-custom-path-card",
-  name: "Mammotion Click/Go (Guarded)",
-  description: "Click up to 3 waypoints to build a guarded segment-chain path, then run dry-run or Real Go.",
-});
+if (typeof window !== "undefined") {
+  window.customCards = window.customCards || [];
+  window.customCards.push({
+    type: "mammotion-custom-path-card",
+    name: "Mammotion Click/Go (Guarded)",
+    description: "Preview or dry-run up to seven destinations; guarded Real Go is limited to two segments.",
+  });
+}
+
+export {
+  CARD_VERSION,
+  MAX_REAL_SEGMENTS,
+  MAX_WAYPOINTS,
+  MammotionCustomPathCard,
+};
