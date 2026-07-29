@@ -495,7 +495,82 @@ hardware.** Three `go`-authorised attempts tonight: two aborted at the BLE gate
 before sending anything, one reached the mower and found no actuation. The code
 is deployed and unit-tested; nothing about it has been proven live.
 
-## 🚨🚨 2026-07-28 ROOT CAUSE: BLE commands are QUEUED AND DELIVERED ~20s LATE
+## 🏆🚨 2026-07-28 THE ROOT CAUSE: BLE CONNECTIONS LEAK UNTIL THE PROXY RUNS DRY
+
+**This is the answer to the BLE instability that has blocked this project for
+weeks.** It was found by the operator asking "are we sure the HA integration
+isn't holding the BLE connection?" — it is.
+
+Counted over one hour on the mower's MAC:
+
+| event | count |
+|---|---|
+| `Connection open` | **6** |
+| `Disconnecting` | **0** |
+| `out of connection slots / device unreachable` | **6** |
+
+**Six connections opened, none ever closed, six later attempts refused.** An
+ESPHome proxy has 3 BLE slots. They leak away, and then:
+
+```
+20:56:48  out of connection slots — cooling down for 120s (is_usable now False; sends use MQTT)
+21:01:16  out of connection slots — cooling down for 120s
+21:03:57  BLETransport connecting
+21:06:20  <- motion command issued; ONE send, then silence
+21:06:40  BLETransport connecting          (reconnect succeeds)
+21:06:41-43  21-send BURST                 (queue flushes)
+21:07:16  mower has moved 1.0778 m         (~55 s after the command)
+21:11:48  out of connection slots — cooling down for 120s
+```
+
+### The full causal chain
+
+1. HA opens a BLE connection to the mower and **never releases it** (0
+   `Disconnecting` events all night).
+2. The proxy's 3 slots exhaust.
+3. New connection attempts fail: `out of connection slots`, **120 s cooldown**,
+   `is_usable now False`, **"sends use MQTT"**.
+4. During that window `DeviceCommandQueue` accumulates commands — including the
+   5 s BLE keepalive, which is why the transport *looks* idle. **It is blocked,
+   not dead.**
+5. When a connection finally succeeds, the queue flushes in a burst and the
+   mower executes everything at once — **long after the executor believed the
+   pulse window closed and reported the mower stationary**.
+
+### What this eliminates
+
+- ❌ **Not a saga.** `manual_velocity_pulse_test` IS wrapped by
+  `_wrap_exclusive_manual_motion` (`services.py` ~12458); the guard ran, read
+  `is_saga_active` as **False**, and correctly let the command through. All 7
+  sagas (`map_fetch`, `plan_fetch`, `common_data_fetch`, `mow_path_fetch`,
+  `svg_send`, `edge_mapping`, `spino_plan_fetch`) are exonerated for this event.
+- ❌ **Not RSSI.** −64 dBm at the connecting proxy, well inside the working range.
+- ❌ **Not proxy WiFi churn.** Proxies were quiet during the stall.
+- ❌ **Not the mower, and not an e-stop.**
+- ❌ **Not "the keepalive task dies"** — that framing was the symptom.
+
+### Where to fix it
+
+`handle.py` ~367: when MQTT goes `CONNECTING`, the queue is gated unless
+`ble.is_connected`. But the deeper defect is upstream of that — **connections are
+never torn down**. Investigate:
+- Does `BLETransport` call `disconnect()` on its bleak client when it gives up /
+  cools down? Six opens and zero disconnects says no.
+- Does the 120 s cooldown release the proxy slot, or just stop retrying?
+- `bleak_esphome` may need an explicit `disconnect()` for the proxy to free the
+  slot; dropping the reference is evidently not enough.
+
+**Likely an upstream pymammotion fix**, like the reassembly bug
+(`docs/pymammotion-ble-reassembly-bug.md`, filed as PyMammotion#179).
+
+### Instrumentation now armed (survives until the next HA restart)
+
+`pymammotion.device.handle`, `pymammotion.messaging.command_queue`,
+`pymammotion.messaging.saga`, `pymammotion.transport.ble`, `pymammotion.mqtt`
+all at DEBUG. The decisive line to watch for is
+`"MQTT transport reconnecting — pausing command dispatch"`.
+
+## 2026-07-28 (symptom, superseded by the above): commands queued and delivered ~20s late
 
 **This supersedes the "keepalive stops silently" framing below.** The commands are
 not lost and the link is not dead. **They are queued and flush ~20 seconds
