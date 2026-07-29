@@ -768,8 +768,7 @@
     "device_tracker": {
       "device_tracker": {
         "name": "Enhedssporing"
-      },
-      "name": "Enhedssporing"
+      }
     }
   },
   "selector": {

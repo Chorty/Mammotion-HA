@@ -768,8 +768,7 @@
     "device_tracker": {
       "device_tracker": {
         "name": "Śledzenie urządzenia"
-      },
-      "name": "Śledzenie urządzenia"
+      }
     }
   },
   "selector": {

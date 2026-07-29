@@ -768,8 +768,7 @@
     "device_tracker": {
       "device_tracker": {
         "name": "Monitorizarea dispozitivului"
-      },
-      "name": "Monitorizarea dispozitivului"
+      }
     }
   },
   "selector": {

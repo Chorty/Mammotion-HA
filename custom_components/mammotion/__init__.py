@@ -27,6 +27,7 @@ from homeassistant.exceptions import (
     HomeAssistantError,
 )
 from homeassistant.helpers import aiohttp_client
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.device_registry import DeviceEntry
 from homeassistant.helpers.device_registry import (
     async_get as async_get_device_registry,
@@ -102,6 +103,7 @@ PLATFORMS: list[Platform] = [
 
 type MammotionConfigEntry = ConfigEntry[MammotionDevices]
 
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 WWW_DIR = Path(__file__).parent / "www"
 
 
