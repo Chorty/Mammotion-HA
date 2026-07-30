@@ -470,6 +470,9 @@
       },
       "cutter_rpm": {
         "name": "Toerental van het mes"
+      },
+      "zone_hash": {
+        "name": "Zone-hash"
       }
     },
     "button": {
@@ -771,6 +774,23 @@
     "device_tracker": {
       "device_tracker": {
         "name": "Apparaat volgen"
+      }
+    },
+    "binary_sensor": {
+      "real_motion_ready": {
+        "name": "Klaar voor echte beweging"
+      },
+      "ble_link_live": {
+        "name": "BLE-verbinding actief"
+      },
+      "motion_backend_verified": {
+        "name": "Bewegingsbackend gecontroleerd"
+      },
+      "blade_safe_for_motion": {
+        "name": "Mes veilig voor beweging"
+      },
+      "position_valid_for_motion": {
+        "name": "Positie geldig voor beweging"
       }
     }
   },

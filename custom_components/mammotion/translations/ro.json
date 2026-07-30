@@ -470,6 +470,9 @@
       },
       "cutter_rpm": {
         "name": "Rotații cuțit"
+      },
+      "zone_hash": {
+        "name": "Hash zonă"
       }
     },
     "button": {
@@ -771,6 +774,23 @@
     "device_tracker": {
       "device_tracker": {
         "name": "Monitorizarea dispozitivului"
+      }
+    },
+    "binary_sensor": {
+      "real_motion_ready": {
+        "name": "Pregătit pentru mișcare reală"
+      },
+      "ble_link_live": {
+        "name": "Legătură BLE activă"
+      },
+      "motion_backend_verified": {
+        "name": "Backend de mișcare verificat"
+      },
+      "blade_safe_for_motion": {
+        "name": "Cuțit sigur pentru mișcare"
+      },
+      "position_valid_for_motion": {
+        "name": "Poziție validă pentru mișcare"
       }
     }
   },

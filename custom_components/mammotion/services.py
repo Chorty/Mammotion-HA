@@ -4256,6 +4256,101 @@ def _manual_motion_authorization(
     return status
 
 
+#: How long a gate snapshot is reused. Six diagnostic entities read the verdict
+#: on the same coordinator tick, and ``_export_active_route`` rewrites every
+#: GeoJSON coordinate through ``apply_geojson_offset``, so without this the map
+#: would be re-projected once per entity per update.
+_GATE_SNAPSHOT_TTL_SECONDS = 5.0
+
+_GATE_SNAPSHOT_ATTR = "_mammotion_gate_snapshot"
+_GATE_SNAPSHOT_STAMP_ATTR = "_mammotion_gate_snapshot_monotonic"
+
+
+def _unknown_gate_snapshot(reason: str) -> dict[str, Any]:
+    """Return a fail-closed snapshot when the gate state cannot be read."""
+    return {
+        "available": False,
+        "reason": reason,
+        "real_motion_ready": None,
+        "blockers": [],
+        "backend_verified": None,
+        "backend_capabilities": {},
+        "ble_link_live": None,
+        "ble_link_reason": None,
+        "blade_safe_for_motion": None,
+        "blade_blockers": [],
+        "position_valid_for_motion": None,
+        "zone_hash": None,
+        "pos_type_label": None,
+    }
+
+
+def motion_gate_snapshot(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> dict[str, Any]:
+    """Return the standing motion-gate verdict for diagnostic entities.
+
+    This is a *display* of the standing gate state, not an authorization path.
+    It deliberately omits the per-call operator confirmations
+    (``confirm_blades_off``/``confirm_clear_area``) and the busy/saga checks,
+    which only a service call can evaluate -- so ``real_motion_ready`` means
+    "nothing standing in the way right now", never "the next dispatch will be
+    accepted". :func:`_manual_motion_authorization` remains the only gate that
+    authorizes a real write.
+
+    Cached for ``_GATE_SNAPSHOT_TTL_SECONDS`` so the six entities that read it
+    cost one computation per coordinator tick rather than six. Any failure
+    degrades to an unavailable snapshot instead of raising into the entity.
+    """
+    now = time.monotonic()
+    stamp = getattr(coordinator, _GATE_SNAPSHOT_STAMP_ATTR, None)
+    cached = getattr(coordinator, _GATE_SNAPSHOT_ATTR, None)
+    if (
+        cached is not None
+        and stamp is not None
+        and now - float(stamp) < _GATE_SNAPSHOT_TTL_SECONDS
+    ):
+        return cached
+
+    try:
+        try:
+            route = _export_active_route(coordinator)
+        except Exception:  # noqa: BLE001 - an unreadable route must not blind the rest
+            route = None
+        telemetry = _custom_path_telemetry_snapshot(coordinator)
+        safety = _runtime_motion_safety_summary(
+            telemetry, ha_state=None, active_route=route
+        )
+        liveness = _ble_link_liveness(coordinator)
+        status = experimental_motion_status(
+            coordinator, ble_liveness=liveness, safety=safety
+        )
+        blade = _runtime_blade_diagnostics(telemetry)
+        position = telemetry.get("position") or {}
+        snapshot = {
+            "available": True,
+            "reason": None,
+            "real_motion_ready": status["real_motion_allowed"] is True,
+            "blockers": list(status.get("blockers") or []),
+            "backend_verified": status.get("backend_verified"),
+            "backend_capabilities": status.get("backend_capabilities") or {},
+            "ble_link_live": liveness.get("live") is True,
+            "ble_link_reason": liveness.get("reason"),
+            "blade_safe_for_motion": blade.get("blade_safe_for_motion"),
+            "blade_blockers": list(blade.get("safety_blockers") or []),
+            "position_valid_for_motion": position.get("valid_for_motion"),
+            "zone_hash": position.get("zone_hash"),
+            "pos_type_label": position.get("pos_type_label"),
+        }
+    except Exception as err:  # noqa: BLE001 - diagnostics must never break setup
+        LOGGER.debug("motion_gate_snapshot failed", exc_info=True)
+        snapshot = _unknown_gate_snapshot(type(err).__name__)
+
+    setattr(coordinator, _GATE_SNAPSHOT_ATTR, snapshot)
+    setattr(coordinator, _GATE_SNAPSHOT_STAMP_ATTR, now)
+    return snapshot
+
+
 def _exclusive_saga_active(coordinator: MammotionReportUpdateCoordinator) -> bool:
     """Return True only when an exclusive saga demonstrably holds the queue.
 

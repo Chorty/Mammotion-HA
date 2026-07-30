@@ -470,6 +470,9 @@
       },
       "cutter_rpm": {
         "name": "Messerdrehzahl"
+      },
+      "zone_hash": {
+        "name": "Zonen-Hash"
       }
     },
     "button": {
@@ -771,6 +774,23 @@
     "device_tracker": {
       "device_tracker": {
         "name": "Geräteverfolgung"
+      }
+    },
+    "binary_sensor": {
+      "real_motion_ready": {
+        "name": "Bereit für echte Bewegung"
+      },
+      "ble_link_live": {
+        "name": "BLE-Verbindung aktiv"
+      },
+      "motion_backend_verified": {
+        "name": "Bewegungs-Backend verifiziert"
+      },
+      "blade_safe_for_motion": {
+        "name": "Messer sicher für Bewegung"
+      },
+      "position_valid_for_motion": {
+        "name": "Position für Bewegung gültig"
       }
     }
   },

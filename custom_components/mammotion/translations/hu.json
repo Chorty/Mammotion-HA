@@ -470,6 +470,9 @@
       },
       "cutter_rpm": {
         "name": "Vágókés fordulatszáma"
+      },
+      "zone_hash": {
+        "name": "Zóna hash"
       }
     },
     "button": {
@@ -771,6 +774,23 @@
     "device_tracker": {
       "device_tracker": {
         "name": "Eszközkövetés"
+      }
+    },
+    "binary_sensor": {
+      "real_motion_ready": {
+        "name": "Valós mozgásra kész"
+      },
+      "ble_link_live": {
+        "name": "BLE-kapcsolat aktív"
+      },
+      "motion_backend_verified": {
+        "name": "Mozgás-backend ellenőrizve"
+      },
+      "blade_safe_for_motion": {
+        "name": "A vágókés mozgáshoz biztonságos"
+      },
+      "position_valid_for_motion": {
+        "name": "A pozíció mozgáshoz érvényes"
       }
     }
   },

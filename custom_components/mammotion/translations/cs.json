@@ -470,6 +470,9 @@
       },
       "cutter_rpm": {
         "name": "Otáčky žacího nože"
+      },
+      "zone_hash": {
+        "name": "Hash zóny"
       }
     },
     "button": {
@@ -771,6 +774,23 @@
     "device_tracker": {
       "device_tracker": {
         "name": "Sledování zařízení"
+      }
+    },
+    "binary_sensor": {
+      "real_motion_ready": {
+        "name": "Připraveno k reálnému pohybu"
+      },
+      "ble_link_live": {
+        "name": "Spojení BLE aktivní"
+      },
+      "motion_backend_verified": {
+        "name": "Ověřený backend pohybu"
+      },
+      "blade_safe_for_motion": {
+        "name": "Nůž bezpečný pro pohyb"
+      },
+      "position_valid_for_motion": {
+        "name": "Poloha platná pro pohyb"
       }
     }
   },

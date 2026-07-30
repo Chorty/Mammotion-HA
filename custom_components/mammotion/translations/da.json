@@ -470,6 +470,9 @@
       },
       "cutter_rpm": {
         "name": "Klingens omdrejningstal"
+      },
+      "zone_hash": {
+        "name": "Zonehash"
       }
     },
     "button": {
@@ -771,6 +774,23 @@
     "device_tracker": {
       "device_tracker": {
         "name": "Enhedssporing"
+      }
+    },
+    "binary_sensor": {
+      "real_motion_ready": {
+        "name": "Klar til reel bevægelse"
+      },
+      "ble_link_live": {
+        "name": "BLE-forbindelse aktiv"
+      },
+      "motion_backend_verified": {
+        "name": "Bevægelses-backend verificeret"
+      },
+      "blade_safe_for_motion": {
+        "name": "Kniv sikker til bevægelse"
+      },
+      "position_valid_for_motion": {
+        "name": "Position gyldig til bevægelse"
       }
     }
   },

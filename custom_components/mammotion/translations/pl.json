@@ -470,6 +470,9 @@
       },
       "cutter_rpm": {
         "name": "Obroty ostrza"
+      },
+      "zone_hash": {
+        "name": "Skrót strefy"
       }
     },
     "button": {
@@ -771,6 +774,23 @@
     "device_tracker": {
       "device_tracker": {
         "name": "Śledzenie urządzenia"
+      }
+    },
+    "binary_sensor": {
+      "real_motion_ready": {
+        "name": "Gotowy do rzeczywistego ruchu"
+      },
+      "ble_link_live": {
+        "name": "Połączenie BLE aktywne"
+      },
+      "motion_backend_verified": {
+        "name": "Backend ruchu zweryfikowany"
+      },
+      "blade_safe_for_motion": {
+        "name": "Ostrze bezpieczne do ruchu"
+      },
+      "position_valid_for_motion": {
+        "name": "Pozycja prawidłowa do ruchu"
       }
     }
   },

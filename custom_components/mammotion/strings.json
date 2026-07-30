@@ -482,6 +482,9 @@
       },
       "cutter_rpm": {
         "name": "Cutter RPM"
+      },
+      "zone_hash": {
+        "name": "Zone hash"
       }
     },
     "button": {
@@ -783,6 +786,23 @@
     "device_tracker": {
       "device_tracker": {
         "name": "Device Tracking"
+      }
+    },
+    "binary_sensor": {
+      "real_motion_ready": {
+        "name": "Real motion ready"
+      },
+      "ble_link_live": {
+        "name": "BLE link live"
+      },
+      "motion_backend_verified": {
+        "name": "Motion backend verified"
+      },
+      "blade_safe_for_motion": {
+        "name": "Blade safe for motion"
+      },
+      "position_valid_for_motion": {
+        "name": "Position valid for motion"
       }
     }
   },

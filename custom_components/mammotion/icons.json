@@ -158,6 +158,9 @@
       },
       "cutter_rpm": {
         "default": "mdi:fan"
+      },
+      "zone_hash": {
+        "default": "mdi:vector-square"
       }
     },
     "select": {
@@ -295,6 +298,23 @@
     "update": {
       "update": {
         "default": "mdi:cellphone-arrow-down"
+      }
+    },
+    "binary_sensor": {
+      "real_motion_ready": {
+        "default": "mdi:play-circle-outline"
+      },
+      "ble_link_live": {
+        "default": "mdi:bluetooth-connect"
+      },
+      "motion_backend_verified": {
+        "default": "mdi:shield-check"
+      },
+      "blade_safe_for_motion": {
+        "default": "mdi:fan-off"
+      },
+      "position_valid_for_motion": {
+        "default": "mdi:crosshairs-gps"
       }
     }
   }

@@ -470,6 +470,9 @@
       },
       "cutter_rpm": {
         "name": "Giri della lama"
+      },
+      "zone_hash": {
+        "name": "Hash della zona"
       }
     },
     "button": {
@@ -771,6 +774,23 @@
     "device_tracker": {
       "device_tracker": {
         "name": "Tracciamento del dispositivo"
+      }
+    },
+    "binary_sensor": {
+      "real_motion_ready": {
+        "name": "Pronto al movimento reale"
+      },
+      "ble_link_live": {
+        "name": "Collegamento BLE attivo"
+      },
+      "motion_backend_verified": {
+        "name": "Backend di movimento verificato"
+      },
+      "blade_safe_for_motion": {
+        "name": "Lama sicura per il movimento"
+      },
+      "position_valid_for_motion": {
+        "name": "Posizione valida per il movimento"
       }
     }
   },

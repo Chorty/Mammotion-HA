@@ -470,6 +470,9 @@
       },
       "cutter_rpm": {
         "name": "Vrtljaji rezila"
+      },
+      "zone_hash": {
+        "name": "Zgoščena vrednost cone"
       }
     },
     "button": {
@@ -771,6 +774,23 @@
     "device_tracker": {
       "device_tracker": {
         "name": "Sledenje"
+      }
+    },
+    "binary_sensor": {
+      "real_motion_ready": {
+        "name": "Pripravljen na resnično gibanje"
+      },
+      "ble_link_live": {
+        "name": "Povezava BLE aktivna"
+      },
+      "motion_backend_verified": {
+        "name": "Zaledje gibanja preverjeno"
+      },
+      "blade_safe_for_motion": {
+        "name": "Rezilo varno za gibanje"
+      },
+      "position_valid_for_motion": {
+        "name": "Položaj veljaven za gibanje"
       }
     }
   },

@@ -62,6 +62,7 @@ from .entity import (
     MammotionBaseRTKEntity,
     MammotionBaseSpinoEntity,
 )
+from .services import motion_gate_snapshot
 
 
 class MowerDataFormatter:
@@ -111,9 +112,15 @@ class MowerDataFormatter:
 
 @dataclass(frozen=True, kw_only=True)
 class MammotionSensorEntityDescription(SensorEntityDescription):
-    """Describes Mammotion sensor entity."""
+    """Describes Mammotion sensor entity.
 
-    value_fn: Callable[[MowingDevice], Any]
+    ``value_fn`` reads device data. ``gate_key`` instead reads the briefly
+    cached motion-gate snapshot, for values that are resolved by
+    ``services.py`` rather than being a plain protocol field.
+    """
+
+    value_fn: Callable[[MowingDevice], Any] | None = None
+    gate_key: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -242,21 +249,6 @@ LUBA_2_YUKA_ONLY_TYPES: tuple[MammotionSensorEntityDescription, ...] = (
         key="vio_brightness_raw",
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda mower_data: mower_data.report_data.vision_info.brightness,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    MammotionSensorEntityDescription(
-        # Any nonzero value blocks every real motion dispatch via
-        # ``blade_rpm_nonzero``, so it needs to be visible and recorded rather
-        # than only reachable through ``export_runtime_state``. Note it can
-        # disagree with the blade state: measured 3014 while both
-        # ``reported_state`` and ``current_cutter_mode`` read 0 (off) after a
-        # completed mow, which is why the guard trusts this over the label.
-        key="cutter_rpm",
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=REVOLUTIONS_PER_MINUTE,
-        value_fn=lambda mower_data: (
-            mower_data.report_data.cutter_work_mode_info.current_cutter_rpm
-        ),
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     MammotionSensorEntityDescription(
@@ -398,6 +390,32 @@ MINI_SERIES_EXCLUDED_TYPES: tuple[MammotionSensorEntityDescription, ...] = (
 )
 
 SENSOR_TYPES: tuple[MammotionSensorEntityDescription, ...] = (
+    MammotionSensorEntityDescription(
+        # The pre-flight for a real run is "zone_hash non-zero while pos_type is
+        # AREA_INSIDE", which was previously unobservable in the UI. A 2026-07-24
+        # bug had a guard reading the map checksum (bol_hash) where it meant this
+        # field, leaving five guards inert; having it visible catches that class
+        # of mistake. Resolved through the gate snapshot rather than read raw,
+        # because services.py picks it from candidate location entries.
+        key="zone_hash",
+        gate_key="zone_hash",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionSensorEntityDescription(
+        # Any nonzero value blocks every real motion dispatch via
+        # ``blade_rpm_nonzero``, so it needs to be visible and recorded rather
+        # than only reachable through ``export_runtime_state``. Note it can
+        # disagree with the blade state: measured 3014 while both
+        # ``reported_state`` and ``current_cutter_mode`` read 0 (off) after a
+        # completed mow, which is why the guard trusts this over the label.
+        key="cutter_rpm",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=REVOLUTIONS_PER_MINUTE,
+        value_fn=lambda mower_data: (
+            mower_data.report_data.cutter_work_mode_info.current_cutter_rpm
+        ),
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
     MammotionSensorEntityDescription(
         key="battery_percent",
         state_class=SensorStateClass.MEASUREMENT,
@@ -1071,12 +1089,33 @@ class MammotionSensorEntity(MammotionBaseEntity, SensorEntity):
     @property
     def native_value(self) -> StateType:
         """Return the state of the sensor."""
+        if self.entity_description.gate_key is not None:
+            value = motion_gate_snapshot(self.coordinator).get(
+                self.entity_description.gate_key
+            )
+            # Kept as a string: zone hashes are 19-digit integers that would
+            # lose precision if coerced through a float anywhere downstream.
+            return None if value is None else str(value)
+        if self.entity_description.value_fn is None:
+            return None
         raw = self.entity_description.value_fn(self.coordinator.data)
         return _normalize_enum_native_value(self.entity_description, raw)
 
     @property
+    def available(self) -> bool:
+        """Gate-backed sensors go unavailable when the verdict is unreadable."""
+        if self.entity_description.gate_key is None:
+            return super().available
+        return (
+            super().available
+            and motion_gate_snapshot(self.coordinator)["available"] is True
+        )
+
+    @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Expose the unmodified protocol enum value."""
+        if self.entity_description.value_fn is None:
+            return None
         raw = self.entity_description.value_fn(self.coordinator.data)
         return _raw_enum_attributes(self.entity_description, raw)
 
@@ -1240,12 +1279,16 @@ class MammotionTaskAreaSensorEntity(MammotionBaseEntity, SensorEntity):
     @property
     def native_value(self) -> StateType:
         """Return the state via value_fn, identical to MammotionSensorEntity."""
+        if self.entity_description.value_fn is None:
+            return None
         raw = self.entity_description.value_fn(self.coordinator.data)
         return _normalize_enum_native_value(self.entity_description, raw)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Expose the unmodified protocol enum value."""
+        if self.entity_description.value_fn is None:
+            return None
         raw = self.entity_description.value_fn(self.coordinator.data)
         return _raw_enum_attributes(self.entity_description, raw)
 
