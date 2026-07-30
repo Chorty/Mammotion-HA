@@ -4,27 +4,41 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build Commands
 
-- Install dependencies: `uv sync`
-- Run in environment: `uv run`
-- Run tests: `uv run pytest`
-- Type checking: `uv run mypy custom_components/`
-- Format code: `uv run ruff format`
-- Lint code: `uv run ruff check`
-- Run pre-commit: `uv run pre-commit run --all-files`
+There is no global `uv` on the dev machine — `uv sync`/`uv run` fail with
+`command not found`. Use the project venv directly. (`.venv/bin/uv` exists only
+because it was pip-installed into the venv to regenerate `uv.lock`; it cannot
+bootstrap the venv it lives in.)
+
+Run the same commands CI runs, so a green local run means a green CI run
+(`.github/workflows/validate.yml` is the source of truth):
+
+- Tests: `.venv/bin/python -m pytest --cov=custom_components.mammotion --cov-report=term-missing tests`
+- Lint: `.venv/bin/python -m ruff check custom_components tests`
+- Format check: `.venv/bin/python -m ruff format --check custom_components tests`
+- Type checking: `.venv/bin/python -m mypy --follow-imports=skip custom_components/mammotion`
+- Frontend card tests: `npm run test:frontend`
+- Pre-commit: `.venv/bin/python -m pre_commit run --all-files`
+- Install/refresh deps: `.venv/bin/python -m pip install -r requirements_test.txt`
+  (CI's install step; keep the `pymammotion` pin here identical to
+  `manifest.json` or CI tests a different backend than the one shipped)
+
+⚠️ Use mypy's `--follow-imports=skip custom_components/mammotion` form above, not
+a whole-tree `mypy custom_components/`. The broader form reports 4 pre-existing
+errors in `select.py` and `device_tracker.py` that CI never checks — they are not
+regressions from your change.
+
+Note: `ruff format` rewrites `except (A, B):` (no `as` binding) into
+`except A, B:`. That is **correct and intentional** — PEP 758 allows
+unparenthesized exception tuples from Python 3.14, which this project targets
+(`requires-python = ">=3.14.2"`). It looks like the Python 2 form and is not;
+verified parsing and catching on 3.14.6. Do not "fix" it back.
 
 ## Code Style Guidelines
 
-- Python 3.14 target with strong typing (mypy)
 - Follow Home Assistant integration patterns
 - Use async/await patterns (prefix functions with `async_`)
-- Class methods use `cls`, instance methods use `self`
-- Variables in class scope should not be mixedCase
-- Imports organized with isort (via ruff)
-- Catch specific exceptions, use `raise ... from exc` pattern
-- Docstrings required (enforced by ruff D rules)
-- Line ending format: LF
+- Line ending format: LF (not enforced by any hook or editor config)
 - Prefer specific exception types over broad ones
-- Type annotations required (autotyping hook)
 
 When making changes, follow existing patterns in similar files and follow Home Assistant best practices.
 
@@ -44,7 +58,7 @@ Keep expensive reasoning on the session model; route delegated work to cheaper m
 ## Translations
 
 - When adding or renaming any entity (sensor, switch, button, number, select, etc.) or an ENUM entity state, you MUST update the translations in **every** language file, not just English.
-- The files to keep in sync: `custom_components/mammotion/strings.json` (the source) **and** every file under `custom_components/mammotion/translations/` (`en`, `cs`, `da`, `de`, `fr`, `hu`, `it`, `nl`, `pl`, `ro`, `sl`, `sv`, plus any new locale present in that directory). Treat the directory listing as the source of truth for which languages exist rather than this hard-coded list.
+- The files to keep in sync: `custom_components/mammotion/strings.json` (the source) **and** every file under `custom_components/mammotion/translations/`. Treat that directory listing as the source of truth for which languages exist.
 - Translate the entity `name` and every ENUM `state` value into each language's own language — do not copy the English text into the other locales as a placeholder.
 - Also add an icon entry in `custom_components/mammotion/icons.json` for the new entity where appropriate.
 - After editing, confirm every JSON file still parses and that the new key (with all its `state` values) is present in each file before considering the change complete.

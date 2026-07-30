@@ -51,9 +51,7 @@ _CUSTOM_DATA_TYPE: Final = 77
 
 _PROBE_TIMEOUT_SECONDS: Final = 5.0
 
-#: Raised by ``inspect.getsource`` for a source-less or non-Python object. Kept
-#: as a named tuple because ruff 0.15.16's formatter rewrites an inline
-#: ``except (A, B):`` with no ``as`` binding into invalid Python 2 syntax.
+#: Raised by ``inspect.getsource`` for a source-less or non-Python object.
 _UNREADABLE_SOURCE_ERRORS: Final = (OSError, TypeError)
 
 _probe_cache: dict[str, Any] | None = None
