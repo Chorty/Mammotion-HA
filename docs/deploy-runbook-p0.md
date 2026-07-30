@@ -40,8 +40,11 @@ will stop matching.** The original label remains available in
    scripts/ha_ssh.exp 'cd /config/custom_components && tar -czf /config/mammotion-backup-$(date +%Y%m%d-%H%M).tgz mammotion && ls -la /config/mammotion-backup-*.tgz'
    ```
 
-2. **Ship the tarball** (staged at
-   `scratchpad/mammotion_deploy.tgz`, sha256 `1b16ec9f…`, 50 entries):
+2. **Ship the tarball.** ⚠️ Build it with `COPYFILE_DISABLE=1 tar …` — macOS BSD
+   tar otherwise embeds AppleDouble metadata files, which extract as 46 junk
+   `._*` entries **inside the integration**, including `translations/._en.json`
+   next to the real translation files. They were removed by hand on 2026-07-29
+   (`rm -f ._* translations/._* www/._*`); prevent them next time instead.
    ```sh
    scripts/ha_scp.exp <scratchpad>/mammotion_deploy.tgz /config/mammotion_deploy.tgz
    scripts/ha_ssh.exp 'cd /config/custom_components && tar -xzf /config/mammotion_deploy.tgz && echo extracted'
@@ -87,8 +90,36 @@ will stop matching.** The original label remains available in
 8. **Leave `enable_experimental_motion` off.** The gate now opens the moment it is
    toggled on.
 
-9. **Start the overnight BLE measurement** with the proxy left where it is:
-   `scripts/ble_session_report.py`.
+9. **Enable the right logger before any BLE measurement.**
+   `scripts/ble_session_report.py` matches `connected=… mtu=… error=…`, which is
+   emitted by **`bleak_esphome.backend.client`** — not by pymammotion. Setting
+   pymammotion to debug does nothing for it. Enable at runtime (no restart, and it
+   does **not** survive one):
+   ```
+   service: logger.set_level
+   data: {bleak_esphome: debug, habluetooth: debug}
+   ```
+   The lines only appear on connect/disconnect transitions, so a stable link
+   produces none. A zero from the report means "no transitions or wrong logger",
+   never "a healthy link" — verify the logger is on before trusting a zero.
+
+## 🔑 Proxy coverage at the dock is already excellent (measured 2026-07-29)
+
+`habluetooth.wrappers` logged the connection-path selection for the docked mower:
+
+| proxy | RSSI | slots free |
+| --- | --- | --- |
+| `p1s-printer-a5774c` | **−49** | **2/3** |
+| `esphomes3-irk` | −65 | 3/3 |
+| `bluetooth-proxy` | −77 | 3/3 |
+| `garage-m5stack-9bc1d4` | −85 | 3/3 |
+| `atom-fireplace` | −85 | 3/3 |
+
+Five paths, best at −49, and the connection opened through P1S Printer. Two
+standing beliefs need correcting: the p1s-printer proxy is **not** permanently
+one-slot-busy (2/3 free here), and **the dock does not need a closer proxy**. The
+coverage problem is out in the working area, not at the dock — so site the next
+proxy where the mower mows, and start acceptance runs near the dock.
 
 ## ⚠️ The overnight A/B is confounded — say so in the write-up
 
