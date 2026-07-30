@@ -8,7 +8,12 @@
 # config-entry reload does not reload modules. Takes roughly 60-135s.
 set -u
 : "${HA_TOKEN:?HA_TOKEN not set (run: set -a && source .env && set +a)}"
-HOST="http://192.168.1.106:8123"
+# Source the base URL from .env rather than hardcoding it. During the
+# 2026-07-30 HA update the API answered on port 80 instead of 8123 for a while,
+# and the hardcoded host made every request here fail with curl "HTTP 000" --
+# which reads exactly like the API being down mid-boot, so the port was the last
+# thing suspected. Following HA_URL means one edit fixes every script.
+HOST="${HA_URL:-http://192.168.1.106:8123}"
 
 echo "==> requesting restart"
 code=$(curl -s -o /dev/null -w "%{http_code}" -m 30 -X POST \
