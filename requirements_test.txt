@@ -7,8 +7,11 @@ pytest-homeassistant-custom-component==0.13.345
 ruff==0.15.16
 mypy==2.1.0
 
-# The integration's own runtime requirements.
-pymammotion==0.8.12
+# The integration's own runtime requirements. Keep the pymammotion pin
+# byte-identical to custom_components/mammotion/manifest.json: the backend
+# capability probes assert against whatever is installed, so a drift here would
+# test a different backend than the one shipped.
+pymammotion@https://github.com/Chorty/PyMammotion/releases/download/chorty-0.8.12.post1/pymammotion-0.8.12.post1-py3-none-any.whl
 websockets==16.0
 sdp-transform==1.1.0
 autotyping==24.9.0

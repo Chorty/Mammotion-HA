@@ -46,18 +46,22 @@ def test_report_is_fail_closed_before_any_probe_runs() -> None:
     assert report["reasons"] == [REASON_NOT_PROBED]
 
 
-async def test_installed_backend_is_reported_unverified() -> None:
-    """The pinned release lacks both fixes, so real motion stays locked.
+async def test_installed_backend_carries_both_audited_fixes() -> None:
+    """The pinned backend must carry both fixes, or real motion stays locked.
 
-    This assertion is the release gate. It flips only when the pin moves to a
-    build that genuinely carries both fixes -- at which point it should be
-    updated deliberately, as part of that upgrade.
+    This assertion is the release gate, and it is asserted against whatever
+    backend is actually installed -- so it fails if the pin is ever moved to a
+    build lacking either fix, including a downgrade to plain upstream 0.8.12.
+    It was inverted deliberately when the 0.8.12.post1 fork build was pinned.
     """
     report = await async_probe_backend_capabilities()
 
     assert report["probed"] is True
-    assert report["verified"] is False
-    assert sorted(report["missing"]) == sorted(REQUIRED_MOTION_CAPABILITIES)
+    assert report["missing"] == []
+    assert report["verified"] is True
+    assert all(
+        report["capabilities"][name] is True for name in REQUIRED_MOTION_CAPABILITIES
+    )
 
 
 async def test_probe_result_is_cached_until_reset(

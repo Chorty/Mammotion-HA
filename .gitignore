@@ -17,3 +17,7 @@ __pycache__
 # Diagnostic script output (scripts/ble_advert_monitor.py, scripts/state_sampler.py)
 scripts/advert_log.jsonl
 scripts/state_log.jsonl
+
+# Coverage data from `pytest --cov` (CI reports to the terminal, never a file)
+.coverage
+.coverage.*
