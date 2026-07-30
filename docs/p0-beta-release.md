@@ -87,6 +87,27 @@ Abort rule: if any gate fails, stop the session, disable experimental motion,
 and record the failure before retrying. Do not iterate on a failing gate with
 the mower live.
 
+### Results
+
+**Gate 1 — PASSED 2026-07-29 22:32 EDT** on pymammotion 0.8.12.post1, in the dark,
+mower docked at `MODE_READY`, BLE live at −50 dBm. `stop_confirmed: true`,
+`all_stop_writes_confirmed: true`, all three emergency writes `ok`, total 2911 ms.
+Delivery confirmed over BLE in the logs (30-byte `BLETransport send` frames, versus
+the 28-byte keepalives).
+
+Scope note: `session_was_active: false`, so this validated the **delivery** half of
+the gate — three confirmed zero-velocity writes reaching the mower — not the
+session-cancellation half, which needs an active run to abort. Gate 1 requires no
+experimental-motion opt-in: `stop_manual_motion` is registered without the
+authorization wrapper by design, so a stop always works.
+
+⚠️ **Confirmed-write latency is closer to the guard timeout than expected.** The
+three writes took 739, **1982**, and 191 ms on a *good* −50 dBm link.
+`_BLE_MOTION_WRITE_TIMEOUT_SECONDS` is 4.0 s, so the worst observed write used half
+the budget. On a marginal link, writes may exceed it and abort runs. These are
+completion-confirmed times, not the sub-millisecond `command_ok` acks that were
+already shown to prove nothing.
+
 **Turn accuracy is deliberately not a gate.** Turns are bounded and always
 explicitly stopped, so an inaccurate turn is a quality defect rather than a
 safety one. It is tracked as the headline Alpha-to-Beta item below.

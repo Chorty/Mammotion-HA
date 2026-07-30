@@ -121,6 +121,29 @@ one-slot-busy (2/3 free here), and **the dock does not need a closer proxy**. Th
 coverage problem is out in the working area, not at the dock — so site the next
 proxy where the mower mows, and start acceptance runs near the dock.
 
+## 🔬 How to attribute the improvement despite the confound
+
+First 20-minute window after the deploy (docked, idle, much of it with the link
+still down, so treat as indicative only):
+
+| metric | 07-27 baseline (8 h, 0.8.8) | first 20 min (0.8.12.post1) |
+| --- | --- | --- |
+| sequence gaps | 720 (**1.5/min**) | 1 (~0.05/min) |
+| unparseable LubaMsg frames | 193 | **0** |
+| negotiated MTU | 22x 517 | 1x 517 |
+
+**The two metrics dissociate, and that is the attribution test.** Sequence gaps are
+link-layer packet loss, which neither audited fix touches. Unparseable frames are
+exactly what the BluFi reassembly reset prevents — a gap no longer poisons the
+next message. So:
+
+- unparseable frames near zero **while gaps still occur** = clean evidence the
+  reassembly fix works, despite the bundled 0.8.8 -> 0.8.12.post1 jump.
+- both dropping together = something environmental changed too, and no
+  single-fix claim is safe.
+
+Check both over the full overnight window before concluding anything.
+
 ## ⚠️ The overnight A/B is confounded — say so in the write-up
 
 The 2026-07-27 baseline (median session 59 s, 42% `0x08`) was measured on
