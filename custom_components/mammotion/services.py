@@ -1692,24 +1692,159 @@ def _active_mowing_detected(telemetry: dict[str, Any], ha_state: str | None) -> 
     return ha_state == "mowing" or telemetry.get("work_mode_label") == "MODE_WORKING"
 
 
-def _runtime_blade_diagnostics(telemetry: dict[str, Any]) -> dict[str, Any]:
-    """Return blade diagnostics plus a conservative motion-safety decision."""
+def _runtime_blade_diagnostics(
+    telemetry: dict[str, Any],
+    *,
+    rpm_stale_register: bool = False,
+) -> dict[str, Any]:
+    """Return blade diagnostics plus a conservative motion-safety decision.
+
+    ``current_cutter_rpm`` is a LATCHED device register: it holds its last
+    running value after a mow and is never reset by the firmware. Measured
+    2026-07-30 on the dock, blade off, over a live BLE link -- the position feed
+    jittered between reads (proving the report stream was fresh) while RPM stayed
+    bit-identical at 3014 with ``current_cutter_mode`` 0 and state OFF. Since it
+    re-latches after every mow, trusting it verbatim blocks every real run that
+    follows one.
+
+    ``rpm_stale_register`` is the verdict of :func:`_reconfirm_blade_rpm_stale`,
+    which requires positive proof the feed is live before discounting the value.
+    It defaults False so every non-dispatch caller stays conservative, and the
+    single-sample ``blade_rpm_looks_latched`` hint explains a blocked gate
+    without any polling.
+    """
     blade = dict(telemetry.get("blade", {}) or {})
     reported_state = blade.get("reported_state")
+    cutter_mode = blade.get("current_cutter_mode")
     rpm = blade.get("current_cutter_rpm")
     reported_on = reported_state not in (None, 0, "0")
+    mode_on = cutter_mode not in (None, 0, "0")
     rpm_nonzero = rpm not in (None, 0, "0")
-    blade_safe = not reported_on and not rpm_nonzero
+    # A nonzero RPM while BOTH state and mode say off is the latch signature.
+    looks_latched = rpm_nonzero and not reported_on and not mode_on
+    rpm_discounted = rpm_nonzero and looks_latched and rpm_stale_register
     blockers = []
     if reported_on:
         blockers.append("blade_reported_on")
-    if rpm_nonzero:
+    if mode_on:
+        blockers.append("blade_cutter_mode_on")
+    if rpm_nonzero and not rpm_discounted:
         blockers.append("blade_rpm_nonzero")
     return {
         **blade,
-        "blade_safe_for_motion": blade_safe,
+        "blade_safe_for_motion": not blockers,
         "safety_blockers": blockers,
+        "blade_rpm_looks_latched": looks_latched,
+        "blade_rpm_stale_register": rpm_discounted,
     }
+
+
+#: Independent observations required before the RPM register may be called
+#: latched. These are NOT polled on demand: they accumulate from the gate
+#: snapshot that already runs on every coordinator tick, so the evidence spans
+#: real time and the dispatch path adds no latency and no sleeping. An earlier
+#: version polled three times with 1.5s gaps inside the authorization preamble,
+#: which delayed every real run and deadlocked the concurrency test.
+_BLADE_RPM_RECONFIRM_POLLS = 3
+_BLADE_RPM_HISTORY_LIMIT = 8
+_BLADE_RPM_HISTORY_ATTR = "_mammotion_blade_rpm_history"
+
+#: Movement (metres) between polls that proves the report stream is genuinely
+#: live. The position feed jitters ~2-4mm between reads on a live link, so this
+#: sits just above the read-to-read noise while staying far below real motion.
+_BLADE_RPM_FEED_LIVE_EPSILON_M = 0.0005
+
+
+def _blade_rpm_stale_verdict(samples: list[dict[str, Any]]) -> dict[str, Any]:
+    """Decide whether a nonzero cutter RPM is a latched register, from samples.
+
+    Every condition must hold, and the last one is the important one: the feed
+    must be PROVEN live by the position changing across the samples. A latched
+    register cannot vary while the rest of the report demonstrably does, whereas
+    a genuinely spinning blade reports a varying RPM. Without the liveness proof
+    a frozen feed would look identical to a latch, so this refuses to decide on
+    a dead feed rather than guessing.
+    """
+    reasons: list[str] = []
+    if len(samples) < _BLADE_RPM_RECONFIRM_POLLS:
+        reasons.append("insufficient_samples")
+    blades = [s.get("blade") or {} for s in samples]
+    positions = [s.get("position") or {} for s in samples]
+    rpms = [b.get("current_cutter_rpm") for b in blades]
+    if any(b.get("reported_state") not in (None, 0, "0") for b in blades):
+        reasons.append("blade_reported_on_in_a_sample")
+    if any(b.get("current_cutter_mode") not in (None, 0, "0") for b in blades):
+        reasons.append("cutter_mode_on_in_a_sample")
+    if any(r in (None, 0, "0") for r in rpms):
+        reasons.append("rpm_not_consistently_nonzero")
+    if len(set(rpms)) != 1:
+        reasons.append("rpm_varied_so_it_may_be_live")
+
+    def _moved(a: dict[str, Any], b: dict[str, Any]) -> bool:
+        try:
+            return (
+                abs(float(a["x"]) - float(b["x"])) > _BLADE_RPM_FEED_LIVE_EPSILON_M
+                or abs(float(a["y"]) - float(b["y"])) > _BLADE_RPM_FEED_LIVE_EPSILON_M
+            )
+        except KeyError, TypeError, ValueError:
+            return False
+
+    feed_live = any(
+        _moved(positions[i], positions[j])
+        for i in range(len(positions))
+        for j in range(i + 1, len(positions))
+    )
+    if not feed_live:
+        reasons.append("feed_not_proven_live")
+    return {
+        "stale_register": not reasons,
+        "reasons": reasons,
+        "samples": len(samples),
+        "rpm_values": rpms,
+        "feed_proven_live": feed_live,
+    }
+
+
+def _record_blade_rpm_sample(
+    coordinator: MammotionReportUpdateCoordinator, telemetry: dict[str, Any]
+) -> None:
+    """Append one blade/position observation to the coordinator's short history.
+
+    Called from the gate snapshot, which already runs once per coordinator tick,
+    so the history accumulates on its own across real time. Never raises.
+    """
+    try:
+        history = list(getattr(coordinator, _BLADE_RPM_HISTORY_ATTR, None) or [])
+        history.append(
+            {
+                "blade": dict(telemetry.get("blade") or {}),
+                "position": {
+                    "x": (telemetry.get("position") or {}).get("x"),
+                    "y": (telemetry.get("position") or {}).get("y"),
+                },
+            }
+        )
+        setattr(
+            coordinator,
+            _BLADE_RPM_HISTORY_ATTR,
+            history[-_BLADE_RPM_HISTORY_LIMIT:],
+        )
+    except Exception:  # noqa: BLE001 - history is best-effort diagnostics
+        LOGGER.debug("blade RPM history append failed", exc_info=True)
+
+
+def blade_rpm_stale_register(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> dict[str, Any]:
+    """Judge whether a nonzero cutter RPM is a latched register, from history.
+
+    Synchronous and allocation-cheap: it reads observations already gathered by
+    the gate snapshot, so the dispatch path neither sleeps nor polls. If too few
+    observations exist yet -- entities disabled, or a freshly started HA -- the
+    verdict is not-stale and the blade guard stays closed.
+    """
+    history = list(getattr(coordinator, _BLADE_RPM_HISTORY_ATTR, None) or [])
+    return _blade_rpm_stale_verdict(history[-_BLADE_RPM_RECONFIRM_POLLS:])
 
 
 def _runtime_motion_safety_summary(
@@ -1717,9 +1852,10 @@ def _runtime_motion_safety_summary(
     *,
     ha_state: str | None = None,
     active_route: dict[str, Any] | None = None,
+    rpm_stale_register: bool = False,
 ) -> dict[str, Any]:
     """Return conservative safety summary for diagnostics and future motion gates."""
-    blade = _runtime_blade_diagnostics(telemetry)
+    blade = _runtime_blade_diagnostics(telemetry, rpm_stale_register=rpm_stale_register)
     route_status = _runtime_route_status(
         telemetry,
         ha_state=ha_state,
@@ -4214,8 +4350,14 @@ def _manual_motion_authorization(
     *,
     ha_state: str | None,
     call_data: Mapping[str, Any],
+    rpm_stale_register: bool = False,
 ) -> dict[str, Any]:
-    """Evaluate the common authorization boundary for every nonzero run."""
+    """Evaluate the common authorization boundary for every nonzero run.
+
+    ``rpm_stale_register`` comes from :func:`_reconfirm_blade_rpm_stale`, run by
+    the caller before claiming the mower. It defaults False, so an authorization
+    evaluated without that evidence keeps the blade guard closed.
+    """
     try:
         route = _export_active_route(coordinator)
     except Exception:  # noqa: BLE001 - unreadable safety state must fail closed
@@ -4225,6 +4367,7 @@ def _manual_motion_authorization(
         telemetry,
         ha_state=ha_state,
         active_route=route,
+        rpm_stale_register=rpm_stale_register,
     )
     liveness = _ble_link_liveness(coordinator)
     status = experimental_motion_status(
@@ -4318,6 +4461,10 @@ def motion_gate_snapshot(
         except Exception:  # noqa: BLE001 - an unreadable route must not blind the rest
             route = None
         telemetry = _custom_path_telemetry_snapshot(coordinator)
+        # One observation per tick feeds the latched-RPM history the dispatch
+        # path reads synchronously, so the evidence spans real time without
+        # anything polling on demand.
+        _record_blade_rpm_sample(coordinator, telemetry)
         safety = _runtime_motion_safety_summary(
             telemetry, ha_state=None, active_route=route
         )
@@ -4338,6 +4485,7 @@ def motion_gate_snapshot(
             "ble_link_reason": liveness.get("reason"),
             "blade_safe_for_motion": blade.get("blade_safe_for_motion"),
             "blade_blockers": list(blade.get("safety_blockers") or []),
+            "blade_rpm_looks_latched": blade.get("blade_rpm_looks_latched"),
             "position_valid_for_motion": position.get("valid_for_motion"),
             "zone_hash": position.get("zone_hash"),
             "pos_type_label": position.get("pos_type_label"),
@@ -4439,6 +4587,19 @@ def _wrap_exclusive_manual_motion(  # noqa: C901
             # The wrapped handler logs the unknown entity and returns {}.
             return await handler(call)
         coordinator = mower.reporting_coordinator
+        # Synchronous read of observations the gate snapshot already collected --
+        # no sleeping, no polling, and safe inside the await-free claim window
+        # below. Not-stale unless the history positively proves the register is
+        # latched, so the blade guard stays closed by default.
+        rpm_verdict = blade_rpm_stale_register(coordinator)
+        rpm_stale_register = rpm_verdict.get("stale_register") is True
+        if rpm_stale_register:
+            LOGGER.info(
+                "cutter RPM %s judged a latched register (feed proven live across "
+                "%s observations); blade guard not blocking on it",
+                rpm_verdict.get("rpm_values"),
+                rpm_verdict.get("samples"),
+            )
         # Claim atomically on the event loop: no await between the read and the
         # write, so two overlapping calls cannot both see it free. The saga
         # probe is a synchronous read for the same reason -- check and claim
@@ -4464,6 +4625,7 @@ def _wrap_exclusive_manual_motion(  # noqa: C901
             coordinator,
             ha_state=state.state if state is not None else None,
             call_data=call.data,
+            rpm_stale_register=rpm_stale_register,
         )
         if authorization["real_motion_allowed"] is not True:
             return _manual_motion_rejected_result(

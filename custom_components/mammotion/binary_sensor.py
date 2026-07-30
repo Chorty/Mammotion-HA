@@ -70,12 +70,13 @@ BINARY_SENSORS: tuple[MammotionBinarySensorEntityDescription, ...] = (
         attributes_keys=("backend_capabilities",),
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
-    # Combines blade state and cutter RPM. The two can disagree: RPM latches at
-    # its last running value after a mow while the state reads OFF.
+    # Combines blade state and cutter RPM. The two disagree after every mow: the
+    # RPM register latches at its last running value while state and mode read
+    # off, so blade_rpm_looks_latched explains a blocked gate at a glance.
     MammotionBinarySensorEntityDescription(
         key="blade_safe_for_motion",
         gate_key="blade_safe_for_motion",
-        attributes_keys=("blade_blockers",),
+        attributes_keys=("blade_blockers", "blade_rpm_looks_latched"),
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     # Requires a real fix, a non-zero zone hash, and an in-area position type.
