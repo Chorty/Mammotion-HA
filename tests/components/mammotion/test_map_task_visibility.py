@@ -114,6 +114,46 @@ from custom_components.mammotion.services import (
 LARGE_HASH = 9_223_372_036_854_775_000
 
 
+class _ModuleShim:
+    """A module view with selected attributes overridden, for one namespace."""
+
+    def __init__(self, module: object, **overrides: object) -> None:
+        """Wrap *module*, answering the named attributes from *overrides*."""
+        self._module = module
+        for name, value in overrides.items():
+            setattr(self, name, value)
+
+    def __getattr__(self, name: str) -> object:
+        """Delegate everything not overridden to the real module."""
+        return getattr(self._module, name)
+
+
+def _patch_services_monotonic(
+    monkeypatch: pytest.MonkeyPatch,
+    monotonic: Callable[[], float],
+) -> None:
+    """Give services.py a fake monotonic clock without moving asyncio's.
+
+    ``mammotion_services.time`` *is* the ``time`` module, so overriding
+    ``monotonic`` on it is process-global -- and asyncio derives every timer
+    deadline from ``loop.time()``, which reads ``time.monotonic()``. These
+    tests' fake clocks jump a whole pulse (2-3.5s) forward inside ``fake_sleep``,
+    which could therefore expire the production dispatch guard's real deadlines
+    (4.0s per write, 2.0s to start on the queue) partway through a test. That
+    surfaced as CI failures that came and went on identical code: reasons
+    flipping to ``command_failed`` and one send recorded instead of two.
+
+    Replacing the module *reference* inside the services namespace keeps the
+    fake clock where it is needed and away from the event loop, so the guard
+    timeouts stay on real time and still get exercised.
+    """
+    monkeypatch.setattr(
+        mammotion_services,
+        "time",
+        _ModuleShim(time, monotonic=monotonic),
+    )
+
+
 def _plan(
     plan_id: str = "plan-1",
     *,
@@ -1947,6 +1987,31 @@ async def test_vio_motion_probe_rejects_missing_confirmations() -> None:
 
 
 @pytest.mark.asyncio
+async def test_fake_pulse_clock_never_moves_the_event_loop_deadline_clock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A test clock that jumps a pulse must not expire real dispatch deadlines.
+
+    The motion tests advance a fake monotonic clock by the whole pulse duration
+    on every simulated sleep. asyncio computes ``wait_for`` deadlines from
+    ``loop.time()``, so if that fake clock is installed globally, the production
+    dispatch guard's real 4.0s write deadline and 2.0s queue-start deadline can
+    expire mid-test at random -- which is exactly what made six motion tests
+    fail on one CI attempt and pass on the next with identical code.
+    """
+    clock = {"now": 100.0}
+    _patch_services_monotonic(monkeypatch, lambda: clock["now"])
+    loop = asyncio.get_running_loop()
+    loop_time_before = loop.time()
+
+    clock["now"] += 60.0
+
+    assert mammotion_services.time.monotonic() == 160.0
+    assert loop.time() - loop_time_before < 1.0
+    assert time.monotonic() - loop_time_before < 60.0
+
+
+@pytest.mark.asyncio
 async def test_vio_motion_probe_drives_samples_vio_and_always_stops(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1979,7 +2044,7 @@ async def test_vio_motion_probe_drives_samples_vio_and_always_stops(
                 vio_state=2,
             )
 
-    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    _patch_services_monotonic(monkeypatch, fake_monotonic)
     monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
     monkeypatch.setattr(
         mammotion_services,
@@ -2052,7 +2117,7 @@ async def test_vio_motion_probe_reports_settled_post_stop_displacement(
     async def fake_get_reports(count: int = 5) -> None:
         return None  # VIO stays cold the whole time
 
-    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    _patch_services_monotonic(monkeypatch, fake_monotonic)
     monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
     monkeypatch.setattr(
         mammotion_services, "_custom_path_telemetry_snapshot", fake_snapshot
@@ -2122,7 +2187,7 @@ async def test_vio_motion_probe_active_vio_lagged_motion_not_mislabelled(
     async def fake_get_reports(count: int = 5) -> None:
         return None  # VIO stays active (state 2) the whole time
 
-    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    _patch_services_monotonic(monkeypatch, fake_monotonic)
     monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
     monkeypatch.setattr(
         mammotion_services, "_custom_path_telemetry_snapshot", fake_snapshot
@@ -2166,7 +2231,7 @@ async def test_vio_motion_probe_static_reports_no_motion(
     async def fake_get_reports(count: int = 5) -> None:
         return None
 
-    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    _patch_services_monotonic(monkeypatch, fake_monotonic)
     monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
     coordinator.async_get_reports.side_effect = fake_get_reports
 
@@ -2263,7 +2328,7 @@ async def test_vio_turn_probe_detects_heading_tracking_rotation(
             vio_state=2,
         )
 
-    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    _patch_services_monotonic(monkeypatch, fake_monotonic)
     monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
     coordinator.async_get_reports.side_effect = fake_get_reports
 
@@ -2318,7 +2383,7 @@ async def test_vio_turn_probe_app_parity_refresh_resends_the_turn(
             vio_state=2,
         )
 
-    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    _patch_services_monotonic(monkeypatch, fake_monotonic)
     monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
     coordinator.async_get_reports.side_effect = fake_get_reports
 
@@ -2383,7 +2448,7 @@ async def test_vio_turn_probe_counts_rotation_that_lands_after_the_stop(
             vio_state=2,
         )
 
-    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    _patch_services_monotonic(monkeypatch, fake_monotonic)
     monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
     coordinator.async_get_reports.side_effect = fake_get_reports
     monkeypatch.setattr(mammotion_services, "_stop_manual_motion_confirmed", fake_stop)
@@ -2765,7 +2830,7 @@ async def test_vio_turn_to_heading_tolerates_one_stale_pulse_before_no_progress(
         vi.heading = round(vi.heading, 3) + (0.0018 if calls["flip"] else -0.0018)
         calls["flip"] = not calls["flip"]
 
-    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    _patch_services_monotonic(monkeypatch, fake_monotonic)
     monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
     coordinator.async_get_reports.side_effect = fake_get_reports
 
@@ -2900,7 +2965,7 @@ async def test_vio_turn_to_heading_sub_epsilon_wiggle_is_not_fresh(
         vi.heading = 0.002 if flip["v"] else 0.0
         flip["v"] = not flip["v"]
 
-    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    _patch_services_monotonic(monkeypatch, fake_monotonic)
     monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
     coordinator.async_get_reports.side_effect = fake_get_reports
 
@@ -2944,7 +3009,7 @@ async def test_forward_two_pulse_latency_test_sends_pulses_and_detects_change(
             telemetry["position"]["y"] = float(telemetry["position"]["y"]) - 0.02
         return telemetry
 
-    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    _patch_services_monotonic(monkeypatch, fake_monotonic)
     monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
     monkeypatch.setattr(
         mammotion_services,
@@ -5859,7 +5924,7 @@ def test_ble_connect_cooldown_active_reads_transport_deadline(
     coordinator.manager.mower = lambda _device_name: SimpleNamespace(
         get_transport=get_transport
     )
-    monkeypatch.setattr(mammotion_services.time, "monotonic", lambda: 1000.0)
+    _patch_services_monotonic(monkeypatch, lambda: 1000.0)
 
     # No cooldown armed (0.0 deadline is in the past).
     assert _ble_connect_cooldown_active(coordinator) is False
@@ -6058,7 +6123,7 @@ async def test_vio_turn_reports_no_actuation_when_nothing_moves(
 
     coordinator.async_get_reports = AsyncMock(side_effect=jittering_reports)
 
-    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    _patch_services_monotonic(monkeypatch, fake_monotonic)
     monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
 
     result = await _vio_turn_to_heading(
@@ -6138,7 +6203,7 @@ async def test_vio_turn_reports_stale_stream_when_the_feed_is_frozen(
         heading=90.29915121519771, vio_state=2
     )
 
-    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    _patch_services_monotonic(monkeypatch, fake_monotonic)
     monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
 
     result = await _vio_turn_to_heading(
@@ -9366,7 +9431,7 @@ def _install_virtual_clock(
     async def fake_sleep(delay: float) -> None:
         clock["now"] += delay
 
-    monkeypatch.setattr(mammotion_services.time, "monotonic", fake_monotonic)
+    _patch_services_monotonic(monkeypatch, fake_monotonic)
     monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
     return clock
 
