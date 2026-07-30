@@ -467,6 +467,9 @@
       },
       "spino_wifi_rssi": {
         "name": "Wifi RSSI"
+      },
+      "cutter_rpm": {
+        "name": "Vrtljaji rezila"
       }
     },
     "button": {

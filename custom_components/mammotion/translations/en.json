@@ -479,6 +479,9 @@
       },
       "spino_wifi_rssi": {
         "name": "WiFi RSSI"
+      },
+      "cutter_rpm": {
+        "name": "Cutter RPM"
       }
     },
     "button": {

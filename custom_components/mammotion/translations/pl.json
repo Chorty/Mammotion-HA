@@ -467,6 +467,9 @@
       },
       "spino_wifi_rssi": {
         "name": "Wi-Fi RSSI"
+      },
+      "cutter_rpm": {
+        "name": "Obroty ostrza"
       }
     },
     "button": {

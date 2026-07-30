@@ -479,6 +479,9 @@
           "online": "Online",
           "offline": "Offline"
         }
+      },
+      "cutter_rpm": {
+        "name": "Cutter RPM"
       }
     },
     "button": {

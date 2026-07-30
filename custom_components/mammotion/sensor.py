@@ -17,6 +17,7 @@ from homeassistant.components.sensor import (
 from homeassistant.const import (
     DEGREE,
     PERCENTAGE,
+    REVOLUTIONS_PER_MINUTE,
     SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     UnitOfArea,
     UnitOfLength,
@@ -241,6 +242,21 @@ LUBA_2_YUKA_ONLY_TYPES: tuple[MammotionSensorEntityDescription, ...] = (
         key="vio_brightness_raw",
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda mower_data: mower_data.report_data.vision_info.brightness,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionSensorEntityDescription(
+        # Any nonzero value blocks every real motion dispatch via
+        # ``blade_rpm_nonzero``, so it needs to be visible and recorded rather
+        # than only reachable through ``export_runtime_state``. Note it can
+        # disagree with the blade state: measured 3014 while both
+        # ``reported_state`` and ``current_cutter_mode`` read 0 (off) after a
+        # completed mow, which is why the guard trusts this over the label.
+        key="cutter_rpm",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=REVOLUTIONS_PER_MINUTE,
+        value_fn=lambda mower_data: (
+            mower_data.report_data.cutter_work_mode_info.current_cutter_rpm
+        ),
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     MammotionSensorEntityDescription(

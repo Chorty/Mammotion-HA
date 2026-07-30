@@ -467,6 +467,9 @@
       },
       "spino_wifi_rssi": {
         "name": "WLAN Signalqualität (RSSI)"
+      },
+      "cutter_rpm": {
+        "name": "Messerdrehzahl"
       }
     },
     "button": {

@@ -155,6 +155,9 @@
       },
       "position_type": {
         "default": "mdi:land-plots-marker"
+      },
+      "cutter_rpm": {
+        "default": "mdi:fan"
       }
     },
     "select": {

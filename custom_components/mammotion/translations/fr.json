@@ -467,6 +467,9 @@
       },
       "spino_wifi_rssi": {
         "name": "Qualité du signal Wi-Fi"
+      },
+      "cutter_rpm": {
+        "name": "Régime de la lame"
       }
     },
     "button": {

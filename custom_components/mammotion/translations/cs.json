@@ -467,6 +467,9 @@
       },
       "spino_wifi_rssi": {
         "name": "WiFi RSSI"
+      },
+      "cutter_rpm": {
+        "name": "Otáčky žacího nože"
       }
     },
     "button": {
