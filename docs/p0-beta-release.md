@@ -165,6 +165,23 @@ The existing logs do not record a sanitized teardown initiator/error type, so a
 stationary instrumented build is required to distinguish the remaining two
 causes.
 
+The follow-up direct-app comparison further reduced the mower-hardware
+likelihood. Disabling the Mammotion integration produced an explicit clean
+disconnect from the HA-owned proxy session, after which the official app
+connected over BLE immediately without restarting the mower. With the integration
+left disabled, the app then held BLE for 15 minutes. HA's passive scanner received
+6,034 control advertisements from other devices and only the mower's initial
+connectable advertisement; the mower never returned to advertising during the
+900-second window. The operator repositioned the mower once, but otherwise
+treated the run as the requested clean comparison.
+
+This proves the recent "app requires a mower restart" symptom was caused by HA
+holding the mower's single BLE connection, not by a radio that required rebooting.
+It also shows the mower can sustain a substantially longer direct-app session
+than the 43-, 287-, and 607-second HA sessions in the preceding capture. The next
+isolation boundary is therefore native PyMammotion BLE versus PyMammotion through
+HA/ESPHome; do not resume physical motion based on the app result alone.
+
 ⚠️ **Confirmed-write latency is closer to the guard timeout than expected.** The
 three writes took 739, **1982**, and 191 ms on a *good* −50 dBm link.
 `_BLE_MOTION_WRITE_TIMEOUT_SECONDS` is 4.0 s, so the worst observed write used half
