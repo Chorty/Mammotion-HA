@@ -108,11 +108,16 @@ is limited to two segments and is disabled unless every backend safety gate
 passes.
 
 The bounded backend completed supervised LUBA acceptance on 2026-07-31,
-including active abort and a two-leg L path. The card's built-in Real Go defaults
-still reflect an older calibration profile and must be reconciled with the
-accepted backend profile before the beta release. Until that work is complete,
-use the card for preview and dry-run only; do not treat its default Real Go
-profile as hardware-accepted.
+including active abort and a two-leg L path. The card's built-in Real Go
+defaults are now that same bounded profile, so the payload the card emits by
+default matches the one the backend gates executed. The card has not itself
+driven the mower end-to-end: UI-to-mower Real Go is still unvalidated, and any
+run remains operator-supervised.
+
+Overriding any motion field in the card YAML leaves the accepted profile. The
+card then labels its **execution profile** row `customised (not
+hardware-accepted)` and names the overridden fields. Treat that state as
+untested.
 
 Add the integration-served JavaScript as a dashboard resource:
 
@@ -124,8 +129,18 @@ Use resource type `JavaScript module`. The version query is required because
 Home Assistant serves integration static files with cache headers; update it to
 the installed release version after every upgrade.
 
-Complete preview/dry-run card YAML (the motion fields document the current card
-profile; they are not the final accepted release defaults):
+Minimal card YAML. Every motion field defaults to the accepted profile below,
+so omitting them is the supported configuration:
+
+```yaml
+type: custom:mammotion-custom-path-card
+entity: lawn_mower.your_mower
+card_height: 520
+```
+
+The built-in defaults, written out. These are the values the supervised LUBA
+acceptance run executed; listing them explicitly changes nothing, and changing
+any of them puts the card outside the accepted profile:
 
 ```yaml
 type: custom:mammotion-custom-path-card
@@ -133,26 +148,40 @@ entity: lawn_mower.your_mower
 card_height: 520
 speed: 0.2
 prefer_ble: true
-max_turn_commands: 1
-max_linear_commands: 3
-max_linear_pulse_ceiling: 30
+turn_mode: vio
+max_turn_commands: 4
+vio_turn_max_commands: 4
+max_linear_commands: 1
 max_no_progress_pulses: 3
 heading_tolerance_degrees: 18
-waypoint_tolerance: 0.15
-min_progress_distance: 0.06
-calibrated_forward_heading_offset_degrees: 116.5
-turn_mode: vio
-vio_turn_max_commands: 16
+waypoint_tolerance: 0.08
+min_progress_distance: 0.0025
+calibrated_forward_heading_offset_degrees: 102.4
 turn_pulse_duration_ms: 1500
 linear_pulse_duration_ms: 3500
 motion_refresh_interval_ms: 200
 final_approach_metres_per_pulse: 1.06
 turn_degrees_per_second: 37
-ble_auto_recover: true
+ble_auto_recover: false
 sample_delays:
   - 0
   - 3
 ```
+
+Notes on the profile:
+
+- `max_linear_pulse_ceiling` is deliberately **unset**. The accepted profile
+  runs one linear command per segment with no loop-to-tolerance, so a segment
+  that falls short stops short rather than continuing to pulse. Setting it
+  re-enables loop-to-tolerance and leaves the accepted profile.
+- `calibrated_forward_heading_offset_degrees` is a per-mower measurement taken
+  on the acceptance LUBA. Re-derive it for a different mower instead of
+  assuming 102.4 transfers.
+- `ble_auto_recover: false` keeps a failed BLE gate a fast failure rather than
+  a ~90 s in-run recovery attempt.
+- `heading_tolerance_degrees: 18` is a known-loose value carried over from the
+  July 18 calibration. It is unchanged from the accepted run, but reducing it
+  is open beta work.
 
 Real motion additionally requires the integration option **Enable experimental
 BLE-only manual motion**, a positively verified PyMammotion backend, a fresh

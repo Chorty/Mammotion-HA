@@ -4,6 +4,46 @@ const MAX_REAL_SEGMENTS = 2;
 // which build the browser actually loaded.
 const CARD_VERSION = "0.6.4-beta11";
 
+// The exact bounded execution profile that passed supervised LUBA acceptance
+// Gates 1-4 on 2026-07-31 (three-write zero stop, bounded straight segment,
+// active-session abort, 176 deg VIO regression, corrected two-leg L path;
+// see docs/p0-beta-release.md). It is deliberately conservative: one linear
+// command per segment with NO loop-to-tolerance ceiling, so a segment that
+// falls short stops short instead of pulsing on.
+//
+// This is the card's built-in default because it is the only Real Go profile
+// any hardware has actually executed. Overriding ANY key below in the card
+// YAML leaves the accepted profile; the card then labels the run "customised"
+// and that payload is NOT hardware-accepted.
+//
+// `calibrated_forward_heading_offset_degrees` is a per-mower measurement (this
+// value came from the acceptance LUBA). Re-derive it for another mower rather
+// than assuming 102.4 transfers.
+const LUBA_ACCEPTANCE_PROFILE = Object.freeze({
+  prefer_ble: true,
+  turn_mode: "vio",
+  max_turn_commands: 4,
+  vio_turn_max_commands: 4,
+  max_linear_commands: 1,
+  // null = loop-to-tolerance disabled. The key is omitted from the payload so
+  // the backend's `max_linear_pulse_ceiling is None` branch is what runs.
+  max_linear_pulse_ceiling: null,
+  max_no_progress_pulses: 3,
+  heading_tolerance_degrees: 18,
+  waypoint_tolerance: 0.08,
+  min_progress_distance: 0.0025,
+  calibrated_forward_heading_offset_degrees: 102.4,
+  turn_pulse_duration_ms: 1500,
+  linear_pulse_duration_ms: 3500,
+  motion_refresh_interval_ms: 200,
+  final_approach_metres_per_pulse: 1.06,
+  turn_degrees_per_second: 37,
+  ble_auto_recover: false,
+  sample_delays: [0, 3],
+});
+
+const PROFILE_KEYS = Object.freeze(Object.keys(LUBA_ACCEPTANCE_PROFILE));
+
 console.info(
   `%c MAMMOTION-CUSTOM-PATH-CARD %c v${CARD_VERSION} `,
   "background:#22c55e;color:#000;font-weight:bold;",
@@ -27,7 +67,8 @@ class MammotionCustomPathCard extends HTMLElement {
     this._mapT = null;
     this._draggingIndex = null;
     this._height = 520;
-    this._status = "Load map/runtime, then click up to 7 destinations. Real Go is experimental and limited to two segments.";
+    this._status =
+      "Load map/runtime, then click up to 7 destinations. Real Go is experimental and limited to two segments.";
     this._validation = null;
     this._dryRun = null;
     this._realRun = null;
@@ -47,7 +88,10 @@ class MammotionCustomPathCard extends HTMLElement {
         const mins = Math.floor((entry.elapsed_seconds || 0) / 60);
         const secs = String((entry.elapsed_seconds || 0) % 60).padStart(2, "0");
         const segs = (entry.segments || [])
-          .map((seg) => `${seg.index}:${seg.passed ? "✓" : "✗"}${seg.stop_reason ? ` ${seg.stop_reason}` : ""}`)
+          .map(
+            (seg) =>
+              `${seg.index}:${seg.passed ? "✓" : "✗"}${seg.stop_reason ? ` ${seg.stop_reason}` : ""}`,
+          )
           .join(", ");
         return `<div class="history-row"><span class="history-when">${this._escapeHtml(when)} (${mins}:${secs})</span> <span class="history-outcome">${this._escapeHtml(entry.stop_reason || "?")}</span>${segs ? `<div class="history-segs">${this._escapeHtml(segs)}</div>` : ""}</div>`;
       })
@@ -77,7 +121,10 @@ class MammotionCustomPathCard extends HTMLElement {
     try {
       const history = this._loadHistory();
       history.unshift(entry);
-      localStorage.setItem(this._historyKey(), JSON.stringify(history.slice(0, 10)));
+      localStorage.setItem(
+        this._historyKey(),
+        JSON.stringify(history.slice(0, 10)),
+      );
     } catch (err) {
       // History is best-effort; never let persistence break the run flow.
     }
@@ -118,32 +165,9 @@ class MammotionCustomPathCard extends HTMLElement {
     this._config = {
       speed: 0.2,
       blade_mode: "off",
-      prefer_ble: true,
-      max_turn_commands: 1,
-      max_linear_commands: 3,
-      // Loop-to-tolerance: keep pulsing forward until the waypoint is reached
-      // rather than quitting at a tiny fixed pulse budget.
-      max_linear_pulse_ceiling: 30,
-      max_no_progress_pulses: 3,
-      // Rotation has a FIXED minimum quantum of ~8-15 deg per pulse (taped live
-      // 2026-07-18: a 700ms pulse swung 8.2 deg then 15.5 deg), so the deadband
-      // MUST sit above it or every correction overshoots, reverses and diverges.
-      // A 3 deg tolerance aborted no_heading_progress on a 4.8 deg error; 18 deg
-      // converged an 83 deg turn in 5 pulses and reached both segment targets.
-      heading_tolerance_degrees: 18,
-      // Forward-heading offset default; a per-run measured value replaces this
-      // once live calibration lands (Phase 2).
-      calibrated_forward_heading_offset_degrees: 116.5,
-      // Map-local position carries a ~2-6cm absolute noise floor (taped live
-      // 2026-07-18 at both 10cm and 3m scales), so a 1cm progress threshold is
-      // reading noise. 6cm sits above the floor.
-      min_progress_distance: 0.06,
-      turn_pulse_duration_ms: 1500,
-      sample_delays: [0, 3],
-      motion_refresh_interval_ms: 200,
-      final_approach_metres_per_pulse: 1.06,
-      turn_degrees_per_second: 37,
-      ble_auto_recover: true,
+      // Motion defaults are the accepted profile verbatim -- see
+      // LUBA_ACCEPTANCE_PROFILE. Do not fork these values here.
+      ...LUBA_ACCEPTANCE_PROFILE,
       ...config,
     };
     this._height = Number(this._config.card_height || 520);
@@ -228,7 +252,11 @@ class MammotionCustomPathCard extends HTMLElement {
       const backendSession = this._activeBackendSession();
       if (backendSession && !this._runTicker) {
         this._startRunTicker(this._segmentCount() || "?");
-      } else if (!backendSession && this._runTicker && !this._submittingRealRun) {
+      } else if (
+        !backendSession &&
+        this._runTicker &&
+        !this._submittingRealRun
+      ) {
         this._stopRunTicker();
       }
       this._render();
@@ -275,7 +303,9 @@ class MammotionCustomPathCard extends HTMLElement {
     if (!start || !this._waypoints.length) {
       return null;
     }
-    return [start, ...this._waypoints].map((point) => this._roundedPoint(point));
+    return [start, ...this._waypoints].map((point) =>
+      this._roundedPoint(point),
+    );
   }
 
   _segmentCount() {
@@ -298,7 +328,10 @@ class MammotionCustomPathCard extends HTMLElement {
       blockers.push(`real_segment_limit_${MAX_REAL_SEGMENTS}`);
     }
     if (experimental.real_motion_allowed !== true) {
-      if (Array.isArray(experimental.blockers) && experimental.blockers.length) {
+      if (
+        Array.isArray(experimental.blockers) &&
+        experimental.blockers.length
+      ) {
         blockers.push(...experimental.blockers);
       } else {
         blockers.push("experimental_motion_backend_not_ready");
@@ -339,7 +372,9 @@ class MammotionCustomPathCard extends HTMLElement {
     // Note: a plain .includes("charging") check is wrong because "not_charging"
     // contains the substring "charging". Guard against the negated label, and
     // fall back to the numeric charge_state (0 == not charging) when no label.
-    const chargeLabelRaw = String(runtime.charge_state_label ?? "").toLowerCase();
+    const chargeLabelRaw = String(
+      runtime.charge_state_label ?? "",
+    ).toLowerCase();
     const chargingNow = chargeLabelRaw
       ? chargeLabelRaw.includes("charging") && !chargeLabelRaw.startsWith("not")
       : typeof runtime.charge_state === "number" && runtime.charge_state !== 0;
@@ -347,24 +382,40 @@ class MammotionCustomPathCard extends HTMLElement {
     return {
       activeTransport,
       bladeSafeLabel: bladeSafe ? "safe" : "unsafe",
-      mowingReadinessLabel: activeMowing ? "blocked (active mowing detected)" : "ready",
+      mowingReadinessLabel: activeMowing
+        ? "blocked (active mowing detected)"
+        : "ready",
       chargingReadinessLabel: chargingNow ? "charging now" : "not charging",
       routeBlockingLabel: routeBlocks
         ? `blocking (${routeStatus.reason || "unknown_reason"})`
         : `clear (${routeStatus.reason || "no_route"})`,
       haState: runtime.ha_state ?? "unknown",
       workMode: runtime.work_mode_label ?? runtime.work_mode ?? "unknown",
-      chargeState: runtime.charge_state_label ?? runtime.charge_state ?? "unknown",
-      motionEnabled: runtime.experimental_motion?.enabled === true ? "enabled" : "disabled",
-      backendVerified: runtime.experimental_motion?.backend_verified === true ? "verified" : "unverified",
-      backendVersion: runtime.experimental_motion?.installed_pymammotion_version ?? "unknown",
-      motionBlockers: (runtime.experimental_motion?.blockers || []).join(", ") || "none",
-      activeSession: runtime.experimental_motion?.active_session?.session_id ?? "none",
-      sessionPhase: runtime.experimental_motion?.active_session?.phase ?? "idle",
-      lastDispatch: runtime.experimental_motion?.active_session?.last_completed_dispatch?.completed_at ?? "none",
-      stopOutcome: runtime.experimental_motion?.active_session?.stop_result?.stop_confirmed
-        ?? runtime.experimental_motion?.last_session?.stop_result?.stop_confirmed
-        ?? "none",
+      chargeState:
+        runtime.charge_state_label ?? runtime.charge_state ?? "unknown",
+      motionEnabled:
+        runtime.experimental_motion?.enabled === true ? "enabled" : "disabled",
+      backendVerified:
+        runtime.experimental_motion?.backend_verified === true
+          ? "verified"
+          : "unverified",
+      backendVersion:
+        runtime.experimental_motion?.installed_pymammotion_version ?? "unknown",
+      motionBlockers:
+        (runtime.experimental_motion?.blockers || []).join(", ") || "none",
+      activeSession:
+        runtime.experimental_motion?.active_session?.session_id ?? "none",
+      sessionPhase:
+        runtime.experimental_motion?.active_session?.phase ?? "idle",
+      lastDispatch:
+        runtime.experimental_motion?.active_session?.last_completed_dispatch
+          ?.completed_at ?? "none",
+      stopOutcome:
+        runtime.experimental_motion?.active_session?.stop_result
+          ?.stop_confirmed ??
+        runtime.experimental_motion?.last_session?.stop_result
+          ?.stop_confirmed ??
+        "none",
     };
   }
 
@@ -455,8 +506,12 @@ class MammotionCustomPathCard extends HTMLElement {
       sy = transformed.y;
     } else {
       const rect = svgEl.getBoundingClientRect();
-      const scaleX = Number(svgEl.getAttribute("viewBox")?.split(" ")[2] || rect.width) / rect.width;
-      const scaleY = Number(svgEl.getAttribute("viewBox")?.split(" ")[3] || rect.height) / rect.height;
+      const scaleX =
+        Number(svgEl.getAttribute("viewBox")?.split(" ")[2] || rect.width) /
+        rect.width;
+      const scaleY =
+        Number(svgEl.getAttribute("viewBox")?.split(" ")[3] || rect.height) /
+        rect.height;
       sx = (event.clientX - rect.left) * scaleX;
       sy = (event.clientY - rect.top) * scaleY;
     }
@@ -585,45 +640,93 @@ class MammotionCustomPathCard extends HTMLElement {
     };
   }
 
+  // Resolve one profile key: explicit card YAML wins, otherwise the accepted
+  // Gate 4 value. Never `||` -- 0 and false are legitimate profile values.
+  _profileValue(key) {
+    const configured = this._config?.[key];
+    return configured === undefined || configured === null
+      ? LUBA_ACCEPTANCE_PROFILE[key]
+      : configured;
+  }
+
+  // Which profile keys the dashboard YAML overrode. A non-empty list means the
+  // payload is NOT the profile that passed supervised LUBA acceptance.
+  _profileOverrides() {
+    return PROFILE_KEYS.filter((key) => {
+      const configured = this._config?.[key];
+      if (configured === undefined) return false;
+      const accepted = LUBA_ACCEPTANCE_PROFILE[key];
+      if (Array.isArray(accepted) || Array.isArray(configured)) {
+        return JSON.stringify(configured) !== JSON.stringify(accepted);
+      }
+      return configured !== accepted;
+    });
+  }
+
+  _profileLabel() {
+    const overrides = this._profileOverrides();
+    return overrides.length
+      ? `customised (not hardware-accepted): ${overrides.join(", ")}`
+      : "LUBA acceptance profile (Gates 1-4, 2026-07-31)";
+  }
+
   _motionPayload(dryRun) {
     const points = this._segmentPoints();
     if (!points) return null;
+    const sampleDelays = this._profileValue("sample_delays");
+    const pulseCeiling = this._profileValue("max_linear_pulse_ceiling");
     const payload = {
       entity_id: this._config.entity,
       points,
       dry_run: dryRun,
       confirm_blades_off: dryRun ? false : this._confirmBladesOff,
       confirm_clear_area: dryRun ? false : this._confirmClearArea,
-      prefer_ble: Boolean(this._config.prefer_ble ?? true),
-      max_turn_commands: Number(this._config.max_turn_commands || 1),
-      max_linear_commands: Number(this._config.max_linear_commands || 3),
-      max_linear_pulse_ceiling: Number(this._config.max_linear_pulse_ceiling || 30),
-      max_no_progress_pulses: Number(this._config.max_no_progress_pulses || 4),
-      heading_tolerance_degrees: Number(this._config.heading_tolerance_degrees || 18),
-      min_progress_distance: Number(this._config.min_progress_distance || 0.06),
+      prefer_ble: Boolean(this._profileValue("prefer_ble")),
+      max_turn_commands: Number(this._profileValue("max_turn_commands")),
+      max_linear_commands: Number(this._profileValue("max_linear_commands")),
+      max_no_progress_pulses: Number(
+        this._profileValue("max_no_progress_pulses"),
+      ),
+      heading_tolerance_degrees: Number(
+        this._profileValue("heading_tolerance_degrees"),
+      ),
+      min_progress_distance: Number(
+        this._profileValue("min_progress_distance"),
+      ),
       calibrated_forward_heading_offset_degrees: Number(
-        this._config.calibrated_forward_heading_offset_degrees ?? 116.5,
+        this._profileValue("calibrated_forward_heading_offset_degrees"),
       ),
-      // VIO turn-mode config proven live 2026-07-18 (multi-segment L-path, both
-      // segments target_reached, 83deg turn in 5 pulses, 6.5cm final landing):
-      // 16 turn pulses covers ~180deg; forward motion is a FIXED ~4in (10cm)
-      // step per pulse regardless of duration, but needs >=3s to trigger at all
-      // (2s pulses tape as physical no-ops), so 3500ms; 15cm waypoint tolerance.
-      turn_mode: String(this._config.turn_mode || "vio"),
-      vio_turn_max_commands: Number(this._config.vio_turn_max_commands || 16),
-      turn_pulse_duration_ms: Number(this._config.turn_pulse_duration_ms || 1500),
-      linear_pulse_duration_ms: Number(this._config.linear_pulse_duration_ms || 3500),
-      waypoint_tolerance: Number(this._config.waypoint_tolerance || 0.15),
-      sample_delays: Array.isArray(this._config.sample_delays)
-        ? this._config.sample_delays
-        : [0, 3],
-      motion_refresh_interval_ms: Number(this._config.motion_refresh_interval_ms ?? 200),
+      turn_mode: String(this._profileValue("turn_mode")),
+      vio_turn_max_commands: Number(
+        this._profileValue("vio_turn_max_commands"),
+      ),
+      turn_pulse_duration_ms: Number(
+        this._profileValue("turn_pulse_duration_ms"),
+      ),
+      linear_pulse_duration_ms: Number(
+        this._profileValue("linear_pulse_duration_ms"),
+      ),
+      waypoint_tolerance: Number(this._profileValue("waypoint_tolerance")),
+      sample_delays: Array.isArray(sampleDelays)
+        ? sampleDelays
+        : LUBA_ACCEPTANCE_PROFILE.sample_delays,
+      motion_refresh_interval_ms: Number(
+        this._profileValue("motion_refresh_interval_ms"),
+      ),
       final_approach_metres_per_pulse: Number(
-        this._config.final_approach_metres_per_pulse ?? 1.06,
+        this._profileValue("final_approach_metres_per_pulse"),
       ),
-      turn_degrees_per_second: Number(this._config.turn_degrees_per_second ?? 37),
-      ble_auto_recover: Boolean(this._config.ble_auto_recover ?? true),
+      turn_degrees_per_second: Number(
+        this._profileValue("turn_degrees_per_second"),
+      ),
+      ble_auto_recover: Boolean(this._profileValue("ble_auto_recover")),
     };
+    // Omitted, not zeroed: the backend treats a missing ceiling as "no
+    // loop-to-tolerance", which is what Gate 4 ran. Sending 0 would fail the
+    // schema's Range(min=1).
+    if (pulseCeiling !== null && pulseCeiling !== undefined) {
+      payload.max_linear_pulse_ceiling = Number(pulseCeiling);
+    }
     if (this._areaHash) {
       payload.area_hash = String(this._areaHash);
     }
@@ -674,9 +777,7 @@ class MammotionCustomPathCard extends HTMLElement {
   }
 
   _yamlForPayload(payload) {
-    const lines = [
-      `entity_id: ${payload.entity_id}`,
-    ];
+    const lines = [`entity_id: ${payload.entity_id}`];
     if (payload.area_hash) {
       lines.push(`area_hash: "${payload.area_hash}"`);
     }
@@ -757,7 +858,8 @@ class MammotionCustomPathCard extends HTMLElement {
   async _runDryRun() {
     const motion = this._motionPayload(true);
     if (!motion) {
-      this._status = "Add at least one waypoint and ensure live mower position is available before dry-run.";
+      this._status =
+        "Add at least one waypoint and ensure live mower position is available before dry-run.";
       this._render();
       return;
     }
@@ -793,9 +895,13 @@ class MammotionCustomPathCard extends HTMLElement {
         // Read-only poll; ignore transient failures while the run is in flight.
       }
       const session = this._activeBackendSession();
-      const phase = session?.phase || (this._submittingRealRun ? "submitting" : "waiting");
+      const phase =
+        session?.phase || (this._submittingRealRun ? "submitting" : "waiting");
       const lastWrite = session?.last_completed_dispatch?.elapsed_seconds;
-      const lastWriteText = lastWrite == null ? "" : ` — last write ${Number(lastWrite).toFixed(1)}s`;
+      const lastWriteText =
+        lastWrite == null
+          ? ""
+          : ` — last write ${Number(lastWrite).toFixed(1)}s`;
       this._status = `Running Real Go (${segmentCount} segment${segmentCount === 1 ? "" : "s"}, ${phase})… ${mins}:${secs}${posText}${lastWriteText}`;
       this._render();
     };
@@ -813,19 +919,22 @@ class MammotionCustomPathCard extends HTMLElement {
 
   async _runRealGo() {
     if (this._motionRunActive()) {
-      this._status = "Real Go blocked: a manual-motion session is already active.";
+      this._status =
+        "Real Go blocked: a manual-motion session is already active.";
       this._render();
       return;
     }
     this._submittingRealRun = true;
-    this._status = "Refreshing runtime and path validation immediately before Real Go…";
+    this._status =
+      "Refreshing runtime and path validation immediately before Real Go…";
     this._render();
     await this._loadRuntimeState();
     await this._validateAndPreview();
     const preflight = this._preflight();
     const motion = this._motionPayload(false);
     if (!motion) {
-      this._status = "Add at least one waypoint and ensure live mower position is available before Real Go.";
+      this._status =
+        "Add at least one waypoint and ensure live mower position is available before Real Go.";
       this._submittingRealRun = false;
       this._render();
       return;
@@ -895,16 +1004,20 @@ class MammotionCustomPathCard extends HTMLElement {
   }
 
   async _abortMotion() {
-    this._status = "Aborting backend session and sending confirmed BLE stop sequence…";
+    this._status =
+      "Aborting backend session and sending confirmed BLE stop sequence…";
     this._render();
     try {
       const abortResult = await this._callService("stop_manual_motion", {});
       this._realRun = {
         ...(this._realRun || {}),
         stop_result: abortResult,
-        stop_reason: abortResult?.stop_confirmed ? "operator_stop" : "stop_unconfirmed",
+        stop_reason: abortResult?.stop_confirmed
+          ? "operator_stop"
+          : "stop_unconfirmed",
       };
-      const status = abortResult?.stop_confirmed === true ? "confirmed" : "not confirmed";
+      const status =
+        abortResult?.stop_confirmed === true ? "confirmed" : "not confirmed";
       this._status = `Abort result: ${status}; owner exited=${Boolean(abortResult?.owner_exited)}`;
       this._confirmBladesOff = false;
       this._confirmClearArea = false;
@@ -936,14 +1049,20 @@ class MammotionCustomPathCard extends HTMLElement {
 
     const polygons = this._mapData?.area_polygons || {};
     const areaNames = Object.fromEntries(
-      (this._mapData?.areas || []).map((area) => [String(area.area_hash), area.name]),
+      (this._mapData?.areas || []).map((area) => [
+        String(area.area_hash),
+        area.name,
+      ]),
     );
     for (const [hash, points] of Object.entries(polygons)) {
       if (points.length < 2) continue;
       const active = hash === String(this._areaHash);
       const polygon = el("polygon", {
         points: points
-          .map((point) => `${mt.toSX(point.x).toFixed(1)},${mt.toSY(point.y).toFixed(1)}`)
+          .map(
+            (point) =>
+              `${mt.toSX(point.x).toFixed(1)},${mt.toSY(point.y).toFixed(1)}`,
+          )
           .join(" "),
         fill: active ? "rgba(96,165,250,0.14)" : "rgba(55,65,81,0.25)",
         stroke: active ? "#60a5fa" : "#4b5563",
@@ -968,7 +1087,9 @@ class MammotionCustomPathCard extends HTMLElement {
     const start = this._currentPositionPoint();
     const pathPoints = start ? [start, ...this._waypoints] : [];
     const runResult = this._realRun || this._dryRun;
-    const segments = Array.isArray(runResult?.segments) ? runResult.segments : null;
+    const segments = Array.isArray(runResult?.segments)
+      ? runResult.segments
+      : null;
 
     if (pathPoints.length >= 2) {
       for (let i = 0; i < pathPoints.length - 1; i += 1) {
@@ -987,7 +1108,10 @@ class MammotionCustomPathCard extends HTMLElement {
         }
         const segAttrs = {
           points: [pathPoints[i], pathPoints[i + 1]]
-            .map((point) => `${mt.toSX(point.x).toFixed(1)},${mt.toSY(point.y).toFixed(1)}`)
+            .map(
+              (point) =>
+                `${mt.toSX(point.x).toFixed(1)},${mt.toSY(point.y).toFixed(1)}`,
+            )
             .join(" "),
           fill: "none",
           stroke,
@@ -1025,7 +1149,9 @@ class MammotionCustomPathCard extends HTMLElement {
         "data-point-index": index,
         cursor: "grab",
       });
-      circle.addEventListener("pointerdown", (event) => this._onPointDown(event));
+      circle.addEventListener("pointerdown", (event) =>
+        this._onPointDown(event),
+      );
       svgEl.appendChild(circle);
       const label = el("text", {
         x: mt.toSX(point.x).toFixed(1),
@@ -1116,6 +1242,7 @@ class MammotionCustomPathCard extends HTMLElement {
         <div class="status">${this._escapeHtml(preflightText)}</div>
         <div class="preflight-panel">
           <div class="title">Runtime preflight details</div>
+          <div class="preflight-row"><span class="label">execution profile</span><span class="value">${this._escapeHtml(this._profileLabel())}</span></div>
           <div class="preflight-row"><span class="label">active_transport</span><span class="value">${this._escapeHtml(runtimePanel.activeTransport)}</span></div>
           <div class="preflight-row"><span class="label">blade-safe status</span><span class="value">${this._escapeHtml(runtimePanel.bladeSafeLabel)}</span></div>
           <div class="preflight-row"><span class="label">mowing readiness</span><span class="value">${this._escapeHtml(runtimePanel.mowingReadinessLabel)}</span></div>
@@ -1144,18 +1271,32 @@ class MammotionCustomPathCard extends HTMLElement {
       await this._loadMap();
       await this._loadRuntimeState();
     });
-    this._q("#undo")?.addEventListener("click", () => this._removeLastWaypoint());
+    this._q("#undo")?.addEventListener("click", () =>
+      this._removeLastWaypoint(),
+    );
     this._q("#clear")?.addEventListener("click", () => this._clearTarget());
     this._q("#copy-yaml")?.addEventListener("click", () => this._copyYaml());
     this._q("#copy-json")?.addEventListener("click", () => this._copyJson());
-    this._q("#copy-dry-run-yaml")?.addEventListener("click", () => this._copyDryRunYaml());
+    this._q("#copy-dry-run-yaml")?.addEventListener("click", () =>
+      this._copyDryRunYaml(),
+    );
     this._q("#dry-run")?.addEventListener("click", () => this._runDryRun());
     this._q("#real-go")?.addEventListener("click", () => this._runRealGo());
-    this._q("#clear-history")?.addEventListener("click", () => this._clearHistory());
+    this._q("#clear-history")?.addEventListener("click", () =>
+      this._clearHistory(),
+    );
     this._q("#copy-dry-result")?.addEventListener("click", () =>
-      this._copyText(`${JSON.stringify(this._dryRun, null, 2)}\n`, "Dry-run result JSON"));
+      this._copyText(
+        `${JSON.stringify(this._dryRun, null, 2)}\n`,
+        "Dry-run result JSON",
+      ),
+    );
     this._q("#copy-real-result")?.addEventListener("click", () =>
-      this._copyText(`${JSON.stringify(this._realRun, null, 2)}\n`, "Real Go result JSON"));
+      this._copyText(
+        `${JSON.stringify(this._realRun, null, 2)}\n`,
+        "Real Go result JSON",
+      ),
+    );
     this._q("#abort")?.addEventListener("click", () => this._abortMotion());
     this._q("#confirm-blades-off")?.addEventListener("change", (event) => {
       this._confirmBladesOff = Boolean(event.target.checked);
@@ -1171,7 +1312,9 @@ class MammotionCustomPathCard extends HTMLElement {
     });
     const svgEl = this._q("#path-map");
     svgEl?.addEventListener("click", (event) => this._onMapClick(event));
-    svgEl?.addEventListener("pointermove", (event) => this._onPointerMove(event));
+    svgEl?.addEventListener("pointermove", (event) =>
+      this._onPointerMove(event),
+    );
     svgEl?.addEventListener("pointerup", () => this._onPointerUp());
     svgEl?.addEventListener("pointercancel", () => this._onPointerUp());
     this._renderMap();
@@ -1180,7 +1323,10 @@ class MammotionCustomPathCard extends HTMLElement {
 
 // The card is served at two URLs (/mammotion/ and /hacsfiles/); if both end up
 // registered as dashboard resources the second define() throws. Guard it.
-if (typeof customElements !== "undefined" && !customElements.get("mammotion-custom-path-card")) {
+if (
+  typeof customElements !== "undefined" &&
+  !customElements.get("mammotion-custom-path-card")
+) {
   customElements.define("mammotion-custom-path-card", MammotionCustomPathCard);
 }
 
@@ -1189,13 +1335,16 @@ if (typeof window !== "undefined") {
   window.customCards.push({
     type: "mammotion-custom-path-card",
     name: "Mammotion Click/Go (Guarded)",
-    description: "Preview or dry-run up to seven destinations; guarded Real Go is limited to two segments.",
+    description:
+      "Preview or dry-run up to seven destinations; guarded Real Go is limited to two segments.",
   });
 }
 
 export {
   CARD_VERSION,
+  LUBA_ACCEPTANCE_PROFILE,
   MAX_REAL_SEGMENTS,
   MAX_WAYPOINTS,
+  PROFILE_KEYS,
   MammotionCustomPathCard,
 };

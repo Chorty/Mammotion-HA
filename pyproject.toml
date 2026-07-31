@@ -481,6 +481,11 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# Operator-run diagnostic CLIs. Their entire output contract is stdout, so T201
+# would have to be silenced at ~17 call sites to say the same thing. Everything
+# else in `scripts/` is linted normally -- this is the only carve-out, so the
+# hook stays a real gate over that directory rather than being scoped out of it.
+"scripts/*.py" = ["T201"]
 "custom_components/mammotion/coordinator.py" = [
     "C901",
     "D102",

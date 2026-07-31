@@ -1,8 +1,14 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
-Updated 2026-07-31 after the corrected supervised Gate 4 run. This is the
-current handoff; `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological
-sections in `docs/p0-beta-release.md` are evidence, not current instructions.
+Updated 2026-07-31 (second pass) after reconciling the card profile and closing
+the remaining P0 items. This is the current handoff;
+`docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
+`docs/p0-beta-release.md` are evidence, not current instructions.
+
+**No physical motion happened in the second pass.** Experimental motion stayed
+disabled; every change below is off-mower code, configuration, or
+documentation, validated by the CI-scoped matrix plus a now-green
+`pre-commit run --all-files`.
 
 ## Start here
 
@@ -10,8 +16,10 @@ sections in `docs/p0-beta-release.md` are evidence, not current instructions.
 - Personal-fork PR: [Chorty/Mammotion-HA#10](https://github.com/Chorty/Mammotion-HA/pull/10),
   still open as a draft. Its last pushed checks are green, but they do **not**
   include the local handoff commit until the operator deliberately pushes it.
-- The working tree should be clean after the handoff commit. Confirm with
-  `git status --short` and inspect `git log -1 --stat` before editing.
+- ⚠️ The card-profile, pre-commit and README work described below is **present
+  in the working tree but not committed**. `4be34671` is the last commit and
+  does not contain it. Confirm with `git status --short` and `git log -1 --stat`
+  before editing, and commit before treating the tree as a handoff point.
 - Do not push, comment, open issues, or otherwise write to a `mikey0000`
   repository. The upstream remotes have disabled push URLs. A later push, if
   authorized, goes only to `Chorty/Mammotion-HA`.
@@ -81,23 +89,21 @@ facts from chat history when that document has the structured result.
 
 ## Validation at handoff
 
-Passed on the exact pre-commit tree:
+Passed on the exact pre-commit tree, after the card-profile and pre-commit work:
 
 - 456 Python tests with coverage;
-- CI-scoped Ruff and Ruff format checks;
+- CI-scoped Ruff (`custom_components tests`) — and, separately, `ruff check .`
+  is clean repo-wide including `scripts/`;
+- CI-scoped Ruff format over 48 files;
 - CI-scoped mypy over 28 source files;
-- all six frontend card DOM tests;
-- JSON validation inside pre-commit;
-- `git diff --check`.
+- all **eleven** frontend card tests (six previous, four profile assertions, and
+  a README drift guard);
+- 15 integration JSON files parse;
+- `git diff --check`;
+- `pre-commit run --all-files` — **green, and modifies nothing.**
 
-The repository-wide `pre-commit run --all-files` is **not green** and must not be
-reported as passing. It currently combines several baseline/tooling problems:
-legacy Ruff scans scripts outside the CI scope, codespell flags extracted APK
-identifiers and existing fixtures, pyupgrade crashes under Python 3.14, and the
-hook's broad mypy invocation reports 168 errors that the documented CI-scoped
-command does not. Prettier also rewrites many unrelated evidence files. The
-hook's automatic unrelated edits were reverted. Fix the hook configuration or
-its baseline deliberately before making all-files pre-commit a release gate.
+Re-run all of the above after any further card or default change; the frontend
+tests are what stop the card silently drifting off the accepted profile again.
 
 ## Assumptions that changed during hardware testing
 
@@ -124,11 +130,14 @@ These corrections matter more than the original chat plan:
 - There is still no firmware arbitrary-waypoint upload API. The accepted path
   is a guarded chain of raw manual-motion segments, not autonomous navigation.
 
-## Important remaining release blocker
+## Card execution profile — RESOLVED (backend-equivalent, still not UI-accepted)
 
-The backend Gate 4 call used a deliberately bounded acceptance profile:
+The backend Gate 4 call used a deliberately bounded acceptance profile. That
+profile is now the card's built-in default, named and frozen as
+`LUBA_ACCEPTANCE_PROFILE` at the top of
+`custom_components/mammotion/www/mammotion-custom-path-card.js`:
 
-- `max_real_segments: 2`
+- `max_real_segments: 2` (already `MAX_REAL_SEGMENTS`)
 - `max_turn_commands: 4`, `vio_turn_max_commands: 4`
 - `max_linear_commands: 1`, no loop-to-tolerance ceiling
 - `waypoint_tolerance: 0.08`
@@ -137,43 +146,152 @@ The backend Gate 4 call used a deliberately bounded acceptance profile:
 - `motion_refresh_interval_ms: 200`
 - `ble_auto_recover: false`
 
-The card's built-in defaults still reflect an older July 18 profile (including
-three linear commands, a 30-pulse ceiling, 15 cm waypoint tolerance, 6 cm
-progress threshold, 116.5-degree offset, and BLE auto-recovery). Therefore:
+Both option 2 and option 3 from the previous handoff were taken: the accepted
+profile *is* the default **and** it is a named, exported, test-pinned object
+rather than values scattered through `setConfig` and `_motionPayload`.
 
-1. Do **not** describe the card's default Real Go profile as hardware-accepted.
-2. Decide whether to make the conservative Gate 4 profile the card default or
-   expose a clearly named LUBA acceptance profile.
-3. Update frontend payload assertions and README YAML together.
-4. Repeat preview/dry-run and, only with a new daylight operator `go`, one Real
-   Go from the actual card if release criteria require UI-to-mower acceptance.
+Implementation notes that matter:
 
-This is the main direction change from the earlier assumption that passing the
-backend gates was immediately followed by versioning and release.
+- `max_linear_pulse_ceiling` is `null` in the profile and the key is **omitted**
+  from the payload, because the backend schema is `vol.Optional` with no default
+  and `Range(min=1)` — sending `0` would be a validation error, and sending any
+  number would re-enable loop-to-tolerance, which Gate 4 did not use.
+- Resolution is `??`-based (`_profileValue`), never `||`. The old code used
+  `Number(this._config.x || default)`, which silently discarded a configured `0`
+  — including `motion_refresh_interval_ms: 0`, the legacy single-shot mode.
+- `_profileOverrides()`/`_profileLabel()` compute which profile keys the
+  dashboard YAML overrode. The card renders an **execution profile** row that
+  reads either `LUBA acceptance profile (Gates 1-4, 2026-07-31)` or
+  `customised (not hardware-accepted): <keys>`. An operator can now see from the
+  card whether the payload is the accepted one.
+- `heading_tolerance_degrees` stays at 18. It is a known-loose value from the
+  July 18 single-shot calibration, but it is what the accepted run used, so
+  changing it here would have left the accepted profile in the name of tuning.
 
-## Remaining P0 work, in order
+Frontend assertions and README YAML were updated in the same change: four new
+DOM tests pin the profile values, the omitted ceiling, the override labelling,
+and the falsy-value regression. A fifth test pins the README block itself —
+README is a third copy of these numbers in paste-ready YAML, and nothing else
+stopped it drifting from the values the hardware ran (11 frontend tests total).
 
-1. Resolve the card-default mismatch above. No physical motion is authorized by
-   this handoff.
-2. Fix or explicitly defer with a release-blocking rationale:
-   - map edits are not visible until HA restarts because the per-tick map refresh
-     block is unreachable in steady state;
-   - `no_actuation_detected` can fire falsely in the turn phase even when
-     `heading_went_fresh` proves rotation;
-   - Task-2 constants were not re-derived after the transport failures.
-3. Repair or explicitly scope the all-files pre-commit baseline described above.
-   The CI-scoped test, lint, format, type, frontend, JSON, and diff checks pass
-   on this handoff; rerun them after any card/default change.
-4. Recheck version agreement. At handoff, `manifest.json`, `pyproject.toml`, and
-   `CARD_VERSION` are all `0.6.4-beta11`, and the three dependency declarations
-   use the identical wheel URL. Let the repaired beta workflow choose the next
-   monotonic beta number.
+Independently re-verified this session: the payload the card emits from an
+unmodified dashboard config validates against the *real*
+`RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA` and
+`RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA`, with
+`max_linear_pulse_ceiling` absent from the validated result. The frontend tests
+alone could not have shown that — they never cross the JS/Python boundary.
+
+**Still true, and the reason this is not a release sign-off:** the card has
+never driven the mower end to end. Gates 1-4 exercised the *backend* with these
+values. If release criteria require UI-to-mower acceptance, that needs a repeat
+preview/dry-run and then one Real Go from the actual card, under a **new**
+daylight operator `go`. No physical motion is authorized by this handoff.
+
+⚠️ `CARD_VERSION` was deliberately **not** bumped, to preserve the three-way
+agreement with `manifest.json` and `pyproject.toml` at `0.6.4-beta11` and let
+the beta workflow pick the next monotonic number. The consequence is that the
+card file changed while its version string did not: the deployed
+`0.6.4-beta11` card is **not** this card. Bump all three together before any
+deploy, and remember the card is served from two paths.
+
+## Remaining P0 work — dispositions
+
+1. **Card-default mismatch — DONE.** See the section above.
+2. **The three deferred defects — two were already fixed, one is reframed:**
+   - *Map edits not visible until HA restart:* **already fixed** in `6cf4d5fd`,
+     before this handoff was written; the entry was stale. The per-tick block is
+     reachable now because `_async_short_circuit_update()` returns `None` on the
+     healthy path and every caller tests `is not None` rather than truthiness.
+     Covered by `test_short_circuit_update_returns_none_on_the_healthy_path`,
+     `test_every_coordinator_tests_short_circuit_with_is_not_none` (an AST check
+     over all five coordinators), and
+     `test_update_loop_only_starts_a_map_sync_through_the_gate`.
+   - *False turn-phase `no_actuation_detected`:* **already fixed** in the same
+     commit, and the suggested fix was wrong. `heading_went_fresh` cannot be the
+     discriminator: it is True exactly when before/after differ by more than the
+     epsilon, which is exactly when `_streak_shows_no_actuation` (bit-identical
+     heading) is False. The two are perfectly correlated, so gating on it would
+     delete the no-actuation branch instead of refining it. The real
+     discriminator is `heading_poll_feed_alive` — "did *any* channel move at
+     all" during the poll, since a live feed jitters ~2-4 mm in position and
+     ~0.0018 deg in heading even when stationary. `_streak_shows_dead_telemetry`
+     runs first and reports `vio_telemetry_stream_stale`; `no_actuation_detected`
+     now only fires with a demonstrably live feed. A replay of the exact
+     2026-07-25 run is pinned as a regression test.
+   - *Task-2 constants:* **reframed, not release-blocking.** The original
+     statement dates from when Step 5b had died twice on transport. Since then
+     the 2026-07-27 3.0 m segment landed 1.0 cm along-track, and Gates 1-4
+     executed the pulse-geometry ceilings, `min_progress_distance` and cadence
+     on hardware. Those constants are no longer hypotheses — they are the values
+     in `LUBA_ACCEPTANCE_PROFILE`, now pinned by tests. What is genuinely
+     un-re-derived is narrower: `heading_tolerance_degrees` (18, derived from the
+     single-shot rotation quantum that refresh made obsolete) and the refreshed
+     turn-pulse floor. Both are beta tuning behind a new operator `go`, not
+     release gates, because the release ships values hardware actually ran.
+3. **All-files pre-commit — REPAIRED, now green.** See the next section.
+4. **Version agreement — rechecked.** `manifest.json`, `pyproject.toml` and
+   `CARD_VERSION` are all `0.6.4-beta11`, and `manifest.json`, `pyproject.toml`
+   and `requirements_test.txt` all declare the identical
+   `chorty-0.8.12.post1` wheel URL. Let the beta workflow choose the next
+   monotonic beta number, and see the `CARD_VERSION` warning above.
 5. With explicit operator authorization, push only to the Chorty feature branch
    and wait for current PR checks. HACS `skipping` on a fork is expected; Python
    and hassfest must pass.
-6. Only after the selected card profile and current CI pass: mark PR #10 ready,
+6. Only after the card profile decision and current CI pass: mark PR #10 ready,
    merge to Chorty `main` without force-pushing, and run `Beta Release` with the
    LUBA-acceptance confirmation. Never publish to Mikey's repositories.
+
+## All-files pre-commit — repaired
+
+`pre-commit run --all-files` now passes and modifies nothing. Each failure had a
+distinct cause, and each was fixed rather than scoped away where fixing was
+cheap:
+
+- **Hook/CI version skew (the root of the mypy and Ruff noise).** The `ruff`
+  hook pinned `v0.12.8` while CI pins `ruff==0.15.16`; the older ruff still
+  enforced `UP038`, a rule later ruff removed, so the hook failed on two lines
+  CI passes. Pinned to `v0.15.16`. Likewise `mirrors-mypy` was `v1.17.1` against
+  a `mypy==2.1.0` pin; now `v2.1.0`. Both pins must move with
+  `requirements_test.txt` or the gate lies again.
+- **mypy scope.** The hook ran `--strict` over all of `custom_components` and
+  reported 168 errors, essentially all `Class cannot subclass "SensorEntity"
+  (has type "Any")` — an artifact of HA shipping untyped entity base classes to
+  the checker, and none of it checked by CI. Now `--follow-imports=skip` over
+  `custom_components/mammotion/`, matching CI exactly. Passes.
+- **Ruff over `scripts/`.** 22 real findings, so they were fixed, not scoped
+  out: an unused `sys` import, three missing docstrings and a
+  `subprocess.run(check=...)` in `scripts/linear_duration_sweep.py`. The 17
+  `T201` prints are legitimate — these are operator CLIs whose entire output
+  contract is stdout — so `scripts/*.py` gets a documented `T201` per-file
+  ignore. `scripts/` stays linted otherwise. `ruff-format` still skips
+  `scripts/`, matching CI, so a live investigation cannot be reformatted
+  mid-flight.
+- **codespell.** `--skip="./.*,*.csv,..."` was written with literal quotes
+  inside a YAML args list, so the whole skip list was inert. Fixed, and the
+  APK-verbatim identifiers (`entitys`, `swtich`, `piar`, `buttom`, `unknow`) plus
+  `unparseable` are now in `--ignore-words-list`, because correcting them would
+  stop them matching the thing they document. The two standalone browser dev
+  tools are skipped.
+- **pyupgrade removed.** It crashed on every file under Python 3.14
+  (`tokenize.cookie_re` is a bytes pattern there, so `_fix_tokens` raises
+  `TypeError`) and was redundant: ruff already selects the `UP` ruleset.
+- **prettier scoped to the JS this integration ships**
+  (`custom_components/mammotion/www/*.js`, `tests/frontend/*.mjs`). Unscoped it
+  rewrote ~20 Markdown evidence files, the APK feature catalogue,
+  `services.yaml` and `manifest.json` on every run. Bringing `agora-client.js`
+  into scope reformatted it once; that diff was verified non-semantic
+  (quotes, trailing commas, wrapping, arrow parens only) and it is a
+  redeploy-worthy but behaviourally identical file.
+- **`*.patch` protected.** `trailing-whitespace` and `end-of-file-fixer` were
+  stripping trailing whitespace from `docs/upstream-patches/*.patch`, where it
+  is significant in unified-diff context lines — the hooks were silently
+  corrupting patches so they would no longer apply. Both now exclude `\.patch$`.
+- **yamllint config.** `args: -c .yamllint.yaml` sat one level out, as a key of
+  the repo mapping rather than the hook, so `.yamllint.yaml` was never applied.
+
+The config now carries a scope rule at the top: every hook must agree with
+`.github/workflows/validate.yml`, and any deliberate narrowing states its
+reason inline.
 
 ## Safety state at handoff
 

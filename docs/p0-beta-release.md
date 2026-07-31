@@ -4,10 +4,12 @@
 
 This branch has completed **Alpha implementation and supervised backend
 acceptance**: every LUBA Gate 1-4 test passed and the safety gates fail closed,
-but known release blockers remain. In particular, the card's built-in Real Go
-defaults still differ from the deliberately bounded profile used for Gate 4;
-backend acceptance must not be presented as acceptance of that older card
-profile. The three stages are exit criteria, not version labels -- the version
+but known release blockers remain. The card's built-in Real Go defaults now
+match the deliberately bounded profile used for Gate 4 (see "Card execution
+profile" below), so the card emits the accepted payload by default -- but the
+card itself has never driven the mower, so backend acceptance still must not be
+presented as UI-to-mower acceptance. The three stages are exit criteria, not
+version labels -- the version
 scheme stays `0.6.x-betaN` because
 `beta-release.yml` numbers from it and prior builds already shipped as `-betaN`.
 
@@ -437,14 +439,29 @@ safety one. It is tracked as the headline Alpha-to-Beta item below.
 
 ## Alpha to Beta
 
-- **Card execution profile.** The backend Gate 4 call used one linear command
-  per segment, an 8 cm waypoint tolerance, 2.5 mm progress threshold, 102.4
-  degree forward offset, four VIO turn commands, and BLE auto-recovery off. The
-  card still emits its older July 18 defaults, including a 30-pulse linear
-  ceiling, 15 cm tolerance, 6 cm progress threshold, 116.5 degree offset, and
-  BLE auto-recovery on. Align or explicitly profile these values, update
-  frontend assertions and README together, and do not call the default card
-  Real Go hardware-accepted until then.
+- **Card execution profile — RESOLVED 2026-07-31 (second pass).** The backend
+  Gate 4 call used one linear command per segment, an 8 cm waypoint tolerance,
+  2.5 mm progress threshold, 102.4 degree forward offset, four VIO turn
+  commands, and BLE auto-recovery off. Those values are now the card's built-in
+  defaults, frozen and exported as `LUBA_ACCEPTANCE_PROFILE`, with the
+  loop-to-tolerance ceiling omitted from the payload rather than zeroed (the
+  backend schema is optional with `Range(min=1)`, so `0` would be a validation
+  error and any number would re-enable a mode Gate 4 did not use). Value
+  resolution moved from `||` to `??`, which had been discarding a configured
+  `0` — including `motion_refresh_interval_ms: 0`, the legacy single-shot mode.
+  The card renders an **execution profile** row reading either `LUBA acceptance
+  profile (Gates 1-4, 2026-07-31)` or `customised (not hardware-accepted):
+  <keys>`. Four new frontend tests pin the values, the omitted ceiling, the
+  override labelling and the falsy-value regression, and a fifth pins the README
+  block against the profile so that paste-ready copy cannot drift either. README
+  carries both a minimal YAML and the written-out defaults. The emitted payload
+  was additionally validated against the shipped voluptuous schemas for both
+  card services, confirming the ceiling is absent rather than zeroed.
+  **Still open:** the card has never driven the mower. UI-to-mower Real Go needs
+  a repeat preview/dry-run and one Real Go from the card under a new daylight
+  operator `go`. `CARD_VERSION` was intentionally left at `0.6.4-beta11` to keep
+  three-way version agreement, so the deployed beta11 card is not this card —
+  bump all three before deploying, to both served paths.
 - **Turn translation and final tolerance.** Gate 4 now compensates from fresh
   post-turn position and passed 4.70 cm from its final target, but its turn
   still translated 8.80 cm and the standalone 176-degree turn drifted 10.48
@@ -456,17 +473,43 @@ safety one. It is tracked as the headline Alpha-to-Beta item below.
   `scripts/ble_session_report.py` and compare against the 2026-07-27 baseline;
   do not attribute improvement solely to teardown because the dependency jump
   also included other upstream changes.
-- **Task-2 constants** remain un-re-derived after the transport failures.
-- **Map edits are not picked up until an HA restart** -- the per-tick map block is
-  unreachable in steady state.
-- **`no_actuation_detected` fires falsely in the turn phase**; the unused
-  discriminator is `heading_went_fresh`.
-- **All-files pre-commit baseline.** The CI-scoped Ruff, format, mypy, frontend,
-  JSON, diff, and 456-test checks pass, but `pre-commit run --all-files` is not
-  a clean release gate: its legacy Ruff/codespell scope includes historical
-  evidence and scripts, pyupgrade crashes on Python 3.14, and its mypy command
-  differs from CI. Repair or deliberately scope those hooks instead of
-  committing automatic formatting across unrelated evidence files.
+- **Task-2 constants — narrowed 2026-07-31.** The pulse-geometry ceilings,
+  `min_progress_distance` and cadence are no longer hypotheses: the 2026-07-27
+  3.0 m segment landed 1.0 cm along-track and Gates 1-4 executed them on
+  hardware, and they are now pinned in `LUBA_ACCEPTANCE_PROFILE`. What remains
+  un-re-derived is `heading_tolerance_degrees` (18, derived from the
+  single-shot rotation quantum that refresh made obsolete) and the refreshed
+  turn-pulse floor. Beta tuning behind a new operator `go`, not a release gate.
+- **Map edits are not picked up until an HA restart — FIXED in `6cf4d5fd`.**
+  `_async_short_circuit_update()` returns `None` on the healthy path and every
+  caller tests `is not None`, so the per-tick map block is reachable again.
+  Covered by a healthy-path test, an AST check across all five coordinators,
+  and a wiring test that the per-tick sync goes through
+  `_should_start_map_sync`.
+- **`no_actuation_detected` fires falsely in the turn phase — FIXED in
+  `6cf4d5fd`**, and `heading_went_fresh` was the wrong discriminator: it is True
+  exactly when `_streak_shows_no_actuation` is False, so gating on it would have
+  deleted the branch rather than refined it. The working signal is
+  `heading_poll_feed_alive` — whether *any* channel moved during the poll, since
+  a live feed jitters ~2-4 mm in position and ~0.0018 deg in heading even when
+  stationary. `_streak_shows_dead_telemetry` runs first and reports
+  `vio_telemetry_stream_stale`; the 2026-07-25 run is replayed as a regression.
+- **All-files pre-commit baseline — REPAIRED 2026-07-31.** `pre-commit run
+  --all-files` is now green and modifies nothing. The root cause of most of the
+  noise was hook/CI version skew: the Ruff hook pinned `v0.12.8` against a
+  `ruff==0.15.16` CI pin (so it enforced `UP038`, since removed from ruff), and
+  `mirrors-mypy` pinned `v1.17.1` against `mypy==2.1.0`. Both now track
+  `requirements_test.txt`. The mypy hook moved from `--strict` over all of
+  `custom_components` (168 HA-untyped-base-class errors CI never checks) to
+  CI's `--follow-imports=skip custom_components/mammotion`. `scripts/` Ruff
+  findings were fixed rather than scoped out, with a documented `T201` carve-out
+  for operator CLIs. codespell's `--skip` had literal quotes inside a YAML args
+  list and was entirely inert. pyupgrade was removed (crashes on Python 3.14;
+  ruff already selects `UP`). prettier is scoped to the JS this integration
+  ships. `trailing-whitespace`/`end-of-file-fixer` now exclude `*.patch`, where
+  they had been silently corrupting the upstream patches' diff context. The
+  config carries a scope rule: every hook must agree with `validate.yml`, and
+  deliberate narrowing states its reason inline.
 
 ## Rollback
 

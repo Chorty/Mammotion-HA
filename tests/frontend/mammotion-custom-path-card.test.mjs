@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 globalThis.HTMLElement = class {
@@ -35,12 +36,13 @@ globalThis.localStorage = {
 };
 
 const {
+  LUBA_ACCEPTANCE_PROFILE,
   MAX_REAL_SEGMENTS,
   MAX_WAYPOINTS,
+  PROFILE_KEYS,
   MammotionCustomPathCard,
-} = await import(
-  "../../custom_components/mammotion/www/mammotion-custom-path-card.js"
-);
+} =
+  await import("../../custom_components/mammotion/www/mammotion-custom-path-card.js");
 
 function card() {
   const element = new MammotionCustomPathCard();
@@ -90,6 +92,123 @@ test("seven-point dry-run is retained but real payload is capped at two", () => 
   assert.equal(real.payload.motion_refresh_interval_ms, 200);
   assert.equal(real.payload.final_approach_metres_per_pulse, 1.06);
   assert.equal(real.payload.turn_degrees_per_second, 37);
+});
+
+// The card must emit the exact bounded profile that passed supervised LUBA
+// acceptance Gates 1-4 on 2026-07-31 -- see docs/p0-beta-release.md. These are
+// the values the hardware actually executed; drifting from them silently would
+// make the card's Real Go an untested profile again.
+test("default Real Go payload is the Gate 4 accepted profile", () => {
+  const element = card();
+  element._waypoints = [{ x: 2, y: 2 }];
+
+  const { payload } = element._motionPayload(false);
+
+  assert.equal(payload.max_turn_commands, 4);
+  assert.equal(payload.vio_turn_max_commands, 4);
+  assert.equal(payload.max_linear_commands, 1);
+  assert.equal(payload.waypoint_tolerance, 0.08);
+  assert.equal(payload.min_progress_distance, 0.0025);
+  assert.equal(payload.calibrated_forward_heading_offset_degrees, 102.4);
+  assert.equal(payload.motion_refresh_interval_ms, 200);
+  assert.equal(payload.ble_auto_recover, false);
+  assert.equal(payload.turn_mode, "vio");
+});
+
+test("no loop-to-tolerance ceiling is omitted rather than sent as zero", () => {
+  const element = card();
+  element._waypoints = [{ x: 2, y: 2 }];
+
+  const { payload } = element._motionPayload(false);
+
+  assert.equal(LUBA_ACCEPTANCE_PROFILE.max_linear_pulse_ceiling, null);
+  assert.equal("max_linear_pulse_ceiling" in payload, false);
+
+  element._config.max_linear_pulse_ceiling = 30;
+  const opted = element._motionPayload(false).payload;
+  assert.equal(opted.max_linear_pulse_ceiling, 30);
+});
+
+test("profile label reports acceptance by default and names any override", () => {
+  const element = card();
+
+  assert.match(element._profileLabel(), /LUBA acceptance profile/);
+
+  element._config.waypoint_tolerance = 0.15;
+  element._config.ble_auto_recover = true;
+
+  assert.deepEqual(element._profileOverrides(), [
+    "waypoint_tolerance",
+    "ble_auto_recover",
+  ]);
+  assert.match(element._profileLabel(), /customised \(not hardware-accepted\)/);
+  assert.match(element._profileLabel(), /waypoint_tolerance/);
+});
+
+test("falsy profile values survive resolution instead of falling back", () => {
+  const element = card();
+  element._waypoints = [{ x: 2, y: 2 }];
+  element._config.motion_refresh_interval_ms = 0;
+  element._config.min_progress_distance = 0;
+
+  const { payload } = element._motionPayload(false);
+
+  assert.equal(payload.motion_refresh_interval_ms, 0);
+  assert.equal(payload.min_progress_distance, 0);
+  assert.equal(payload.ble_auto_recover, false);
+});
+
+// README documents the accepted profile a third time, in YAML an operator can
+// paste. Nothing else stops that copy drifting from the values the hardware ran,
+// and a README that quietly disagrees with the card is how an operator ends up
+// pasting a "documented default" that is not the accepted profile.
+test("README's written-out defaults are the accepted profile", () => {
+  const readme = readFileSync(
+    new URL("../../README.md", import.meta.url),
+    "utf8",
+  );
+  const block = readme.match(
+    /The built-in defaults, written out[\s\S]*?```yaml\n([\s\S]*?)```/,
+  );
+  assert.ok(block, "README no longer contains the written-out defaults block");
+
+  const documented = new Map();
+  let listKey = null;
+  for (const line of block[1].split("\n")) {
+    const item = line.match(/^ {2}- (.+)$/);
+    if (item && listKey) {
+      documented.get(listKey).push(item[1].trim());
+      continue;
+    }
+    const pair = line.match(/^([a-z_]+):\s*(.*)$/);
+    if (!pair) continue;
+    if (pair[2] === "") {
+      listKey = pair[1];
+      documented.set(listKey, []);
+    } else {
+      listKey = null;
+      documented.set(pair[1], pair[2].trim());
+    }
+  }
+
+  for (const key of PROFILE_KEYS) {
+    // The one profile key README must NOT list: setting it at all re-enables
+    // loop-to-tolerance and leaves the accepted profile.
+    if (key === "max_linear_pulse_ceiling") {
+      assert.equal(
+        documented.has(key),
+        false,
+        "README must leave max_linear_pulse_ceiling unset",
+      );
+      continue;
+    }
+    assert.ok(documented.has(key), `README omits ${key}`);
+    assert.equal(
+      documented.get(key)?.toString(),
+      LUBA_ACCEPTANCE_PROFILE[key].toString(),
+      `README disagrees with the accepted profile for ${key}`,
+    );
+  }
 });
 
 test("backend blockers and the two-segment limit lock Real Go", () => {

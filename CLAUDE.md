@@ -7,9 +7,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Read `docs/NEXT-SESSION.md` before continuing P0 or click-to-go work. The
 supervised backend Gates 1-4 passed on the LUBA on 2026-07-31 and experimental
 motion was disabled afterward. Do not repeat a physical test without a fresh
-operator confirmation. The main remaining release decision is reconciling the
-card's older Real Go defaults with the conservative profile that passed Gate 4;
-backend acceptance is not acceptance of the current default card payload.
+operator confirmation.
+
+The card's Real Go defaults are now the Gate 4 profile itself, frozen as
+`LUBA_ACCEPTANCE_PROFILE` in `www/mammotion-custom-path-card.js` and pinned by
+frontend tests. Backend acceptance is still **not** UI-to-mower acceptance: the
+card has never driven the mower. `CARD_VERSION` is intentionally still
+`0.6.4-beta11`, matching `manifest.json` and `pyproject.toml`, so the deployed
+beta11 card is not this card — bump all three together before any deploy.
+
+`pre-commit run --all-files` is green as of 2026-07-31 and is now a usable
+gate. Its hook pins must move with `requirements_test.txt`: the Ruff and mypy
+hook revs are pinned to the same versions CI installs, and skew between them is
+what previously made the hook report failures CI does not have.
 
 Repositories owned by `mikey0000` are read-only for this work. Do not push,
 comment, open/close issues or PRs, or publish anything there. A later authorized

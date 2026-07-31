@@ -1,13 +1,31 @@
 ---
+# Scope rule for this file: every hook must agree with
+# `.github/workflows/validate.yml`, which is the release gate. A hook that
+# checks MORE than CI turns `pre-commit run --all-files` into noise that hides
+# the checks carrying signal; a hook that checks LESS lets CI fail after a green
+# local run. Where a hook is deliberately narrower than the repo, the reason is
+# written next to it.
 ci:
   autoupdate_commit_msg: "chore: pre-commit autoupdate"
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.8
+    # Must equal the `ruff==` pin in requirements_test.txt, which is what CI
+    # runs. At v0.12.8 the hook still enforced UP038 (`isinstance(x, (A, B))`
+    # -> `A | B`), a rule later ruff removed, so the hook failed on two lines
+    # that CI passes. Bump both pins together or the gate lies again.
+    rev: v0.15.16
     hooks:
-      - id: ruff
+      # Deliberately repo-wide, unlike ruff-format below: `scripts/` is
+      # operator-facing tooling that talks to a live mower, so it gets linted.
+      # The only carve-out is T201 (see [tool.ruff.lint.per-file-ignores]).
+      # `ruff-check`, not `ruff`: the bare id still works but is announced as a
+      # legacy alias by this rev and will be dropped.
+      - id: ruff-check
         args:
           - --fix
+      # CI runs `ruff format --check custom_components tests`. `scripts/` is
+      # left unformatted on purpose so this hook cannot reformat a diagnostic
+      # script out from under a half-finished live investigation.
       - id: ruff-format
         files: ^((custom_components|tests)/.+)?[^/]+\.(py|pyi)$
   - repo: https://github.com/codespell-project/codespell
@@ -15,33 +33,55 @@ repos:
     hooks:
       - id: codespell
         args:
-          - --ignore-words-list=fro,hass,astroid
-          - --skip="./.*,*.csv,*.json,*.ambr"
+          # `entitys`, `swtich`, `piar`, `buttom` and `unknow` are verbatim
+          # identifiers and payload strings copied out of the decompiled
+          # Mammotion APK and the cloud API. Spelling them correctly would stop
+          # them matching the thing they document. `unparseable` is our own
+          # prose and a valid variant.
+          - --ignore-words-list=fro,hass,astroid,entitys,swtich,piar,buttom,unknow,unparseable
+          # Previously written as `--skip="..."`: in a YAML args list the quotes
+          # are part of the argument, so the whole skip list was inert and
+          # matched nothing. The two HTML files are standalone browser dev
+          # tools, not shipped with the integration.
+          - --skip=.*,*.csv,*.json,*.ambr,uv.lock,svg_map_aligner.html,agora_test.html
           - --quiet-level=2
         exclude_types: [csv, json]
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
+      # Never touch *.patch: trailing whitespace is significant in unified-diff
+      # context lines, so "fixing" it silently corrupts the upstream patches in
+      # docs/upstream-patches/ and they stop applying.
       - id: trailing-whitespace
+        exclude: \.patch$
       - id: end-of-file-fixer
+        exclude: \.patch$
       - id: check-executables-have-shebangs
         stages: [manual]
       - id: check-json
         exclude: (.vscode|.devcontainer)
-  - repo: https://github.com/asottile/pyupgrade
-    rev: v3.20.0
-    hooks:
-      - id: pyupgrade
+  # pyupgrade was removed here on 2026-07-31. It crashed on every file under
+  # Python 3.14 (`tokenize.cookie_re` is a bytes pattern there, so
+  # `_fix_tokens` raises TypeError), and it was redundant anyway: ruff already
+  # selects the "UP" ruleset over custom_components and tests. Re-adding it
+  # would restore the crash without adding a single check.
   - repo: https://github.com/adrienverge/yamllint.git
     rev: v1.37.1
     hooks:
       - id: yamllint
         exclude: (.github|.vscode|.devcontainer)
-    args: -c .yamllint.yaml
+        # `args` used to sit one level out, as a key of the repo mapping rather
+        # than the hook, so `.yamllint.yaml` was never applied.
+        args: [-c, .yamllint.yaml]
   - repo: https://github.com/pre-commit/mirrors-prettier
     rev: v4.0.0-alpha.8
     hooks:
+      # Scoped to the JavaScript this integration actually ships and tests.
+      # Unscoped, prettier rewrote ~20 Markdown evidence files, the APK feature
+      # catalogue, services.yaml and manifest.json on every run -- churn across
+      # documents whose value is being a faithful record.
       - id: prettier
+        files: ^(custom_components/mammotion/www/.+\.js|tests/frontend/.+\.mjs)$
   - repo: https://github.com/cdce8p/python-typing-update
     rev: v0.7.2
     hooks:
@@ -57,8 +97,16 @@ repos:
           - --keep-updates
         files: ^(/.+)?[^/]+\.py$
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.17.1
+    # Same rule as ruff above: equal to the `mypy==` pin in
+    # requirements_test.txt so the hook and CI can never disagree on a verdict.
+    rev: v2.1.0
     hooks:
+      # Matches CI's `mypy --follow-imports=skip custom_components/mammotion`.
+      # It previously ran `--strict` over all of custom_components and reported
+      # 168 errors, essentially all of the form "Class cannot subclass
+      # SensorEntity (has type Any)" -- an artifact of Home Assistant shipping
+      # untyped entity base classes to this checker, not defects in this code,
+      # and none of them checked by the release gate.
       - id: mypy
-        args: [--strict, --ignore-missing-imports]
-        files: ^((custom_components)/.+)?[^/]+\.(py|pyi)$
+        args: [--follow-imports=skip, --ignore-missing-imports]
+        files: ^custom_components/mammotion/.+\.(py|pyi)$

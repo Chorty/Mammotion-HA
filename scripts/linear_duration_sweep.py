@@ -14,7 +14,6 @@ import math
 import os
 import pathlib
 import subprocess
-import sys
 import time
 import urllib.request
 
@@ -57,6 +56,7 @@ BR = POLYS["Backyard Right"]
 
 
 def edge_clearance(pt: dict[str, float], poly: list[dict[str, float]]) -> float:
+    """Return the shortest distance from ``pt`` to any edge of ``poly``."""
     best = 1e9
     for i in range(len(poly)):
         ax, ay = poly[i]["x"], poly[i]["y"]
@@ -72,6 +72,7 @@ def edge_clearance(pt: dict[str, float], poly: list[dict[str, float]]) -> float:
 
 
 def ble_alive() -> int:
+    """Return how many BLE sends the HA log recorded in the last 20 seconds."""
     out = subprocess.run(
         [
             str(REPO / "scripts/ha_ssh.exp"),
@@ -80,6 +81,9 @@ def ble_alive() -> int:
         capture_output=True,
         text=True,
         timeout=120,
+        # grep exits 1 when it counts zero matches; a silent transport is a
+        # result to report, not a crash.
+        check=False,
     ).stdout
     for tok in reversed(out.split()):
         if tok.strip().isdigit():
@@ -88,6 +92,7 @@ def ble_alive() -> int:
 
 
 def pulse(action: str, duration_ms: int) -> dict:
+    """Send one bounded manual-motion pulse and return the service response."""
     body = json.dumps(
         {
             "entity_id": ENTITY,
