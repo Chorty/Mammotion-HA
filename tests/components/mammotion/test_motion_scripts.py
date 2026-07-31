@@ -15,6 +15,31 @@ import mammotion_click_go_smoke  # noqa: E402
 import mammotion_forward_two_pulse_latency  # noqa: E402
 import mammotion_ha_helpers  # noqa: E402
 import mammotion_motion_suite  # noqa: E402
+import mammotion_preflight_gates  # noqa: E402
+
+
+def test_preflight_refuses_a_stale_ble_entity_when_runtime_is_disconnected() -> None:
+    """A stale binary sensor must not override fresh runtime BLE blockers."""
+    assert (
+        mammotion_preflight_gates._ble_motion_ready(  # noqa: SLF001
+            "on",
+            "cloud_aliyun",
+            ["ble_client_not_connected"],
+        )
+        is False
+    )
+
+
+def test_preflight_accepts_ble_only_when_runtime_has_no_ble_blocker() -> None:
+    """The BLE row passes only when entity, transport, and runtime agree."""
+    assert (
+        mammotion_preflight_gates._ble_motion_ready(  # noqa: SLF001
+            "on",
+            "ble",
+            [],
+        )
+        is True
+    )
 
 
 def test_call_readiness_with_runtime_retry_retries_empty_response(

@@ -44,6 +44,14 @@ RPM_SAMPLE_GAP_SECONDS = 330
 
 PASS, FAIL, WARN = "PASS", "FAIL", "WARN"
 
+_BLE_BLOCKER_PREFIXES = ("ble_", "command_queue_")
+_BLE_BLOCKER_NAMES = {
+    "device_handle_unavailable",
+    "get_transport_unavailable",
+    "exclusive_saga_active",
+    "no_ble_send_observed",
+}
+
 
 def _states(url: str, tok: str) -> dict[str, Any]:
     """Return all HA states keyed by entity_id."""
@@ -57,6 +65,20 @@ def _states(url: str, tok: str) -> dict[str, Any]:
 def _row(name: str, verdict: str, detail: str) -> tuple[str, str, str]:
     """Return one printable check row."""
     return (name, verdict, detail)
+
+
+def _ble_motion_ready(
+    live_state: Any,
+    active_transport: Any,
+    blockers: list[str],
+) -> bool:
+    """Return whether both the entity and fresh runtime agree BLE is usable."""
+    ble_blockers = [
+        blocker
+        for blocker in blockers
+        if blocker.startswith(_BLE_BLOCKER_PREFIXES) or blocker in _BLE_BLOCKER_NAMES
+    ]
+    return live_state == "on" and active_transport == "ble" and not ble_blockers
 
 
 def main() -> int:  # noqa: C901, PLR0912, PLR0915
@@ -76,6 +98,7 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915
     pos = runtime.get("position") or {}
     blade = runtime.get("blade") or {}
     transport = runtime.get("transport") or {}
+    blockers = [str(blocker) for blocker in em.get("blockers") or []]
     rows: list[tuple[str, str, str]] = []
 
     rows.append(
@@ -88,11 +111,14 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915
     )
 
     live = (state.get(BPREFIX + "ble_link_live") or {}).get("state")
+    active_transport = runtime.get("active_transport")
+    ble_ready = _ble_motion_ready(live, active_transport, blockers)
     rows.append(
         _row(
             "BLE link live",
-            PASS if live == "on" else FAIL,
-            f"transport={runtime.get('active_transport')} rssi={transport.get('ble_rssi')}",
+            PASS if ble_ready else FAIL,
+            f"entity={live} transport={active_transport} "
+            f"rssi={transport.get('ble_rssi')}",
         )
     )
 
@@ -191,11 +217,10 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915
             )
         )
 
-    blockers = list(em.get("blockers") or [])
     rows.append(
         _row(
             "standing gate",
-            PASS if not blockers else WARN,
+            PASS if not blockers else FAIL,
             f"blockers={blockers or 'none'}",
         )
     )

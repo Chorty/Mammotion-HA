@@ -101,12 +101,31 @@ session-cancellation half, which needs an active run to abort. Gate 1 requires n
 experimental-motion opt-in: `stop_manual_motion` is registered without the
 authorization wrapper by design, so a stop always works.
 
+**Gate 2 — NOT PASSED, stopped 2026-07-30 20:10 EDT.** A preparatory single
+750 ms pulse at service speed 0.4 proved the new idle/manual-motion report
+stream: telemetry measured 5.18 cm immediately after the pulse and 4.77 cm two
+seconds later, matching the operator's observation of forward motion with no
+meaningful rollback. The write completed in 408 ms and its explicit zero stop
+completed in 168 ms. That pulse also measured the live map-to-reported heading
+offset at approximately +102.4 degrees.
+
+The actual 10 cm straight-segment attempt did not actuate. Its first nonzero
+confirmed write timed out at 4008 ms and the normal stop write then timed out at
+4004 ms. The executor aborted with `command_failed`; position remained
+bit-identical. The dedicated emergency stop immediately confirmed all three
+zero-motion writes in 688, 172, and 342 ms, after which repeated position samples
+showed no delayed replay. Runtime then degraded to `ble_send_stalled`. Per the
+abort rule, no live retry was attempted and Gates 3-4 remain untested.
+
 ⚠️ **Confirmed-write latency is closer to the guard timeout than expected.** The
 three writes took 739, **1982**, and 191 ms on a *good* −50 dBm link.
 `_BLE_MOTION_WRITE_TIMEOUT_SECONDS` is 4.0 s, so the worst observed write used half
-the budget. On a marginal link, writes may exceed it and abort runs. These are
-completion-confirmed times, not the sub-millisecond `command_ok` acks that were
-already shown to prove nothing.
+the budget. Gate 2 subsequently hit that deadline on both the movement and normal
+stop writes. Increasing the deadline is not automatically safe: it also extends
+the period in which a nonzero write has uncertain completion. Resolve the BLE
+stall first, then derive the timeout from measured successful and failed
+distributions. These are completion-confirmed times, not the sub-millisecond
+`command_ok` acks that were already shown to prove nothing.
 
 **Turn accuracy is deliberately not a gate.** Turns are bounded and always
 explicitly stopped, so an inaccurate turn is a quality defect rather than a
