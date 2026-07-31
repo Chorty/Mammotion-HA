@@ -187,12 +187,12 @@ values. If release criteria require UI-to-mower acceptance, that needs a repeat
 preview/dry-run and then one Real Go from the actual card, under a **new**
 daylight operator `go`. No physical motion is authorized by this handoff.
 
-⚠️ `CARD_VERSION` was deliberately **not** bumped, to preserve the three-way
-agreement with `manifest.json` and `pyproject.toml` at `0.6.4-beta11` and let
-the beta workflow pick the next monotonic number. The consequence is that the
-card file changed while its version string did not: the deployed
-`0.6.4-beta11` card is **not** this card. Bump all three together before any
-deploy, and remember the card is served from two paths.
+✅ Versions were bumped together to `0.6.4-beta12` for the Gate 5 build:
+`manifest.json`, `pyproject.toml`, `CARD_VERSION`, and `uv.lock` (PEP 440 form
+`0.6.4b12`). The bump is **local only** — nothing was deployed, and the host
+still runs beta11. The point of the bump is that a Gate 5 run must be able to
+prove in the browser console banner that the new card loaded; the card is
+served from two paths, so deploy to both or the stale card is served silently.
 
 ## Remaining P0 work — dispositions
 
@@ -229,11 +229,18 @@ deploy, and remember the card is served from two paths.
      turn-pulse floor. Both are beta tuning behind a new operator `go`, not
      release gates, because the release ships values hardware actually ran.
 3. **All-files pre-commit — REPAIRED, now green.** See the next section.
-4. **Version agreement — rechecked.** `manifest.json`, `pyproject.toml` and
-   `CARD_VERSION` are all `0.6.4-beta11`, and `manifest.json`, `pyproject.toml`
-   and `requirements_test.txt` all declare the identical
-   `chorty-0.8.12.post1` wheel URL. Let the beta workflow choose the next
-   monotonic beta number, and see the `CARD_VERSION` warning above.
+4. **Version agreement — bumped to `0.6.4-beta12`.** `manifest.json`,
+   `pyproject.toml`, `CARD_VERSION` and `uv.lock` all agree, and
+   `manifest.json`, `pyproject.toml` and `requirements_test.txt` all declare the
+   identical `chorty-0.8.12.post1` wheel URL. The next `Beta Release` dispatch
+   will compute `0.6.4-beta13` (dry-run verified).
+   **New:** `Beta Release` could not have run at all before this session —
+   doubled backslashes in YAML block scalars made every sed capture group fail,
+   so it proposed the already-existing `v0.6.4-beta1` on every dispatch and
+   exited 1, and its `uv.lock` verify grepped a package name that is not in the
+   file. Fixed in `.github/workflows/beta-release.yml`; both steps dry-run
+   against this tree. This is also the mechanism behind the previously recorded
+   version regression.
 5. With explicit operator authorization, push only to the Chorty feature branch
    and wait for current PR checks. HACS `skipping` on a fork is expected; Python
    and hassfest must pass.

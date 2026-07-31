@@ -9,9 +9,9 @@ integration in `setup_error` with no auto-retry, needing a manual entry reload.
 
 |                         | Host                                                           | Branch         |
 | ----------------------- | -------------------------------------------------------------- | -------------- |
-| Integration version     | `0.6.4-beta11`                                                 | `0.6.4-beta11` |
+| Integration version     | `0.6.4-beta11`                                                 | `0.6.4-beta12` |
 | pymammotion pin         | `0.8.12.post1` fork wheel (container verified)                 | same           |
-| Card `CARD_VERSION`     | `0.6.4-beta11`; integration and HACS copies checksum-identical | `0.6.4-beta11` |
+| Card `CARD_VERSION`     | `0.6.4-beta11`; integration and HACS copies checksum-identical | `0.6.4-beta12` |
 | `manual_motion.py`      | present                                                        | present        |
 | `backend_capability.py` | present                                                        | present        |
 | `capabilities.py`       | present                                                        | present        |
@@ -20,6 +20,18 @@ The live host already ran the complete supervised acceptance sequence. Its
 `coordinator.py` and `__init__.py` match this tree. Its functional `services.py`
 is the Gate 4-passing build; the handoff tree differs only by a corrected schema
 comment. Experimental motion was disabled after the run.
+
+⚠️ **The host and branch now differ, deliberately.** The branch is
+`0.6.4-beta12` and carries the reconciled card
+(`LUBA_ACCEPTANCE_PROFILE`); the host still serves the `0.6.4-beta11` card,
+whose Real Go defaults are the *old* calibration profile. Gate 5 (UI-to-mower)
+therefore requires a deploy first. Backend Python behaviour is unchanged between
+the two, so this deploy is about the card — but deploy the whole integration
+tarball anyway rather than the card alone, so the host does not end up with a
+beta12 card next to a beta11 `manifest.json`. **Both** card paths must be
+written, and the browser console banner must be confirmed to read
+`v0.6.4-beta12` before any Gate 5 motion; a stale cached card is
+indistinguishable from a passing run until the payload is inspected.
 
 ## Breaking enum migrations already applied
 

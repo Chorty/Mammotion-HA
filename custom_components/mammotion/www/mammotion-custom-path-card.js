@@ -2,7 +2,7 @@ const MAX_WAYPOINTS = 7;
 const MAX_REAL_SEGMENTS = 2;
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
-const CARD_VERSION = "0.6.4-beta11";
+const CARD_VERSION = "0.6.4-beta12";
 
 // The exact bounded execution profile that passed supervised LUBA acceptance
 // Gates 1-4 on 2026-07-31 (three-write zero stop, bounded straight segment,

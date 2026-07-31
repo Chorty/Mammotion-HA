@@ -55,10 +55,16 @@ jobs:
           BASE_VERSION=$(jq -r .version custom_components/mammotion/manifest.json | sed 's/-beta[0-9]*$//')
 
           # Start above both the manifest suffix and every fetched remote tag.
+          # NOTE: single backslashes. A YAML block scalar does not process
+          # escapes, so `\\(` reaches sed as an escaped backslash plus a literal
+          # `(` and the capture group never matches. That made both variables
+          # empty, so HIGHEST fell to 0 and this step always proposed beta1 --
+          # which is why `Beta Release` could not run at all, and why the
+          # version has regressed in the past.
           MANIFEST_BETA=$(jq -r .version custom_components/mammotion/manifest.json \
-            | sed -n 's/.*-beta\\([0-9][0-9]*\\)$/\\1/p')
+            | sed -n 's/.*-beta\([0-9][0-9]*\)$/\1/p')
           TAG_BETA=$(git tag --list "v${BASE_VERSION}-beta*" \
-            | sed -n 's/.*-beta\\([0-9][0-9]*\\)$/\\1/p' \
+            | sed -n 's/.*-beta\([0-9][0-9]*\)$/\1/p' \
             | sort -n | tail -1)
           HIGHEST=${MANIFEST_BETA:-0}
           if [ "${TAG_BETA:-0}" -gt "$HIGHEST" ]; then
@@ -98,10 +104,19 @@ jobs:
         run: |
           EXPECTED="${{ steps.version.outputs.beta_version }}"
           test "$(jq -r .version custom_components/mammotion/manifest.json)" = "$EXPECTED"
-          test "$(sed -n 's/^version = "\\(.*\\)"/\\1/p' pyproject.toml | head -1)" = "$EXPECTED"
+          # Single backslashes, for the same block-scalar reason as above: the
+          # doubled form extracted nothing, so this compared "" against the
+          # expected version and could never pass.
+          test "$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)" = "$EXPECTED"
           grep -Fq "const CARD_VERSION = \"${EXPECTED}\";" \
             custom_components/mammotion/www/mammotion-custom-path-card.js
-          grep -A4 'name = "mammotion"' uv.lock | grep -Fq "version = \"${EXPECTED}\""
+          # The project is `mammotion-ha`, not `mammotion`, and uv writes the
+          # PEP 440 normalised form (0.6.4-beta12 -> 0.6.4b12). Matching the
+          # dashed form against a package name that is not in the lock file
+          # meant this line grepped empty input for a string uv never writes.
+          LOCK_VERSION="${EXPECTED/-beta/b}"
+          grep -A4 'name = "mammotion-ha"' uv.lock \
+            | grep -Fq "version = \"${LOCK_VERSION}\""
 
       - name: Commit and push version bump
         run: |

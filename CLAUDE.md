@@ -12,9 +12,14 @@ operator confirmation.
 The card's Real Go defaults are now the Gate 4 profile itself, frozen as
 `LUBA_ACCEPTANCE_PROFILE` in `www/mammotion-custom-path-card.js` and pinned by
 frontend tests. Backend acceptance is still **not** UI-to-mower acceptance: the
-card has never driven the mower. `CARD_VERSION` is intentionally still
-`0.6.4-beta11`, matching `manifest.json` and `pyproject.toml`, so the deployed
-beta11 card is not this card — bump all three together before any deploy.
+card has never driven the mower. That is **Gate 5** in
+`docs/p0-beta-release.md`, and it is the open release gate.
+
+Versions were bumped together to `0.6.4-beta12` — `manifest.json`,
+`pyproject.toml`, `CARD_VERSION` and `uv.lock` (which carries the PEP 440 form
+`0.6.4b12`) must always agree, and the `Beta Release` workflow verifies all
+four. The bump is local; the host still runs beta11. The card is served from
+**two** paths, so deploy to both or the browser silently loads the stale card.
 
 `pre-commit run --all-files` is green as of 2026-07-31 and is now a usable
 gate. Its hook pins must move with `requirements_test.txt`: the Ruff and mypy

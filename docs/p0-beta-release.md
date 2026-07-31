@@ -90,6 +90,29 @@ Run in order, stopping at the first failure. Preconditions, all required:
 | 2   | Short straight segment | One segment reaches `target_reached` within tolerance, with an explicit stop after the final pulse                                                                                                                                            |
 | 3   | Abort mid-run          | Operator stop during a multi-pulse run; no movement command arrives after the stop, and no delayed replay occurs when the queue drains                                                                                                        |
 | 4   | Two-segment L-path     | Both segments report `target_reached`; the second only starts after the first is marked passed                                                                                                                                                |
+| 5   | UI-to-mower Real Go    | The same bounded path driven **from the card**, not from a service call: preview and dry-run pass first, the card's execution-profile row reads the accepted profile, both segments report `target_reached`, and Abort remains effective       |
+
+Gates 1-4 are backend acceptance and are complete (2026-07-31). Gate 5 is the
+open one, and it exists because Gates 1-4 prove nothing about the card: every
+one of them was a service call. The card has never driven the mower. Passing
+Gates 1-4 while the card emitted a *different* profile is exactly the gap that
+`LUBA_ACCEPTANCE_PROFILE` closed on paper — Gate 5 is what closes it in fact.
+
+### Gate 5 preconditions, additional to the list above
+
+- The deployed `CARD_VERSION` must differ from the previously deployed build and
+  must be confirmed **in the browser console banner**, not merely uploaded. The
+  card is served from two paths (`/mammotion/` and `/hacsfiles/`); deploying one
+  and loading the other silently serves the stale card, which would test the old
+  profile while the log says otherwise.
+- The card's **execution profile** row must read
+  `LUBA acceptance profile (Gates 1-4, 2026-07-31)`. If it reads
+  `customised (not hardware-accepted)`, the dashboard YAML is overriding the
+  profile and the run does not count as Gate 5 — remove the overrides first.
+- Run preview, then dry-run, then Real Go, in that order, from the same card
+  instance without editing waypoints between dry-run and Real Go.
+- Record the emitted payload (the card's "copy JSON" control) alongside the
+  result, so the executed profile is evidence rather than assumption.
 
 Abort rule: if any gate fails, stop the session, disable experimental motion,
 and record the failure before retrying. Do not iterate on a failing gate with
@@ -457,11 +480,27 @@ safety one. It is tracked as the headline Alpha-to-Beta item below.
   carries both a minimal YAML and the written-out defaults. The emitted payload
   was additionally validated against the shipped voluptuous schemas for both
   card services, confirming the ceiling is absent rather than zeroed.
-  **Still open:** the card has never driven the mower. UI-to-mower Real Go needs
-  a repeat preview/dry-run and one Real Go from the card under a new daylight
-  operator `go`. `CARD_VERSION` was intentionally left at `0.6.4-beta11` to keep
-  three-way version agreement, so the deployed beta11 card is not this card —
-  bump all three before deploying, to both served paths.
+  **Still open:** the card has never driven the mower. That is now **Gate 5** in
+  the acceptance sequence above, and it needs a repeat preview/dry-run and one
+  Real Go from the card under a new daylight operator `go`.
+  `CARD_VERSION`, `manifest.json`, `pyproject.toml` and `uv.lock` were bumped
+  together to `0.6.4-beta12` on 2026-07-31 so the Gate 5 build is
+  distinguishable in the browser from the deployed beta11 card. The bump is
+  local: nothing has been deployed to the host, which still runs beta11.
+- **`Beta Release` workflow was unrunnable — FIXED 2026-07-31.** Three shell
+  expressions in `.github/workflows/beta-release.yml` were written with doubled
+  backslashes inside YAML block scalars, which do not process escapes, so sed
+  received `\\(` and every capture group failed. `MANIFEST_BETA` and `TAG_BETA`
+  were therefore always empty, `HIGHEST` fell to 0, and the workflow proposed
+  `v0.6.4-beta1` on every dispatch — a tag that exists, so it exited 1 every
+  time. The same defect explains the previously recorded version regression
+  (beta11 in June back to beta7 in July): when the tag did not yet exist, the
+  workflow numbered *backwards* instead of failing. The verify step was broken
+  independently as well: it grepped `uv.lock` for `name = "mammotion"` (the
+  project is `mammotion-ha`) and compared the dashed version against a file
+  where uv writes the PEP 440 normalised form (`0.6.4b12`). Both fixed and
+  dry-run against this tree: the version step now yields `0.6.4-beta13` and the
+  verify step passes.
 - **Turn translation and final tolerance.** Gate 4 now compensates from fresh
   post-turn position and passed 4.70 cm from its final target, but its turn
   still translated 8.80 cm and the standalone 176-degree turn drifted 10.48
