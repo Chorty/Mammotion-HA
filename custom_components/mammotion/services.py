@@ -3914,6 +3914,49 @@ def _ble_link_liveness(  # noqa: C901
     return report
 
 
+#: Queue states that clear on their own within a moment. Anything else (no
+#: client, transport unusable, connect cooldown, exclusive saga) is a standing
+#: condition that waiting cannot fix, so the settle loop returns immediately.
+_BLE_TRANSIENT_QUEUE_REASONS = (
+    "command_queue_backlogged",
+    "command_queue_dispatch_paused",
+)
+_BLE_QUEUE_SETTLE_TIMEOUT_SECONDS = 6.0
+_BLE_QUEUE_SETTLE_POLL_SECONDS = 0.1
+
+
+async def _settle_ble_command_queue(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> dict[str, Any]:
+    """Wait briefly for the BLE command queue to drain before gating on it.
+
+    Every motion executor starts the dense report stream first, and that start
+    *is* a BLE command. ``_ble_link_liveness`` then requires ``queue_depth`` at
+    or below ``_BLE_QUEUE_DEPTH_LIMIT`` (zero), so an executor that starts the
+    stream and immediately evaluates its gates blocks on its own command --
+    deterministically, not as a race. Measured live 2026-07-30: two consecutive
+    ``experimental_execute_segment`` dispatches were refused with
+    ``command_queue_backlogged`` and ``queue_depth: 1`` while the link was
+    healthy (connected, usable, no cooldown, last send 2-3s old), and twenty
+    consecutive idle samples of the same gate reported live.
+
+    This only ever *waits*. It never lowers the depth limit, never overrides a
+    verdict, and returns the last report unchanged on timeout -- so a genuine
+    backlog still fails the gate, exactly as before. The keepalive traffic that
+    shares this queue is ~5s apart and clears in well under the timeout.
+    """
+    report = _ble_link_liveness(coordinator)
+    deadline = time.monotonic() + _BLE_QUEUE_SETTLE_TIMEOUT_SECONDS
+    while (
+        not report["live"]
+        and report["reason"] in _BLE_TRANSIENT_QUEUE_REASONS
+        and time.monotonic() < deadline
+    ):
+        await asyncio.sleep(_BLE_QUEUE_SETTLE_POLL_SECONDS)
+        report = _ble_link_liveness(coordinator)
+    return report
+
+
 async def _attempt_ble_recovery(  # noqa: C901
     coordinator: MammotionReportUpdateCoordinator,
     *,
@@ -4702,6 +4745,16 @@ async def _manual_velocity_pulse_test(
         await coordinator.async_start_report_stream(
             duration_ms=max(10_000, stream_duration_ms)
         )
+        # start_report_stream degrades to a single snapshot outside ACTIVE mode,
+        # which leaves a manually driven mower reporting one frozen position for
+        # the whole run. Ask for the continuous subscription explicitly.
+        if hasattr(coordinator, "async_start_continuous_reports"):
+            await coordinator.async_start_continuous_reports(
+                duration_ms=max(10_000, stream_duration_ms)
+            )
+        # The calls above enqueue BLE commands; let them clear before the
+        # ble_link_live gate below demands an empty queue.
+        await _settle_ble_command_queue(coordinator)
 
     before = _custom_path_telemetry_snapshot(coordinator)
     gates = _manual_velocity_pulse_gates(
@@ -10919,6 +10972,16 @@ async def _manual_velocity_cumulative_pulse_test(  # noqa: C901
         await coordinator.async_start_report_stream(
             duration_ms=max(10_000, stream_duration_ms)
         )
+        # start_report_stream degrades to a single snapshot outside ACTIVE mode,
+        # which leaves a manually driven mower reporting one frozen position for
+        # the whole run. Ask for the continuous subscription explicitly.
+        if hasattr(coordinator, "async_start_continuous_reports"):
+            await coordinator.async_start_continuous_reports(
+                duration_ms=max(10_000, stream_duration_ms)
+            )
+        # The calls above enqueue BLE commands; let them clear before the
+        # ble_link_live gate below demands an empty queue.
+        await _settle_ble_command_queue(coordinator)
 
     preview = _preview_custom_path(
         coordinator,
@@ -11224,6 +11287,16 @@ async def _experimental_execute_segment_burst(  # noqa: C901
         await coordinator.async_start_report_stream(
             duration_ms=max(10_000, stream_duration_ms)
         )
+        # start_report_stream degrades to a single snapshot outside ACTIVE mode,
+        # which leaves a manually driven mower reporting one frozen position for
+        # the whole run. Ask for the continuous subscription explicitly.
+        if hasattr(coordinator, "async_start_continuous_reports"):
+            await coordinator.async_start_continuous_reports(
+                duration_ms=max(10_000, stream_duration_ms)
+            )
+        # The calls above enqueue BLE commands; let them clear before the
+        # ble_link_live gate below demands an empty queue.
+        await _settle_ble_command_queue(coordinator)
 
     preview = _preview_custom_path(
         coordinator,
@@ -11556,6 +11629,16 @@ async def _manual_velocity_segment_test(  # noqa: C901
         await coordinator.async_start_report_stream(
             duration_ms=max(10_000, stream_duration_ms)
         )
+        # start_report_stream degrades to a single snapshot outside ACTIVE mode,
+        # which leaves a manually driven mower reporting one frozen position for
+        # the whole run. Ask for the continuous subscription explicitly.
+        if hasattr(coordinator, "async_start_continuous_reports"):
+            await coordinator.async_start_continuous_reports(
+                duration_ms=max(10_000, stream_duration_ms)
+            )
+        # The calls above enqueue BLE commands; let them clear before the
+        # ble_link_live gate below demands an empty queue.
+        await _settle_ble_command_queue(coordinator)
 
     preview = _preview_custom_path(
         coordinator,

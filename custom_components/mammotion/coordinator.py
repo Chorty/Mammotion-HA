@@ -1467,6 +1467,27 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         """Get reports from the device."""
         await self.manager.request_reports(self.device_name, count=count)
 
+    async def async_start_continuous_reports(self, duration_ms: int = 30_000) -> None:
+        """Subscribe to continuous device reports for *duration_ms*.
+
+        ``start_report_stream`` is not enough on its own: pymammotion downgrades
+        it to a single ``count=1`` snapshot unless the device is in ACTIVE mode
+        (mowing or returning). A manually driven mower sits in MODE_READY, so it
+        gets one report and then silence -- which is exactly what blinded the
+        closed loop on hardware 2026-07-30, where every position sample across a
+        whole pulse was bit-identical while the mower demonstrably moved 4
+        inches.
+
+        ``count=0`` with ``RPT_START`` is the same continuous subscription the
+        Mammotion app uses, reported at the library's default 1000 ms period.
+        The device-side ``timeout`` bounds the subscription so it expires on its
+        own -- pymammotion arms no stop timer on this path, so nothing here
+        depends on a teardown that might never run.
+        """
+        await self.manager.request_reports(
+            self.device_name, count=0, timeout=duration_ms
+        )
+
     async def async_ensure_fresh_state(self) -> None:
         """Fire a one-shot snapshot if device state is older than 2 minutes."""
         await self.manager.ensure_fresh_state(self.device_name, max_age_s=120.0)
