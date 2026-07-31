@@ -130,6 +130,40 @@ Do not enable broad `pymammotion: debug` logging during that diagnosis. Its clou
 gateway logs authenticated request data and network responses. Use only the
 scoped `bleak_esphome` and `habluetooth` loggers from
 `docs/deploy-runbook-p0.md`, and return them to normal levels after capture.
+Do not enable `pymammotion.transport.ble: debug` either: a live stationary
+capture proved that it logs raw BLE payloads and device identifiers.
+
+### Stationary BLE isolation capture (2026-07-30)
+
+A motion-disabled 30-minute capture separated scanner coverage from GATT
+lifecycle behavior:
+
+- Home Assistant received 13,434 control advertisements from other devices and
+  three connectable mower advertisements at strong RSSI (-56 to -63 dBm).
+- Four fresh mower connections all negotiated MTU 517. The three sessions that
+  closed inside the report lasted 43, 287, and 607 seconds; a fourth was still
+  open at the report boundary and closed locally about 195 seconds later.
+- Every observed close was `error=0` and the owning proxy logged an explicit
+  local `Disconnecting` command. There were no peer-terminated (`0x13`) or
+  supervision-timeout (`0x08`) closes, sequence gaps, unparseable messages, or
+  dropped malformed frames.
+- The behavior crossed two proxies, so it is not isolated to the preferred
+  printer proxy. One close followed another proxy's Home Assistant API loss by
+  0.5 seconds; the mower link then reopened on its original proxy 4.8 seconds
+  later. Other clean local closes had no matching proxy API event.
+- During one live session, backend keepalives were current and the runtime
+  motion gate reported no BLE blocker while the public `ble_link_live` entity
+  remained off. This is a safe false-negative in the preflight, but it confirms
+  the entity is not refreshed reliably enough to be an independent liveness
+  source.
+
+This narrows the current failure to client-side lifecycle churn: an HA Bluetooth
+scanner/source change, or PyMammotion teardown after a notification/write
+operation fails. It does not support weak signal, low MTU, corrupt-frame
+reassembly, or mower-initiated disconnect as the primary cause of this capture.
+The existing logs do not record a sanitized teardown initiator/error type, so a
+stationary instrumented build is required to distinguish the remaining two
+causes.
 
 ⚠️ **Confirmed-write latency is closer to the guard timeout than expected.** The
 three writes took 739, **1982**, and 191 ms on a *good* −50 dBm link.
