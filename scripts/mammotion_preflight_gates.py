@@ -233,7 +233,9 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915
     print("\nVERDICT:", "READY" if not fails else f"BLOCKED on: {', '.join(fails)}")
     print(
         "Reminder: debug loggers (bleak_esphome, habluetooth) do NOT survive an HA "
-        "restart -- re-enable via logger.set_level before measuring."
+        "restart -- re-enable only those scoped loggers via logger.set_level before "
+        "measuring. Never enable broad pymammotion debug logging: its cloud gateway "
+        "records credentials and network details."
     )
     return 0 if not fails else 1
 

@@ -117,6 +117,20 @@ zero-motion writes in 688, 172, and 342 ms, after which repeated position sample
 showed no delayed replay. Runtime then degraded to `ble_send_stalled`. Per the
 abort rule, no live retry was attempted and Gates 3-4 remain untested.
 
+Proxy logs confirmed the failure below PyMammotion's motion controller. The
+preferred ESPHome proxy hung on a GATT write for 30 seconds, disconnected,
+reconnected about five seconds later, then returned GATT status 14 on the next
+write. PyMammotion correctly made BLE unusable and armed its 120-second
+connection cooldown. A second ESPHome proxy also lost its Home Assistant API
+connection during the same interval. A momentary `connected` snapshot therefore
+does not establish a safe motion window; stabilize the proxy/network path before
+retrying Gate 2.
+
+Do not enable broad `pymammotion: debug` logging during that diagnosis. Its cloud
+gateway logs authenticated request data and network responses. Use only the
+scoped `bleak_esphome` and `habluetooth` loggers from
+`docs/deploy-runbook-p0.md`, and return them to normal levels after capture.
+
 ⚠️ **Confirmed-write latency is closer to the guard timeout than expected.** The
 three writes took 739, **1982**, and 191 ms on a *good* −50 dBm link.
 `_BLE_MOTION_WRITE_TIMEOUT_SECONDS` is 4.0 s, so the worst observed write used half
