@@ -2,16 +2,20 @@
 
 ## Maturity stage
 
-This release completes **Alpha**: the features are done and every safety gate
-fails closed, but known bugs remain. The three stages are exit criteria, not
-version labels -- the version scheme stays `0.6.x-betaN` because
+This branch has completed **Alpha implementation and supervised backend
+acceptance**: every LUBA Gate 1-4 test passed and the safety gates fail closed,
+but known release blockers remain. In particular, the card's built-in Real Go
+defaults still differ from the deliberately bounded profile used for Gate 4;
+backend acceptance must not be presented as acceptance of that older card
+profile. The three stages are exit criteria, not version labels -- the version
+scheme stays `0.6.x-betaN` because
 `beta-release.yml` numbers from it and prior builds already shipped as `-betaN`.
 
-| Stage | Meaning | Exit criteria |
-| --- | --- | --- |
-| **Alpha** | Features complete, known bugs remain | Every safety gate fails closed; no unbounded motion; abort always wins |
-| **Beta** | Fewer bugs; safety items resolved | Turn granularity solved; BLE link holds a full path run; no known way to strand a live client |
-| **Release** | All safety work done bar cosmetics | Non-LUBA hardware characterized or explicitly refused; no open safety defect |
+| Stage       | Meaning                              | Exit criteria                                                                                 |
+| ----------- | ------------------------------------ | --------------------------------------------------------------------------------------------- |
+| **Alpha**   | Features complete, known bugs remain | Every safety gate fails closed; no unbounded motion; abort always wins                        |
+| **Beta**    | Fewer bugs; safety items resolved    | Turn granularity solved; BLE link holds a full path run; no known way to strand a live client |
+| **Release** | All safety work done bar cosmetics   | Non-LUBA hardware characterized or explicitly refused; no open safety defect                  |
 
 See "Alpha to Beta" below for what closes the current gap.
 
@@ -55,7 +59,9 @@ See "Alpha to Beta" below for what closes the current gap.
 4. Do not enable real motion while
    `export_runtime_state.experimental_motion.backend_verified` is false. When it
    is false, `blockers` names the specific missing capability.
-5. Then run the supervised acceptance sequence below.
+5. Then run the supervised acceptance sequence below. The development LUBA
+   completed it on 2026-07-31; every new hardware family and any materially
+   changed motion profile requires its own acceptance.
 
 Note: the backend is pinned as a wheel URL, and HA re-installs a URL requirement
 on **every** start (`is_installed()` returns False whenever a requirement has a
@@ -76,18 +82,22 @@ Run in order, stopping at the first failure. Preconditions, all required:
 - Capture `scripts/ble_session_report.py` across the whole window so session
   lifetime is measured rather than assumed.
 
-| # | Gate | Pass criteria |
-| --- | --- | --- |
-| 1 | Confirmed zero stop | `mammotion.stop_manual_motion` reports `stop_confirmed` and `all_stop_writes_confirmed` true; the session is marked cancelled *before* the three emergency writes; a subsequent nonzero dispatch is refused with `ManualMotionCancelledError` |
-| 2 | Short straight segment | One segment reaches `target_reached` within tolerance, with an explicit stop after the final pulse |
-| 3 | Abort mid-run | Operator stop during a multi-pulse run; no movement command arrives after the stop, and no delayed replay occurs when the queue drains |
-| 4 | Two-segment L-path | Both segments report `target_reached`; the second only starts after the first is marked passed |
+| #   | Gate                   | Pass criteria                                                                                                                                                                                                                                 |
+| --- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Confirmed zero stop    | `mammotion.stop_manual_motion` reports `stop_confirmed` and `all_stop_writes_confirmed` true; the session is marked cancelled _before_ the three emergency writes; a subsequent nonzero dispatch is refused with `ManualMotionCancelledError` |
+| 2   | Short straight segment | One segment reaches `target_reached` within tolerance, with an explicit stop after the final pulse                                                                                                                                            |
+| 3   | Abort mid-run          | Operator stop during a multi-pulse run; no movement command arrives after the stop, and no delayed replay occurs when the queue drains                                                                                                        |
+| 4   | Two-segment L-path     | Both segments report `target_reached`; the second only starts after the first is marked passed                                                                                                                                                |
 
 Abort rule: if any gate fails, stop the session, disable experimental motion,
 and record the failure before retrying. Do not iterate on a failing gate with
 the mower live.
 
 ### Results
+
+Entries are chronological. Statements such as “Gates 3-4 remain untested” in
+an earlier failed attempt describe the decision at that timestamp; the corrected
+Gate 4 result at the end of this section is the current acceptance status.
 
 **Gate 1 — PASSED 2026-07-29 22:32 EDT** on pymammotion 0.8.12.post1, in the dark,
 mower docked at `MODE_READY`, BLE live at −50 dBm. `stop_confirmed: true`,
@@ -101,7 +111,14 @@ session-cancellation half, which needs an active run to abort. Gate 1 requires n
 experimental-motion opt-in: `stop_manual_motion` is registered without the
 authorization wrapper by design, so a stop always works.
 
-**Gate 2 — NOT PASSED, stopped 2026-07-30 20:10 EDT.** A preparatory single
+**P1S revalidation — PASSED 2026-07-31 11:38 EDT.** With passive scanning and
+active GATT proxying, the docked mower remained position- and heading-identical
+while all three confirmed zero writes completed in 224.5, 104.3, and 84.5 ms
+(413.4 ms total). The result again reported `stop_confirmed: true`,
+`all_stop_writes_confirmed: true`, `owner_exited: true`, and no active session.
+No proxy timeout, connection cooldown, or write failure followed.
+
+**Gate 2 initial attempt — NOT PASSED, stopped 2026-07-30 20:10 EDT.** A preparatory single
 750 ms pulse at service speed 0.4 proved the new idle/manual-motion report
 stream: telemetry measured 5.18 cm immediately after the pulse and 4.77 cm two
 seconds later, matching the operator's observation of forward motion with no
@@ -125,6 +142,154 @@ connection cooldown. A second ESPHome proxy also lost its Home Assistant API
 connection during the same interval. A momentary `connected` snapshot therefore
 does not establish a safe motion window; stabilize the proxy/network path before
 retrying Gate 2.
+
+**Gate 2 P1S retry — NOT PASSED, stopped 2026-07-31 11:51 EDT.** The retry used
+P1S as the only active proxy after the stationary/app A/B below. A fresh
+immediate preflight passed every gate at -58 dBm: BLE active, queue open and
+empty, RTK fixed, mapped `AREA_INSIDE` position, `MODE_READY`, blades at zero,
+and no active route. The bounded executor sent exactly one nonzero
+`send_movement(linear_speed=200, angular_speed=0)` write with refresh disabled,
+then its explicit stop. The nonzero write confirmed in 171.7 ms and the stop in
+124.1 ms, so the earlier transport timeout did not recur. The operator observed
+roughly 0.5 in (1.27 cm) of physical forward movement, while position telemetry
+advanced only 0.8 mm, below the 2.5 mm progress threshold, and remained fixed
+through the 4, 8, 15, and 25 second samples. The command therefore actuated, but
+the map-position feed did not resolve the small displacement. The phase
+correctly failed closed as `no_target_progress`; there was no target completion
+and no delayed replay.
+
+The independent post-run stop then confirmed all three zero writes in 157.5,
+80.9, and 115.8 ms (354.2 ms total). No session remained active, the mower still
+reported blades off and `MODE_READY`, and experimental motion was disabled.
+The scoped 15-minute BLE report showed MTU 517, no sequence gaps, no malformed
+frames, and one clean local disconnect; the current P1S session remained open.
+This retry clears the proxy/write-completion failure and shows that a single
+300 ms command at linear speed 200 produces only a short firmware/dead-man step
+that is not reliably visible in map telemetry. Do not repeat the same live
+parameters: the executor cannot close the loop on displacement it cannot
+measure. Re-derive the smallest bounded app-parity refresh window or a higher
+single-shot speed offline, then obtain a new operator confirmation before
+another physical run. Gates 3-4 remain untested.
+
+**Gate 2 P1S two-write retry — PASSED 2026-07-31 12:02 EDT.** A fresh preflight
+again passed every gate with P1S as the sole active proxy at -60 dBm. The test
+used an aligned 10 cm target, linear speed 400, and the app's 200 ms refresh
+cadence. Final-approach scaling reduced the nominal 3500 ms pulse to 330.2 ms,
+which hard-bounded the run to exactly one initial nonzero write plus one refresh;
+no turn command was scheduled. The initial write confirmed in 128.4 ms, the
+single refresh completed inside the bounded window, and the mandatory stop
+confirmed in 214.3 ms.
+
+RTK measured 9.69 cm of travel on a 10 cm target, ending 5.6 mm from the target.
+The executor reported `target_reached`, one linear pulse, one refresh, and no
+blockers. Position settled after one second and remained stable through the 4,
+8, 15, and 25 second samples, proving there was no delayed replay. The separate
+post-run emergency stop confirmed three more zero writes in 114.5, 112.0, and
+108.8 ms (335.3 ms total). The mower remained `MODE_READY`, blades off, RTK
+fixed, and inside `Backyard Right`; no session remained active and experimental
+motion was disabled. The scoped BLE report showed no disconnects, sequence
+gaps, malformed frames, or dropped frames during the window. Gate 3 (abort
+mid-run) is next; Gate 4 remains untested.
+
+**Gate 3 P1S active-session abort — PASSED 2026-07-31 12:50 EDT.** Offline
+preparation first found that `ManualMotionCancelledError` was being folded into
+the refresh loop's ordinary resend-failure path. Nonzero dispatch was still
+blocked, but the owner could remain alive in feedback/sample waits instead of
+returning `operator_stop`. The cancellation now delivers a defensive stop and
+propagates to the exclusive session wrapper; its focused tests and the complete
+454-test Mammotion suite passed before deployment.
+
+The live test used an aligned 30 cm fallback-bounded segment at linear speed
+400 with the app's 200 ms cadence. An independent monitor waited for the first
+nonzero GATT-confirmed dispatch, then called `stop_manual_motion` immediately.
+The original executor returned `operator_stop` after 673 ms with the same
+session ID, `cancelled: true`, and `cancel_reason: operator_stop`. The stop
+service observed the active session, marked it aborted, confirmed all three
+zero writes in 172.2, 263.6, and 106.7 ms, and reported `owner_exited: true` in
+542.5 ms. The last completed dispatch was a stop.
+
+Eleven runtime samples across the following 20 seconds remained bit-identical
+at x 4.9575, y -3.0168, heading 173.4769. No session reappeared, no delayed
+nonzero command replayed, BLE remained active, and blade RPM remained zero.
+The scoped BLE report showed no disconnects, sequence gaps, malformed frames,
+or dropped frames. Experimental motion was disabled afterward. Gate 4 remains
+untested; the 176-degree turn regression must be revalidated before the
+two-segment L-path.
+
+The next preflight eventually reported x 4.9592, y -3.0386, a 2.19 cm net
+displacement from the confirmed pre-abort command. This is delayed position
+telemetry, not evidence of a delayed command: the session was already aborted,
+its last completed dispatch remained a stop for the entire observation, and no
+session or queue activity reappeared. It does mean a short unchanged-position
+window cannot by itself prove that an abort produced zero physical travel.
+
+**176-degree VIO turn regression — PASSED 2026-07-31.** From a fresh VIO heading
+of -82.942 degrees, the standalone closed-loop turn targeted 93.058 degrees.
+Three same-direction pulses advanced 58.417, 57.419, and 55.724 degrees, with a
+confirmed zero stop after every pulse. The final VIO heading was 88.617 degrees:
+171.559 degrees of measured rotation and only 4.441 degrees of residual error,
+well inside the 18-degree gate. There was no overshoot/reversal, stale-heading
+sample, no-progress streak, command failure, or safety blocker.
+
+The turn translated 10.48 cm, below its 25 cm displacement guard but material
+for click-to-go route accuracy. The independent post-run stop confirmed three
+more zero writes in 208.8, 104.8, and 102.8 ms. Position and both heading feeds
+then remained stable for 15 seconds; no session remained active, blades stayed
+off, BLE stayed selected, and experimental motion was disabled. The scoped BLE
+report again showed no disconnects, sequence gaps, or malformed/dropped frames.
+Gate 4 can proceed, but its result must prove the second segment recalculates
+from the post-turn position rather than assuming a perfectly in-place pivot.
+
+**Gate 4 first L-path attempt — NOT PASSED, stopped 2026-07-31.** Segment 1
+passed: one 10.46 cm calibration pulse derived a 358.206-degree map/VIO offset,
+then one scaled refreshed pulse reached 5.6 cm from its 30 cm waypoint. Segment
+2's initial VIO turn also passed, using two monotonic pulses to finish 14.56
+degrees from its pre-turn target. Every calibration, turn, and linear pulse had
+a confirmed zero stop.
+
+The turn translated 14.43 cm. That changed the bearing from the mower's fresh
+position, but the executor did not recalculate until after sending its linear
+pulse. It therefore drove roughly 23 degrees off the new bearing and stopped
+18.05 cm from the target at the one-pulse ceiling. Later position telemetry
+settled another 9.5 cm away at x 4.7262, y -2.5376; no session or dispatch
+reappeared, so this was delayed reporting of the bounded run rather than a
+delayed replay. The independent emergency stop confirmed all three writes in
+136.7, 104.3, and 101.6 ms, and experimental motion was disabled.
+
+The executor now recomputes bearing after every translating VIO turn, performs
+a bounded pre-linear correction when the fresh aim error exceeds the tighter of
+the heading and realignment tolerances, and verifies the corrected heading from
+fresh position before any forward write. The VIO turn now also receives the
+caller's turn-translation limit; it had previously retained its 0.5 m default.
+If correction is unavailable, exhausts its budget, or remains misaligned, the
+segment fails before linear motion. Two focused regressions plus the complete
+456-test Mammotion suite passed, the fix was deployed with a matching checksum,
+and a fresh 60 cm L-path dry run from the settled position passed containment
+and both segment plans. Gate 4 still requires a new supervised real retry.
+
+**Gate 4 corrected L-path retry — PASSED 2026-07-31.** A fresh preflight
+passed every gate at the exact dry-run start position, x 4.7262, y -2.5376,
+with BLE at -58 dBm, fixed RTK, healthy daylight VIO, blades at zero, and no
+active route. The bounded 60 cm path used two 30 cm legs and the two-real-
+segment ceiling. Segment 1 was marked passed before segment 2 began and ended
+0.96 cm from its waypoint. Segment 2 used two same-direction VIO turn pulses,
+each with a confirmed stop. Although the turn translated 8.80 cm, the new
+post-turn check recalculated the bearing from the fresh position: facing
+171.894 degrees versus a 171.610-degree bearing, an aim error of only 0.285
+degrees. No corrective pulse was needed, and the linear write was allowed only
+after that alignment passed.
+
+Both segments reported `target_reached`; the final position was x 4.3911,
+y -2.8064, 4.70 cm from the requested endpoint and inside the 8 cm tolerance.
+The run ended with `failed_segment_index: null`, two executed real segments,
+and no active session. The independent stop then confirmed all three zero
+writes in 219.0, 200.8, and 110.5 ms (530.4 ms total). Position and heading
+remained bit-identical for the following 18 seconds, blades remained off, and
+no session or delayed dispatch appeared. The scoped 15-minute BLE report had
+no disconnect, sequence-gap, malformed-frame, or dropped-frame event. Finally,
+experimental motion was disabled and runtime now blocks real motion with
+`experimental_motion_disabled`. Gates 1-4 of the supervised LUBA acceptance
+sequence are complete.
 
 Do not enable broad `pymammotion: debug` logging during that diagnosis. Its cloud
 gateway logs authenticated request data and network responses. Use only the
@@ -182,8 +347,58 @@ than the 43-, 287-, and 607-second HA sessions in the preceding capture. The nex
 isolation boundary is therefore native PyMammotion BLE versus PyMammotion through
 HA/ESPHome; do not resume physical motion based on the app result alone.
 
+### Single-proxy passive-scan A/B (2026-07-31)
+
+The next stationary comparison isolated the ESPHome path without powering down
+unrelated devices:
+
+- With IRK Capture S3 as the only remote proxy, the mower advertised connectably
+  at -63 to -65 dBm, but the proxy repeatedly lost its Home Assistant API
+  session. Handshakes took 22-60 seconds, the proxy disappeared from the active
+  scanner registry, and unrelated adjustable-bed/fitness-device GATT attempts
+  failed through the same path. A seven-second Mammotion Bluetooth reset could
+  not reconnect; PyMammotion correctly armed its 120-second cooldown.
+- P1S was then flashed with passive advertisement scanning but active GATT
+  proxying:
+
+  ```yaml
+  esp32_ble_tracker:
+    scan_parameters:
+      active: false
+
+  bluetooth_proxy:
+    active: true
+  ```
+
+  As the only remote proxy it registered as connectable, heard the mower at
+  -42 dBm, and was selected with zero failures and two of three slots free.
+  Mammotion became active over BLE at -44 dBm and `ble_link_live` passed after
+  the initial command queue drained.
+
+- Turning the Mammotion Bluetooth switch off completed in 0.16 seconds. P1S
+  logged the mower disconnect 90 ms later with `error=0`, freed one connection
+  slot, and did not replay a delayed reconnect. The official app then connected
+  immediately and the operator drove the mower off the dock over BLE without
+  restarting it. The mower was redocked and the app closed before HA reclaimed
+  the link.
+- After deploying the defects found by this test and restarting HA, the entry
+  loaded, automatically reattached through P1S at -46 dBm, and returned
+  `ble_link_live: on`. A final off/on cycle changed liveness immediately to
+  `ble_client_not_connected`, then passed again after the normal queue-settle
+  interval.
+
+This rules out passive scanning, the mower radio, and ESPHome proxies in general
+as the cause of the failed isolation window. The evidence points specifically
+to the IRK proxy's firmware/configuration/API state. It also found two
+Mammotion-HA defects: a cloud-backed mower did not register a late BLE
+advertisement callback when no proxy was ready during setup, and cached motion
+gate entities were not invalidated on a Bluetooth toggle. Both now have
+regression tests. This stationary/app result does **not** reopen Gate 2 by
+itself; integration-driven physical motion still requires a new supervised
+operator confirmation and a stable P1S window.
+
 ⚠️ **Confirmed-write latency is closer to the guard timeout than expected.** The
-three writes took 739, **1982**, and 191 ms on a *good* −50 dBm link.
+three writes took 739, **1982**, and 191 ms on a _good_ −50 dBm link.
 `_BLE_MOTION_WRITE_TIMEOUT_SECONDS` is 4.0 s, so the worst observed write used half
 the budget. Gate 2 subsequently hit that deadline on both the movement and normal
 stop writes. Increasing the deadline is not automatically safe: it also extends
@@ -198,20 +413,21 @@ safety one. It is tracked as the headline Alpha-to-Beta item below.
 
 ## Breaking migrations
 
-| Previous HA enum state/option | New state/option | Compatibility |
-| --- | --- | --- |
-| `MODE_READY` and other uppercase mower enum labels | `mode_ready` and lowercase equivalents | Original label is in `raw_protocol_value`. |
-| `AUTO`, `FLOOR`, `WALL`, etc. | `auto`, `floor`, `wall`, etc. | Select entity methods normalize legacy case during migration. |
-| `MAN`, `WOMAN`, language labels | `man`, `woman`, lowercase language | Wire commands are converted back to vendor enum names. |
-| Uppercase RTK, task-area, and SPINO sensor states | Lowercase equivalent | Update automations, templates, and dashboard conditions. |
-| `mammotion.get_tokens` | Removed | Use the native camera/WebRTC entity; credentials stay server-side. |
+| Previous HA enum state/option                      | New state/option                       | Compatibility                                                      |
+| -------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------ |
+| `MODE_READY` and other uppercase mower enum labels | `mode_ready` and lowercase equivalents | Original label is in `raw_protocol_value`.                         |
+| `AUTO`, `FLOOR`, `WALL`, etc.                      | `auto`, `floor`, `wall`, etc.          | Select entity methods normalize legacy case during migration.      |
+| `MAN`, `WOMAN`, language labels                    | `man`, `woman`, lowercase language     | Wire commands are converted back to vendor enum names.             |
+| Uppercase RTK, task-area, and SPINO sensor states  | Lowercase equivalent                   | Update automations, templates, and dashboard conditions.           |
+| `mammotion.get_tokens`                             | Removed                                | Use the native camera/WebRTC entity; credentials stay server-side. |
 
 ## Verified limitations
 
 - Only LUBA is eligible for supervised live acceptance in this release.
-- Turn accuracy is unresolved: the rotation quantum is roughly 50 degrees per
-  pulse, so a requested heading can overshoot. Straight segments land within
-  about 1 cm along-track.
+- Refreshed VIO turn heading accuracy passed the 176-degree regression, finishing
+  4.44 degrees from target without reversal. The nominally in-place turn drifted
+  10.48 cm, so turn translation remains the quality limitation. Straight
+  segments land within about 1 cm along-track.
 - The BLE link is the practical constraint, not the code. Measured over 8 hours
   while docked: median session 59 s, and 42% of disconnects are `0x08`
   supervision timeouts with a 41 s median. A long path run may outlive its link.
@@ -221,18 +437,36 @@ safety one. It is tracked as the headline Alpha-to-Beta item below.
 
 ## Alpha to Beta
 
-- **Turn granularity.** Wire `motion_refresh_interval_ms` into
-  `vio_turn_to_heading` -- app-parity refresh gave roughly 7x on a properly
-  powered turn at angular 500 -- then re-derive heading tolerance and
-  `min_progress_distance` from taped measurements.
-- **BLE session lifetime.** A full path run should fit inside one link. Re-measure
-  with `scripts/ble_session_report.py` now that the slot-leak fix is pinned, and
-  compare against the 2026-07-27 baseline.
+- **Card execution profile.** The backend Gate 4 call used one linear command
+  per segment, an 8 cm waypoint tolerance, 2.5 mm progress threshold, 102.4
+  degree forward offset, four VIO turn commands, and BLE auto-recovery off. The
+  card still emits its older July 18 defaults, including a 30-pulse linear
+  ceiling, 15 cm tolerance, 6 cm progress threshold, 116.5 degree offset, and
+  BLE auto-recovery on. Align or explicitly profile these values, update
+  frontend assertions and README together, and do not call the default card
+  Real Go hardware-accepted until then.
+- **Turn translation and final tolerance.** Gate 4 now compensates from fresh
+  post-turn position and passed 4.70 cm from its final target, but its turn
+  still translated 8.80 cm and the standalone 176-degree turn drifted 10.48
+  cm. Reduce the 18-degree heading tolerance and measure the refreshed
+  turn-pulse floor without weakening the displacement guard.
+- **BLE session lifetime.** The complete bounded Gate 4 run fit inside one link
+  with no disconnect or malformed-frame event, but the longer docked baseline
+  still has a 59-second median. Re-measure a stationary soak with
+  `scripts/ble_session_report.py` and compare against the 2026-07-27 baseline;
+  do not attribute improvement solely to teardown because the dependency jump
+  also included other upstream changes.
 - **Task-2 constants** remain un-re-derived after the transport failures.
 - **Map edits are not picked up until an HA restart** -- the per-tick map block is
   unreachable in steady state.
 - **`no_actuation_detected` fires falsely in the turn phase**; the unused
   discriminator is `heading_went_fresh`.
+- **All-files pre-commit baseline.** The CI-scoped Ruff, format, mypy, frontend,
+  JSON, diff, and 456-test checks pass, but `pre-commit run --all-files` is not
+  a clean release gate: its legacy Ruff/codespell scope includes historical
+  evidence and scripts, pyupgrade crashes on Python 3.14, and its mypy command
+  differs from CI. Repair or deliberately scope those hooks instead of
+  committing automatic formatting across unrelated evidence files.
 
 ## Rollback
 

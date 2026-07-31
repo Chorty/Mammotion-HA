@@ -2,7 +2,8 @@
 
 **Affects:** `pymammotion` **0.8.12 / `main`** (verified against the tag — `ble.py`
 at `v0.8.12` is byte-identical to `main`), file `pymammotion/transport/ble.py`.
-Originally found on `0.8.8`; this integration now pins `0.8.12`.
+Originally found on `0.8.8`; this integration now pins the Chorty
+`0.8.12.post1` wheel while awaiting an official upstream release.
 **Found:** 2026-07-28, on a Luba `Luba-VSPLV397` via ESPHome BLE proxies.
 
 > **Scope note.** Three sites were identified. **One of them (the `start_notify`
@@ -11,24 +12,29 @@ Originally found on `0.8.8`; this integration now pins `0.8.12`.
 > integration was pinned to 0.8.8 when the failure was captured. **The
 > other two are unfixed as of 0.8.12/`main`** and are what this report is asking
 > for.
-**Impact:** these paths can strand a proxy connection slot whenever the client
-remains live from the proxy's perspective after the Python reference is dropped.
-Repeated failures can exhaust the proxy's three slots. When no transport can
-dispatch, the device queue may then accumulate commands—including a motion
-command and its later stop—and replay them after recovery on a timeline the
-caller no longer controls.
+> **Impact:** these paths can strand a proxy connection slot whenever the client
+> remains live from the proxy's perspective after the Python reference is dropped.
+> Repeated failures can exhaust the proxy's three slots. When no transport can
+> dispatch, the device queue may then accumulate commands—including a motion
+> command and its later stop—and replay them after recovery on a timeline the
+> caller no longer controls.
 
-This is written up for filing upstream. Nothing in this repository can fix it —
-the dependency is a pinned PyPI release, not a fork.
+**Status update 2026-07-31:** the integration now pins the Chorty
+`0.8.12.post1` wheel containing the failure-atomic teardown patch, and a runtime
+capability probe keeps real motion locked if that code is absent. Upstream PR
+[#180](https://github.com/mikey0000/PyMammotion/pull/180) remains open and no
+official upstream release contains the fix. Treat the analysis below as the
+upstream report and historical evidence; do not publish further upstream
+changes without the operator's explicit approval.
 
 ## Symptom
 
 Counted over one hour of logs filtered to the mower's MAC:
 
-| event | count |
-|---|---|
-| `Connection open` | **6** |
-| `Disconnecting` | **0** |
+| event                                          | count |
+| ---------------------------------------------- | ----- |
+| `Connection open`                              | **6** |
+| `Disconnecting`                                | **0** |
 | `out of connection slots / device unreachable` | **6** |
 
 Six connections opened, none ever closed, six later attempts refused. An ESPHome
@@ -46,7 +52,7 @@ proxy has three BLE slots. Once they are gone:
 ```
 
 The 5 s `todev_ble_sync(2)` keepalive queues up along with everything else, which
-is why the transport *looks* idle from above. It is **blocked, not dead**.
+is why the transport _looks_ idle from above. It is **blocked, not dead**.
 
 ## Root cause
 
@@ -189,7 +195,7 @@ sends **bounded** motion commands it is a safety bug.
 
 The pattern this project relies on is: send a movement pulse, then send a
 mandatory explicit stop that bounds it. When the queue is gated, the movement
-commands *and the stop* accumulate and flush together, ~20–55 s later. The mower
+commands _and the stop_ accumulate and flush together, ~20–55 s later. The mower
 then executes the whole batch on its own schedule — **after** the caller has
 observed the command window close and concluded the mower never moved.
 
@@ -225,7 +231,7 @@ The decision to hold the link open rather than cycle it is defensible on its own
 2026-05-04 onward, **nothing in normal operation ever calls `disconnect()`**.
 The only remaining callers are `DeviceHandle.disconnect_transport` — which is
 gated on `is_connected`, and therefore cannot fire at Site A — and explicit
-teardown in `client.py`. Every disconnect is now an *exception* path, which is
+teardown in `client.py`. Every disconnect is now an _exception_ path, which is
 precisely where the missing teardown lives. Removing idle-disconnect did not
 create the bug, but it removed the mechanism that had been masking it.
 
@@ -240,7 +246,7 @@ device unreachable — cooling down for 120s (is_usable now False; sends use MQT
 
 The thread concluded that the reporter's Shelly proxies are passive-scan only and
 cannot make GATT connections, so an ESPHome proxy was needed. That is a correct
-explanation *for that reporter* — but it closed the issue without examining why
+explanation _for that reporter_ — but it closed the issue without examining why
 slots ran out, and the diagnosis does not transfer. **This deployment uses ESPHome
 active proxies with three free slots and exhausts them anyway.** The log line is
 therefore not a reliable indicator of proxy misconfiguration; it is also what a
@@ -252,7 +258,7 @@ after an account switch) are both "the BLE transport gets stuck and only a reloa
 recovers it" reports. They are not obviously the same defect and are not claimed
 here as such.
 
-Two open issues are *consistent* with slot exhaustion but carry no slot evidence,
+Two open issues are _consistent_ with slot exhaustion but carry no slot evidence,
 so they are listed as suggestive only, not as corroboration: **#681** ("move
 forward/left/right don't work... works for some minutes, then stops", ESPHome
 proxy 3 m away) and **#778** ("commands often not working; reload the integration
@@ -278,7 +284,7 @@ except (TimeoutError, BleakError, OSError) as exc:
 **Site C (and Site B on 0.8.x)** — `5e18185a` fixed the `start_notify` branch it
 could see, but the surrounding region is still not failure-atomic: anything that
 is not a `BleakError` escapes with the slot spent. Wrap the whole
-post-`establish_connection` region instead, so *any* exception releases the slot
+post-`establish_connection` region instead, so _any_ exception releases the slot
 it just took:
 
 ```python
@@ -327,7 +333,7 @@ Two things would have made this diagnosable in minutes instead of weeks:
    proxy logs.
 
 2. **A public completion-aware BLE dispatch API.** `is_usable`
-   answers a *routing-eligibility* question (a `BLEDevice` is cached, RSSI is
+   answers a _routing-eligibility_ question (a `BLEDevice` is cached, RSSI is
    acceptable, no cooldown is armed) and is easy to mistake for liveness.
    `last_send_monotonic` is also insufficient because BLE stamps it before the
    awaited GATT write. Consumers need a supported way to enqueue a command and

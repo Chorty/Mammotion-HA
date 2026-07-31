@@ -1,18 +1,21 @@
 # pymammotion: a lost BLE fragment poisons the next report frame
 
-**Affects:** `pymammotion==0.8.8` (the version this integration pins), file
+**Affects:** `pymammotion==0.8.8` (the version pinned when captured), file
 `pymammotion/bluetooth/ble_message.py`.
 **Found:** 2026-07-25, on a Luba `Luba-VSPLV397` via ESPHome BLE proxies.
 **Impact:** one lost BLE packet mid-message silently corrupts and destroys **at least
-two** device reports, and the corruption is delivered to the parser as a *complete*
+two** device reports, and the corruption is delivered to the parser as a _complete_
 frame rather than being detected at the transport layer.
 
-This is written up for filing upstream. Nothing in this repository can fix it — the
-dependency is a pinned PyPI release, not a fork.
+**Status update 2026-07-31:** Mikey hand-applied the three reassembly-buffer
+resets to upstream `main` as `68e0095`; PR #181 is superseded. It is not in an
+official release. This integration pins the Chorty `0.8.12.post1` wheel carrying
+that commit plus the teardown fix, and verifies both capabilities at runtime.
+The analysis below is retained as the evidence for the fix.
 
 ## Symptom
 
-`DeviceHandle` drops frames whose fields are the wrong *type*, with the offending value
+`DeviceHandle` drops frames whose fields are the wrong _type_, with the offending value
 being readable ASCII from an entirely different message:
 
 ```
@@ -59,15 +62,15 @@ self._message.clear_notification()           # <-- only reset, only on success
 
 So every non-zero return leaves a partial message sitting in the buffer:
 
-| return | meaning | buffer state |
-|---|---|---|
-| `1` | more fragments expected | partial retained (correct) |
-| `-4` | checksum mismatch | **partial retained (bug)** |
-| `-100` | exception while parsing | **partial retained (bug)** |
-| (gap) | a fragment never arrived at all | **partial retained (bug)** |
+| return | meaning                         | buffer state               |
+| ------ | ------------------------------- | -------------------------- |
+| `1`    | more fragments expected         | partial retained (correct) |
+| `-4`   | checksum mismatch               | **partial retained (bug)** |
+| `-100` | exception while parsing         | **partial retained (bug)** |
+| (gap)  | a fragment never arrived at all | **partial retained (bug)** |
 
 When the missing fragment simply never arrives, nothing ever resets the buffer. The
-*next* message's fragments are appended to the stale partial, and as soon as one arrives
+_next_ message's fragments are appended to the stale partial, and as soon as one arrives
 with `hasFrag()` false, `parseNotification` returns `0` and the handler forwards
 **stale-partial + new-message** as a single "complete" frame.
 
@@ -106,7 +109,7 @@ rate of `dropping frame` (4 in 2.5 hours).
 
 ## Consequence for callers
 
-A dropped frame is a *lost report*, and the loss is invisible above the transport: the
+A dropped frame is a _lost report_, and the loss is invisible above the transport: the
 consumer sees telemetry that simply stops changing. In this integration that produced a
 concrete false diagnosis — a guarded turn reported bit-identical `vision_heading` **and**
 bit-identical `displacement_m` across two pulses while the operator watched the mower
@@ -156,7 +159,7 @@ Notes on correctness:
 - Clearing at the sequence-gap site is safe because it happens **before** the
   `setType` / `setPkgType` / `setSubType` / `setFrameCtrl` calls, so the current packet
   still populates a fresh `BlufiNotifyData` normally.
-- A gap on the *first* packet of a new message is the common case and clearing is a
+- A gap on the _first_ packet of a new message is the common case and clearing is a
   no-op there (the buffer is already empty). The gap that matters is the mid-fragment
   one, and that is exactly the case this fixes.
 - Clearing on `-4` / `-100` discards the type metadata too, which is correct: that
@@ -164,12 +167,11 @@ Notes on correctness:
 
 ## Suggested follow-up (optional, larger)
 
-The sequence check currently only emits at DEBUG. Since a gap now implies a *discarded
-message*, it is worth surfacing — either a counter on the transport or a single INFO
+The sequence check currently only emits at DEBUG. Since a gap now implies a _discarded
+message_, it is worth surfacing — either a counter on the transport or a single INFO
 log — so consumers can distinguish "the mower went quiet" from "we are losing packets".
 The distinction matters: they look identical from above, and they call for opposite
 responses.
-
 
 ---
 
@@ -220,17 +222,17 @@ Measured on this deployment across the entire retained log, every outgoing BLE w
 small:
 
 | payload size | occurrences |
-|---|---|
-| 27 | 64 |
-| 28 | 141 |
-| 35 | 1 |
-| 48–54 | 80 |
+| ------------ | ----------- |
+| 27           | 64          |
+| 28           | 141         |
+| 35           | 1           |
+| 48–54        | 80          |
 
 **Largest send ever observed: 54 bytes.** So the 517 chunk size is never approached and
 this defect is currently unreachable. It would bite the first command carrying a payload
 over 255 bytes.
 
-## What this *does* explain about the reassembly bug
+## What this _does_ explain about the reassembly bug
 
 Because a BluFi frame can carry at most 255 bytes, **any device report larger than 255
 bytes is necessarily fragmented**, regardless of the negotiated MTU. Fragmentation is the

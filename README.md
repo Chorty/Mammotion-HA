@@ -75,7 +75,7 @@ Once the integration is set up, you can control and monitor your Mammotion mower
 For guarded one-segment click/go validation from the command line, use:
 
 ```bash
-uv run python scripts/mammotion_click_go_smoke.py lawn_mower.your_mower_entity
+.venv/bin/python scripts/mammotion_click_go_smoke.py lawn_mower.your_mower_entity
 ```
 
 What this does by default:
@@ -89,7 +89,7 @@ What this does by default:
 To run a guarded real one-segment smoke step (movement-producing), explicit confirmations are required:
 
 ```bash
-uv run python scripts/mammotion_click_go_smoke.py lawn_mower.your_mower_entity \
+.venv/bin/python scripts/mammotion_click_go_smoke.py lawn_mower.your_mower_entity \
 	--run-real --confirm-blades-off --confirm-clear-area
 ```
 
@@ -107,6 +107,13 @@ feature. Preview and dry-run support up to seven destinations. Real execution
 is limited to two segments and is disabled unless every backend safety gate
 passes.
 
+The bounded backend completed supervised LUBA acceptance on 2026-07-31,
+including active abort and a two-leg L path. The card's built-in Real Go defaults
+still reflect an older calibration profile and must be reconciled with the
+accepted backend profile before the beta release. Until that work is complete,
+use the card for preview and dry-run only; do not treat its default Real Go
+profile as hardware-accepted.
+
 Add the integration-served JavaScript as a dashboard resource:
 
 ```text
@@ -117,7 +124,8 @@ Use resource type `JavaScript module`. The version query is required because
 Home Assistant serves integration static files with cache headers; update it to
 the installed release version after every upgrade.
 
-Complete card YAML:
+Complete preview/dry-run card YAML (the motion fields document the current card
+profile; they are not the final accepted release defaults):
 
 ```yaml
 type: custom:mammotion-custom-path-card
@@ -149,8 +157,9 @@ sample_delays:
 Real motion additionally requires the integration option **Enable experimental
 BLE-only manual motion**, a positively verified PyMammotion backend, a fresh
 and idle LUBA, live BLE/queue evidence, blades off, a clear mapped area, and
-both per-run confirmations. PyMammotion 0.8.12 remains intentionally locked
-because two BLE teardown leaks are not yet fixed in an official release.
+both per-run confirmations. This branch pins the capability-probed Chorty
+PyMammotion `0.8.12.post1` wheel because no official upstream release contains
+the remaining BLE teardown fix. Upstream `0.8.12` by itself stays locked out.
 `movement_use_wifi` is retained only for option migration and cannot bypass
 the BLE-only gate.
 

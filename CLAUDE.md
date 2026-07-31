@@ -2,6 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Current P0 Handoff
+
+Read `docs/NEXT-SESSION.md` before continuing P0 or click-to-go work. The
+supervised backend Gates 1-4 passed on the LUBA on 2026-07-31 and experimental
+motion was disabled afterward. Do not repeat a physical test without a fresh
+operator confirmation. The main remaining release decision is reconciling the
+card's older Real Go defaults with the conservative profile that passed Gate 4;
+backend acceptance is not acceptance of the current default card payload.
+
+Repositories owned by `mikey0000` are read-only for this work. Do not push,
+comment, open/close issues or PRs, or publish anything there. A later authorized
+push goes only to the `Chorty` fork.
+
 ## Build Commands
 
 There is no global `uv` on the dev machine — `uv sync`/`uv run` fail with

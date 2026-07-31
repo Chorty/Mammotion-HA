@@ -1,15 +1,17 @@
 # Custom path execution research
 
-This document records the current safety position for custom mower paths.
+This document records the architectural research that led to the guarded
+click-to-go design. The protocol conclusion remains current: no firmware-level
+arbitrary-waypoint upload with a blades-off guarantee was found.
 
-Status: guarded execution envelope only. The integration now includes
-`mammotion.execute_custom_path`, but that service is intentionally non-moving:
-it performs readiness checks and returns a blocked movement plan. It does not
-send mower movement, task, blade, or stop commands.
-
-Current conclusion: as of this pass, Mammotion/pymammotion does not expose a
-proven safe "follow these arbitrary waypoints with blades guaranteed off"
-command path. Real movement remains blocked in code.
+Status updated 2026-07-31: `mammotion.execute_custom_path` remains a non-moving
+readiness envelope, but the integration now also has a separate experimental
+executor built from bounded raw manual-motion segments. Preview and dry-run
+allow seven destinations; real execution is BLE-only, explicitly opted in,
+capability-probed, session-exclusive, operator-confirmed, and capped at two
+segments. Supervised LUBA tests passed a short straight segment, active abort,
+a 176-degree turn, and a two-leg L path. This is **not** firmware autonomous
+navigation and does not change the protocol finding below.
 
 ## Current foundation
 
@@ -18,8 +20,8 @@ The safe path format is `mower_map_xy`:
 ```json
 {
   "points": [
-    {"x": 1.0, "y": 1.0},
-    {"x": 5.0, "y": 5.0}
+    { "x": 1.0, "y": 1.0 },
+    { "x": 5.0, "y": 5.0 }
   ],
   "area_hash": 123456,
   "speed": 0.2,
@@ -132,7 +134,7 @@ Blade control exists, but does not prove safe route execution:
 
 - Non-Luba1 blade control uses
   `DrvMowCtrlByHand(main_ctrl, cut_knife_ctrl, cut_knife_height,
-  max_run_speed)`.
+max_run_speed)`.
 - Luba1 blade control uses `set_blade_control(on_off=0/1)`.
 - Turning blades off before a job is not equivalent to proving the firmware will
   keep blades off after a later task-start command.
@@ -156,10 +158,11 @@ and "customized path" wording, but did not reveal an obvious app-to-mower
 custom waypoint upload command. This scan is not as strong as a JADX decompile;
 it only supports the current pymammotion/protobuf conclusion.
 
-## Questions that must be answered before execution
+## Questions and answers that shaped guarded execution
 
-Before enabling real movement from `mammotion.execute_custom_path`, research
-must answer:
+`mammotion.execute_custom_path` was deliberately never turned into the moving
+service. The experimental raw executor answered only the narrower questions
+needed for a fail-closed LUBA trial:
 
 - Can the mower follow arbitrary waypoints, or only stored plans/areas?
 - Is there a firmware-supported navigation-only mode?
@@ -180,10 +183,13 @@ must answer:
 
 ## Current safety assessment
 
-Arbitrary custom path execution is not approved for real movement yet.
+Firmware-level arbitrary custom path execution is still not available or
+approved. The narrow experimental alternative is a guarded manual-motion
+controller, and it remains disabled by default.
 
-The current safe answer is: expose a blocked readiness service, not an execute
-button that moves the mower.
+The original safe answer still applies to `execute_custom_path`: it exposes a
+blocked readiness service, not an execute button. Movement lives behind the
+separate raw vector/multi-segment services and central authorization boundary.
 
 The safest likely execution path, if firmware support exists, would be:
 
@@ -198,19 +204,19 @@ The safest likely execution path, if firmware support exists, would be:
 8. continuously monitor position, command failures, and transport state;
 9. stop immediately on invalid state or command failure.
 
-Cloud-only movement should be treated as high risk because latency and command
-delivery guarantees are weaker than local/BLE paths. Local Wi-Fi or BLE may be
-safer, but this must be proven against pymammotion/APK/protobuf behavior before
-implementation.
+Cloud/Wi-Fi manual motion is now rejected as `manual_motion_requires_ble`.
+Supervised testing proved the bounded BLE path on one LUBA only. Unknown models,
+other mower families, RTK stations, SPINO, charging, active mowing, stale
+telemetry, an unverified backend, and an unavailable BLE link all fail closed.
 
 ## Approval gate
 
-Do not implement real mower movement, blade control, path upload, or route
-execution until a follow-up research pass identifies a concrete command path and
-the user explicitly approves implementation.
+Do not broaden the accepted scope into firmware path upload, blade control,
+cloud/Wi-Fi motion, more than two real segments, or non-LUBA hardware without a
+new research and hardware-acceptance cycle.
 
-The future real execution path should default to `dry_run: true` and reject real
-movement unless all safety fields are explicitly set.
-
-One-segment and full-path execution remain blocked until the pulse probe has
-been tested on the real mower in a clear area.
+Dry-run and preview remain the defaults. Every physical run still requires a
+fresh operator confirmation, clear mapped area, blades off, safe mower state,
+verified backend, live BLE, and a new explicit `go`. The prior operator approval
+cannot be reused. See `docs/p0-beta-release.md` for the tested parameters and
+`docs/NEXT-SESSION.md` for the unresolved card-default mismatch.

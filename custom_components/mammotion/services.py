@@ -950,8 +950,8 @@ RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA = vol.Schema(
         # B1 (2026-07-22) proved re-sending the movement command every 200 ms
         # for the pulse duration drives ~11x further than a single shot (the
         # mower self-halts after ~one ~4 in step otherwise). 0 restores the
-        # legacy single-shot. Scoped to the linear phase only; the calibration
-        # drive and VIO turn phase never consult it.
+        # legacy single-shot. Used by linear motion and the VIO turn primitive;
+        # the short calibration drive remains single-shot.
         vol.Optional("motion_refresh_interval_ms", default=200): vol.All(
             vol.Coerce(int), vol.Range(min=0, max=1000)
         ),
@@ -4255,6 +4255,15 @@ async def _motion_refresh_window(
             # stop. A movement command is already open on the mower at this
             # point, so exiting without stopping leaves it driving until its
             # own device-side timeout. Deliver the stop first, then re-raise.
+            await _deliver_stop_despite_cancellation(coordinator)
+            raise
+        except ManualMotionCancelledError:
+            # ``stop_manual_motion`` marks the shared session cancelled before
+            # queueing its zero writes.  The confirmed-dispatch guard raises
+            # here on the next refresh.  This is control flow, not a transient
+            # resend failure: propagate it so the exclusive owner exits
+            # immediately and reports ``operator_stop`` instead of continuing
+            # through feedback waits and post-command samples.
             await _deliver_stop_despite_cancellation(coordinator)
             raise
         except Exception as err:  # noqa: BLE001
@@ -9663,6 +9672,10 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         result["stop_reason"] = "safety_gates_failed"
         return result
 
+    # Shared budget for the post-turn and mid-drive VIO corrections. A turn can
+    # translate the mower enough to change the bearing to a short waypoint; the
+    # correction budget must cover that pre-linear case as well as later drift.
+    realignments_used = 0
     turn_result: dict[str, Any]
     if turn_mode == "vio":
         vio_info = result["vio"]
@@ -9768,6 +9781,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                 # and the segment never reached its linear phase.
                 motion_refresh_interval_ms=motion_refresh_interval_ms,
                 turn_degrees_per_second=turn_degrees_per_second,
+                max_displacement_m=max_turn_translation_distance,
                 prefer_ble=prefer_ble,
                 dry_run=False,
                 confirm_blades_off=confirm_blades_off,
@@ -9851,6 +9865,134 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         result["stop_reason"] = "turn_phase_incomplete"
         return result
 
+    # A nominally in-place VIO turn can translate materially. Gate 4 on
+    # 2026-07-31 moved 14.4 cm while turning toward a 30 cm waypoint, changing
+    # the required bearing by ~8 degrees. The original turn correctly reached
+    # its PRE-turn target heading, but the executor then drove from the fresh
+    # position without checking the fresh bearing and missed by 18 cm. Recompute
+    # from post-turn telemetry and correct before any nonzero linear dispatch.
+    if turn_mode == "vio":
+        turn_displacement = turn_result.get("final_displacement_m")
+        if turn_displacement is not None and float(turn_displacement) > 0.0025:
+            post_turn = _custom_path_telemetry_snapshot(coordinator)
+            result["final_telemetry"] = post_turn
+            current_after_turn = _raw_segment_current_point(post_turn)
+            reading_after_turn = _vio_reading(coordinator)
+            offset_after_turn = result["vio"].get("offset_degrees")
+            if (
+                current_after_turn is None
+                or target is None
+                or offset_after_turn is None
+                or reading_after_turn["vio_state"] != _VIO_STATE_ACTIVE
+                or reading_after_turn["vision_heading"] is None
+            ):
+                result["stop_reason"] = "post_turn_alignment_unavailable"
+                return result
+
+            fresh_bearing = _path_heading_degrees(current_after_turn, target)
+            fresh_facing = (
+                float(reading_after_turn["vision_heading"]) + float(offset_after_turn)
+            ) % 360
+            fresh_aim_error = _heading_error_degrees(fresh_facing, fresh_bearing)
+            alignment_tolerance = min(
+                float(heading_tolerance_degrees),
+                float(vio_realign_threshold_degrees),
+            )
+            alignment: dict[str, Any] = {
+                "turn_displacement_m": float(turn_displacement),
+                "before": {
+                    "facing_degrees": round(fresh_facing, 3),
+                    "bearing_degrees": round(fresh_bearing, 3),
+                    "aim_error_degrees": round(fresh_aim_error, 3),
+                },
+                "alignment_tolerance_degrees": alignment_tolerance,
+                "correction_attempted": False,
+                "passed": abs(fresh_aim_error) <= alignment_tolerance,
+            }
+            result["post_turn_alignment"] = alignment
+            current_point = current_after_turn
+            result["target_map_heading_degrees"] = fresh_bearing
+
+            if not alignment["passed"]:
+                if realignments_used >= vio_max_realignments:
+                    result["stop_reason"] = "post_turn_realign_budget_exhausted"
+                    return result
+                realignments_used += 1
+                correction_target = _normalized_heading_degrees(
+                    fresh_bearing - float(offset_after_turn)
+                )
+                alignment["correction_attempted"] = True
+                alignment["target_vision_heading"] = correction_target
+                correction = await _vio_turn_to_heading(
+                    coordinator,
+                    target_vision_heading=float(correction_target or 0.0),
+                    heading_tolerance_degrees=alignment_tolerance,
+                    angular_speed=vio_angular_speed,
+                    max_commands=min(2, vio_turn_max_commands),
+                    motion_refresh_interval_ms=motion_refresh_interval_ms,
+                    turn_degrees_per_second=turn_degrees_per_second,
+                    max_displacement_m=max_turn_translation_distance,
+                    prefer_ble=prefer_ble,
+                    dry_run=False,
+                    confirm_blades_off=confirm_blades_off,
+                    confirm_clear_area=confirm_clear_area,
+                    ha_state=ha_state,
+                    active_route=active_route,
+                )
+                correction_commands = int(correction.get("commands_sent") or 0)
+                result["turn_commands_sent"] += correction_commands
+                result["commands_sent"] += correction_commands
+                result["command_results"].extend(
+                    correction.get("command_results") or []
+                )
+                result["realignments"].append(
+                    {
+                        "before_linear": True,
+                        "facing_degrees": round(fresh_facing, 3),
+                        "bearing_degrees": round(fresh_bearing, 3),
+                        "aim_error_degrees": round(fresh_aim_error, 3),
+                        "stop_reason": correction.get("stop_reason"),
+                    }
+                )
+                if correction.get("stop_reason") != "target_heading_reached":
+                    alignment["correction_stop_reason"] = correction.get("stop_reason")
+                    result["stop_reason"] = "post_turn_realign_incomplete"
+                    return result
+
+                # A correction can itself translate, so verify once more from
+                # fresh position and VIO heading. Never begin a linear pulse on
+                # the assumption that the correction pivot was perfectly fixed.
+                after_correction = _custom_path_telemetry_snapshot(coordinator)
+                result["final_telemetry"] = after_correction
+                corrected_point = _raw_segment_current_point(after_correction)
+                corrected_reading = _vio_reading(coordinator)
+                if (
+                    corrected_point is None
+                    or corrected_reading["vio_state"] != _VIO_STATE_ACTIVE
+                    or corrected_reading["vision_heading"] is None
+                ):
+                    result["stop_reason"] = "post_turn_alignment_unavailable"
+                    return result
+                corrected_bearing = _path_heading_degrees(corrected_point, target)
+                corrected_facing = (
+                    float(corrected_reading["vision_heading"])
+                    + float(offset_after_turn)
+                ) % 360
+                corrected_error = _heading_error_degrees(
+                    corrected_facing, corrected_bearing
+                )
+                alignment["after"] = {
+                    "facing_degrees": round(corrected_facing, 3),
+                    "bearing_degrees": round(corrected_bearing, 3),
+                    "aim_error_degrees": round(corrected_error, 3),
+                }
+                alignment["passed"] = abs(corrected_error) <= alignment_tolerance
+                current_point = corrected_point
+                result["target_map_heading_degrees"] = corrected_bearing
+                if not alignment["passed"]:
+                    result["stop_reason"] = "post_turn_alignment_incomplete"
+                    return result
+
     baseline_telemetry = result["final_telemetry"]
     loop_to_tolerance = max_linear_pulse_ceiling is not None
     effective_linear_ceiling = (
@@ -9875,7 +10017,6 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     result["linear_distance_ceiling"] = linear_distance_ceiling
     consecutive_no_progress = 0
     cumulative_linear_distance = 0.0
-    realignments_used = 0
     command_index = 0
     # A dead report stream is only a credible diagnosis if the feed was
     # demonstrably alive earlier in THIS run. Bit-identical coordinates from the
@@ -10176,6 +10317,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                         max_commands=min(6, vio_turn_max_commands),
                         motion_refresh_interval_ms=motion_refresh_interval_ms,
                         turn_degrees_per_second=turn_degrees_per_second,
+                        max_displacement_m=max_turn_translation_distance,
                         prefer_ble=prefer_ble,
                         dry_run=False,
                         confirm_blades_off=confirm_blades_off,

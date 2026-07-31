@@ -1,65 +1,68 @@
-# P0 deploy runbook (host 192.168.1.106)
+# P0 deploy and rollback runbook (host 192.168.1.106)
 
-Staged 2026-07-29. Run **after the mower docks**, not mid-job: restarting HA while
-BLE is unhealthy has previously left the integration in `setup_error` with no
-auto-retry, needing a manual entry reload.
+First deployed 2026-07-29 and updated through the successful 2026-07-31 Gate 4
+run. For any later deploy, work while the mower is stopped and experimental
+motion is off. Restarting HA while BLE is unhealthy has previously left the
+integration in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
-| | Host | Branch |
-| --- | --- | --- |
-| Integration version | `0.6.4-beta11` | `0.6.4-beta11` |
-| pymammotion pin | **`==0.8.8`** (container confirmed 0.8.8) | `0.8.12.post1` fork wheel |
-| Card `CARD_VERSION` | `2026.07.18b2` (42,055 B) | `0.6.4-beta11` (47,061 B) |
-| `manual_motion.py` | **absent** | present |
-| `backend_capability.py` | **absent** | present |
-| `capabilities.py` | **absent** | present |
+|                         | Host                                                           | Branch         |
+| ----------------------- | -------------------------------------------------------------- | -------------- |
+| Integration version     | `0.6.4-beta11`                                                 | `0.6.4-beta11` |
+| pymammotion pin         | `0.8.12.post1` fork wheel (container verified)                 | same           |
+| Card `CARD_VERSION`     | `0.6.4-beta11`; integration and HACS copies checksum-identical | `0.6.4-beta11` |
+| `manual_motion.py`      | present                                                        | present        |
+| `backend_capability.py` | present                                                        | present        |
+| `capabilities.py`       | present                                                        | present        |
 
-31 files differ: 3 new, 28 changed (including the whole entity layer —
-`sensor.py`, `select.py`, `number.py`, `button.py`, `strings.json`, and all 12
-translations). This is the first time the P0 branch goes live, not a surgical
-patch.
+The live host already ran the complete supervised acceptance sequence. Its
+`coordinator.py` and `__init__.py` match this tree. Its functional `services.py`
+is the Gate 4-passing build; the handoff tree differs only by a corrected schema
+comment. Experimental motion was disabled after the run.
 
-The host card `2026.07.18b2` is an **ancestor** commit (`c56766b0`); the branch
-moved past it in `a044d3e8`, so deploying is an upgrade, not a regression.
+## Breaking enum migrations already applied
 
-## ⚠️ Read before restarting: this applies the breaking enum migrations
-
-The host still reports uppercase states — `activity_mode: MODE_WORKING`,
-`voice_gender: MAN`, `voice_language: ENGLISH`, `task_area_path: MOWING`. After
-this deploy they become lowercase (`mode_working`, `man`, `english`, `mowing`).
-**Any automation, template, or dashboard condition matching the uppercase strings
-will stop matching.** The original label remains available in
-`raw_protocol_value`. See the migration table in `p0-beta-release.md`.
+The host now reports lowercase states such as `mode_working`, `man`, `english`,
+and `mowing`. Automations copied from an older release must be migrated from
+uppercase matching. The original label remains available in
+`raw_protocol_value`; see `p0-beta-release.md`.
 
 ## Steps
 
 1. **Back up** the current integration and card:
+
    ```sh
    set -a && source .env && set +a
    scripts/ha_ssh.exp 'cd /config/custom_components && tar -czf /config/mammotion-backup-$(date +%Y%m%d-%H%M).tgz mammotion && ls -la /config/mammotion-backup-*.tgz'
    ```
 
-2. **Ship the tarball.** ⚠️ Build it with `COPYFILE_DISABLE=1 tar …` — macOS BSD
+2. **Ship the complete integration tarball.** Build it with
+   `COPYFILE_DISABLE=1 tar …` — macOS BSD
    tar otherwise embeds AppleDouble metadata files, which extract as 46 junk
    `._*` entries **inside the integration**, including `translations/._en.json`
    next to the real translation files. They were removed by hand on 2026-07-29
    (`rm -f ._* translations/._* www/._*`); prevent them next time instead.
+
    ```sh
    scripts/ha_scp.exp <scratchpad>/mammotion_deploy.tgz /config/mammotion_deploy.tgz
    scripts/ha_ssh.exp 'cd /config/custom_components && tar -xzf /config/mammotion_deploy.tgz && echo extracted'
    ```
 
-3. **Copy the card to the HACS path as well.** The dashboard resource is
-   `/hacsfiles/mammotion/mammotion-custom-path-card.js?v=11`, which serves from
-   `/config/www/community/mammotion/` — *not* from the integration's own `www/`.
-   Both copies must be updated or the dashboard silently serves the stale card:
+3. **Use the integration-served card resource.** Register
+   `/mammotion/mammotion-custom-path-card.js?v=<installed-version>` as a
+   JavaScript module. The old HACS copy currently matches, but it is no longer
+   the documented source. If an existing dashboard still references
+   `/hacsfiles/mammotion/`, update that copy during migration or change the
+   resource URL:
+
    ```sh
    scripts/ha_ssh.exp 'cp /config/custom_components/mammotion/www/mammotion-custom-path-card.js /config/www/community/mammotion/mammotion-custom-path-card.js && md5sum /config/custom_components/mammotion/www/mammotion-custom-path-card.js /config/www/community/mammotion/mammotion-custom-path-card.js'
    ```
 
 4. **Verify checksums match the tree** before restarting — compare against
    `scratchpad/local_md5.txt`:
+
    ```sh
    scripts/ha_ssh.exp 'cd /config/custom_components/mammotion && find . -type f \( -name "*.py" -o -name "*.json" -o -name "*.yaml" -o -name "*.js" \) ! -path "./__pycache__/*" -exec md5sum {} \; | sort -k2'
    ```
@@ -72,20 +75,22 @@ will stop matching.** The original label remains available in
    needs working egress from the container. If it fails, the integration will not
    set up — go to Rollback.
 
-6. **Bump the Lovelace resource cache key** from `?v=11` to `?v=12` in
-   Settings → Dashboards → Resources. `CARD_VERSION` changed, but browsers key on
-   the query string, so without this they keep the cached card.
+6. **Bump the Lovelace resource cache key** to the installed release version in
+   Settings → Dashboards → Resources. `CARD_VERSION` may change, but browsers
+   key on the query string, so without this they can keep the cached card.
 
 7. **Verify** (all dark-safe, no motion):
+
    ```sh
    scripts/ha_ssh.exp 'docker exec homeassistant python -c "import importlib.metadata as m; print(m.version(\"pymammotion\"))"'
    # expect 0.8.12.post1
    ```
+
    Then `mammotion.export_runtime_state` should now contain an
    `experimental_motion` block with
-   `backend_capabilities.capabilities` both true and `backend_verified: true`
-   (the host currently has no such block at all). Confirm entity count, maps and
-   tasks, diagnostics, and card preview plus dry-run.
+   `backend_capabilities.capabilities` both true and `backend_verified: true`.
+   Confirm entity count, maps and tasks, diagnostics, and card preview plus
+   dry-run. Real Go is not part of a routine deployment check.
 
 8. **Leave `enable_experimental_motion` off.** The gate now opens the moment it is
    toggled on.
@@ -107,13 +112,13 @@ will stop matching.** The original label remains available in
 
 `habluetooth.wrappers` logged the connection-path selection for the docked mower:
 
-| proxy | RSSI | slots free |
-| --- | --- | --- |
-| `p1s-printer-a5774c` | **−49** | **2/3** |
-| `esphomes3-irk` | −65 | 3/3 |
-| `bluetooth-proxy` | −77 | 3/3 |
-| `garage-m5stack-9bc1d4` | −85 | 3/3 |
-| `atom-fireplace` | −85 | 3/3 |
+| proxy                   | RSSI    | slots free |
+| ----------------------- | ------- | ---------- |
+| `p1s-printer-a5774c`    | **−49** | **2/3**    |
+| `esphomes3-irk`         | −65     | 3/3        |
+| `bluetooth-proxy`       | −77     | 3/3        |
+| `garage-m5stack-9bc1d4` | −85     | 3/3        |
+| `atom-fireplace`        | −85     | 3/3        |
 
 Five paths, best at −49, and the connection opened through P1S Printer. Two
 standing beliefs need correcting: the p1s-printer proxy is **not** permanently
@@ -121,16 +126,21 @@ one-slot-busy (2/3 free here), and **the dock does not need a closer proxy**. Th
 coverage problem is out in the working area, not at the dock — so site the next
 proxy where the mower mows, and start acceptance runs near the dock.
 
+That table is historical discovery evidence, not the accepted topology. The
+successful Gates 1-4 used P1S as the sole enabled mower proxy. The IRK proxy was
+isolated after it reproduced the app/HA connection conflict; do not add it back
+to a release acceptance run without a controlled stationary comparison.
+
 ## 🔬 How to attribute the improvement despite the confound
 
 First 20-minute window after the deploy (docked, idle, much of it with the link
 still down, so treat as indicative only):
 
-| metric | 07-27 baseline (8 h, 0.8.8) | first 20 min (0.8.12.post1) |
-| --- | --- | --- |
-| sequence gaps | 720 (**1.5/min**) | 1 (~0.05/min) |
-| unparseable LubaMsg frames | 193 | **0** |
-| negotiated MTU | 22x 517 | 1x 517 |
+| metric                     | 07-27 baseline (8 h, 0.8.8) | first 20 min (0.8.12.post1) |
+| -------------------------- | --------------------------- | --------------------------- |
+| sequence gaps              | 720 (**1.5/min**)           | 1 (~0.05/min)               |
+| unparseable LubaMsg frames | 193                         | **0**                       |
+| negotiated MTU             | 22x 517                     | 1x 517                      |
 
 **The two metrics dissociate, and that is the attribution test.** Sequence gaps are
 link-layer packet loss, which neither audited fix touches. Unparseable frames are
@@ -161,6 +171,6 @@ scripts/ha_ssh.exp 'cd /config/custom_components && rm -rf mammotion && tar -xzf
 scripts/ha_restart.sh
 ```
 
-Then set the Lovelace resource back to `?v=11`. Reverting also restores the
-`pymammotion==0.8.8` pin, and the capability probes re-lock real motion by
-themselves — no separate safety step is required.
+Then restore the prior Lovelace resource version. Reverting to any build without
+the audited backend capabilities makes the probes re-lock real motion by
+themselves, but disable experimental motion before rollback regardless.

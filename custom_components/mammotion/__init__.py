@@ -237,7 +237,17 @@ async def _attach_ble_to_mower(
     if ble_device:
         await mammotion.add_ble_to_device(device.device_name, ble_device)
 
-    _device_name = device.device_name
+    # The proxy may still be starting (or temporarily disconnected) when the
+    # config entry loads. In that case ``ble_device`` is None and the cloud
+    # device would otherwise never gain a BLE transport until the entire entry
+    # is reloaded. Attach it on the next advertisement instead.
+    _register_ble_reconnect_callback(
+        hass,
+        entry,
+        mammotion,
+        device.device_name,
+        ble_address,
+    )
 
 
 async def _attach_ble_to_rtk(

@@ -31,6 +31,7 @@ from custom_components.mammotion.coordinator import (
     MammotionBaseUpdateCoordinator,
     MammotionReportUpdateCoordinator,
 )
+from custom_components.mammotion.manual_motion import ManualMotionCancelledError
 from custom_components.mammotion.sensor import WORK_SENSOR_TYPES
 from custom_components.mammotion.services import (
     _BLE_SEND_STALL_SECONDS,
@@ -4425,6 +4426,23 @@ def test_active_transport_state_normalizes_real_ble_enum() -> None:
     assert _transport_is_ble(SimpleNamespace(active_transport_state=normalized))
 
 
+def test_active_transport_state_handles_no_transport_available() -> None:
+    """A temporarily offline mower reports ``none`` without breaking setup."""
+    handle = SimpleNamespace(
+        active_transport=MagicMock(
+            side_effect=NoTransportAvailableError("all transports unavailable")
+        )
+    )
+    fake_self = SimpleNamespace(
+        device_name="Luba-Test",
+        manager=SimpleNamespace(mower=lambda _name: handle),
+    )
+
+    normalized = MammotionReportUpdateCoordinator.active_transport_state.fget(fake_self)
+
+    assert normalized == "none"
+
+
 @pytest.mark.asyncio
 async def test_raw_pymammotion_execute_multi_segment_dry_run_chains_segments(
     monkeypatch: pytest.MonkeyPatch,
@@ -5273,6 +5291,125 @@ async def test_vector_segment_vio_real_calibrates_turns_then_drives(
     # Static test position never reaches the waypoint: linear stops on progress.
     assert result["linear_commands_sent"] == 1
     assert result["stop_reason"] == "no_target_progress"
+
+
+@pytest.mark.asyncio
+async def test_vector_segment_realigns_after_turn_translation_before_linear(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A translating pivot recomputes its bearing before the forward command.
+
+    Gate 4 (2026-07-31) reached its pre-turn VIO target but drifted 14.4 cm
+    during the pivot. That changed the bearing to a 30 cm waypoint enough that
+    the subsequent forward pulse was 23 degrees off course. The fresh-position
+    correction must happen before, not after, that linear dispatch.
+    """
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.data.report_data.vision_info = SimpleNamespace(heading=0.0, vio_state=2)
+    turn_calls: list[dict[str, object]] = []
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    async def fake_vio_turn(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict[str, object]:
+        turn_calls.append(kwargs)
+        if len(turn_calls) == 1:
+            # Reach the original north-facing target while drifting 20 cm east.
+            coordinator.data.mowing_state.pos_x = 1.2
+            coordinator.data.report_data.vision_info.heading = 90.0
+            displacement = 0.2
+        else:
+            # The fresh bearing from (1.2, 1.0) to (1.0, 1.5) is ~111.8 deg.
+            coordinator.data.report_data.vision_info.heading = float(
+                kwargs["target_vision_heading"]
+            )
+            displacement = 0.0
+        return {
+            "stop_reason": "target_heading_reached",
+            "commands_sent": 1,
+            "command_results": [],
+            "final_displacement_m": displacement,
+        }
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+    monkeypatch.setattr(mammotion_services, "_vio_turn_to_heading", fake_vio_turn)
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.0, "y": 1.5}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        vio_heading_offset_degrees=0.0,
+        vio_max_realignments=1,
+        max_turn_translation_distance=0.25,
+        max_linear_commands=1,
+        sample_delays=(0,),
+    )
+
+    assert len(turn_calls) == 2
+    assert turn_calls[0]["max_displacement_m"] == pytest.approx(0.25)
+    assert turn_calls[1]["target_vision_heading"] == pytest.approx(111.801, abs=0.01)
+    assert turn_calls[1]["max_displacement_m"] == pytest.approx(0.25)
+    alignment = result["post_turn_alignment"]
+    assert alignment["correction_attempted"] is True
+    assert alignment["before"]["aim_error_degrees"] == pytest.approx(21.801, abs=0.01)
+    assert alignment["after"]["aim_error_degrees"] == pytest.approx(0.0)
+    assert alignment["passed"] is True
+    assert result["realignments"][0]["before_linear"] is True
+    # The static fixture does not model forward travel, but only after alignment
+    # is proven may the single linear command be attempted.
+    assert result["linear_commands_sent"] == 1
+
+
+@pytest.mark.asyncio
+async def test_vector_segment_blocks_linear_when_post_turn_alignment_stays_bad(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A claimed correction that remains off-bearing must fail before driving."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.data.report_data.vision_info = SimpleNamespace(heading=0.0, vio_state=2)
+    turn_count = 0
+
+    async def fake_vio_turn(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict[str, object]:
+        nonlocal turn_count
+        turn_count += 1
+        if turn_count == 1:
+            coordinator.data.mowing_state.pos_x = 1.2
+            coordinator.data.report_data.vision_info.heading = 90.0
+            displacement = 0.2
+        else:
+            # Backend claims success but the live heading did not change.
+            displacement = 0.0
+        return {
+            "stop_reason": "target_heading_reached",
+            "commands_sent": 1,
+            "command_results": [],
+            "final_displacement_m": displacement,
+        }
+
+    monkeypatch.setattr(mammotion_services, "_vio_turn_to_heading", fake_vio_turn)
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.0, "y": 1.5}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        vio_heading_offset_degrees=0.0,
+        vio_max_realignments=1,
+        max_linear_commands=1,
+        sample_delays=(0,),
+    )
+
+    assert turn_count == 2
+    assert result["stop_reason"] == "post_turn_alignment_incomplete"
+    assert result["post_turn_alignment"]["passed"] is False
+    assert result["linear_commands_sent"] == 0
 
 
 @pytest.mark.asyncio
@@ -9549,6 +9686,32 @@ async def test_motion_refresh_window_stops_when_cancelled_inside_resend() -> Non
     # The stop must have been delivered, and the cancellation must still
     # propagate so the caller's own teardown runs.
     assert stops == ["stop"]
+
+
+@pytest.mark.asyncio
+async def test_motion_refresh_window_propagates_operator_session_stop() -> None:
+    """An operator-cancelled session stops and releases its owner immediately.
+
+    ``ManualMotionCancelledError`` is raised by the confirmed-dispatch guard
+    before a post-abort nonzero refresh can be queued.  Treating it as an
+    ordinary failed resend kept the service handler alive in feedback/sample
+    waits, so ``stop_manual_motion`` could time out waiting for the owner even
+    though motion itself was safely blocked.
+    """
+    coordinator = SimpleNamespace(async_stop_manual_motion=AsyncMock())
+
+    async def cancelled_resend() -> None:
+        raise ManualMotionCancelledError("operator stop")
+
+    with pytest.raises(ManualMotionCancelledError, match="operator stop"):
+        await _motion_refresh_window(
+            coordinator,
+            resend=cancelled_resend,
+            duration_seconds=1.0,
+            refresh_interval_ms=200,
+        )
+
+    coordinator.async_stop_manual_motion.assert_awaited_once()
 
 
 @pytest.mark.asyncio

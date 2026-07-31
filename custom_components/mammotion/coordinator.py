@@ -488,6 +488,12 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         active_transport: Any
         try:
             active_transport = handle.active_transport()
+        except NoTransportAvailableError:
+            # PyMammotion raises while every registered transport is currently
+            # unusable (for example, cloud has reported the mower offline and
+            # BLE has not connected yet). This is a normal fail-closed runtime
+            # state, not an entity setup failure.
+            return "none"
         except AttributeError, TypeError, ValueError:
             return "unknown"
         if active_transport is None:
@@ -529,13 +535,41 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         self._bluetooth_enabled = enabled
         handle = self.manager.mower(self.device_name)
         if handle is None:
+            self._async_refresh_motion_gate_entities()
             return
         if not enabled:
             handle.set_prefer_ble(value=False)
-            await handle.disconnect_transport(TransportType.BLE)
+            try:
+                await handle.disconnect_transport(TransportType.BLE)
+            finally:
+                self._async_refresh_motion_gate_entities()
         else:
             handle.set_prefer_ble(value=True)
-            await self._async_ensure_ble_client()
+            try:
+                await self._async_ensure_ble_client()
+            except BLEUnavailableError as exc:
+                # Enabling Bluetooth is a durable preference, not a guarantee
+                # that the mower is advertising at this instant. Keep it
+                # enabled so the advertisement callback can connect later;
+                # ble_link_live remains fail-closed until that happens.
+                LOGGER.debug(
+                    "Bluetooth enabled for %s but no live connection is "
+                    "currently available: %s",
+                    self.device_name,
+                    exc,
+                )
+            finally:
+                self._async_refresh_motion_gate_entities()
+
+    @callback
+    def _async_refresh_motion_gate_entities(self) -> None:
+        """Invalidate cached gate diagnostics and notify entities immediately."""
+        # ``motion_gate_snapshot`` caches six related entities for five seconds.
+        # A transport toggle is an explicit state transition, so retaining that
+        # snapshot makes ble_link_live display the pre-toggle state until the
+        # next coordinator tick.
+        setattr(self, "_mammotion_gate_snapshot_monotonic", float("-inf"))
+        self.async_update_listeners()
 
     async def async_set_cloud_enabled(self, enabled: bool) -> None:
         """Enable or disable Cloud transport."""
