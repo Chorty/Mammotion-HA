@@ -9,9 +9,9 @@ integration in `setup_error` with no auto-retry, needing a manual entry reload.
 
 |                         | Host                                                           | Branch         |
 | ----------------------- | -------------------------------------------------------------- | -------------- |
-| Integration version     | `0.6.4-beta11`                                                 | `0.6.4-beta12` |
+| Integration version     | `0.6.4-beta12`                                                 | `0.6.4-beta12` |
 | pymammotion pin         | `0.8.12.post1` fork wheel (container verified)                 | same           |
-| Card `CARD_VERSION`     | `0.6.4-beta11`; integration and HACS copies checksum-identical | `0.6.4-beta12` |
+| Card `CARD_VERSION`     | `0.6.4-beta12`; integration and HACS copies checksum-identical | `0.6.4-beta12` |
 | `manual_motion.py`      | present                                                        | present        |
 | `backend_capability.py` | present                                                        | present        |
 | `capabilities.py`       | present                                                        | present        |
@@ -21,17 +21,41 @@ The live host already ran the complete supervised acceptance sequence. Its
 is the Gate 4-passing build; the handoff tree differs only by a corrected schema
 comment. Experimental motion was disabled after the run.
 
-⚠️ **The host and branch now differ, deliberately.** The branch is
-`0.6.4-beta12` and carries the reconciled card
-(`LUBA_ACCEPTANCE_PROFILE`); the host still serves the `0.6.4-beta11` card,
-whose Real Go defaults are the *old* calibration profile. Gate 5 (UI-to-mower)
-therefore requires a deploy first. Backend Python behaviour is unchanged between
-the two, so this deploy is about the card — but deploy the whole integration
-tarball anyway rather than the card alone, so the host does not end up with a
-beta12 card next to a beta11 `manifest.json`. **Both** card paths must be
-written, and the browser console banner must be confirmed to read
-`v0.6.4-beta12` before any Gate 5 motion; a stale cached card is
-indistinguishable from a passing run until the payload is inspected.
+### Gate 5 deploy — 2026-07-31 19:50-20:05 EDT
+
+`0.6.4-beta12` is deployed. Done while the mower was docked (`CHARGE_ON`,
+`MODE_READY`), with no active session and `enable_experimental_motion` off.
+**No motion of any kind was commanded.** Backup taken first:
+`/config/mammotion-backup-20260731-1950.tgz`.
+
+Verified after the restart:
+
+- all 46 integration files md5-identical to the tree;
+- no AppleDouble `._*` files (tarball built with `COPYFILE_DISABLE=1` plus an
+  explicit exclude);
+- both card paths byte-identical to the tree
+  (`a186a394ec17593c5dca8e86484a9983`) and both serving `CARD_VERSION`
+  `0.6.4-beta12` over HTTP, containing `LUBA_ACCEPTANCE_PROFILE`;
+- HA API back in 30 s, 128 Mammotion entities in 112 s — no `setup_error`;
+- container `pymammotion` `0.8.12.post1`; `backend_verified: true` with both
+  capabilities true;
+- `enable_experimental_motion` still **false**, no session, `real_motion_allowed`
+  false.
+
+⚠️ **The registered Lovelace resource was the trap, not the files.** The
+dashboard had `/hacsfiles/mammotion/mammotion-custom-path-card.js?v=12` — an
+arbitrary cache key that does **not** track the version, so replacing the file
+alone would have left every browser on the cached beta11 card while every
+server-side check said beta12. It is now
+`?v=0.6.4-beta12` (updated through the `lovelace/resources/update` websocket
+call, not by editing `.storage`). Note the live dashboard registers the
+**`/hacsfiles/` path**, not the documented `/mammotion/` one, which is exactly
+why both copies must be written every time.
+
+Still required before Gate 5 motion: confirm the browser console banner reads
+`v0.6.4-beta12` (a hard refresh may be needed), confirm the card's execution
+profile row reads the accepted profile, and obtain a fresh daylight operator
+`go`.
 
 ## Breaking enum migrations already applied
 
