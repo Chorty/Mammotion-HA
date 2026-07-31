@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -18,6 +18,7 @@ from custom_components.mammotion.manual_motion import (
     ManualMotionCancelledError,
     ManualMotionSession,
     assert_session_can_dispatch,
+    experimental_motion_enabled,
     experimental_motion_status,
     motion_backend_verified,
 )
@@ -25,8 +26,13 @@ from custom_components.mammotion.services import _stop_active_manual_motion
 
 
 def _coordinator(*, enabled: bool = False) -> SimpleNamespace:
+    # MappingProxyType, not dict: that is what Home Assistant actually puts on
+    # ConfigEntry.options, and a plain dict here hid a bug that made the opt-in
+    # impossible to turn on in production while every test passed.
     return SimpleNamespace(
-        config_entry=SimpleNamespace(options={"enable_experimental_motion": enabled}),
+        config_entry=SimpleNamespace(
+            options=MappingProxyType({"enable_experimental_motion": enabled})
+        ),
         manual_motion_session=None,
         last_manual_motion_session=None,
     )
@@ -45,6 +51,47 @@ def _capabilities(**present: bool) -> dict[str, object]:
         "verified": not missing,
         "reasons": [f"backend_missing_{name}" for name in missing],
     }
+
+
+def test_the_opt_in_reads_a_mappingproxy_config_entry() -> None:
+    """The opt-in must be readable from the mapping type HA actually supplies.
+
+    ``ConfigEntry.options`` is a ``MappingProxyType``, which is a ``Mapping`` but
+    not a ``dict``. An ``isinstance(options, dict)`` check therefore reported the
+    opt-in as off for every real config entry: the operator could tick the box in
+    the options flow, HA would store it, and motion stayed blocked with no error
+    -- the failure was invisible precisely because the gate fails closed.
+    """
+    proxied_on = SimpleNamespace(
+        config_entry=SimpleNamespace(
+            options=MappingProxyType({"enable_experimental_motion": True})
+        )
+    )
+    proxied_off = SimpleNamespace(
+        config_entry=SimpleNamespace(
+            options=MappingProxyType({"enable_experimental_motion": False})
+        )
+    )
+
+    assert experimental_motion_enabled(proxied_on) is True
+    assert experimental_motion_enabled(proxied_off) is False
+
+
+def test_the_opt_in_stays_off_without_a_readable_config_entry() -> None:
+    """Absence of options is never consent -- unreadable means disabled."""
+    assert experimental_motion_enabled(SimpleNamespace()) is False
+    assert experimental_motion_enabled(SimpleNamespace(config_entry=None)) is False
+    assert (
+        experimental_motion_enabled(SimpleNamespace(config_entry=SimpleNamespace()))
+        is False
+    )
+    # A non-mapping options attribute must not be coerced into consent.
+    assert (
+        experimental_motion_enabled(
+            SimpleNamespace(config_entry=SimpleNamespace(options="enabled"))
+        )
+        is False
+    )
 
 
 def test_a_version_number_alone_never_verifies_the_backend() -> None:

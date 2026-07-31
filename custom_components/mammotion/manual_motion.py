@@ -7,6 +7,7 @@ import importlib.metadata
 import re
 import time
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -69,11 +70,19 @@ def motion_backend_verified(
 
 
 def experimental_motion_enabled(coordinator: Any) -> bool:
-    """Return the explicit opt-in value; absence is always disabled."""
+    """Return the explicit opt-in value; absence is always disabled.
+
+    The type check must be ``Mapping``, not ``dict``: Home Assistant exposes
+    ``ConfigEntry.options`` as a ``MappingProxyType``, which is a ``Mapping`` but
+    is **not** a ``dict`` subclass. Checking for ``dict`` made this return False
+    for every real config entry, so the opt-in could never be turned on no matter
+    what the options flow stored -- and because the gate fails closed, it denied
+    motion silently instead of surfacing an error.
+    """
     entry = getattr(coordinator, "config_entry", None)
     options = getattr(entry, "options", None)
     return bool(
-        isinstance(options, dict)
+        isinstance(options, Mapping)
         and options.get(CONF_ENABLE_EXPERIMENTAL_MOTION, False)
     )
 
