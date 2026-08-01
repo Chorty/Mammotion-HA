@@ -316,6 +316,57 @@ experimental motion was disabled and runtime now blocks real motion with
 `experimental_motion_disabled`. Gates 1-4 of the supervised LUBA acceptance
 sequence are complete.
 
+**Gate 5 first attempt — PARTIAL, 2026-07-31 20:36 EDT.** The card drove the
+mower for the first time. On `0.6.4-beta12`, with the execution-profile row
+reading `LUBA acceptance profile`, the operator ran preview, dry-run and Real
+Go from the card. The mower moved 1.357 m net and executed a VIO turn. It then
+**stopped short and the session cleared cleanly** — position bit-identical
+across three later polls, `MODE_READY`, blades off, no session.
+
+It did not reach its target, and the cause was the requested geometry, not a
+defect. The operator clicked legs of **2.13 m and 2.31 m**; the accepted
+profile is `max_linear_commands: 1` with `max_linear_pulse_ceiling: null`, so
+one linear command per segment and no loop-to-tolerance. It drove once, fell
+0.908 m short of waypoint 1, and stopped — which is the designed conservative
+behaviour. Gate 5 needs Gate 4's ~30 cm geometry, not multi-metre legs.
+
+Two constants were measured from the run's 1.5 s position capture
+(`scratchpad` `gate5_run1.jsonl`):
+
+- **`final_approach_metres_per_pulse` is ~25% low.** One linear command
+  travelled **1.321 m** against the configured **1.06**. The executor
+  under-predicts distance, so on final approach it commands a longer pulse than
+  needed and biases toward **overshoot** — the likely reason Gate 4 landed
+  4.70 cm out rather than sub-centimetre.
+- **`heading_tolerance_degrees: 18` is far too loose.** The segment-2 VIO turn
+  went 174.13 deg to **208.20 deg** against a target bearing of **210.31 deg**:
+  a **2.11 deg** error, about 8.5x tighter than the tolerance permits.
+  Refresh-driven turning is much more precise than the single-shot quantum that
+  18 was derived from.
+
+Both remain **un-validated hypotheses** until a run executes the corrected
+values. Do not edit `LUBA_ACCEPTANCE_PROFILE` on the strength of one sample.
+
+Also observed: during motion the position feed arrives in **bursts** (0.156 m,
+then flat for ~8 s, then 1.073 m in a single sample). That is RTK report
+batching over BLE, not the mower stalling. Do not read those flat runs as
+no-actuation.
+
+**Gate 5 second attempt — NOT RUN, blocked on darkness 2026-07-31 20:47 EDT.**
+A 2 x 0.35 m L-path validated (`valid: true`, no errors), but its dry run
+reported `initial_vio_feed: {live: false, tracked_features: 0, brightness_label:
+"Dark"}` and `initial_vio_state: 0`. Both segments use `turn_mode: vio`, so the
+turn primitive had nothing to steer by. No real motion was commanded and
+experimental motion was disabled.
+
+⚠️ **The VIO dusk cliff is steep, and the HA sensor entities lag it.** At
+20:40:27 the sensors read `camera_brightness: light` with 80/80 tracked
+features; by 20:47:20 they read `dark` with 0/0 — a collapse inside about seven
+minutes, roughly seven minutes after sunset. More importantly the **sensor
+entities are coordinator-tick cached and are not a safe readiness signal**: the
+authoritative reading is the live `initial_vio_feed` a dry run returns. Always
+dry-run immediately before a Real Go near dusk; that is what caught this.
+
 Do not enable broad `pymammotion: debug` logging during that diagnosis. Its cloud
 gateway logs authenticated request data and network responses. Use only the
 scoped `bleak_esphome` and `habluetooth` loggers from
