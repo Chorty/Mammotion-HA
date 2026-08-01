@@ -1,25 +1,51 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
-Updated 2026-07-31 (second pass) after reconciling the card profile and closing
-the remaining P0 items. This is the current handoff;
+Updated 2026-07-31 (third pass, evening) after deploying `0.6.4-beta12` and the
+first card-driven motion. This is the current handoff;
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
-**No physical motion happened in the second pass.** Experimental motion stayed
-disabled; every change below is off-mower code, configuration, or
-documentation, validated by the CI-scoped matrix plus a now-green
-`pre-commit run --all-files`.
+## Third pass — what changed tonight
+
+**The card drove the mower for the first time.** Gate 5 is now PARTIAL, not
+untried. `0.6.4-beta12` is deployed to the host, and the run, its two measured
+constants, and the darkness abort are recorded in the Gate 5 entries of
+`docs/p0-beta-release.md`. Raw telemetry:
+`docs/evidence-gate5-run1-20260731.jsonl`.
+
+Read those before planning the next run. The short version:
+
+- Gate 5 still needs a **clean pass**: both segments `target_reached` from the
+  card. The first attempt used 2.1 m legs, which the accepted profile cannot
+  complete (one linear command per segment, no loop-to-tolerance). Use ~35 cm
+  legs. A pre-validated path from the mower's current resting position is
+  `(5.048, -3.111)` then `(5.398, -3.111)`.
+- Two constants were measured and are **hypotheses, not decisions**:
+  `final_approach_metres_per_pulse` looks ~25% low (1.32 m observed vs 1.06
+  configured, biasing toward overshoot), and `heading_tolerance_degrees: 18` is
+  far too loose (a turn landed 2.11 deg from target). `LUBA_ACCEPTANCE_PROFILE`
+  is deliberately unchanged — editing it un-accepts it.
+- ⚠️ **The VIO dusk cliff is steep and the HA sensor entities lag it.** 80/80
+  features and `light` at 20:40; 0/0 and `dark` at 20:47. The sensor entities
+  are coordinator-tick cached and are **not** a readiness signal — the live
+  `initial_vio_feed` returned by a dry run is. Dry-run immediately before any
+  Real Go near dusk.
+- `scripts/ha_set_experimental_motion.py on|off|status` now toggles the motion
+  gate without hand-driving the options flow. It verifies the result through
+  runtime state rather than the flow's reply, because the flow returns
+  `create_entry` with empty `data` even on success. It preserves other options
+  by reading the flow's own schema defaults — **not** from
+  `/api/config/config_entries/entry`, which never exposes `options` and would
+  silently reset them.
 
 ## Start here
 
-- Branch: `feat/vio-turn-to-heading`.
+- Branch: `feat/vio-turn-to-heading`, pushed to `Chorty`. Working tree clean.
 - Personal-fork PR: [Chorty/Mammotion-HA#10](https://github.com/Chorty/Mammotion-HA/pull/10),
-  still open as a draft. Its last pushed checks are green, but they do **not**
-  include the local handoff commit until the operator deliberately pushes it.
-- ⚠️ The card-profile, pre-commit and README work described below is **present
-  in the working tree but not committed**. `4be34671` is the last commit and
-  does not contain it. Confirm with `git status --short` and `git log -1 --stat`
-  before editing, and commit before treating the tree as a handoff point.
+  still a draft. Checks were green on the pushed beta12 work (python and
+  hassfest pass; HACS `skipping` is expected on a fork).
+- Safety state: experimental motion **off** (verified), no session, mower at
+  approximately x 5.049, y -2.753 in `Backyard Right`, blades off.
 - Do not push, comment, open issues, or otherwise write to a `mikey0000`
   repository. The upstream remotes have disabled push URLs. A later push, if
   authorized, goes only to `Chorty/Mammotion-HA`.

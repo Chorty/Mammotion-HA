@@ -153,7 +153,25 @@ uppercase matching. The original label remains available in
    dry-run. Real Go is not part of a routine deployment check.
 
 8. **Leave `enable_experimental_motion` off.** The gate now opens the moment it is
-   toggled on.
+   toggled on. Toggle it with
+   `scripts/ha_set_experimental_motion.py on|off|status` rather than by hand:
+
+   ```sh
+   set -a && source .env && set +a
+   scripts/ha_set_experimental_motion.py status
+   scripts/ha_set_experimental_motion.py on     # prompts for ARM unless --yes
+   scripts/ha_set_experimental_motion.py off
+   ```
+
+   Two traps it exists to avoid. The options flow returns `create_entry` with an
+   **empty `data`** payload even when it applied the change, so the reply proves
+   nothing — the script re-reads `export_runtime_state` instead. And the flow
+   replaces the whole options dict, so every other option must be resubmitted;
+   those values come from the flow's **own schema defaults**, because
+   `/api/config/config_entries/entry` never exposes `options` (it returns `{}`
+   whatever is configured) and preserving from it silently resets them. The
+   field is also `prefer_ble_over_wifi`, not the `prefer_ble` used elsewhere;
+   the wrong name fails the flow with a bare HTTP 400 and no field detail.
 
 9. **Enable the right logger before any BLE measurement.**
    `scripts/ble_session_report.py` matches `connected=… mtu=… error=…`, which is
