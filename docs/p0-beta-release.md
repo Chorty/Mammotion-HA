@@ -513,6 +513,14 @@ safety one. It is tracked as the headline Alpha-to-Beta item below.
 
 ## Alpha to Beta
 
+⚠️ **Reconcile this list against the chronological record above before acting on
+it.** Last reconciled: **2026-07-31 (evening)**. These entries are a summary,
+and the results sections are the evidence — when they disagree, the results win.
+This list has already drifted once: it asked for a stationary BLE soak that had
+been completed the previous day and recorded 300 lines above, which sent a later
+session off to repeat finished work. If you close an item, edit it here in the
+same change that records the result, and move this date.
+
 - **Card execution profile — RESOLVED 2026-07-31 (second pass).** The backend
   Gate 4 call used one linear command per segment, an 8 cm waypoint tolerance,
   2.5 mm progress threshold, 102.4 degree forward offset, four VIO turn
@@ -552,17 +560,44 @@ safety one. It is tracked as the headline Alpha-to-Beta item below.
   where uv writes the PEP 440 normalised form (`0.6.4b12`). Both fixed and
   dry-run against this tree: the version step now yields `0.6.4-beta13` and the
   verify step passes.
-- **Turn translation and final tolerance.** Gate 4 now compensates from fresh
-  post-turn position and passed 4.70 cm from its final target, but its turn
-  still translated 8.80 cm and the standalone 176-degree turn drifted 10.48
-  cm. Reduce the 18-degree heading tolerance and measure the refreshed
-  turn-pulse floor without weakening the displacement guard.
-- **BLE session lifetime.** The complete bounded Gate 4 run fit inside one link
-  with no disconnect or malformed-frame event, but the longer docked baseline
-  still has a 59-second median. Re-measure a stationary soak with
-  `scripts/ble_session_report.py` and compare against the 2026-07-27 baseline;
-  do not attribute improvement solely to teardown because the dependency jump
-  also included other upstream changes.
+- **Turn translation and final tolerance — first measurement 2026-07-31.** Gate
+  4 compensates from fresh post-turn position and passed 4.70 cm from its final
+  target, but its turn still translated 8.80 cm and the standalone 176-degree
+  turn drifted 10.48 cm. The Gate 5 attempt then gave the first refresh-driven
+  turn-accuracy figure: a VIO turn landed **2.11 degrees** from its target
+  bearing (174.13 -> 208.20 against 210.31), roughly 8.5x tighter than the
+  18-degree tolerance. The same run measured a single linear command at
+  **1.321 m** against a configured `final_approach_metres_per_pulse` of 1.06 —
+  ~25% low, biasing final approach toward overshoot, and a plausible
+  explanation for Gate 4's 4.70 cm landing.
+
+  **Both are single samples and neither has been acted on.**
+  `LUBA_ACCEPTANCE_PROFILE` is deliberately unchanged, because editing it
+  un-accepts the profile the hardware actually ran. Reproduce on a second
+  geometry before changing anything, and do not weaken the displacement guard.
+- **BLE session lifetime — RE-MEASURED 2026-07-30, materially improved.** This
+  item previously asked for a stationary soak against the 2026-07-27 baseline.
+  **That soak was done** (motion-disabled 30-minute capture, recorded in the
+  chronological section above) and the picture changed:
+
+  | | 2026-07-27 baseline (8 h, docked) | 2026-07-30 capture (30 min) |
+  | --- | --- | --- |
+  | session length | median 59 s | 43, 287, 607 s (+ one >195 s) |
+  | `0x08` supervision timeouts | 42% of disconnects | none |
+  | `0x13` peer terminations | — | none |
+  | close cause | passive starvation | every close `error=0`, local `Disconnecting` |
+
+  Both bounded runs since then fit inside a single link: Gate 4, and the
+  2026-07-31 Gate 5 attempt. The release-relevant question — can a bounded path
+  run complete without losing its link — is answered **yes** for the two-segment
+  ceiling.
+
+  Still genuinely open, and narrower than the original item: the new capture was
+  30 minutes against an 8-hour baseline, so long-horizon behaviour is
+  unmeasured; and the improvement must **not** be attributed solely to the BLE
+  teardown fix, because the dependency jump also included other upstream changes
+  *and* the proxy topology changed to single-P1S at the same time. Three
+  variables moved together.
 - **Task-2 constants — narrowed 2026-07-31.** The pulse-geometry ceilings,
   `min_progress_distance` and cadence are no longer hypotheses: the 2026-07-27
   3.0 m segment landed 1.0 cm along-track and Gates 1-4 executed them on
@@ -570,6 +605,9 @@ safety one. It is tracked as the headline Alpha-to-Beta item below.
   un-re-derived is `heading_tolerance_degrees` (18, derived from the
   single-shot rotation quantum that refresh made obsolete) and the refreshed
   turn-pulse floor. Beta tuning behind a new operator `go`, not a release gate.
+  Both now have one measurement each from the 2026-07-31 Gate 5 attempt — see
+  "Turn translation and final tolerance" above; neither has been reproduced, so
+  both are still un-re-derived in the sense that matters.
 - **Map edits are not picked up until an HA restart — FIXED in `6cf4d5fd`.**
   `_async_short_circuit_update()` returns `None` on the healthy path and every
   caller tests `is not None`, so the per-tick map block is reachable again.
