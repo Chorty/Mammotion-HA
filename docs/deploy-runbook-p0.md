@@ -52,6 +52,30 @@ call, not by editing `.storage`). Note the live dashboard registers the
 **`/hacsfiles/` path**, not the documented `/mammotion/` one, which is exactly
 why both copies must be written every time.
 
+### The override guard earned itself on first live use
+
+With beta12 loaded, the operator's card reported
+`customised (not hardware-accepted): linear_pulse_duration_ms`. The
+`dashboard-yard` card config still carried **`linear_pulse_duration_ms: 2000`**
+from an older calibration.
+
+That is the known no-op. Forward motion needs **>= 3 s to trigger at all** —
+2 s pulses taped as physical no-ops on 2026-07-18, which is why the accepted
+profile uses 3500 ms. The backend schema is `Range(min=50.0, max=4000.0)`, so
+`2000` is **accepted silently**: it would have been dispatched, not rejected.
+Run as Gate 5, the mower would most likely have stood still while the session
+reported dispatched pulses and confirmed stops — the exact failure the
+execution-profile row exists to surface.
+
+Removed through the `lovelace/config/save` websocket call (backup taken first;
+the live config was then diffed against the backup to prove the dropped key was
+the only change). Re-checked by running the real card module against the live
+saved config: profile row `LUBA acceptance profile (Gates 1-4, 2026-07-31)`,
+zero overrides, `linear_pulse_duration_ms` 3500, ceiling still omitted.
+
+Lesson for any future deploy: a correct file deploy is **not** a correct
+run configuration. Check the execution-profile row, not just the version banner.
+
 Still required before Gate 5 motion: confirm the browser console banner reads
 `v0.6.4-beta12` (a hard refresh may be needed), confirm the card's execution
 profile row reads the accepted profile, and obtain a fresh daylight operator
