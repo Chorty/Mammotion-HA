@@ -2,7 +2,7 @@ const MAX_WAYPOINTS = 7;
 const MAX_REAL_SEGMENTS = 2;
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
-const CARD_VERSION = "0.6.4-beta12";
+const CARD_VERSION = "0.6.4-beta13";
 
 // The exact bounded execution profile that passed supervised LUBA acceptance
 // Gates 1-4 on 2026-07-31 (three-write zero stop, bounded straight segment,
@@ -296,6 +296,30 @@ class MammotionCustomPathCard extends HTMLElement {
       x: Number(pos.x),
       y: Number(pos.y),
     };
+  }
+
+  // Map-frame bearing the mower would drive forward along, in degrees, using
+  // the same arithmetic the backend aims by:
+  //
+  //   target_map_heading = target_reported_heading + calibrated_offset
+  //
+  // so forward is (cos, sin) of that angle in map x/y. Showing this rather than
+  // raw `toward` means the arrow points where a Real Go would actually go.
+  //
+  // ⚠️ `toward` is course-over-ground, NOT a compass heading. While the mower is
+  // stationary it is the bearing of the last movement, so the arrow is a
+  // best-effort indicator and can be stale after a turn. The offset is also a
+  // per-mower calibration; a wrong offset rotates the arrow, not the mower.
+  _headingDegrees() {
+    const pos = this._livePosition || this._runtimeState?.position || {};
+    const toward = Number(pos.toward);
+    const offset = Number(
+      this._profileValue("calibrated_forward_heading_offset_degrees"),
+    );
+    if (!Number.isFinite(toward) || !Number.isFinite(offset)) {
+      return null;
+    }
+    return (((toward + offset) % 360) + 360) % 360;
   }
 
   _segmentPoints() {
@@ -661,6 +685,18 @@ class MammotionCustomPathCard extends HTMLElement {
       }
       return configured !== accepted;
     });
+  }
+
+  // Numeric companion to the map arrow. An arrow alone cannot be checked
+  // against telemetry; this can, and it names its own source so a stale
+  // course-over-ground reading is not mistaken for a compass fix.
+  _headingLabel() {
+    const heading = this._headingDegrees();
+    if (heading == null) {
+      return "unknown (no live position)";
+    }
+    const pos = this._livePosition || this._runtimeState?.position || {};
+    return `${heading.toFixed(1)}° (from course-over-ground ${Number(pos.toward).toFixed(1)}° + offset ${Number(this._profileValue("calibrated_forward_heading_offset_degrees")).toFixed(1)}°; stale while stationary)`;
   }
 
   _profileLabel() {
@@ -1126,6 +1162,52 @@ class MammotionCustomPathCard extends HTMLElement {
     }
 
     if (start) {
+      // Heading arrow first, so the dot sits on top of its tail.
+      const heading = this._headingDegrees();
+      if (heading != null) {
+        const rad = (heading * Math.PI) / 180;
+        // Transform a point one metre ahead rather than rotating in screen
+        // space: toSY flips the Y axis, so a screen-space rotation would point
+        // the arrow at the mirror image of the real bearing.
+        const sx = mt.toSX(start.x);
+        const sy = mt.toSY(start.y);
+        let dx = mt.toSX(start.x + Math.cos(rad)) - sx;
+        let dy = mt.toSY(start.y + Math.sin(rad)) - sy;
+        const len = Math.hypot(dx, dy);
+        if (len > 1e-6) {
+          dx /= len;
+          dy /= len;
+          // Perpendicular, for the arrowhead base.
+          const px = -dy;
+          const py = dx;
+          const TAIL = 6;
+          const NECK = 17;
+          const TIP = 26;
+          const HALF = 6;
+          svgEl.appendChild(
+            el("line", {
+              x1: (sx + dx * TAIL).toFixed(1),
+              y1: (sy + dy * TAIL).toFixed(1),
+              x2: (sx + dx * NECK).toFixed(1),
+              y2: (sy + dy * NECK).toFixed(1),
+              stroke: "#22c55e",
+              "stroke-width": "3",
+              "stroke-linecap": "round",
+            }),
+          );
+          const tip = `${(sx + dx * TIP).toFixed(1)},${(sy + dy * TIP).toFixed(1)}`;
+          const left = `${(sx + dx * NECK + px * HALF).toFixed(1)},${(sy + dy * NECK + py * HALF).toFixed(1)}`;
+          const right = `${(sx + dx * NECK - px * HALF).toFixed(1)},${(sy + dy * NECK - py * HALF).toFixed(1)}`;
+          svgEl.appendChild(
+            el("polygon", {
+              points: `${tip} ${left} ${right}`,
+              fill: "#22c55e",
+              stroke: "#111827",
+              "stroke-width": "1.5",
+            }),
+          );
+        }
+      }
       const startCircle = el("circle", {
         cx: mt.toSX(start.x).toFixed(1),
         cy: mt.toSY(start.y).toFixed(1),
@@ -1243,6 +1325,7 @@ class MammotionCustomPathCard extends HTMLElement {
         <div class="preflight-panel">
           <div class="title">Runtime preflight details</div>
           <div class="preflight-row"><span class="label">execution profile</span><span class="value">${this._escapeHtml(this._profileLabel())}</span></div>
+          <div class="preflight-row"><span class="label">facing (map bearing)</span><span class="value">${this._escapeHtml(this._headingLabel())}</span></div>
           <div class="preflight-row"><span class="label">active_transport</span><span class="value">${this._escapeHtml(runtimePanel.activeTransport)}</span></div>
           <div class="preflight-row"><span class="label">blade-safe status</span><span class="value">${this._escapeHtml(runtimePanel.bladeSafeLabel)}</span></div>
           <div class="preflight-row"><span class="label">mowing readiness</span><span class="value">${this._escapeHtml(runtimePanel.mowingReadinessLabel)}</span></div>

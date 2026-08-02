@@ -119,10 +119,24 @@ card then labels its **execution profile** row `customised (not
 hardware-accepted)` and names the overridden fields. Treat that state as
 untested.
 
+The mower marker carries a **heading arrow** showing the bearing it would drive
+forward along, with the same number in the preflight panel's
+**facing (map bearing)** row. It is computed the way the backend aims —
+course-over-ground plus `calibrated_forward_heading_offset_degrees` — so the
+arrow points where a Real Go would actually go, not merely where the mower was
+last travelling.
+
+> ⚠️ `toward` is course-over-ground, **not** a compass heading. While the mower
+> is stationary it reports the bearing of its last movement, so the arrow can be
+> stale after a turn — most visibly right after a VIO pivot. A wrong
+> `calibrated_forward_heading_offset_degrees` rotates the arrow without
+> rotating the mower, so treat a persistently wrong-looking arrow as a signal to
+> re-derive that offset.
+
 Add the integration-served JavaScript as a dashboard resource:
 
 ```text
-/mammotion/mammotion-custom-path-card.js?v=0.6.4-beta12
+/mammotion/mammotion-custom-path-card.js?v=0.6.4-beta13
 ```
 
 Use resource type `JavaScript module`. The version query is required because

@@ -211,6 +211,51 @@ test("README's written-out defaults are the accepted profile", () => {
   }
 });
 
+// The mower marker used to be a bare dot, which cannot show which way the
+// machine points. Heading comes from course-over-ground plus the calibrated
+// offset -- the same arithmetic the backend aims by -- so the arrow shows where
+// a Real Go would actually drive.
+test("heading is derived the same way the backend aims", () => {
+  const element = card();
+  element._runtimeState.position = { x: 1, y: 1, toward: 169.7755 };
+
+  // 169.7755 + 102.4 = 272.1755
+  assert.ok(Math.abs(element._headingDegrees() - 272.1755) < 1e-6);
+  assert.match(element._headingLabel(), /272\.2°/);
+  assert.match(element._headingLabel(), /course-over-ground/);
+
+  // Wraps past 360 rather than running off the end.
+  element._runtimeState.position = { x: 1, y: 1, toward: 300 };
+  assert.ok(Math.abs(element._headingDegrees() - 42.4) < 1e-9);
+
+  // No usable position must not fabricate a bearing.
+  element._runtimeState.position = { x: 1, y: 1 };
+  assert.equal(element._headingDegrees(), null);
+  assert.match(element._headingLabel(), /unknown/);
+});
+
+test("heading arrow is computed in map space, not screen space", () => {
+  const element = card();
+  element._runtimeState.position = { x: 0, y: 0, toward: -102.4 };
+  // toward + offset = 0 deg -> forward is map +x, which must stay +x on screen.
+  assert.ok(Math.abs(element._headingDegrees() - 0) < 1e-9);
+
+  // A transform with a FLIPPED y axis, as the real one has (toSY = H - ...).
+  const mt = { toSX: (x) => 100 + x * 10, toSY: (y) => 500 - y * 10 };
+  const rad = (element._headingDegrees() * Math.PI) / 180;
+  const dx = mt.toSX(Math.cos(rad)) - mt.toSX(0);
+  const dy = mt.toSY(Math.sin(rad)) - mt.toSY(0);
+  assert.ok(dx > 0, "map +x must render as screen +x");
+  assert.ok(Math.abs(dy) < 1e-9, "pure +x heading must not acquire screen y");
+
+  // Map +y must render as screen -y under the flip. Rotating in screen space
+  // instead would point the arrow at the mirror image of the real bearing.
+  element._runtimeState.position = { x: 0, y: 0, toward: -12.4 };
+  const rad2 = (element._headingDegrees() * Math.PI) / 180;
+  assert.ok(Math.abs(element._headingDegrees() - 90) < 1e-9);
+  assert.ok(mt.toSY(Math.sin(rad2)) - mt.toSY(0) < 0, "map +y is screen -y");
+});
+
 test("backend blockers and the two-segment limit lock Real Go", () => {
   const element = card();
   element._waypoints = [
