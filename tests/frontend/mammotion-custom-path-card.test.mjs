@@ -77,6 +77,43 @@ test("map clicks accept seven destinations and refuse an eighth", () => {
   assert.match(element._status, /Maximum 7 waypoints/);
 });
 
+test("precise coordinate edits invalidate stale runs and re-preview", () => {
+  const element = card();
+  element._waypoints = [{ x: 2, y: 3 }];
+  element._dryRun = { stop_reason: "dry_run" };
+  element._realRun = { stop_reason: "target_reached" };
+  let previews = 0;
+  element._validateAndPreview = () => {
+    previews += 1;
+  };
+
+  element._setWaypointCoordinate(0, "x", "2.375");
+
+  assert.deepEqual(element._waypoints, [{ x: 2.375, y: 3 }]);
+  assert.equal(element._dryRun, null);
+  assert.equal(element._realRun, null);
+  assert.equal(previews, 1);
+});
+
+test("precise coordinate edits reject invalid values and active sessions", () => {
+  const element = card();
+  element._waypoints = [{ x: 2, y: 3 }];
+  element._validateAndPreview = () => assert.fail("must not preview");
+
+  element._setWaypointCoordinate(0, "y", "not-a-number");
+  assert.deepEqual(element._waypoints, [{ x: 2, y: 3 }]);
+  assert.match(element._status, /finite numbers/);
+
+  element._setWaypointCoordinate(0, "y", "");
+  assert.deepEqual(element._waypoints, [{ x: 2, y: 3 }]);
+
+  element._runtimeState.experimental_motion.active_session = {
+    session_id: "active",
+  };
+  element._setWaypointCoordinate(0, "y", "4.25");
+  assert.deepEqual(element._waypoints, [{ x: 2, y: 3 }]);
+});
+
 test("seven-point dry-run is retained but real payload is capped at two", () => {
   const element = card();
   element._waypoints = Array.from({ length: 7 }, (_, index) => ({

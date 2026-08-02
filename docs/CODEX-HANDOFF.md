@@ -30,7 +30,8 @@ If it reports `enabled: True` and you are not about to run, turn it off with
 
 Last known: mower `MODE_READY` at (4.795, −1.9502), `toward` 173.1006, inside
 `Backyard Right`, RTK Fix, blades off, no session, VIO alive (80/80 features).
-Host runs `0.6.4-beta15`; the working tree is also beta15.
+Host runs `0.6.4-beta15`; the working tree is beta16 pending validation and
+deployment of the precise-coordinate editor. The motion gate is verified off.
 
 ## The one open release gate
 
@@ -41,7 +42,7 @@ Preview → Dry-run → Real Go. A service call is NOT Gate 5. You cannot click 
 card; the operator must.
 
 Before the final dry-run, confirm the browser console banner reports
-`v0.6.4-beta15` and the execution-profile row reads exactly
+`v0.6.4-beta16` and the execution-profile row reads exactly
 `LUBA acceptance profile (Gates 1-4, 2026-07-31)`. Save the card's emitted
 payload and dry-run result. Do not edit the waypoints or profile between that
 dry-run and Real Go; use the same card instance for all three steps. Save the
@@ -110,7 +111,7 @@ cached and stayed bit-identical across 374 samples.
 .venv/bin/python -m ruff check custom_components tests
 .venv/bin/python -m ruff format --check custom_components tests
 .venv/bin/python -m mypy --follow-imports=skip custom_components/mammotion
-npm run test:frontend                                # 17 pass
+npm run test:frontend                                # 19 pass
 .venv/bin/python -m pre_commit run --all-files       # green, modifies nothing
 ```
 

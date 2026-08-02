@@ -136,7 +136,7 @@ last travelling.
 Add the integration-served JavaScript as a dashboard resource:
 
 ```text
-/mammotion/mammotion-custom-path-card.js?v=0.6.4-beta15
+/mammotion/mammotion-custom-path-card.js?v=0.6.4-beta16
 ```
 
 Use resource type `JavaScript module`. The version query is required because
@@ -151,6 +151,11 @@ type: custom:mammotion-custom-path-card
 entity: lawn_mower.your_mower
 card_height: 520
 ```
+
+Click or drag waypoints for coarse placement. When a short or exact segment is
+needed, edit that waypoint's X/Y fields below the map; coordinates use mower-map
+metres with 0.001 m input precision. Every edit clears prior run results and
+automatically re-runs Preview, so run Dry-run again after the final edit.
 
 The built-in defaults, written out. These are the values the supervised LUBA
 acceptance run executed; listing them explicitly changes nothing, and changing

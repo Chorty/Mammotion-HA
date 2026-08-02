@@ -5,7 +5,7 @@ const MAX_REAL_SEGMENTS = 2;
 const MAX_NUDGE_METRES = 2.0;
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
-const CARD_VERSION = "0.6.4-beta15";
+const CARD_VERSION = "0.6.4-beta16";
 
 // The exact bounded execution profile that passed supervised LUBA acceptance
 // Gates 1-4 on 2026-07-31 (three-write zero stop, bounded straight segment,
@@ -650,6 +650,31 @@ class MammotionCustomPathCard extends HTMLElement {
   _onPointerUp() {
     if (this._draggingIndex == null) return;
     this._draggingIndex = null;
+    this._validateAndPreview();
+  }
+
+  _setWaypointCoordinate(index, axis, rawValue) {
+    if (this._motionRunActive()) return;
+    const text = String(rawValue).trim();
+    const value = Number(text);
+    if (
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= this._waypoints.length ||
+      !["x", "y"].includes(axis) ||
+      !text ||
+      !Number.isFinite(value)
+    ) {
+      this._status = "Waypoint coordinates must be finite numbers.";
+      this._render();
+      return;
+    }
+    this._waypoints[index] = {
+      ...this._waypoints[index],
+      [axis]: value,
+    };
+    this._dryRun = null;
+    this._realRun = null;
     this._validateAndPreview();
   }
 
@@ -1463,6 +1488,21 @@ class MammotionCustomPathCard extends HTMLElement {
       ? `Nudge unavailable: ${nudgeBlockers.join(", ")}`
       : `Drive ${this._nudgeMetres().toFixed(2)} m along ${(this._headingDegrees() ?? 0).toFixed(1)}°. Straight line only — never turns.`;
     const segmentCount = this._segmentCount();
+    const coordinateEditor = this._waypoints.length
+      ? `<div class="coordinate-editor">
+          <div class="title">Precise waypoint coordinates (metres)</div>
+          ${this._waypoints
+            .map(
+              (point, index) => `<div class="coordinate-row">
+                <span>Waypoint ${index + 1}</span>
+                <label>X <input id="waypoint-${index}-x" type="number" step="0.001" value="${Number(point.x).toFixed(3)}" ${runActive ? "disabled" : ""}/></label>
+                <label>Y <input id="waypoint-${index}-y" type="number" step="0.001" value="${Number(point.y).toFixed(3)}" ${runActive ? "disabled" : ""}/></label>
+              </div>`,
+            )
+            .join("")}
+          <div class="hint">Changes re-run Preview. Run Dry-run again after the final coordinate edit.</div>
+        </div>`
+      : "";
     this.shadowRoot.innerHTML = `
       <style>
         ha-card { overflow: hidden; user-select: text; -webkit-user-select: text; }
@@ -1479,6 +1519,12 @@ class MammotionCustomPathCard extends HTMLElement {
         .map-caption { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 0 12px 10px; font-size: 12px; color: var(--secondary-text-color); }
         .map-caption .legend { display: inline-flex; gap: 6px; align-items: center; }
         .map-caption .dot { width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid #111827; display: inline-block; flex: none; }
+        .coordinate-editor { margin: 0 12px 12px; padding: 8px 10px; border: 1px solid rgba(127,127,127,0.35); border-radius: 6px; font-size: 12px; }
+        .coordinate-editor .title { font-weight: 600; margin-bottom: 6px; }
+        .coordinate-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 3px 0; }
+        .coordinate-row > span { min-width: 76px; }
+        .coordinate-row input { width: 7em; font: inherit; }
+        .coordinate-editor .hint { color: var(--secondary-text-color); margin-top: 5px; }
         .preflight-panel { margin: 0 12px 12px; padding: 8px 10px; border: 1px solid rgba(127,127,127,0.35); border-radius: 6px; font-size: 12px; color: var(--secondary-text-color); }
         .preflight-panel .title { font-weight: 600; margin-bottom: 6px; color: var(--primary-text-color); }
         .preflight-row { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
@@ -1520,6 +1566,7 @@ class MammotionCustomPathCard extends HTMLElement {
           <span class="legend"><span class="dot" style="background:#f97316"></span>Click the map to add destinations (max ${MAX_WAYPOINTS}), driven in order</span>
         </div>
         <svg id="path-map"></svg>
+        ${coordinateEditor}
         <div class="status">${this._escapeHtml(this._status)}</div>
         <div class="status">${this._escapeHtml(preflightText)}</div>
         <div class="preflight-panel">
@@ -1605,6 +1652,15 @@ class MammotionCustomPathCard extends HTMLElement {
     );
     svgEl?.addEventListener("pointerup", () => this._onPointerUp());
     svgEl?.addEventListener("pointercancel", () => this._onPointerUp());
+    this._waypoints.forEach((_point, index) => {
+      for (const axis of ["x", "y"]) {
+        this._q(`#waypoint-${index}-${axis}`)?.addEventListener(
+          "change",
+          (event) =>
+            this._setWaypointCoordinate(index, axis, event.target.value),
+        );
+      }
+    });
     this._renderMap();
   }
 }

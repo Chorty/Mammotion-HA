@@ -9,17 +9,17 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 |                         | Host                                                           | Branch         |
 | ----------------------- | -------------------------------------------------------------- | -------------- |
-| Integration version     | `0.6.4-beta15`                                                 | `0.6.4-beta15` |
+| Integration version     | `0.6.4-beta15`                                                 | `0.6.4-beta16` |
 | pymammotion pin         | `0.8.12.post1` fork wheel (container verified)                 | same           |
-| Card `CARD_VERSION`     | `0.6.4-beta15`; integration and HACS copies deployed together  | `0.6.4-beta15` |
+| Card `CARD_VERSION`     | `0.6.4-beta15`; integration and HACS copies deployed together  | `0.6.4-beta16` |
 | `manual_motion.py`      | present                                                        | present        |
 | `backend_capability.py` | present                                                        | present        |
 | `capabilities.py`       | present                                                        | present        |
 
 The live host ran backend Gates 1-4 and the first partial card-driven Gate 5
-attempt. Beta15 is deployed for the clean Gate 5 retry. The 2026-08-02 setup
-commanded no motion but may have left experimental motion armed; check live
-state first and disarm unless the supervised run is beginning immediately.
+attempt. Both 2026-08-02 setups commanded no motion; the second proved the map
+needs finer waypoint placement. Beta16 adds precise coordinate inputs and is
+pending deployment. Experimental motion is verified off.
 
 ### Gate 5 deploy — 2026-07-31 19:50-20:05 EDT
 
@@ -96,7 +96,7 @@ Lesson for any future deploy: a correct file deploy is **not** a correct
 run configuration. Check the execution-profile row, not just the version banner.
 
 Still required before Gate 5 motion: confirm the browser console banner reads
-`v0.6.4-beta15` (a hard refresh may be needed), confirm the card's execution
+`v0.6.4-beta16` (a hard refresh may be needed), confirm the card's execution
 profile row reads exactly
 `LUBA acceptance profile (Gates 1-4, 2026-07-31)`, save the emitted payload and
 dry-run result, and obtain a fresh daylight operator `go`. Use the same card

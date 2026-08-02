@@ -155,6 +155,28 @@ not matter; leg length does.
   sensor entity. `scripts/motion_capture.py` is still the right tool for the RTK
   position track and for proving whether `toward` updates.
 
+## Gate 5 setup retry 2026-08-02 afternoon — NO MOTION
+
+The operator gave a fresh daylight `GO`, but the motion gate remained off while
+the card geometry was checked. The shortest practical clicks produced legs of
+**0.767 m** and **0.934 m**, still outside the 0.3–0.5 m acceptance band. The
+dry-run was valid with live VIO (`Light`, 80 features) and no segment blockers,
+but it was not suitable for Gate 5, so Real Go was not enabled and no motion
+occurred. A 402-sample capture stayed bit-identical at (4.795, −1.9502).
+
+This exposed a card usability blocker rather than a motion-profile defect: the
+full-map click/drag surface cannot reliably place sub-metre legs. Beta16 adds a
+guarded coordinate editor for existing waypoints at 0.001 m precision. Every
+coordinate edit clears stale dry/real results and re-runs backend Preview; Real
+Go still requires a valid final preview and dry-run. The accepted motion profile
+is unchanged.
+
+Evidence:
+
+- `docs/evidence-gate5-setup2-dry-run-20260802.json`
+- `docs/evidence-gate5-setup2-no-motion-20260802.jsonl`
+- `docs/evidence-gate5-setup2-ble-report-20260802.txt`
+
 ## Start here
 
 - Branch: `feat/vio-turn-to-heading`, pushed to `Chorty`. Working tree clean.

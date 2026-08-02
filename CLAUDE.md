@@ -8,10 +8,11 @@ Read `docs/NEXT-SESSION.md` before continuing P0 or click-to-go work. The
 supervised backend Gates 1-4 passed on the LUBA on 2026-07-31. Gate 5 is
 partial: the card drove the mower on 2026-07-31 but the deliberately
 over-length path stopped short, and the 2026-08-02 setup did not command
-motion. That setup may have left experimental motion armed, so check live state
-and disarm unless resuming immediately. Do not repeat a physical test without a
-fresh operator confirmation, and always disarm after success, failure, or
-abort.
+motion. The afternoon retry also commanded no motion: the full-map UI could not
+place legs shorter than 0.767/0.934 m, so beta16 adds precise coordinate inputs
+without changing the accepted profile. The motion gate is verified off. Do not
+repeat a physical test without a fresh operator confirmation, and always disarm
+after success, failure, or abort.
 
 The card's Real Go defaults are now the Gate 4 profile itself, frozen as
 `LUBA_ACCEPTANCE_PROFILE` in `www/mammotion-custom-path-card.js` and pinned by
@@ -19,12 +20,12 @@ frontend tests. Backend acceptance is still **not** UI-to-mower acceptance: the
 card has not yet completed a clean two-segment run. That is **Gate 5** in
 `docs/p0-beta-release.md`, and it is the one open release gate.
 
-Versions are aligned at `0.6.4-beta15` — `manifest.json`,
+The working tree is aligned at `0.6.4-beta16` while the host remains beta15
+pending deployment. `manifest.json`,
 `pyproject.toml`, `CARD_VERSION` and `uv.lock` (which carries the PEP 440 form
-`0.6.4b15`) must always agree, and the `Beta Release` workflow verifies all
-four. The host also runs beta15. The card is served from **two** paths, so
-deploy to both and bump the Lovelace resource key or the browser can silently
-load the stale card.
+`0.6.4b16`) must always agree, and the `Beta Release` workflow verifies all
+four. The card is served from **two** paths, so deploy to both and bump the
+Lovelace resource key or the browser can silently load the stale card.
 
 `pre-commit run --all-files` is green as of 2026-07-31 and is now a usable
 gate. Its hook pins must move with `requirements_test.txt`: the Ruff and mypy
