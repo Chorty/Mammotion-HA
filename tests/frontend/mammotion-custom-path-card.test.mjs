@@ -256,6 +256,71 @@ test("heading arrow is computed in map space, not screen space", () => {
   assert.ok(mt.toSY(Math.sin(rad2)) - mt.toSY(0) < 0, "map +y is screen -y");
 });
 
+// Nudge is the night / no-VIO escape hatch. Its entire safety argument is that
+// the target sits ON the heading ray, so the turn phase has nothing to do and
+// no blind pivot can happen. These pin that.
+test("nudge targets the heading ray so no turn is ever required", () => {
+  const element = card();
+  element._runtimeState.position = { x: 10, y: 5, toward: -102.4 }; // bearing 0
+  element._nudgeDistance = 1.5;
+
+  const { payload } = element._nudgePayload(false);
+  const [from, to] = payload.points;
+
+  assert.deepEqual(from, { x: 10, y: 5 });
+  // Bearing 0 => straight along +x, y unchanged.
+  assert.ok(Math.abs(to.x - 11.5) < 1e-6, `got ${to.x}`);
+  assert.ok(Math.abs(to.y - 5) < 1e-6, `got ${to.y}`);
+
+  // legacy only to clear the up-front vio_active gate; it must never turn.
+  assert.equal(payload.turn_mode, "legacy");
+  // 1.5 m at ~1.06 m per command => 2 commands.
+  assert.equal(payload.max_linear_commands, 2);
+  assert.equal("max_linear_pulse_ceiling" in payload, false);
+});
+
+test("nudge is distance-capped and refuses without a heading", () => {
+  const element = card();
+  element._runtimeState.position = { x: 0, y: 0, toward: 0 };
+
+  element._nudgeDistance = 99;
+  assert.equal(element._nudgeMetres(), 2.0, "must clamp to MAX_NUDGE_METRES");
+  element._nudgeDistance = -5;
+  assert.equal(element._nudgeMetres(), 0);
+  assert.equal(
+    element._nudgePayload(false),
+    null,
+    "zero distance sends nothing",
+  );
+
+  // No `toward` (never moved since boot) => no heading => refuse rather than
+  // guess a direction and drive.
+  element._nudgeDistance = 1;
+  element._runtimeState.position = { x: 0, y: 0 };
+  assert.equal(element._headingDegrees(), null);
+  assert.equal(element._nudgePayload(false), null);
+});
+
+test("nudge requires clear-area but not the blades checkbox", () => {
+  const element = card();
+  element._runtimeState.position = { x: 0, y: 0, toward: 0 };
+  element._nudgeDistance = 0.5;
+
+  // Blades-off stays asserted to the backend (telemetry gates it separately),
+  // while the operator's clear-area confirmation is still carried through.
+  element._confirmClearArea = false;
+  assert.equal(element._nudgePayload(false).payload.confirm_blades_off, true);
+  assert.equal(element._nudgePayload(false).payload.confirm_clear_area, false);
+
+  element._confirmClearArea = true;
+  assert.equal(element._nudgePayload(false).payload.confirm_clear_area, true);
+
+  // A dry run must never carry confirmations.
+  const dry = element._nudgePayload(true).payload;
+  assert.equal(dry.confirm_blades_off, false);
+  assert.equal(dry.confirm_clear_area, false);
+});
+
 test("backend blockers and the two-segment limit lock Real Go", () => {
   const element = card();
   element._waypoints = [

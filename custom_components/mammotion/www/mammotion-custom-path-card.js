@@ -1,8 +1,11 @@
 const MAX_WAYPOINTS = 7;
 const MAX_REAL_SEGMENTS = 2;
+// Nudge is the night/no-VIO escape hatch: a straight line along the current
+// facing, never a turn. Capped so a mistake is bounded by geometry.
+const MAX_NUDGE_METRES = 2.0;
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
-const CARD_VERSION = "0.6.4-beta13";
+const CARD_VERSION = "0.6.4-beta14";
 
 // The exact bounded execution profile that passed supervised LUBA acceptance
 // Gates 1-4 on 2026-07-31 (three-write zero stop, bounded straight segment,
@@ -76,6 +79,7 @@ class MammotionCustomPathCard extends HTMLElement {
     this._loadingRuntime = false;
     this._confirmBladesOff = false;
     this._confirmClearArea = false;
+    this._nudgeDistance = 0.5;
     this._rendered = false;
   }
 
@@ -706,6 +710,104 @@ class MammotionCustomPathCard extends HTMLElement {
       : "LUBA acceptance profile (Gates 1-4, 2026-07-31)";
   }
 
+  // Straight-line nudge along the CURRENT facing, for moving the mower a short
+  // distance when VIO is unavailable (i.e. at night).
+  //
+  // Why this is the only night-safe shape: RTK position holds in full darkness,
+  // but VIO heading does not (it reads 0.0 with the feed dead) and `toward` is
+  // course-over-ground, which cannot observe an IN-PLACE pivot. So linear motion
+  // stays measurable in the dark and turning does not. Rather than expose a
+  // blind turn, this puts the target ON the heading ray: the heading error is
+  // ~0 by construction, the turn phase reports `target_heading_reached`, and
+  // ZERO turn commands are sent. Measured 2026-08-01: 0.08 deg error, 0 turn
+  // commands, two clean pulses of 1.0785 m and 1.0449 m.
+  //
+  // ⚠️ `turn_mode: "legacy"` is required only to clear the `vio_active` gate,
+  // which blocks up-front whenever turn_mode is "vio" regardless of whether a
+  // turn is actually needed. Legacy steers by course-over-ground and is safe
+  // HERE ONLY BECAUSE NO TURN OCCURS. Do not conclude that legacy is a
+  // night-capable turn mode; it is not, and a blind pivot has no feedback at
+  // all.
+  _nudgePayload(dryRun) {
+    const start = this._currentPositionPoint();
+    const heading = this._headingDegrees();
+    if (!start || heading == null) return null;
+    const metres = this._nudgeMetres();
+    if (!(metres > 0)) return null;
+    const rad = (heading * Math.PI) / 180;
+    const target = this._roundedPoint({
+      x: start.x + metres * Math.cos(rad),
+      y: start.y + metres * Math.sin(rad),
+    });
+    // One linear command covers ~1.06 m (measured), so scale the budget to the
+    // requested distance rather than silently stopping short. Schema caps at 3.
+    const pulses = Math.min(
+      3,
+      Math.max(
+        1,
+        Math.ceil(
+          metres /
+            Number(this._profileValue("final_approach_metres_per_pulse")),
+        ),
+      ),
+    );
+    return {
+      service: "raw_pymammotion_execute_vector_segment",
+      payload: {
+        entity_id: this._config.entity,
+        points: [this._roundedPoint(start), target],
+        dry_run: dryRun,
+        // Blades-off is still gated by telemetry (`mower_reports_blades_off`
+        // checks state AND cutter RPM); this is the operator half, and for a
+        // bounded blades-off nudge the clear-area confirmation is the one that
+        // carries the risk.
+        confirm_blades_off: dryRun ? false : true,
+        confirm_clear_area: dryRun ? false : this._confirmClearArea,
+        prefer_ble: Boolean(this._profileValue("prefer_ble")),
+        turn_mode: "legacy",
+        max_turn_commands: Number(this._profileValue("max_turn_commands")),
+        max_linear_commands: pulses,
+        max_no_progress_pulses: Number(
+          this._profileValue("max_no_progress_pulses"),
+        ),
+        heading_tolerance_degrees: Number(
+          this._profileValue("heading_tolerance_degrees"),
+        ),
+        min_progress_distance: Number(
+          this._profileValue("min_progress_distance"),
+        ),
+        calibrated_forward_heading_offset_degrees: Number(
+          this._profileValue("calibrated_forward_heading_offset_degrees"),
+        ),
+        turn_pulse_duration_ms: Number(
+          this._profileValue("turn_pulse_duration_ms"),
+        ),
+        linear_pulse_duration_ms: Number(
+          this._profileValue("linear_pulse_duration_ms"),
+        ),
+        waypoint_tolerance: Number(this._profileValue("waypoint_tolerance")),
+        motion_refresh_interval_ms: Number(
+          this._profileValue("motion_refresh_interval_ms"),
+        ),
+        final_approach_metres_per_pulse: Number(
+          this._profileValue("final_approach_metres_per_pulse"),
+        ),
+        turn_degrees_per_second: Number(
+          this._profileValue("turn_degrees_per_second"),
+        ),
+        ble_auto_recover: Boolean(this._profileValue("ble_auto_recover")),
+        sample_delays: LUBA_ACCEPTANCE_PROFILE.sample_delays,
+      },
+    };
+  }
+
+  _nudgeMetres() {
+    const raw = Number(this._nudgeDistance);
+    if (!Number.isFinite(raw)) return 0;
+    // Hard geometric cap: a mistake is bounded by distance, not by vigilance.
+    return Math.min(MAX_NUDGE_METRES, Math.max(0, raw));
+  }
+
   _motionPayload(dryRun) {
     const points = this._segmentPoints();
     if (!points) return null;
@@ -1039,6 +1141,45 @@ class MammotionCustomPathCard extends HTMLElement {
     this._stopRunTicker();
   }
 
+  async _runNudge() {
+    if (this._motionRunActive()) {
+      this._status =
+        "Nudge blocked: a manual-motion session is already active.";
+      this._render();
+      return;
+    }
+    if (!this._confirmClearArea) {
+      this._status = "Nudge blocked: confirm the area is clear first.";
+      this._render();
+      return;
+    }
+    await this._loadRuntimeState();
+    const nudge = this._nudgePayload(false);
+    if (!nudge) {
+      this._status =
+        "Nudge needs a live position and heading. `toward` is course-over-ground, so it is unavailable until the mower has moved at least once.";
+      this._render();
+      return;
+    }
+    const metres = this._nudgeMetres();
+    this._status = `Nudging ${metres.toFixed(2)} m along ${this._headingDegrees().toFixed(1)}°…`;
+    this._render();
+    try {
+      const result = await this._callService(nudge.service, nudge.payload);
+      this._realRun = result;
+      this._persistLastRun(result);
+      const reason = result?.stop_reason || "?";
+      const sent = result?.linear_commands_sent ?? "?";
+      const turns = result?.turn_commands_sent ?? "?";
+      this._status = `Nudge finished: ${reason} (linear ${sent}, turns ${turns}). Turns must be 0 — anything else means it tried to steer blind.`;
+      this._confirmClearArea = false;
+      await this._loadRuntimeState();
+    } catch (err) {
+      this._status = `Nudge failed: ${err?.message || err}`;
+    }
+    this._render();
+  }
+
   async _abortMotion() {
     this._status =
       "Aborting backend session and sending confirmed BLE stop sequence…";
@@ -1308,6 +1449,10 @@ class MammotionCustomPathCard extends HTMLElement {
           <button id="abort" type="button">Abort / Stop</button>
           <label><input id="confirm-blades-off" type="checkbox" ${this._confirmBladesOff ? "checked" : ""}/> confirm blades off</label>
           <label><input id="confirm-clear-area" type="checkbox" ${this._confirmClearArea ? "checked" : ""}/> confirm clear area</label>
+          <label title="Straight line along the current facing. Never turns, so it works with VIO dark (at night). Needs the clear-area confirmation only.">Nudge
+            <input id="nudge-distance" type="number" min="0.1" max="${MAX_NUDGE_METRES}" step="0.1" value="${this._nudgeMetres().toFixed(1)}" style="width:4.5em"/> m
+          </label>
+          <button id="nudge" type="button" ${this._confirmClearArea && !runActive && this._headingDegrees() != null ? "" : "disabled"}>Nudge forward</button>
           <label>Area
             <select id="area">
               ${areas.map((area) => `<option value="${this._escapeHtml(area.area_hash)}" ${String(area.area_hash) === String(this._areaHash) ? "selected" : ""}>${this._escapeHtml(area.name || area.area_hash)}</option>`).join("")}
@@ -1380,6 +1525,11 @@ class MammotionCustomPathCard extends HTMLElement {
         "Real Go result JSON",
       ),
     );
+    this._q("#nudge")?.addEventListener("click", () => this._runNudge());
+    this._q("#nudge-distance")?.addEventListener("change", (event) => {
+      this._nudgeDistance = Number(event.target.value);
+      this._render();
+    });
     this._q("#abort")?.addEventListener("click", () => this._abortMotion());
     this._q("#confirm-blades-off")?.addEventListener("change", (event) => {
       this._confirmBladesOff = Boolean(event.target.checked);
