@@ -333,11 +333,14 @@ behaviour. Gate 5 needs Gate 4's ~30 cm geometry, not multi-metre legs.
 Two constants were measured from the run's 1.5 s position capture
 (`scratchpad` `gate5_run1.jsonl`):
 
-- **`final_approach_metres_per_pulse` is ~25% low.** One linear command
-  travelled **1.321 m** against the configured **1.06**. The executor
-  under-predicts distance, so on final approach it commands a longer pulse than
-  needed and biases toward **overshoot** — the likely reason Gate 4 landed
-  4.70 cm out rather than sub-centimetre.
+- ~~**`final_approach_metres_per_pulse` is ~25% low.**~~ **REFUTED 2026-08-01 —
+  see the isolated-pulse entry below.** The original claim was that one linear
+  command travelled 1.321 m against a configured 1.06, biasing final approach
+  toward overshoot. It does not hold: that 1.321 m was measured across a
+  **phase boundary** inside a two-segment run, not from an isolated command.
+  Two clean single-command pulses put the real figure at **1.0617 m mean —
+  within 0.16% of the configured 1.06**. The constant is correct; do not change
+  it.
 - **`heading_tolerance_degrees: 18` is far too loose.** The segment-2 VIO turn
   went 174.13 deg to **208.20 deg** against a target bearing of **210.31 deg**:
   a **2.11 deg** error, about 8.5x tighter than the tolerance permits.
@@ -566,15 +569,41 @@ same change that records the result, and move this date.
   turn drifted 10.48 cm. The Gate 5 attempt then gave the first refresh-driven
   turn-accuracy figure: a VIO turn landed **2.11 degrees** from its target
   bearing (174.13 -> 208.20 against 210.31), roughly 8.5x tighter than the
-  18-degree tolerance. The same run measured a single linear command at
-  **1.321 m** against a configured `final_approach_metres_per_pulse` of 1.06 —
-  ~25% low, biasing final approach toward overshoot, and a plausible
-  explanation for Gate 4's 4.70 cm landing.
+  18-degree tolerance. That turn figure is still a single sample and still
+  un-reproduced.
 
-  **Both are single samples and neither has been acted on.**
-  `LUBA_ACCEPTANCE_PROFILE` is deliberately unchanged, because editing it
-  un-accepts the profile the hardware actually ran. Reproduce on a second
-  geometry before changing anything, and do not weaken the displacement guard.
+  **`final_approach_metres_per_pulse` — CLAIMED 25% LOW, THEN REFUTED
+  2026-08-01.** The same run appeared to show a single linear command
+  travelling 1.321 m against the configured 1.06. Two isolated night-time
+  pulses refuted it (below). The constant is right; the measurement was wrong.
+
+  `LUBA_ACCEPTANCE_PROFILE` remains unchanged. The turn tolerance still needs a
+  second sample before anything is edited, and the displacement guard must not
+  be weakened.
+- **Isolated linear-pulse calibration — 2026-08-01, in darkness.** Two pulses
+  run through `raw_pymammotion_execute_vector_segment` with `turn_mode:
+  "legacy"` (which skips the VIO liveness gate, so this is measurable at night
+  on RTK alone), each with a target dead ahead so the turn phase reported
+  `target_heading_reached` and sent **zero turn commands**:
+
+  | | travel | vs configured 1.06 |
+  | --- | --- | --- |
+  | pulse 1 | 1.0785 m | +1.7% |
+  | pulse 2 | 1.0449 m | −1.4% |
+  | **mean** | **1.0617 m** | **+0.16%** |
+
+  Spread 3.2%. Both were one `send_movement(linear_speed=400, angular_speed=0)`
+  at 3500 ms with `motion_refresh_interval_ms: 200` — the identical wire command
+  the accepted profile uses. **`final_approach_metres_per_pulse: 1.06` is
+  correct and needs no change.**
+
+  🔑 **Method lesson.** The refuted 1.321 m came from measuring net displacement
+  across a *phase boundary* in a two-segment run, where segment 2's turn
+  translation was folded into what looked like segment 1's linear travel. A
+  per-command measurement disagreed with it by 22.5%. This is the same
+  aggregate-vs-per-item error recorded elsewhere in this project: **derive
+  constants from an isolated command, never from a net displacement spanning
+  phases.**
 - **BLE session lifetime — RE-MEASURED 2026-07-30, materially improved.** This
   item previously asked for a stationary soak against the 2026-07-27 baseline.
   **That soak was done** (motion-disabled 30-minute capture, recorded in the

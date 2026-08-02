@@ -21,8 +21,11 @@ Read those before planning the next run. The short version:
   legs. A pre-validated path from the mower's current resting position is
   `(5.048, -3.111)` then `(5.398, -3.111)`.
 - Two constants were measured and are **hypotheses, not decisions**:
-  `final_approach_metres_per_pulse` looks ~25% low (1.32 m observed vs 1.06
-  configured, biasing toward overshoot), and `heading_tolerance_degrees: 18` is
+  ~~`final_approach_metres_per_pulse` looks ~25% low~~ — **REFUTED 2026-08-01**
+  by two isolated night pulses (1.0785 m and 1.0449 m, mean 1.0617, within
+  0.16% of the configured 1.06). The constant is correct; the original figure
+  came from measuring across a phase boundary in a two-segment run. And
+  `heading_tolerance_degrees: 18` is
   far too loose (a turn landed 2.11 deg from target). `LUBA_ACCEPTANCE_PROFILE`
   is deliberately unchanged — editing it un-accepts it.
 - ⚠️ **The VIO dusk cliff is steep and the HA sensor entities lag it.** 80/80

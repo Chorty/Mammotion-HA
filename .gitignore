@@ -8,6 +8,8 @@
 # Large reverse-engineering artifacts; keep outside commits unless intentionally needed.
 *.apk
 *.xapk
+*.ipa
+ios-decompile/
 
 # GITHUB Proposed Python stuff:
 *.py[cod]
@@ -17,6 +19,13 @@ __pycache__
 # Diagnostic script output (scripts/ble_advert_monitor.py, scripts/state_sampler.py)
 scripts/advert_log.jsonl
 scripts/state_log.jsonl
+
+# OTA firmware capture (scripts/mitm_ota_capture.py, scripts/fetch_ota_firmware.py,
+# scripts/listen_ota_mqtt.py) — contains auth tokens and/or the firmware binary
+# itself, never commit.
+scripts/mitm_ota_capture.jsonl
+scripts/ota_mqtt_capture.jsonl
+scripts/firmware/
 
 # Coverage data from `pytest --cov` (CI reports to the terminal, never a file)
 .coverage
