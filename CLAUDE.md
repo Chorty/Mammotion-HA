@@ -5,19 +5,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Current P0 Handoff
 
 Read `docs/NEXT-SESSION.md` before continuing P0 or click-to-go work. The
-supervised backend Gates 1-4 passed on the LUBA on 2026-07-31. Gate 5 is
-partial: the card drove the mower on 2026-07-31 but the deliberately
-over-length path stopped short, and the 2026-08-02 setup did not command
-motion. The afternoon retry also commanded no motion: the full-map UI could not
-place legs shorter than 0.767/0.934 m, so beta16 adds precise coordinate inputs
-without changing the accepted profile. The motion gate is verified off. Do not
-repeat a physical test without a fresh operator confirmation, and always disarm
-after success, failure, or abort.
+supervised backend Gates 1-4 passed on the LUBA on 2026-07-31. Gate 5 is still
+open after a safe beta16 card-originated failure on 2026-08-02. The exact
+0.400 m + 0.400 m L-path executed only segment 1: a 0.0937 m VIO calibration
+move plus the scaled 1.0125 s final pulse travelled 0.2720 m net and left
+0.1311 m to target, so the executor stopped at
+`max_linear_commands_reached` and correctly withheld segment 2. Both motion
+stops were confirmed, the session cleared, stationary telemetry was preserved,
+and the experimental-motion gate is verified off. This refutes the prior claim
+that every 0.3-0.5 m leg is usable: the zero-origin proportional short-pulse
+model does not include motor onset/dead time. Do not retry or change the
+accepted profile without diagnosis, a fresh daylight geometry, and a fresh
+operator confirmation. Always disarm after success, failure, or abort.
 
 The card's Real Go defaults are now the Gate 4 profile itself, frozen as
 `LUBA_ACCEPTANCE_PROFILE` in `www/mammotion-custom-path-card.js` and pinned by
-frontend tests. Backend acceptance is still **not** UI-to-mower acceptance: the
-card has not yet completed a clean two-segment run. That is **Gate 5** in
+frontend tests. Backend acceptance is still **not** completed UI-to-mower
+acceptance: the card has driven the mower but has not completed a clean
+two-segment run. That is **Gate 5** in
 `docs/p0-beta-release.md`, and it is the one open release gate.
 
 The working tree and host are aligned at `0.6.4-beta16`. `manifest.json`,

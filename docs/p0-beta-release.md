@@ -6,9 +6,11 @@ This branch has completed **Alpha implementation and supervised backend
 acceptance**: every LUBA Gate 1-4 test passed and the safety gates fail closed,
 but known release blockers remain. The card's built-in Real Go defaults now
 match the deliberately bounded profile used for Gate 4 (see "Card execution
-profile" below), so the card emits the accepted payload by default -- but the
-card itself has never driven the mower, so backend acceptance still must not be
-presented as UI-to-mower acceptance. The three stages are exit criteria, not
+profile" below), so the card emits the accepted payload by default. The card
+has driven the mower, but its 2026-08-02 exact 0.400 m beta16 run stopped
+0.1311 m short of waypoint 1 and never began segment 2. Backend acceptance
+therefore still must not be presented as completed UI-to-mower acceptance. The
+three stages are exit criteria, not
 version labels -- the version
 scheme stays `0.6.x-betaN` because
 `beta-release.yml` numbers from it and prior builds already shipped as `-betaN`.
@@ -94,7 +96,8 @@ Run in order, stopping at the first failure. Preconditions, all required:
 
 Gates 1-4 are backend acceptance and are complete (2026-07-31). Gate 5 is the
 open one, and it exists because Gates 1-4 prove nothing about the card: every
-one of them was a service call. The card has never driven the mower. Passing
+one of them was a service call. The card has driven the mower in two failed-safe
+attempts, but has never completed both segments. Passing
 Gates 1-4 while the card emitted a *different* profile is exactly the gap that
 `LUBA_ACCEPTANCE_PROFILE` closed on paper — Gate 5 is what closes it in fact.
 
@@ -362,6 +365,54 @@ reported `initial_vio_feed: {live: false, tracked_features: 0, brightness_label:
 turn primitive had nothing to steer by. No real motion was commanded and
 experimental motion was disabled.
 
+**Gate 5 beta16 final attempt — FAILED SAFE, 2026-08-02 19:33 EDT.** The
+operator confirmed the browser-loaded beta16 card and exact execution-profile
+label, then used one unchanged card instance for Preview, Dry-run and Real Go.
+The points `(4.835, -1.861)`, `(4.835, -2.261)`, `(5.235, -2.261)` formed two
+exact 0.400 m legs. The dry run was valid with no warnings, errors, blockers or
+failed gates; VIO was live (`Light`, 80 tracked features), RTK was Fix, blades
+were physically off, the mower was inside the accepted area, and no route or
+motion session existed.
+
+The real result stopped at `segment_failed` after executing only segment 1:
+
+- VIO calibration moved 0.09372 m and left 0.30663 m to waypoint 1;
+- the zero-origin proportional final-approach model used the validated full
+  pulse constant (1.06 m / 3500 ms) to select a 1012.5 ms pulse;
+- that short pulse moved only 0.17861 m, leaving 0.13109 m to target;
+- cross-track error was just 0.0233 m, so this was chiefly an along-track
+  distance failure, not a reproducible aim failure;
+- the segment ended `max_linear_commands_reached`; segment 2 never started;
+- both the calibration and linear stops were acknowledged successfully in
+  177.791 ms and 152.307 ms respectively.
+
+The session cleared, blades remained off, the mower returned `MODE_READY`, and
+experimental motion was disabled immediately. A separate 20-second capture was
+stationary at `(4.8583, -2.1320)`. The scoped BLE report found no disconnect,
+sequence-gap, malformed-frame or dropped-frame event. The release is halted:
+PR #10 must remain draft and no beta release may be dispatched.
+
+The run refutes the claimed **0.3-0.5 m usable leg band** and the assumption
+that a short refreshed pulse scales proportionally through zero. The isolated
+3500 ms / 1.06 m measurement is not itself refuted; this run shows motor
+onset/dead time matters at 1012.5 ms. One short-pulse sample is insufficient to
+change the executor or accepted hardware profile. Diagnose on a fresh daylight
+geometry before any change or retry, and obtain a new operator confirmation.
+
+Heading evidence does not justify changing the retained 102.4-degree profile.
+The capture's 0.2722 m net displacement bore 274.99 degrees from initial VIO
+heading -85.881 degrees, an implied offset of 99.55 degrees (-2.85 degrees).
+`toward` again stayed stale at 175.4473. In-run calibration reported 358.311
+degrees (normalized about -1.689), then linear refresh reported 1.794 degrees.
+
+Evidence:
+
+- `docs/evidence-gate5-final-dry-run-20260802.json`
+- `docs/evidence-gate5-final-result-20260802.json`
+- `docs/evidence-gate5-final-run-20260802.jsonl`
+- `docs/evidence-gate5-final-post-stop-20260802.jsonl`
+- `docs/evidence-gate5-final-ble-report-20260802.txt`
+
 ⚠️ **The VIO dusk cliff is steep, and the HA sensor entities lag it.** At
 20:40:27 the sensors read `camera_brightness: light` with 80/80 tracked
 features; by 20:47:20 they read `dark` with 0/0 — a collapse inside about seven
@@ -614,9 +665,10 @@ same change that records the result, and move this date.
   carries both a minimal YAML and the written-out defaults. The emitted payload
   was additionally validated against the shipped voluptuous schemas for both
   card services, confirming the ceiling is absent rather than zeroed.
-  **Still open:** the card has never driven the mower. That is now **Gate 5** in
-  the acceptance sequence above, and it needs a repeat preview/dry-run and one
-  Real Go from the card under a new daylight operator `go`.
+  **Current disposition:** the card has now driven the mower twice but has not
+  completed both segments. The beta16 exact 0.400 m attempt above exposed the
+  short-pulse distance-model blocker, so Gate 5 remains open and release is
+  halted pending diagnosis and a newly authorized daylight run.
   `CARD_VERSION`, `manifest.json`, `pyproject.toml` and `uv.lock` were bumped
   together to `0.6.4-beta12` on 2026-07-31 so the Gate 5 build is
   distinguishable in the browser from the deployed beta11 card. The bump is

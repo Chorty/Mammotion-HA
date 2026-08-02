@@ -1,11 +1,49 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
-Updated 2026-08-02 (fourth pass) after a night session of linear calibration in
-darkness. This is the current handoff;
+Updated 2026-08-02 after the beta16 daylight Gate 5 attempt. This is the current handoff;
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
-## 🚨 READ FIRST — the open finding that should shape the next run
+## 🚨 READ FIRST — Gate 5 failed safely; release is halted
+
+The operator used one unchanged beta16 card instance for Preview, Dry-run and
+Real Go with exact points `(4.835, -1.861)`, `(4.835, -2.261)`,
+`(5.235, -2.261)`: two 0.400 m legs. All runtime gates passed with daylight VIO
+Light/80, RTK Fix, blades off, no route/session and the exact accepted-profile
+label. The card result is nevertheless a **Gate 5 failure**:
+
+- segment 1's VIO calibration moved 0.09372 m, leaving 0.30663 m;
+- proportional final-approach scaling chose a 1012.5 ms pulse, which moved only
+  0.17861 m;
+- final distance to waypoint 1 was 0.13109 m, outside the 0.08 m tolerance;
+- the miss was mostly along-track (cross-track only 0.0233 m);
+- it stopped at `max_linear_commands_reached`; segment 2 never started;
+- both command-level stop writes succeeded, the session cleared, blades were
+  off, the gate was disarmed, and the post-stop capture stayed stationary.
+
+The isolated 3500 ms pulse constant of 1.06 m remains valid, but scaling it
+linearly through zero is not valid at 1012.5 ms because motor onset/dead time is
+material. The prior claim that 0.3-0.5 m legs form a usable band is refuted.
+Do not change the accepted profile from this one short-pulse sample and do not
+retry without diagnosis, a fresh daylight geometry and fresh operator
+confirmation. PR #10 remains draft; do not merge or publish a beta.
+
+Evidence:
+
+- `docs/evidence-gate5-final-dry-run-20260802.json`
+- `docs/evidence-gate5-final-result-20260802.json`
+- `docs/evidence-gate5-final-run-20260802.jsonl`
+- `docs/evidence-gate5-final-post-stop-20260802.jsonl`
+- `docs/evidence-gate5-final-ble-report-20260802.txt`
+
+The motion capture measured 0.2722 m net at bearing 274.99 degrees. Initial VIO
+heading was -85.881 degrees, implying a 99.55-degree forward offset (-2.85
+degrees from 102.4), while `toward` stayed stale at 175.4473. The executor's
+calibration offset normalized to about -1.689 degrees and its later linear
+refresh reported 1.794 degrees. This is not a reproducible aim failure and does
+not justify changing `calibrated_forward_heading_offset_degrees: 102.4`.
+
+## Historical open finding before the beta16 run
 
 **`calibrated_forward_heading_offset_degrees: 102.4` looks about 11 degrees
 low.** Three straight-line runs in darkness on 2026-08-01/02 all travelled on a
@@ -102,6 +140,9 @@ Host is on **`0.6.4-beta15`**. Everything below is deployed and pushed.
 
 ## Gate 5 attempt 2026-08-02 morning — SET UP, NOT YET RUN
 
+> Historical setup record. Its usable-band and coordinate-entry conclusions
+> were superseded by the beta16 run documented at the top of this file.
+
 Session ended on token budget mid-setup. **No motion occurred.** Capture proved
 it: 374 samples over 10 minutes, net travel **0.0000 m**, position and both
 headings bit-identical.
@@ -133,14 +174,14 @@ With `max_linear_commands: 1` at ~1.06 m per command, leg 1 stops **0.12 m**
 short (just outside the 0.08 m tolerance) and leg 2 stops **0.81 m** short.
 Neither reports `target_reached`, so neither passes Gate 5.
 
-🔑 **Usable leg band: 0.3–0.5 m.** Above ~1.0 m one linear command cannot finish
-it; below 0.08 m it is inside `waypoint_tolerance` and may count as already
-arrived.
+~~**Usable leg band: 0.3–0.5 m.**~~ **Refuted by the beta16 0.400 m run.** Above
+~1.0 m one linear command cannot finish it; below 0.08 m it is inside
+`waypoint_tolerance` and may count as already arrived. The intervening short
+range is not yet characterized because onset/dead time breaks zero-origin pulse
+scaling.
 
-🔑 **Coordinates cannot be typed into the card** — it is a click-to-go map. The
-workflow is: click roughly → **Dry-run** → read the per-segment `distance` →
-drag waypoints and repeat until both legs are in band → Real Go. Precision does
-not matter; leg length does.
+~~**Coordinates cannot be typed into the card.**~~ Superseded by beta16's
+guarded 0.001 m coordinate editor.
 
 ### Two things learned setting this up
 
@@ -347,10 +388,10 @@ unmodified dashboard config validates against the *real*
 alone could not have shown that — they never cross the JS/Python boundary.
 
 **Still true, and the reason this is not a release sign-off:** the card has
-never driven the mower end to end. Gates 1-4 exercised the *backend* with these
-values. If release criteria require UI-to-mower acceptance, that needs a repeat
-preview/dry-run and then one Real Go from the actual card, under a **new**
-daylight operator `go`. No physical motion is authorized by this handoff.
+driven the mower but never completed both segments. Gates 1-4 exercised the
+*backend* with these values, while the beta16 card run exposed a short-pulse
+distance-model failure. Any repeat requires diagnosis and a **new** daylight
+operator `go`. No physical motion is authorized by this handoff.
 
 ✅ Versions were bumped together to `0.6.4-beta12` for the Gate 5 build:
 `manifest.json`, `pyproject.toml`, `CARD_VERSION`, and `uv.lock` (PEP 440 form

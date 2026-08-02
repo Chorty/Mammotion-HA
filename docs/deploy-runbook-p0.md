@@ -16,10 +16,12 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 | `backend_capability.py` | present                                                        | present        |
 | `capabilities.py`       | present                                                        | present        |
 
-The live host ran backend Gates 1-4 and the first partial card-driven Gate 5
-attempt. Both 2026-08-02 setups commanded no motion; the second proved the map
-needs finer waypoint placement. Beta16 adds precise coordinate inputs and is
-deployed. Experimental motion is verified off.
+The live host ran backend Gates 1-4 and two card-driven Gate 5 attempts. On
+2026-08-02 beta16 executed an exact 0.400 m + 0.400 m L-path, but segment 1
+stopped 0.1311 m short and segment 2 was correctly withheld. Both stop writes
+were confirmed, the session cleared, and stationary teardown evidence was
+captured. Experimental motion is verified off. Gate 5 and release remain
+blocked; do not merge or publish.
 
 ### Gate 5 deploy — 2026-07-31 19:50-20:05 EDT
 
@@ -109,7 +111,9 @@ zero overrides, `linear_pulse_duration_ms` 3500, ceiling still omitted.
 Lesson for any future deploy: a correct file deploy is **not** a correct
 run configuration. Check the execution-profile row, not just the version banner.
 
-Still required before Gate 5 motion: confirm the browser console banner reads
+Before any newly authorized Gate 5 motion: first diagnose the beta16
+short-pulse under-drive recorded in `docs/p0-beta-release.md`; do not treat
+0.3-0.5 m as a proven usable band. Then confirm the browser console banner reads
 `v0.6.4-beta16` (a hard refresh may be needed), confirm the card's execution
 profile row reads exactly
 `LUBA acceptance profile (Gates 1-4, 2026-07-31)`, save the emitted payload and
