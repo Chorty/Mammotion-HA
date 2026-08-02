@@ -100,6 +100,61 @@ Host is on **`0.6.4-beta15`**. Everything below is deployed and pushed.
   from measuring across a phase boundary in a two-segment run.
 - Mower ended the session **docked and charging**, gate off, blades off.
 
+## Gate 5 attempt 2026-08-02 morning — SET UP, NOT YET RUN
+
+Session ended on token budget mid-setup. **No motion occurred.** Capture proved
+it: 374 samples over 10 minutes, net travel **0.0000 m**, position and both
+headings bit-identical.
+
+⚠️ **The experimental-motion gate was left ARMED** (`real_motion_allowed: true`).
+Disarm with `scripts/ha_set_experimental_motion.py off` unless resuming
+immediately.
+
+Live state at handoff:
+
+- mower `MODE_READY` at **(4.795, −1.9502)**, `toward` 173.1006, Backyard Right,
+  `AREA_INSIDE`, RTK Fix, `valid_for_motion: true`, blades off, BLE ~−60
+- **VIO ALIVE** — `vio_state: 2`, 80/80 features, `"Light"`,
+  `initial_vision_heading: −83.673`. This is the condition the offset
+  re-derivation needs and could not get at night.
+- route clear (`reason: "no_route"`), no session, host on `0.6.4-beta15`
+
+### What blocked the run: leg length, not gates
+
+Two dry runs passed **every** safety gate. The operator's clicked path was simply
+too long for the accepted profile:
+
+| leg | clicked | needed |
+| --- | --- | --- |
+| 1 | 1.180 m | ~0.4 m |
+| 2 | 1.870 m | ~0.4 m |
+
+With `max_linear_commands: 1` at ~1.06 m per command, leg 1 stops **0.12 m**
+short (just outside the 0.08 m tolerance) and leg 2 stops **0.81 m** short.
+Neither reports `target_reached`, so neither passes Gate 5.
+
+🔑 **Usable leg band: 0.3–0.5 m.** Above ~1.0 m one linear command cannot finish
+it; below 0.08 m it is inside `waypoint_tolerance` and may count as already
+arrived.
+
+🔑 **Coordinates cannot be typed into the card** — it is a click-to-go map. The
+workflow is: click roughly → **Dry-run** → read the per-segment `distance` →
+drag waypoints and repeat until both legs are in band → Real Go. Precision does
+not matter; leg length does.
+
+### Two things learned setting this up
+
+- **`stale_route_while_ready` is a real, named, non-blocking case.** Undocking by
+  starting a mow and pausing leaves `route_present: true`,
+  `progress_is_active: true` with `blocks_motion: false`. Cancelling the mow
+  clears it to `no_route`. Not a defect; know it exists.
+- ⚠️ **`sensor.*_vio_heading` is coordinator-tick cached** and stayed
+  bit-identical across 374 samples. It is **not** fine-grained enough to measure
+  a turn. For the offset re-derivation use the **run result JSON**
+  (`vio.initial_vision_heading`, and the turn phase's before/after), not the
+  sensor entity. `scripts/motion_capture.py` is still the right tool for the RTK
+  position track and for proving whether `toward` updates.
+
 ## Start here
 
 - Branch: `feat/vio-turn-to-heading`, pushed to `Chorty`. Working tree clean.
