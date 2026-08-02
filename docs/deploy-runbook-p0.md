@@ -52,6 +52,25 @@ call, not by editing `.storage`). Note the live dashboard registers the
 **`/hacsfiles/` path**, not the documented `/mammotion/` one, which is exactly
 why both copies must be written every time.
 
+### beta13 deploy — 2026-08-01 23:02-23:12 EDT
+
+`0.6.4-beta13` is deployed (heading arrow on the card, plus the VIO
+fail-closed evidence). Mower was stopped in `Backyard Right`, off the dock,
+experimental motion **off**, no session. **No motion commanded.** Backup:
+`/config/mammotion-backup-20260801-2302.tgz`.
+
+Verified: 46/46 files md5-identical to the tree; no AppleDouble entries; both
+card paths and the tree byte-identical (`6bec2ca3a83186be9c4f7b410a0a2a3c`) and
+both serving `CARD_VERSION 0.6.4-beta13` containing `_headingDegrees`; API back
+in 35 s with 128 entities and no `setup_error`; container `pymammotion`
+`0.8.12.post1`; `backend_verified: true` with both capabilities; experimental
+motion still off.
+
+The Lovelace resource was already at `?v=0.6.4-beta13` (updated by the operator),
+so no change was needed — but **check it every deploy**, and use
+`scripts/ha_set_card_resource.py` rather than editing `.storage`. Bumping the
+card file without bumping that key leaves every browser on the previous card.
+
 ### The override guard earned itself on first live use
 
 With beta12 loaded, the operator's card reported
@@ -135,9 +154,20 @@ uppercase matching. The original label remains available in
    needs working egress from the container. If it fails, the integration will not
    set up — go to Rollback.
 
-6. **Bump the Lovelace resource cache key** to the installed release version in
-   Settings → Dashboards → Resources. `CARD_VERSION` may change, but browsers
-   key on the query string, so without this they can keep the cached card.
+6. **Bump the Lovelace resource cache key** to the installed release version.
+   `CARD_VERSION` may change, but browsers key on the query string, so without
+   this they can keep the cached card:
+
+   ```sh
+   scripts/ha_set_card_resource.py                 # show current
+   scripts/ha_set_card_resource.py 0.6.4-betaN     # dry run
+   scripts/ha_set_card_resource.py 0.6.4-betaN --apply
+   ```
+
+   It uses the `lovelace/resources` websocket API, keeps the registered path
+   as-is (the live dashboard references the `/hacsfiles/` copy, not the
+   integration-served `/mammotion/` one), and re-reads to verify. Do not edit
+   `/config/.storage/lovelace_resources`; HA holds it in memory and overwrites.
 
 7. **Verify** (all dark-safe, no motion):
 
