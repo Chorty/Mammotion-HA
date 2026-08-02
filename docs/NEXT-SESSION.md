@@ -1,11 +1,38 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
-Updated 2026-07-31 (third pass, evening) after deploying `0.6.4-beta12` and the
-first card-driven motion. This is the current handoff;
+Updated 2026-08-02 (fourth pass) after a night session of linear calibration in
+darkness. This is the current handoff;
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
-## Third pass — what changed tonight
+## 🚨 READ FIRST — the open finding that should shape the next run
+
+**`calibrated_forward_heading_offset_degrees: 102.4` looks about 11 degrees
+low.** Three straight-line runs in darkness on 2026-08-01/02 all travelled on a
+bearing well off what the configured offset predicts — implied offsets of
+111.43, 113.29 and 115.54 degrees, mean **113.42** against a configured
+**102.40**. The Nudge missed by 0.312 m and the miss was almost entirely
+**cross-track**, which is an aim error, not a distance error.
+
+It also explains Gate 4 better than anything previously proposed: an 11 degree
+aim error predicts ~5.7 cm on a 30 cm leg, and Gate 4 landed 4.70 cm out.
+
+**Do not change the profile on this alone.** Two things block a derivation:
+`toward` is course-over-ground and did not update at all across a 1.36 m drive
+(so the baseline may be stale), and the implied offset trends upward run to run
+(consistent with the mower rotating while `toward` fails to track it). Daylight
+resolves both, because VIO gives a real heading rather than one inferred from
+displacement.
+
+👉 **Treat the next Gate 5 run as an offset re-derivation as well as an
+acceptance run.** Also expect the card's heading arrow to point ~11 degrees off,
+since it is drawn with 102.4.
+
+Full data, the Nudge hardware result, the docking-readback lesson and the stale
+`last_error` trap are in the "Night session 2026-08-01/02" section of
+`docs/p0-beta-release.md`.
+
+## Third pass — what changed on 2026-07-31
 
 **The card drove the mower for the first time.** Gate 5 is now PARTIAL, not
 untried. `0.6.4-beta12` is deployed to the host, and the run, its two measured
@@ -40,6 +67,38 @@ Read those before planning the next run. The short version:
   by reading the flow's own schema defaults — **not** from
   `/api/config/config_entries/entry`, which never exposes `options` and would
   silently reset them.
+- `scripts/ha_set_card_resource.py <version> --apply` sets the Lovelace resource
+  cache key. Deploying the card file alone is not enough: browsers key on the
+  query string, so an unchanged `?v=` leaves every browser on the previous card
+  while every server-side check reports the new one.
+
+## Fourth pass — night of 2026-08-01/02
+
+Host is on **`0.6.4-beta15`**. Everything below is deployed and pushed.
+
+- **Nudge shipped and is hardware-proven.** A straight line along the current
+  facing, for moving the mower when VIO is unavailable. First hardware run:
+  1.3575 m, **2 linear commands, 0 turn commands**, clean stop. It works at
+  night because RTK holds in darkness while VIO does not, and because the target
+  sits on the heading ray so the turn phase has nothing to do.
+  ⚠️ It sends `turn_mode: "legacy"` **only** to clear the `vio_active` gate,
+  which blocks up-front on `turn_mode == "vio"` regardless of whether a turn is
+  needed. Legacy steers by course-over-ground and is safe there **only because
+  no turn occurs** — it is *not* a night-capable turn mode. A non-zero turn count
+  on a Nudge means it tried to steer blind; investigate.
+- **Real Go cannot run at night, by design.** It uses `turn_mode: "vio"` and is
+  refused with `blockers: ["vio_active"]` before dispatch. Confirmed on the real
+  armed path: `would_send: false`, 0 commands, `phases: []`, mower unmoved. Both
+  VIO gates are deliberately *advisory* in a dry run (`passed: dry_run`), so a
+  dry run reports `passed: true` while its own detail says VIO is unusable.
+- **The card shows heading.** A green arrow on the mower marker plus a
+  `facing (map bearing)` preflight row, computed the way the backend aims. It is
+  drawn in **map space** (a point one metre ahead is transformed) because `toSY`
+  flips the Y axis and a screen-space rotation would mirror the bearing.
+- **`final_approach_metres_per_pulse: 1.06` is correct** — mean 1.0617 over two
+  isolated pulses, within 0.16%. The earlier "25% low" claim was refuted; it came
+  from measuring across a phase boundary in a two-segment run.
+- Mower ended the session **docked and charging**, gate off, blades off.
 
 ## Start here
 

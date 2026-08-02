@@ -377,6 +377,78 @@ scoped `bleak_esphome` and `habluetooth` loggers from
 Do not enable `pymammotion.transport.ble: debug` either: a live stationary
 capture proved that it logs raw BLE payloads and device identifiers.
 
+### Night session 2026-08-01/02 — three straight-line runs in darkness
+
+Three isolated linear runs executed with VIO dark, on RTK alone, via
+`turn_mode: "legacy"` with the target placed on the heading ray (so the turn
+phase reported `target_heading_reached` and sent **zero** turn commands each
+time). Two were bare calibration pulses; the third was the first hardware run of
+the card's new **Nudge**.
+
+| run | commands | travel | outcome |
+| --- | --- | --- | --- |
+| pulse 1 | 1 linear, 0 turn | 1.0785 m | clean stop |
+| pulse 2 | 1 linear, 0 turn | 1.0449 m | clean stop |
+| Nudge | 2 linear, 0 turn | 1.3575 m | clean stop, `max_linear_commands_reached` |
+
+All three ended `MODE_READY`, blades off, no session, position bit-identical
+across later polls.
+
+🚨 **BIGGEST OPEN FINDING: `calibrated_forward_heading_offset_degrees` looks
+about 11 degrees low.** Every one of the three runs travelled on a bearing well
+off the direction the configured offset predicts:
+
+| run | travel bearing | `toward` | implied offset |
+| --- | --- | --- | --- |
+| pulse 1 | 281.20 deg | 169.78 deg | **111.43** |
+| pulse 2 | 281.88 deg | 168.59 deg | **113.29** |
+| Nudge | 282.92 deg | 167.38 deg | **115.54** |
+
+Mean **113.42 deg**, spread 4.12, against a configured **102.40** — a
+**+11.02 deg** discrepancy. The Nudge missed its target by 0.312 m and the miss
+was almost entirely **cross-track** (+0.30 m in x for a target needing
+−0.004 m), which is the signature of an aim error rather than a distance error.
+
+This is consistent with evidence already on record and previously mis-explained:
+Gate 4 landed **4.70 cm** from its target on a 30 cm leg, and an 11 degree aim
+error predicts ~5.7 cm. That fits better than the metres-per-pulse theory
+proposed and then refuted on 2026-07-31.
+
+**Not acted on, and `LUBA_ACCEPTANCE_PROFILE` is unchanged.** Two caveats block
+a derivation:
+
+- `toward` is course-over-ground and read **167.383 before and after** a 1.36 m
+  drive — it did not update at all. If it is stale, every implied offset above
+  is computed against a stale baseline.
+- The implied offset trends upward run to run (111.4 → 113.3 → 115.5), which is
+  what a slowly rotating mower would produce if `toward` is not tracking it.
+
+Daylight resolves both, because VIO supplies a real heading instead of one
+inferred from displacement. **Treat the next Gate 5 run as an offset
+re-derivation as well as an acceptance run**, and note that the card's heading
+arrow is drawn with 102.4 so it is currently expected to point ~11 degrees off.
+
+⚠️ **`manual_velocity_pulse_test` cannot be used for this calibration.** Its dry
+run reveals it sends `mammotion.move_forward(speed: 0.55)` — a different command
+on a different scale from the vector executor's
+`send_movement(linear_speed: 400, angular_speed: 0)`. Measuring it would produce
+a confident number for the wrong primitive.
+
+**Docking, and a reading error worth recording.** A `lawn_mower.dock` command at
+00:10 EDT drove the mower ~7 m back, then it stopped **1.03 m short** of the
+dock in `MODE_READY`, not charging, stationary across repeated polls for over a
+minute. That looked like a failed dock and was reported as one. It was not: the
+mower re-approached on its own and was fully docked and charging by ~00:16
+(`CHARGE_ON`, `charging: on`, battery 57% → 63%). **`MODE_READY` near the dock
+is not proof of a failed dock** — allow several minutes before concluding.
+
+Also seen during that check: `last_error` read `mcu: STOP button triggered`
+(code 2800). It was **stale**, timestamped `2026-08-01T22:07:20+00:00` = 18:07
+EDT, hours before the session, and three motion commands succeeded afterwards.
+Note the UTC/local trap — those digits look like the 22:07 EDT gate test but are
+not. Always compare `last_error_time` in the same timezone before treating an
+e-stop record as current.
+
 ### Stationary BLE isolation capture (2026-07-30)
 
 A motion-disabled 30-minute capture separated scanner coverage from GATT
