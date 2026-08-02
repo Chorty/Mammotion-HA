@@ -20,8 +20,7 @@ frontend tests. Backend acceptance is still **not** UI-to-mower acceptance: the
 card has not yet completed a clean two-segment run. That is **Gate 5** in
 `docs/p0-beta-release.md`, and it is the one open release gate.
 
-The working tree is aligned at `0.6.4-beta16` while the host remains beta15
-pending deployment. `manifest.json`,
+The working tree and host are aligned at `0.6.4-beta16`. `manifest.json`,
 `pyproject.toml`, `CARD_VERSION` and `uv.lock` (which carries the PEP 440 form
 `0.6.4b16`) must always agree, and the `Beta Release` workflow verifies all
 four. The card is served from **two** paths, so deploy to both and bump the

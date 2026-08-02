@@ -30,8 +30,8 @@ If it reports `enabled: True` and you are not about to run, turn it off with
 
 Last known: mower `MODE_READY` at (4.795, −1.9502), `toward` 173.1006, inside
 `Backyard Right`, RTK Fix, blades off, no session, VIO alive (80/80 features).
-Host runs `0.6.4-beta15`; the working tree is beta16 pending validation and
-deployment of the precise-coordinate editor. The motion gate is verified off.
+The host and working tree run `0.6.4-beta16`, including the precise-coordinate
+editor. The motion gate is verified off.
 
 ## The one open release gate
 

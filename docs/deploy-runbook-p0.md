@@ -9,9 +9,9 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 |                         | Host                                                           | Branch         |
 | ----------------------- | -------------------------------------------------------------- | -------------- |
-| Integration version     | `0.6.4-beta15`                                                 | `0.6.4-beta16` |
+| Integration version     | `0.6.4-beta16`                                                 | `0.6.4-beta16` |
 | pymammotion pin         | `0.8.12.post1` fork wheel (container verified)                 | same           |
-| Card `CARD_VERSION`     | `0.6.4-beta15`; integration and HACS copies deployed together  | `0.6.4-beta16` |
+| Card `CARD_VERSION`     | `0.6.4-beta16`; integration and HACS copies checksum-identical | `0.6.4-beta16` |
 | `manual_motion.py`      | present                                                        | present        |
 | `backend_capability.py` | present                                                        | present        |
 | `capabilities.py`       | present                                                        | present        |
@@ -19,7 +19,7 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 The live host ran backend Gates 1-4 and the first partial card-driven Gate 5
 attempt. Both 2026-08-02 setups commanded no motion; the second proved the map
 needs finer waypoint placement. Beta16 adds precise coordinate inputs and is
-pending deployment. Experimental motion is verified off.
+deployed. Experimental motion is verified off.
 
 ### Gate 5 deploy — 2026-07-31 19:50-20:05 EDT
 
@@ -70,6 +70,20 @@ The Lovelace resource was already at `?v=0.6.4-beta13` (updated by the operator)
 so no change was needed — but **check it every deploy**, and use
 `scripts/ha_set_card_resource.py` rather than editing `.storage`. Bumping the
 card file without bumping that key leaves every browser on the previous card.
+
+### beta16 deploy — 2026-08-02 15:33-15:36 EDT
+
+`0.6.4-beta16` is deployed with the precise waypoint-coordinate editor. The
+motion gate was verified off before backup and remained off throughout; no
+motion was commanded. Backup:
+`/config/mammotion-backup-20260802-1532.tgz`.
+
+Verified: 46/46 integration files checksum-identical to the tree; no AppleDouble
+entries; both card paths byte-identical (`ea6a84303293addba1d18a65738cdefa`);
+API back in 51 s and 128 Mammotion entities in 165 s; container `pymammotion`
+`0.8.12.post1`; backend capabilities verified; BLE live; RTK Fix; VIO Light with
+80 features; blade RPM zero; no session. The Lovelace resource is verified at
+`?v=0.6.4-beta16`.
 
 ### The override guard earned itself on first live use
 
