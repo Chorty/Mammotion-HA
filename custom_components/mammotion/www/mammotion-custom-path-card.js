@@ -5,7 +5,7 @@ const MAX_REAL_SEGMENTS = 2;
 const MAX_NUDGE_METRES = 2.0;
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
-const CARD_VERSION = "0.6.4-beta14";
+const CARD_VERSION = "0.6.4-beta15";
 
 // The exact bounded execution profile that passed supervised LUBA acceptance
 // Gates 1-4 on 2026-07-31 (three-write zero stop, bounded straight segment,
@@ -338,6 +338,40 @@ class MammotionCustomPathCard extends HTMLElement {
 
   _segmentCount() {
     return this._waypoints.length;
+  }
+
+  // Backend readiness only, with none of the waypoint/path checks in
+  // _preflight(). Nudge has no waypoints and no validated path, so reusing the
+  // full preflight would report irrelevant blockers -- but it still must not
+  // offer a button the backend will refuse. The first Nudge build did exactly
+  // that: it stayed enabled with the motion gate off, so clicking it looked
+  // like the feature was broken when the backend was correctly saying no.
+  _motionBackendBlockers() {
+    const runtime = this._runtimeState || {};
+    const experimental = runtime.experimental_motion || {};
+    const safety = runtime.safety || {};
+    const blockers = [];
+    if (!this._currentPositionPoint()) {
+      blockers.push("position_unavailable");
+    }
+    if (this._headingDegrees() == null) {
+      blockers.push("heading_unavailable");
+    }
+    if (experimental.real_motion_allowed !== true) {
+      blockers.push(
+        ...(Array.isArray(experimental.blockers) && experimental.blockers.length
+          ? experimental.blockers
+          : ["experimental_motion_backend_not_ready"]),
+      );
+    }
+    if (safety.allowed_for_manual_motion === false) {
+      blockers.push(
+        ...(Array.isArray(safety.blockers) && safety.blockers.length
+          ? safety.blockers
+          : ["runtime_safety_blocked"]),
+      );
+    }
+    return blockers;
   }
 
   _preflight() {
@@ -1154,6 +1188,20 @@ class MammotionCustomPathCard extends HTMLElement {
       return;
     }
     await this._loadRuntimeState();
+    // Re-check against FRESH runtime, not the state the button was rendered
+    // from. Naming the blocker matters: the commonest one is simply that the
+    // experimental-motion option is off, which otherwise presents as "the
+    // button does nothing".
+    const blocked = this._motionBackendBlockers();
+    if (blocked.length) {
+      this._status = `Nudge blocked by the backend: ${blocked.join(", ")}. ${
+        blocked.includes("experimental_motion_disabled")
+          ? "Enable the integration option 'Enable experimental BLE-only manual motion'."
+          : ""
+      }`;
+      this._render();
+      return;
+    }
     const nudge = this._nudgePayload(false);
     if (!nudge) {
       this._status =
@@ -1407,6 +1455,13 @@ class MammotionCustomPathCard extends HTMLElement {
       !this._confirmBladesOff ||
       !this._confirmClearArea ||
       !preflight.safe;
+    const nudgeBlockers = this._motionBackendBlockers();
+    if (!this._confirmClearArea) nudgeBlockers.push("confirm_clear_area");
+    if (runActive) nudgeBlockers.push("motion_session_active");
+    const nudgeDisabled = nudgeBlockers.length > 0;
+    const nudgeTitle = nudgeDisabled
+      ? `Nudge unavailable: ${nudgeBlockers.join(", ")}`
+      : `Drive ${this._nudgeMetres().toFixed(2)} m along ${(this._headingDegrees() ?? 0).toFixed(1)}°. Straight line only — never turns.`;
     const segmentCount = this._segmentCount();
     this.shadowRoot.innerHTML = `
       <style>
@@ -1452,7 +1507,7 @@ class MammotionCustomPathCard extends HTMLElement {
           <label title="Straight line along the current facing. Never turns, so it works with VIO dark (at night). Needs the clear-area confirmation only.">Nudge
             <input id="nudge-distance" type="number" min="0.1" max="${MAX_NUDGE_METRES}" step="0.1" value="${this._nudgeMetres().toFixed(1)}" style="width:4.5em"/> m
           </label>
-          <button id="nudge" type="button" ${this._confirmClearArea && !runActive && this._headingDegrees() != null ? "" : "disabled"}>Nudge forward</button>
+          <button id="nudge" type="button" title="${this._escapeHtml(nudgeTitle)}" ${nudgeDisabled ? "disabled" : ""}>Nudge forward</button>
           <label>Area
             <select id="area">
               ${areas.map((area) => `<option value="${this._escapeHtml(area.area_hash)}" ${String(area.area_hash) === String(this._areaHash) ? "selected" : ""}>${this._escapeHtml(area.name || area.area_hash)}</option>`).join("")}

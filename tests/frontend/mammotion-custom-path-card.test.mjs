@@ -321,6 +321,37 @@ test("nudge requires clear-area but not the blades checkbox", () => {
   assert.equal(dry.confirm_clear_area, false);
 });
 
+// Regression: the first Nudge build stayed enabled while the motion gate was
+// off, so clicking it looked like a broken feature when the backend was
+// correctly refusing. Nudge must be gated on backend readiness like Real Go.
+test("nudge is blocked when the backend will refuse it", () => {
+  const element = card();
+  element._runtimeState.position = { x: 0, y: 0, toward: 0 };
+  element._confirmClearArea = true;
+  assert.deepEqual(element._motionBackendBlockers(), []);
+
+  element._runtimeState.experimental_motion = {
+    real_motion_allowed: false,
+    blockers: ["experimental_motion_disabled"],
+  };
+  assert.deepEqual(element._motionBackendBlockers(), [
+    "experimental_motion_disabled",
+  ]);
+
+  // Runtime safety blockers surface too, not just the motion option.
+  element._runtimeState.experimental_motion = { real_motion_allowed: true };
+  element._runtimeState.safety = {
+    allowed_for_manual_motion: false,
+    blockers: ["blade_unsafe"],
+  };
+  assert.deepEqual(element._motionBackendBlockers(), ["blade_unsafe"]);
+
+  // No heading is its own named blocker, not a silent no-op.
+  element._runtimeState.safety = { allowed_for_manual_motion: true };
+  element._runtimeState.position = { x: 0, y: 0 };
+  assert.ok(element._motionBackendBlockers().includes("heading_unavailable"));
+});
+
 test("backend blockers and the two-segment limit lock Real Go", () => {
   const element = card();
   element._waypoints = [

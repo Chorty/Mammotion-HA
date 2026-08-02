@@ -136,7 +136,7 @@ last travelling.
 Add the integration-served JavaScript as a dashboard resource:
 
 ```text
-/mammotion/mammotion-custom-path-card.js?v=0.6.4-beta14
+/mammotion/mammotion-custom-path-card.js?v=0.6.4-beta15
 ```
 
 Use resource type `JavaScript module`. The version query is required because
