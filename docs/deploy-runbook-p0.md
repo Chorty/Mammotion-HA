@@ -1,25 +1,25 @@
 # P0 deploy and rollback runbook (host 192.168.1.106)
 
-First deployed 2026-07-29 and updated through the successful 2026-07-31 Gate 4
-run. For any later deploy, work while the mower is stopped and experimental
-motion is off. Restarting HA while BLE is unhealthy has previously left the
-integration in `setup_error` with no auto-retry, needing a manual entry reload.
+First deployed 2026-07-29 and updated through the 2026-08-02 Gate 5 setup. For
+any later deploy, work while the mower is stopped and experimental motion is
+off. Restarting HA while BLE is unhealthy has previously left the integration
+in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
 |                         | Host                                                           | Branch         |
 | ----------------------- | -------------------------------------------------------------- | -------------- |
-| Integration version     | `0.6.4-beta12`                                                 | `0.6.4-beta12` |
+| Integration version     | `0.6.4-beta15`                                                 | `0.6.4-beta15` |
 | pymammotion pin         | `0.8.12.post1` fork wheel (container verified)                 | same           |
-| Card `CARD_VERSION`     | `0.6.4-beta12`; integration and HACS copies checksum-identical | `0.6.4-beta12` |
+| Card `CARD_VERSION`     | `0.6.4-beta15`; integration and HACS copies deployed together  | `0.6.4-beta15` |
 | `manual_motion.py`      | present                                                        | present        |
 | `backend_capability.py` | present                                                        | present        |
 | `capabilities.py`       | present                                                        | present        |
 
-The live host already ran the complete supervised acceptance sequence. Its
-`coordinator.py` and `__init__.py` match this tree. Its functional `services.py`
-is the Gate 4-passing build; the handoff tree differs only by a corrected schema
-comment. Experimental motion was disabled after the run.
+The live host ran backend Gates 1-4 and the first partial card-driven Gate 5
+attempt. Beta15 is deployed for the clean Gate 5 retry. The 2026-08-02 setup
+commanded no motion but may have left experimental motion armed; check live
+state first and disarm unless the supervised run is beginning immediately.
 
 ### Gate 5 deploy — 2026-07-31 19:50-20:05 EDT
 
@@ -96,9 +96,14 @@ Lesson for any future deploy: a correct file deploy is **not** a correct
 run configuration. Check the execution-profile row, not just the version banner.
 
 Still required before Gate 5 motion: confirm the browser console banner reads
-`v0.6.4-beta12` (a hard refresh may be needed), confirm the card's execution
-profile row reads the accepted profile, and obtain a fresh daylight operator
-`go`.
+`v0.6.4-beta15` (a hard refresh may be needed), confirm the card's execution
+profile row reads exactly
+`LUBA acceptance profile (Gates 1-4, 2026-07-31)`, save the emitted payload and
+dry-run result, and obtain a fresh daylight operator `go`. Use the same card
+instance without editing waypoints between the final dry-run and Real Go. Run
+`motion_capture.py` and `ble_session_report.py` across the whole window, save
+the Real Go result, and always disarm and verify no session after success,
+failure, or abort.
 
 ## Breaking enum migrations already applied
 

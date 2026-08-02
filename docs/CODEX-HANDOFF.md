@@ -40,6 +40,13 @@ operator to drive **from the card**: check the execution-profile row, then
 Preview → Dry-run → Real Go. A service call is NOT Gate 5. You cannot click the
 card; the operator must.
 
+Before the final dry-run, confirm the browser console banner reports
+`v0.6.4-beta15` and the execution-profile row reads exactly
+`LUBA acceptance profile (Gates 1-4, 2026-07-31)`. Save the card's emitted
+payload and dry-run result. Do not edit the waypoints or profile between that
+dry-run and Real Go; use the same card instance for all three steps. Save the
+Real Go result afterward.
+
 Pass criteria: both segments report `target_reached`, final error < 8 cm, Abort
 remains effective.
 
@@ -74,6 +81,12 @@ cached and stayed bit-identical across 374 samples.
   passes and CI is green.
 - No physical motion without a **fresh** operator confirmation each time.
   Daylight is required for anything using `turn_mode: "vio"`.
+- Start `scripts/motion_capture.py` and `scripts/ble_session_report.py` before
+  arming so the complete Gate 5 window is evidence, not recollection.
+- **Always disarm after the run**, whether it passes, fails, or is aborted. In a
+  finally-style teardown run `scripts/ha_set_experimental_motion.py off`, then
+  verify `enabled: False`, no active session, blades off, and stationary
+  telemetry. Restore any temporary logger levels as well.
 - `LUBA_ACCEPTANCE_PROFILE` is the profile hardware accepted. Editing it
   un-accepts it. Reproduce a measurement on a second geometry first.
 - Bump `manifest.json`, `pyproject.toml`, `CARD_VERSION` **and** `uv.lock`
@@ -88,12 +101,13 @@ cached and stayed bit-identical across 374 samples.
 | `scripts/ha_set_experimental_motion.py on\|off\|status` | arm/disarm the motion gate, verified via runtime state |
 | `scripts/ha_set_card_resource.py <ver> --apply` | bump the Lovelace resource cache key |
 | `scripts/motion_capture.py --seconds N --out f.jsonl` | per-sample RTK/heading capture; `--summarise` reports travel bearing and implied offset |
+| `scripts/ble_session_report.py` | capture BLE connection lifetime across the complete supervised window |
 
 ## Validation matrix (run all after any change)
 
 ```sh
-.venv/bin/python -m pytest -q tests                 # 456 pass
-.venv/bin/python -m ruff check .
+.venv/bin/python -m pytest --cov=custom_components.mammotion --cov-report=term-missing tests  # 456 pass
+.venv/bin/python -m ruff check custom_components tests
 .venv/bin/python -m ruff format --check custom_components tests
 .venv/bin/python -m mypy --follow-imports=skip custom_components/mammotion
 npm run test:frontend                                # 17 pass
