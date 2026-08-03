@@ -18,7 +18,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.service import _validate_entity_service_schema
 from pymammotion.data.model.hash_list import Plan
-from pymammotion.messaging.command_queue import DeviceCommandQueue
+from pymammotion.messaging.command_queue import DeviceCommandQueue, Priority
 from pymammotion.transport.base import NoTransportAvailableError, TransportType
 from pymammotion.transport.ble import BLETransport, BLETransportConfig
 from pymammotion.utility.constant import WorkMode
@@ -4751,7 +4751,7 @@ async def test_vector_segment_echoes_pulse_geometry_params() -> None:
 
 
 def test_final_approach_scales_the_last_pulse_to_the_remaining_distance() -> None:
-    """Less than one pulse of travel left -> shorten the pulse proportionally."""
+    """Less than one pulse left is bounded by discrete confirmed refresh writes."""
     info = _final_approach_pulse_ms(
         distance_to_target=0.2,
         observed_pulse_distances=[],
@@ -4761,9 +4761,12 @@ def test_final_approach_scales_the_last_pulse_to_the_remaining_distance() -> Non
     )
 
     assert info["applied"] is True
-    assert info["reason"] == "final_approach_scaled_to_remaining_distance"
-    # 0.2 m of a 1.06 m pulse -> 18.9% of 3500 ms.
-    assert info["pulse_duration_ms"] == pytest.approx(660.4, abs=0.1)
+    assert info["reason"] == "final_approach_bounded_by_refresh_count"
+    # A full pulse is the initial write plus ten refreshes. 0.2/1.06 of eleven
+    # non-zero writes rounds up to three total: initial plus two refreshes.
+    assert info["refresh_command_limit"] == 2
+    assert info["target_nonzero_writes"] == 3
+    assert info["pulse_duration_ms"] == 3500.0
     assert info["metres_per_pulse_source"] == "default"
 
 
@@ -4805,13 +4808,8 @@ def test_final_approach_leaves_cruising_pulses_full_length() -> None:
     assert info["pulse_duration_ms"] == 3500.0
 
 
-def test_final_approach_floors_the_pulse_so_the_mower_still_actuates() -> None:
-    """A hair of distance left must not become a pulse too short to move.
-
-    Proportional scaling alone would ask for ~33 ms here. The floor keeps the
-    pulse long enough to actuate (~9 cm at the measured rate), which still lands
-    inside the waypoint tolerance.
-    """
+def test_final_approach_uses_only_the_initial_write_for_a_tiny_remainder() -> None:
+    """A tiny remainder gets one non-zero write and no refresh amplification."""
     info = _final_approach_pulse_ms(
         distance_to_target=0.01,
         observed_pulse_distances=[],
@@ -4821,7 +4819,9 @@ def test_final_approach_floors_the_pulse_so_the_mower_still_actuates() -> None:
     )
 
     assert info["applied"] is True
-    assert info["pulse_duration_ms"] == 300.0
+    assert info["refresh_command_limit"] == 0
+    assert info["target_nonzero_writes"] == 1
+    assert info["pulse_duration_ms"] == 3500.0
 
 
 def test_final_approach_prefers_the_distance_observed_this_run() -> None:
@@ -4843,7 +4843,29 @@ def test_final_approach_prefers_the_distance_observed_this_run() -> None:
     assert info["applied"] is True
     assert info["metres_per_pulse_source"] == "observed"
     assert info["metres_per_pulse"] == pytest.approx(2.0)
-    assert info["pulse_duration_ms"] == pytest.approx(2625.0, abs=0.1)
+    assert info["refresh_command_limit"] == 8
+    assert info["target_nonzero_writes"] == 9
+    assert info["pulse_duration_ms"] == 3500.0
+
+
+@pytest.mark.parametrize(
+    ("distance", "expected_refreshes"),
+    [(0.3066301518, 3), (0.3609403967, 3)],
+)
+def test_final_approach_replays_both_beta16_short_pulse_failures(
+    distance: float, expected_refreshes: int
+) -> None:
+    """Both live failures choose three bounded refreshes, not nominal duration."""
+    info = _final_approach_pulse_ms(
+        distance_to_target=distance,
+        observed_pulse_distances=[],
+        default_metres_per_pulse=1.06,
+        pulse_duration_ms=3500.0,
+        refresh_interval_ms=200,
+    )
+
+    assert info["reason"] == "final_approach_bounded_by_refresh_count"
+    assert info["refresh_command_limit"] == expected_refreshes
 
 
 def test_final_approach_declines_when_the_distance_is_unknown() -> None:
@@ -4984,6 +5006,7 @@ async def test_vio_turn_scales_the_last_pulse_and_does_not_overshoot(
         resend: object,
         duration_seconds: float,
         refresh_interval_ms: int,
+        max_refresh_commands: int | None = None,
     ) -> dict:
         durations.append(duration_seconds)
         # 33 deg/s, and the sign follows the commanded direction: +angular
@@ -5116,12 +5139,12 @@ async def test_vector_segment_shortens_the_final_pulse_instead_of_overshooting(
     had no move available except another full ~1.06 m pulse, so it stepped past
     the waypoint and then failed trying to re-aim at a target now 176 deg behind
     it. Raising ``waypoint_tolerance`` does not fix that -- pulse granularity is
-    the limit. The fix is a shortened final pulse, which only became possible
-    once the refresh cadence made distance proportional to duration.
+    the limit. The fix bounds the final pulse by confirmed refresh writes rather
+    than nominal duration.
 
     Here the mower starts 3.0 m out and covers 1.06 m per full pulse: two full
-    pulses leave 0.88 m, which must be driven as a scaled ~2905 ms pulse rather
-    than a third full one that would land 0.18 m past the target.
+    pulses leave 0.88 m, which receives nine refreshes rather than another full
+    ten-refresh pulse.
     """
     coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
     coordinator.data.report_data.vision_info = SimpleNamespace(
@@ -5129,6 +5152,7 @@ async def test_vector_segment_shortens_the_final_pulse_instead_of_overshooting(
     )
     state = {"y": 1.0}
     windows: list[float] = []
+    refresh_limits: list[int | None] = []
 
     async def no_sleep(_: float) -> None:
         return None
@@ -5167,16 +5191,19 @@ async def test_vector_segment_shortens_the_final_pulse_instead_of_overshooting(
         resend: object,
         duration_seconds: float,
         refresh_interval_ms: int,
+        max_refresh_commands: int | None = None,
     ) -> dict:
-        # The mower drives for the whole window at the measured rate, which is
-        # the property the refresh cadence buys us: distance tracks duration.
         windows.append(duration_seconds)
-        state["y"] += (duration_seconds / 3.5) * 1.06
+        refresh_limits.append(max_refresh_commands)
+        nonzero_writes = (
+            11 if max_refresh_commands is None else max_refresh_commands + 1
+        )
+        state["y"] += (nonzero_writes / 11) * 1.06
         coordinator.data.mowing_state.pos_y = state["y"]
         return {
             "refresh_enabled": True,
             "refresh_interval_ms": refresh_interval_ms,
-            "refresh_commands_sent": int(duration_seconds * 1000 / refresh_interval_ms),
+            "refresh_commands_sent": nonzero_writes - 1,
         }
 
     monkeypatch.setattr(
@@ -5202,11 +5229,10 @@ async def test_vector_segment_shortens_the_final_pulse_instead_of_overshooting(
     )
 
     assert result["stop_reason"] == "target_reached"
-    # Two full pulses, then one scaled to the 0.88 m that was left.
+    # Two full pulses, then one bounded to the 0.88 m that was left.
     assert len(windows) == 3
-    assert windows[0] == pytest.approx(3.5)
-    assert windows[1] == pytest.approx(3.5)
-    assert windows[2] == pytest.approx(2.905, abs=0.01)
+    assert windows == pytest.approx([3.5, 3.5, 3.5])
+    assert refresh_limits == [None, None, 9]
 
     approaches = [
         c["final_approach"] for c in result["command_results"] if "final_approach" in c
@@ -5456,10 +5482,15 @@ async def test_vector_segment_vio_real_stops_on_failed_calibration(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("max_linear_commands", "expected_realignments"), [(1, 0), (2, 1)]
+)
 async def test_vector_segment_vio_realigns_when_facing_drifts_off_bearing(
     monkeypatch: pytest.MonkeyPatch,
+    max_linear_commands: int,
+    expected_realignments: int,
 ) -> None:
-    """Mid-drive re-aim fires a bounded VIO turn when facing drifts off bearing."""
+    """Mid-drive re-aim runs only when another forward command can follow."""
     coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
     # Facing estimate = vision_heading + offset = 10 + (-90) = -80 deg map,
     # bearing to target is 0 deg -> 80 deg aim error > 15 deg threshold.
@@ -5510,18 +5541,22 @@ async def test_vector_segment_vio_realigns_when_facing_drifts_off_bearing(
         dry_run=False,
         confirm_blades_off=True,
         confirm_clear_area=True,
-        max_linear_commands=1,
+        max_linear_commands=max_linear_commands,
         sample_delays=(0,),
     )
 
-    # One initial turn + one mid-drive re-aim, both via the VIO primitive.
-    assert len(turn_calls) == 2
-    assert len(result["realignments"]) == 1
-    realign = result["realignments"][0]
-    assert realign["stop_reason"] == "target_heading_reached"
-    assert abs(realign["aim_error_degrees"]) > 15.0
-    # The corrected off-bearing pulse does not count as no-progress.
-    assert result["stop_reason"] == "max_linear_commands_reached"
+    # The initial turn always runs. A mid-drive re-aim runs only after the first
+    # of two linear commands; after the final budget it could add drift but no
+    # forward command could benefit from it.
+    assert len(turn_calls) == 1 + expected_realignments
+    assert len(result["realignments"]) == expected_realignments
+    if expected_realignments:
+        realign = result["realignments"][0]
+        assert realign["stop_reason"] == "target_heading_reached"
+        assert abs(realign["aim_error_degrees"]) > 15.0
+    # This fixture intentionally leaves position static, so after exercising
+    # the re-alignment decision the executor fails closed on no progress.
+    assert result["stop_reason"] == "no_target_progress"
 
 
 @pytest.mark.asyncio
@@ -6611,6 +6646,31 @@ async def test_confirmed_ble_motion_waits_for_gatt_write() -> None:
     release_write.set()
     await send_task
     handle._send_marked.assert_awaited_once()  # noqa: SLF001
+
+
+@pytest.mark.asyncio
+async def test_normal_motion_teardown_stop_uses_emergency_queue_priority() -> None:
+    """A bounded pulse's zero write bypasses normal queue work."""
+    coordinator = _pulse_coordinator()
+    handle = coordinator.manager.mower(coordinator.device_name)
+    priorities: list[object] = []
+
+    async def capture_priority(
+        work: Callable[[], Coroutine[object, object, None]],
+        priority: object = None,
+        **_kwargs: object,
+    ) -> None:
+        priorities.append(priority)
+        await work()
+
+    handle.queue.enqueue = capture_priority
+
+    result = await mammotion_services._manual_velocity_stop_attempt(  # noqa: SLF001
+        coordinator, use_wifi=False
+    )
+
+    assert result["ok"] is True
+    assert priorities == [Priority.EMERGENCY]
 
 
 @pytest.mark.asyncio
@@ -9640,6 +9700,35 @@ async def test_motion_refresh_window_resends_for_whole_pulse(
     # Evenly spaced at the requested cadence.
     assert sends[0] == pytest.approx(100.25)
     assert sends[1] - sends[0] == pytest.approx(0.25)
+
+
+@pytest.mark.asyncio
+async def test_motion_refresh_window_stops_at_confirmed_refresh_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A final approach stops immediately after its discrete resend budget."""
+    coordinator = _pulse_coordinator()
+    clock = _install_virtual_clock(monkeypatch)
+    sends: list[float] = []
+
+    async def resend() -> None:
+        sends.append(clock["now"])
+
+    report = await _motion_refresh_window(
+        coordinator,
+        resend=resend,
+        duration_seconds=3.5,
+        refresh_interval_ms=200,
+        max_refresh_commands=3,
+    )
+
+    assert report["refresh_command_limit"] == 3
+    assert report["max_refresh_commands"] == 3
+    assert report["refresh_commands_sent"] == 3
+    assert len(report["refresh_write_durations_ms"]) == 3
+    assert sends == pytest.approx([100.2, 100.4, 100.6])
+    assert clock["now"] == pytest.approx(100.6)
+    assert report["elapsed_ms"] == pytest.approx(600.0)
 
 
 @pytest.mark.asyncio

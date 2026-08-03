@@ -1,4 +1,4 @@
-# Handoff prompt — diagnose Gate 5 short-pulse failure
+# Handoff prompt — validate and reaccept the beta17 motion correction
 
 Paste the block below to resume. It is written to be self-contained; everything
 it references is committed on `feat/vio-turn-to-heading` in
@@ -10,7 +10,7 @@ You are resuming P0 completion on the Mammotion-HA repo, branch
 `feat/vio-turn-to-heading` (remote `origin` = `Chorty/Mammotion-HA`).
 
 **Read first, in this order:** `CLAUDE.md`, then `docs/NEXT-SESSION.md` (its
-"🚨 READ FIRST" block and the "Gate 5 beta16 final attempt" section), then the
+"🚨 READ FIRST" block), then the
 matching section of `docs/p0-beta-release.md`. Confirm
 `git status --short --branch` is clean and inspect `git log -1 --stat` before
 editing. Do not reconstruct live-test facts from chat history; those documents
@@ -28,12 +28,13 @@ scripts/ha_set_experimental_motion.py status
 If it reports `enabled: True` and you are not about to run, turn it off with
 `scripts/ha_set_experimental_motion.py off`.
 
-Last known after the failed run: mower `MODE_READY` at (4.8583, −2.1320),
-`toward` 175.4473, inside `Backyard Right`, RTK Fix, blades off, no session.
-The host and working tree run `0.6.4-beta16`, including the precise-coordinate
-editor. The motion gate is verified off.
+Last known after the second failed run: mower `MODE_READY` at (4.9538,
+−2.7131), `toward` -27.5495, inside `Backyard Right`, RTK Fix, blades off,
+no session. The host runs `0.6.4-beta16`; the working tree is the undeployed
+`0.6.4-beta17` correction candidate. The motion gate is verified off. No motion
+is authorized by this handoff.
 
-## The blocking Gate 5 result
+## The blocking Gate 5 results and correction candidate
 
 **Gate 5 = UI-to-mower acceptance.** Gates 1–4 passed on 2026-07-31 but were all
 *service calls*, so they prove nothing about the card. Gate 5 requires the
@@ -41,8 +42,8 @@ operator to drive **from the card**: check the execution-profile row, then
 Preview → Dry-run → Real Go. A service call is NOT Gate 5. You cannot click the
 card; the operator must.
 
-Before the final dry-run, confirm the browser console banner reports
-`v0.6.4-beta16` and the execution-profile row reads exactly
+Before any beta17 final dry-run, confirm the browser console banner reports
+`v0.6.4-beta17` and the execution-profile row reads exactly
 `LUBA acceptance profile (Gates 1-4, 2026-07-31)`. Save the card's emitted
 payload and dry-run result. Do not edit the waypoints or profile between that
 dry-run and Real Go; use the same card instance for all three steps. Save the
@@ -60,10 +61,21 @@ and Abort remains effective. The beta16 run on 2026-08-02 did **not** pass:
 - both stop writes succeeded, the session cleared, the gate was disarmed, and
   the 20-second post-stop capture remained stationary.
 
-This is primarily a distance-model failure, not an aim failure. A proportional
-model through zero is invalid for this short pulse because motor onset/dead time
-is material. The former **0.3–0.5 m usable-band claim is refuted**. Do not retry
-the same geometry or tune from this single short-pulse sample.
+The independent 0.450 m characterization reproduced the failure with a
+different short duration: its 1191.8 ms approach delivered three refreshes and
+moved 0.43414 m, while the earlier 1012.5 ms approach delivered two and moved
+0.17861 m. The normal-priority stop on the second run took 1392.666 ms to
+confirm. Three post-linear VIO realignments then added drift even though the
+single forward-command budget was already exhausted. This establishes that
+confirmed refresh count and stop latency dominate nominal duration.
+
+The beta17 candidate replaces proportional-duration shortening with a discrete
+refresh-command budget, sends normal pulse teardown zero writes at emergency
+queue priority, and prevents realignment after the final linear command. It
+does not change the public service schema or `LUBA_ACCEPTANCE_PROFILE`. Treat
+it as unproven until the full suite and CI pass, it is deployed motion-disabled,
+and affected backend Gates 2 and 4 are repeated under fresh daylight operator
+authorization. Only after those pass may a fresh unchanged-card Gate 5 be run.
 
 ## The open measurement to fold into that run
 
@@ -122,7 +134,7 @@ cached and stayed bit-identical across 374 samples.
 ## Validation matrix (run all after any change)
 
 ```sh
-.venv/bin/python -m pytest --cov=custom_components.mammotion --cov-report=term-missing tests  # 456 pass
+.venv/bin/python -m pytest --cov=custom_components.mammotion --cov-report=term-missing tests  # 461 pass
 .venv/bin/python -m ruff check custom_components tests
 .venv/bin/python -m ruff format --check custom_components tests
 .venv/bin/python -m mypy --follow-imports=skip custom_components/mammotion

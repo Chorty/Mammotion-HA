@@ -3148,7 +3148,12 @@ async def _manual_velocity_stop_attempt(
         if use_wifi:
             ack = await coordinator.async_stop_manual_motion(use_wifi=True)
         else:
-            ack = await _stop_manual_motion_confirmed(coordinator)
+            # A zero-speed write is always more urgent than queued telemetry or
+            # another normal command. Live 2026-08-02 a normal-priority stop
+            # took 1392.7 ms to confirm while the mower continued past its
+            # target. Emergency priority preserves confirmed delivery while
+            # putting the stop ahead of non-safety queue work.
+            ack = await _stop_manual_motion_confirmed(coordinator, emergency=True)
         result["ack"] = ack
         if isinstance(ack, dict):
             result["ok"] = all(value is not False for value in ack.values())
@@ -4204,6 +4209,7 @@ async def _motion_refresh_window(
     resend: Callable[[], Coroutine[Any, Any, Any]],
     duration_seconds: float,
     refresh_interval_ms: int,
+    max_refresh_commands: int | None = None,
 ) -> dict[str, Any]:
     """Hold a movement command open for ``duration_seconds``.
 
@@ -4218,13 +4224,17 @@ async def _motion_refresh_window(
     remains, so the last command is always followed by real motion time rather
     than an immediate stop.
     """
+    window_started = time.monotonic()
     report: dict[str, Any] = {
         "refresh_enabled": refresh_interval_ms > 0,
         "refresh_interval_ms": max(int(refresh_interval_ms), 0),
         "refresh_commands_sent": 0,
+        "refresh_command_limit": max_refresh_commands,
+        "refresh_write_durations_ms": [],
     }
     if refresh_interval_ms <= 0:
         await _motion_open_sleep(coordinator, duration_seconds)
+        report["elapsed_ms"] = round((time.monotonic() - window_started) * 1000, 3)
         return report
 
     interval_ms = min(
@@ -4238,6 +4248,8 @@ async def _motion_refresh_window(
     # spins forever if sleeps do not advance the clock (no-op sleeps in tests),
     # and this doubles as a hard ceiling on commands per pulse.
     max_refreshes = max(int(duration_seconds / interval_seconds), 0)
+    if max_refresh_commands is not None:
+        max_refreshes = min(max_refreshes, max(int(max_refresh_commands), 0))
     report["max_refresh_commands"] = max_refreshes
     while report["refresh_commands_sent"] < max_refreshes:
         remaining = deadline - time.monotonic()
@@ -4246,6 +4258,7 @@ async def _motion_refresh_window(
         await _motion_open_sleep(coordinator, min(interval_seconds, remaining))
         if time.monotonic() >= deadline:
             break
+        resend_started = time.monotonic()
         try:
             await resend()
         except asyncio.CancelledError:
@@ -4271,7 +4284,11 @@ async def _motion_refresh_window(
             # half-refreshed window is a shorter drive, never a runaway one.
             report["refresh_error"] = f"{type(err).__name__}: {err}"
             break
+        report["refresh_write_durations_ms"].append(
+            round((time.monotonic() - resend_started) * 1000, 3)
+        )
         report["refresh_commands_sent"] += 1
+    report["elapsed_ms"] = round((time.monotonic() - window_started) * 1000, 3)
     return report
 
 
@@ -9101,10 +9118,10 @@ def _raw_vector_linear_command_selection(
 #: 4.06 m / 4 pulses both give ~1.06 m. Only the fallback -- the executor
 #: prefers what it actually observes during the run.
 _DEFAULT_METRES_PER_LINEAR_PULSE = 1.06
-#: Floor for a scaled final-approach pulse (~9 cm at the measured rate). Short
-#: enough to land inside a 15 cm waypoint tolerance, long enough that the mower
-#: still actuates.
-_MIN_SCALED_LINEAR_PULSE_MS = 300.0
+#: Two isolated 3500 ms pulses delivered 10 and 11 refresh writes. Use the
+#: lower measured count so a short approach never requests more actuation than
+#: its distance fraction supports. The initial non-zero write is additional.
+_DEFAULT_REFRESH_COMMANDS_PER_LINEAR_PULSE = 10
 
 
 def _final_approach_pulse_ms(
@@ -9115,7 +9132,7 @@ def _final_approach_pulse_ms(
     pulse_duration_ms: float,
     refresh_interval_ms: int,
 ) -> dict[str, Any]:
-    """Shorten the last pulse so it lands on the target instead of overshooting.
+    """Bound the last pulse by confirmed refresh-write count.
 
     A full pulse covers ~1 m. Whenever the remaining distance is less than that
     but more than ``waypoint_tolerance``, the executor previously had no move
@@ -9125,11 +9142,11 @@ def _final_approach_pulse_ms(
     Raising the tolerance does not fix that; the granularity is the problem.
 
     **This only works because of the refresh cadence.** Single-shot motion moves
-    a fixed ~4 in step regardless of duration (and 2 s was a measured physical
-    no-op), so scaling the duration would do nothing and could stop the mower
-    moving at all. With refresh the mower drives continuously, distance becomes
-    proportional to duration, and the final approach can be scaled. Hence the
-    hard guard on ``refresh_interval_ms > 0``.
+    a fixed ~4 in step regardless of duration. Duration-only refreshed scaling
+    was also disproved live on 2026-08-02: 1012.5 ms delivered two refreshes and
+    moved 0.1786 m, while 1191.8 ms delivered three and moved 0.4341 m. Confirmed
+    BLE write and stop latency make nominal time a poor actuation unit. Bound
+    the discrete non-zero writes instead and stop immediately after the budget.
 
     Self-calibrating: ``observed_pulse_distances`` holds the measured distance of
     each full-length pulse in this run, so the scale factor tracks today's
@@ -9144,6 +9161,8 @@ def _final_approach_pulse_ms(
         "metres_per_pulse": None,
         "metres_per_pulse_source": None,
         "pulse_duration_ms": pulse_duration_ms,
+        "refresh_command_limit": None,
+        "full_pulse_refresh_commands": _DEFAULT_REFRESH_COMMANDS_PER_LINEAR_PULSE,
     }
     if refresh_interval_ms <= 0:
         info["reason"] = "refresh_disabled_distance_not_proportional_to_duration"
@@ -9167,13 +9186,21 @@ def _final_approach_pulse_ms(
         info["reason"] = "cruising_full_pulse_fits"
         return info
 
-    scaled = (distance_to_target / metres_per_pulse) * pulse_duration_ms
-    scaled = max(_MIN_SCALED_LINEAR_PULSE_MS, min(scaled, pulse_duration_ms))
+    full_nonzero_writes = _DEFAULT_REFRESH_COMMANDS_PER_LINEAR_PULSE + 1
+    target_nonzero_writes = max(
+        1,
+        math.ceil((distance_to_target / metres_per_pulse) * full_nonzero_writes),
+    )
+    refresh_command_limit = min(
+        _DEFAULT_REFRESH_COMMANDS_PER_LINEAR_PULSE,
+        max(target_nonzero_writes - 1, 0),
+    )
     info.update(
         {
             "applied": True,
-            "reason": "final_approach_scaled_to_remaining_distance",
-            "pulse_duration_ms": round(scaled, 1),
+            "reason": "final_approach_bounded_by_refresh_count",
+            "refresh_command_limit": refresh_command_limit,
+            "target_nonzero_writes": target_nonzero_writes,
         }
     )
     return info
@@ -10151,6 +10178,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
             ),
             duration_seconds=pulse_ms / 1000,
             refresh_interval_ms=motion_refresh_interval_ms,
+            max_refresh_commands=final_approach.get("refresh_command_limit"),
         )
         result["motion_refresh_commands_sent"] += command_result["motion_refresh"][
             "refresh_commands_sent"
@@ -10300,6 +10328,12 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                 and current_now is not None
                 and target is not None
                 and realignments_used < vio_max_realignments
+                # A re-alignment only has value when another forward command
+                # can follow it. Live 2026-08-02 the sole linear command ended
+                # 8.46 cm from target, then three otherwise-successful turns
+                # added ~23 cm of drift even though the linear budget was
+                # already exhausted. Stop boundedly instead.
+                and command_index < max_linear_commands
             ):
                 facing = (float(reading["vision_heading"]) + float(offset_now)) % 360
                 bearing = _path_heading_degrees(current_now, target)

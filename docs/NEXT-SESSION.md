@@ -1,10 +1,55 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
-Updated 2026-08-02 after the beta16 daylight Gate 5 attempt. This is the current handoff;
+Updated 2026-08-02 after the second beta16 daylight characterization. This is the current handoff;
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
-## 🚨 READ FIRST — Gate 5 failed safely; release is halted
+## 🚨 READ FIRST — beta17 correction is undeployed; release is halted
+
+Two independent beta16 daylight runs rejected duration-only final-approach
+scaling. A 0.450 m single-leg characterization started at `(4.858, -2.132)`
+and targeted `(4.858, -2.582)`. Its VIO calibration moved 0.08925 m, leaving
+0.36094 m. The nominal 1191.8 ms approach delivered three refreshes and moved
+0.43414 m; its normal-priority zero write then took 1392.666 ms to confirm.
+The executor evaluated a pre-turn position as 0.08456 m from target, just
+outside tolerance, and spent three VIO re-alignment turns even though
+`max_linear_commands: 1` left no forward command to benefit. Those turns added
+0.0670, 0.0885 and 0.0785 m of displacement. It stopped safely at
+`max_linear_commands_reached`; the measured resting position `(4.9538,
+-2.7131)` was 0.16237 m from target.
+
+This reproduces the earlier stepwise behavior decisively: the first beta16
+short approach requested 1012.5 ms, delivered two refreshes and moved 0.17861
+m; the second requested 1191.8 ms, delivered three and moved 0.43414 m. The
+full 3500 ms calibration pulses delivered 10 and 11 refreshes and moved 1.07737
+and 1.04573 m. Confirmed refresh count and unpredictable stop latency dominate
+nominal duration.
+
+The working tree is now the undeployed `0.6.4-beta17` correction candidate. It
+budgets final approaches by discrete confirmed refresh count, sends the
+zero-speed teardown at emergency queue priority, and suppresses re-alignment
+when no forward-command budget remains. The public service schema and frozen
+LUBA acceptance profile are unchanged. This candidate must pass the full local
+suite and CI, then be deployed motion-disabled and re-pass affected backend
+Gates 2 and 4 before a new card Gate 5 run. No physical motion is currently
+authorized.
+
+The characterization teardown is complete: experimental motion is verified
+off, no session remains, blades are off, and a 20-second post-stop capture is
+stationary. BLE showed no connects, disconnects, gaps, malformed frames or
+drops. The 0.5889 m whole-run displacement implied a 103.89-degree offset, only
++1.49 degrees from the retained 102.4-degree profile; do not change the heading
+profile.
+
+Evidence:
+
+- `docs/evidence-gate5-characterization2-dry-run-20260802.json`
+- `docs/evidence-gate5-characterization2-result-20260802.json`
+- `docs/evidence-gate5-characterization2-run-20260802.jsonl`
+- `docs/evidence-gate5-characterization2-post-stop-20260802.jsonl`
+- `docs/evidence-gate5-characterization2-ble-report-20260802.txt`
+
+## Historical beta16 two-leg failure
 
 The operator used one unchanged beta16 card instance for Preview, Dry-run and
 Real Go with exact points `(4.835, -1.861)`, `(4.835, -2.261)`,

@@ -5,18 +5,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Current P0 Handoff
 
 Read `docs/NEXT-SESSION.md` before continuing P0 or click-to-go work. The
-supervised backend Gates 1-4 passed on the LUBA on 2026-07-31. Gate 5 is still
-open after a safe beta16 card-originated failure on 2026-08-02. The exact
-0.400 m + 0.400 m L-path executed only segment 1: a 0.0937 m VIO calibration
-move plus the scaled 1.0125 s final pulse travelled 0.2720 m net and left
-0.1311 m to target, so the executor stopped at
-`max_linear_commands_reached` and correctly withheld segment 2. Both motion
-stops were confirmed, the session cleared, stationary telemetry was preserved,
-and the experimental-motion gate is verified off. This refutes the prior claim
-that every 0.3-0.5 m leg is usable: the zero-origin proportional short-pulse
-model does not include motor onset/dead time. Do not retry or change the
-accepted profile without diagnosis, a fresh daylight geometry, and a fresh
-operator confirmation. Always disarm after success, failure, or abort.
+supervised backend Gates 1-4 passed on the LUBA on 2026-07-31, but Gate 5 is
+still open after two safe beta16 daylight failures on 2026-08-02. The second,
+independent 0.450 m characterization made the cause decisive: a 1012.5 ms
+approach delivered two refresh writes and moved 0.1786 m, while a 1191.8 ms
+approach delivered three and moved 0.4341 m. The latter normal-priority stop
+took 1392.7 ms to confirm; after the only linear command was exhausted, three
+unusable re-alignment turns added further drift. Nominal duration is not a safe
+linear actuation unit. Beta17 is the undeployed correction candidate: discrete
+confirmed-refresh budgeting, emergency-priority zero writes, and no re-alignment
+when no forward command remains. The 102.4-degree heading profile is unchanged,
+but the changed executor must re-pass affected backend Gates 2 and 4 before a
+new Gate 5. The experimental-motion gate is verified off. No motion is
+authorized by this handoff.
 
 The card's Real Go defaults are now the Gate 4 profile itself, frozen as
 `LUBA_ACCEPTANCE_PROFILE` in `www/mammotion-custom-path-card.js` and pinned by
@@ -25,11 +26,12 @@ acceptance: the card has driven the mower but has not completed a clean
 two-segment run. That is **Gate 5** in
 `docs/p0-beta-release.md`, and it is the one open release gate.
 
-The working tree and host are aligned at `0.6.4-beta16`. `manifest.json`,
-`pyproject.toml`, `CARD_VERSION` and `uv.lock` (which carries the PEP 440 form
-`0.6.4b16`) must always agree, and the `Beta Release` workflow verifies all
-four. The card is served from **two** paths, so deploy to both and bump the
-Lovelace resource key or the browser can silently load the stale card.
+The host remains on `0.6.4-beta16`; the working tree is the undeployed
+`0.6.4-beta17` correction candidate. `manifest.json`, `pyproject.toml`,
+`CARD_VERSION` and `uv.lock` (PEP 440 `0.6.4b17`) must always agree, and the
+`Beta Release` workflow verifies all four. The card is served from **two**
+paths, so deploy to both and bump the Lovelace resource key or the browser can
+silently load the stale card.
 
 `pre-commit run --all-files` is green as of 2026-07-31 and is now a usable
 gate. Its hook pins must move with `requirements_test.txt`: the Ruff and mypy

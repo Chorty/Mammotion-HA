@@ -413,6 +413,46 @@ Evidence:
 - `docs/evidence-gate5-final-post-stop-20260802.jsonl`
 - `docs/evidence-gate5-final-ble-report-20260802.txt`
 
+**Gate 5 beta16 independent characterization — FAILED SAFE, 2026-08-02
+20:13 EDT.** A fresh, valid card dry-run used one 0.450 m segment from
+`(4.858, -2.132)` to `(4.858, -2.582)`, with live VIO Light/80 and all runtime
+gates passing. VIO calibration moved 0.08925 m, leaving 0.36094 m. The
+duration-scaled 1191.8 ms approach delivered three refreshes and moved 0.43414
+m. Its initial non-zero write took 317.512 ms and the normal-priority zero stop
+took 1392.666 ms to confirm.
+
+The completion sample was 0.08456 m from target, only 4.6 mm beyond tolerance.
+Because the linear budget was exhausted, no further forward command was
+possible, but three VIO re-alignment turns still ran and displaced 0.0670,
+0.0885 and 0.0785 m. The segment ended
+`max_linear_commands_reached`. Post-stop telemetry was stationary at
+`(4.9538, -2.7131)`, 0.16237 m from target; the session cleared, blades stayed
+off, and experimental motion was disabled immediately. The scoped BLE report
+found no connection, sequence, parse or drop event.
+
+Together the beta16 samples are decisive: 1012.5 ms delivered two refreshes
+and moved 0.17861 m, while 1191.8 ms delivered three and moved 0.43414 m. The
+isolated 3500 ms pulses delivered 10 and 11 refreshes and moved 1.07737 and
+1.04573 m. Nominal duration is not a reliable actuator unit; confirmed refresh
+count and stop latency dominate. The whole characterization moved 0.5889 m at
+bearing 279.33 degrees, implying a 103.89-degree forward offset (+1.49 degrees
+from 102.4), so the heading profile remains unchanged.
+
+The undeployed beta17 correction candidate budgets short approaches by
+discrete confirmed refresh count, uses emergency queue priority for the
+confirmed zero-speed teardown, and skips realignment when no later forward
+command can benefit. It changes neither the public schema nor
+`LUBA_ACCEPTANCE_PROFILE`. It must pass local/CI validation and affected
+backend Gates 2 and 4 before another card Gate 5 run.
+
+Evidence:
+
+- `docs/evidence-gate5-characterization2-dry-run-20260802.json`
+- `docs/evidence-gate5-characterization2-result-20260802.json`
+- `docs/evidence-gate5-characterization2-run-20260802.jsonl`
+- `docs/evidence-gate5-characterization2-post-stop-20260802.jsonl`
+- `docs/evidence-gate5-characterization2-ble-report-20260802.txt`
+
 ⚠️ **The VIO dusk cliff is steep, and the HA sensor entities lag it.** At
 20:40:27 the sensors read `camera_brightness: light` with 80/80 tracked
 features; by 20:47:20 they read `dark` with 0/0 — a collapse inside about seven
@@ -665,14 +705,14 @@ same change that records the result, and move this date.
   carries both a minimal YAML and the written-out defaults. The emitted payload
   was additionally validated against the shipped voluptuous schemas for both
   card services, confirming the ceiling is absent rather than zeroed.
-  **Current disposition:** the card has now driven the mower twice but has not
-  completed both segments. The beta16 exact 0.400 m attempt above exposed the
-  short-pulse distance-model blocker, so Gate 5 remains open and release is
-  halted pending diagnosis and a newly authorized daylight run.
-  `CARD_VERSION`, `manifest.json`, `pyproject.toml` and `uv.lock` were bumped
-  together to `0.6.4-beta12` on 2026-07-31 so the Gate 5 build is
-  distinguishable in the browser from the deployed beta11 card. The bump is
-  local: nothing has been deployed to the host, which still runs beta11.
+  **Current disposition:** the card has driven the mower in three supervised
+  runs but has not completed both Gate 5 segments. Two beta16 short approaches
+  established the refresh-count/stop-latency defect. The undeployed beta17
+  correction candidate keeps the accepted profile unchanged and must re-pass
+  affected backend Gates 2 and 4 before Gate 5. Release remains halted.
+  `CARD_VERSION`, `manifest.json`, `pyproject.toml` and `uv.lock` are bumped
+  together to `0.6.4-beta17` (`0.6.4b17` in `uv.lock`); the host remains on
+  beta16 until validation completes.
 - **`Beta Release` workflow was unrunnable — FIXED 2026-07-31.** Three shell
   expressions in `.github/workflows/beta-release.yml` were written with doubled
   backslashes inside YAML block scalars, which do not process escapes, so sed

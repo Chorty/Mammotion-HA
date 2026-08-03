@@ -1,6 +1,6 @@
 # P0 deploy and rollback runbook (host 192.168.1.106)
 
-First deployed 2026-07-29 and updated through the 2026-08-02 Gate 5 setup. For
+First deployed 2026-07-29 and updated through the 2026-08-02 Gate 5 characterization. For
 any later deploy, work while the mower is stopped and experimental motion is
 off. Restarting HA while BLE is unhealthy has previously left the integration
 in `setup_error` with no auto-retry, needing a manual entry reload.
@@ -9,19 +9,22 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 |                         | Host                                                           | Branch         |
 | ----------------------- | -------------------------------------------------------------- | -------------- |
-| Integration version     | `0.6.4-beta16`                                                 | `0.6.4-beta16` |
+| Integration version     | `0.6.4-beta16`                                                 | `0.6.4-beta17` candidate |
 | pymammotion pin         | `0.8.12.post1` fork wheel (container verified)                 | same           |
-| Card `CARD_VERSION`     | `0.6.4-beta16`; integration and HACS copies checksum-identical | `0.6.4-beta16` |
+| Card `CARD_VERSION`     | `0.6.4-beta16`; integration and HACS copies checksum-identical | `0.6.4-beta17` candidate |
 | `manual_motion.py`      | present                                                        | present        |
 | `backend_capability.py` | present                                                        | present        |
 | `capabilities.py`       | present                                                        | present        |
 
-The live host ran backend Gates 1-4 and two card-driven Gate 5 attempts. On
-2026-08-02 beta16 executed an exact 0.400 m + 0.400 m L-path, but segment 1
-stopped 0.1311 m short and segment 2 was correctly withheld. Both stop writes
-were confirmed, the session cleared, and stationary teardown evidence was
-captured. Experimental motion is verified off. Gate 5 and release remain
-blocked; do not merge or publish.
+The live host ran backend Gates 1-4 and two failed-safe beta16 daylight
+short-approach runs. The independent 0.450 m characterization proved that
+motion is stepwise by confirmed refresh writes and that normal stop latency can
+dominate nominal pulse duration. It also exposed useless realignment after the
+last permitted forward command. The branch's undeployed beta17 candidate
+addresses those three behaviors without changing the accepted profile.
+Experimental motion is verified off. Gate 5 and release remain blocked; do not
+merge or publish. Validate and push beta17 before deploying it, then repeat
+affected backend Gates 2 and 4 before Gate 5.
 
 ### Gate 5 deploy — 2026-07-31 19:50-20:05 EDT
 
@@ -111,10 +114,10 @@ zero overrides, `linear_pulse_duration_ms` 3500, ceiling still omitted.
 Lesson for any future deploy: a correct file deploy is **not** a correct
 run configuration. Check the execution-profile row, not just the version banner.
 
-Before any newly authorized Gate 5 motion: first diagnose the beta16
-short-pulse under-drive recorded in `docs/p0-beta-release.md`; do not treat
-0.3-0.5 m as a proven usable band. Then confirm the browser console banner reads
-`v0.6.4-beta16` (a hard refresh may be needed), confirm the card's execution
+Before any newly authorized Gate 5 motion: deploy and reaccept the beta17
+correction recorded in `docs/p0-beta-release.md`; do not treat 0.3-0.5 m as a
+proven usable band. Confirm the browser console banner reads
+`v0.6.4-beta17` (a hard refresh may be needed), confirm the card's execution
 profile row reads exactly
 `LUBA acceptance profile (Gates 1-4, 2026-07-31)`, save the emitted payload and
 dry-run result, and obtain a fresh daylight operator `go`. Use the same card
