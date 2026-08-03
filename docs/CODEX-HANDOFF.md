@@ -1,4 +1,4 @@
-# Handoff prompt — deploy beta18, then reaccept the motion correction
+# Handoff prompt — reaccept the deployed beta18 motion correction
 
 Paste the block below to resume. It is written to be self-contained; everything
 it references is committed on `feat/vio-turn-to-heading` in
@@ -28,23 +28,30 @@ scripts/ha_set_experimental_motion.py status
 If it reports `enabled: True` and you are not about to run, turn it off with
 `scripts/ha_set_experimental_motion.py off`.
 
-Last known after the beta17 motion-disabled deployment: mower `MODE_READY` at
+Last known after the beta18 motion-disabled deployment: mower `MODE_READY` at
 approximately (4.9524, −2.7114), inside `Backyard Right`, RTK Fix, blades off,
-no session. The host runs the still-unaccepted `0.6.4-beta17` motion
-correction; the branch is the undeployed `0.6.4-beta18` map-marker correction.
+no session. The host and branch run the still-unaccepted `0.6.4-beta18`
+candidate.
 Beta18 converts the device tracker's raw Mammotion orientation from
 counter-clockwise to HA's clockwise compass bearing; it does not change motion
 or the accepted profile. The motion gate is verified off. It is dark with VIO at
 0 tracked features, so no motion is authorized by this handoff.
 
-The deploy smoke passed: 128 Mammotion entities, backend verified against
+The beta18 deploy smoke passed: 128 Mammotion entities, backend verified against
 `pymammotion 0.8.12.post1`, BLE live, both card paths checksum-identical, exact
 accepted-profile label, valid Preview, and a card Dry-run with `valid: true`,
 `would_send: false`, and `stop_reason: dry_run`. Real Go remained disabled and
 the card was reset to zero waypoints. The live resource URL is
-`?v=0.6.4-beta17&build=a2b0d4bf`; the build suffix is required because Chrome
-had a stale beta16 response cached under the plain beta17 URL. Rollback backup:
-`/config/mammotion-backup-20260802-2045.tgz`.
+`?v=0.6.4-beta18&build=6da6c3d3`. Rollback backup:
+`/config/mammotion-backup-20260802-2129.tgz`.
+
+The third-party `custom:map-card` ignores the tracker `direction` attribute by
+default. The live Yard dashboard therefore has a Jinja-backed `card-mod` rule
+that rotates `.entity-picture` from the normalized attribute. At the captured
+state the tracker read `direction: 29.0` and the rendered picture transform was
+the 29-degree matrix `matrix(0.87462, 0.48481, -0.48481, 0.87462, 0, 0)`, so the
+mower marker points upper-right and follows later state changes. Dashboard
+backup: `/config/.storage/lovelace.dashboard_yard.bak.codex-20260802-213848`.
 
 ## The blocking Gate 5 results and correction candidate
 

@@ -4,7 +4,7 @@ Updated 2026-08-02 after the second beta16 daylight characterization. This is th
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
-## 🚨 READ FIRST — beta18 UI fix is undeployed; release is halted
+## 🚨 READ FIRST — beta18 is deployed motion-disabled; release is halted
 
 The operator identified a live heading-display mismatch after the beta17 smoke:
 the custom-path card's green arrow and 72.8-degree label pointed upper-right,
@@ -12,7 +12,7 @@ but the adjacent Home Assistant map card's black mower marker pointed
 upper-left. Runtime inspection showed why: the integration published Mammotion
 orientation `-29` directly as the device tracker's `direction`. HA treats that
 attribute as a clockwise compass bearing, while Mammotion's sign is
-counter-clockwise. Beta18 is the undeployed presentation-only correction:
+counter-clockwise. Beta18 is the deployed presentation-only correction:
 `direction = (-orientation) % 360`, so the same sample becomes 29 degrees and
 points upper-right. Eight conversion tests cover sign, wrapping and unavailable
 values. Motion code and `LUBA_ACCEPTANCE_PROFILE` are unchanged. The exact tree
@@ -37,20 +37,24 @@ full 3500 ms calibration pulses delivered 10 and 11 refreshes and moved 1.07737
 and 1.04573 m. Confirmed refresh count and unpredictable stop latency dominate
 nominal duration.
 
-The host runs the `0.6.4-beta17` correction candidate; the working tree is
-`0.6.4-beta18` with only the map-marker presentation fix added. The beta17
-motion correction
-budgets final approaches by discrete confirmed refresh count, sends the
-zero-speed teardown at emergency queue priority, and suppresses re-alignment
-when no forward-command budget remains. The public service schema and frozen
-LUBA acceptance profile are unchanged. This candidate must pass the full local
-suite and CI, then be deployed motion-disabled and re-pass affected backend
-Gates 2 and 4 before a new card Gate 5 run. The motion-disabled deploy smoke
+The host and branch run the `0.6.4-beta18` candidate. Its beta17 motion
+correction budgets final approaches by discrete confirmed refresh count, sends
+the zero-speed teardown at emergency queue priority, and suppresses
+re-alignment when no forward-command budget remains. The public service schema
+and frozen LUBA acceptance profile are unchanged. The candidate must re-pass
+affected backend Gates 2 and 4 before a new card Gate 5 run. The
+motion-disabled deploy smoke
 passed with 128 entities, verified backend capabilities, both card paths
 checksum-identical, the exact accepted-profile label, valid Preview, and a
 card Dry-run reporting `would_send: false`. The browser console and card footer
-both showed beta17 after assigning the collision-proof Lovelace URL
-`?v=0.6.4-beta17&build=a2b0d4bf`. No physical motion is currently authorized.
+both show beta18 at the collision-proof Lovelace URL
+`?v=0.6.4-beta18&build=6da6c3d3`. The third-party map card ignores
+`direction` by default, so the Yard dashboard also has a Jinja-backed
+`card-mod` rule that rotates its mower picture by the normalized attribute.
+At `direction: 29.0`, the browser computed a 29-degree clockwise transform and
+the marker pointed upper-right. Dashboard backup:
+`/config/.storage/lovelace.dashboard_yard.bak.codex-20260802-213848`. No
+physical motion is currently authorized.
 
 The characterization teardown is complete: experimental motion is verified
 off, no session remains, blades are off, and a 20-second post-stop capture is
@@ -63,7 +67,7 @@ It was dark after deployment: VIO reported 0 tracked features. Do not attempt
 affected Gates 2/4 or Gate 5 until a fresh daylight preflight passes. The mower
 remained `MODE_READY`, inside `Backyard Right`, RTK Fix, blades off, no session,
 and experimental motion off after restart and UI smoke. Backup for rollback:
-`/config/mammotion-backup-20260802-2045.tgz`.
+`/config/mammotion-backup-20260802-2129.tgz`.
 
 Evidence:
 

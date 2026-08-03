@@ -9,9 +9,9 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 |                         | Host                                                           | Branch         |
 | ----------------------- | -------------------------------------------------------------- | -------------- |
-| Integration version     | `0.6.4-beta17` candidate                                       | `0.6.4-beta18` candidate |
+| Integration version     | `0.6.4-beta18` candidate                                       | `0.6.4-beta18` candidate |
 | pymammotion pin         | `0.8.12.post1` fork wheel (container verified)                 | same           |
-| Card `CARD_VERSION`     | `0.6.4-beta17`; integration and HACS copies checksum-identical | `0.6.4-beta18` candidate |
+| Card `CARD_VERSION`     | `0.6.4-beta18`; integration and HACS copies checksum-identical | `0.6.4-beta18` candidate |
 | `manual_motion.py`      | present                                                        | present        |
 | `backend_capability.py` | present                                                        | present        |
 | `capabilities.py`       | present                                                        | present        |
@@ -20,8 +20,9 @@ The live host ran backend Gates 1-4 and two failed-safe beta16 daylight
 short-approach runs. The independent 0.450 m characterization proved that
 motion is stepwise by confirmed refresh writes and that normal stop latency can
 dominate nominal pulse duration. It also exposed useless realignment after the
-last permitted forward command. The deployed but unaccepted beta17 candidate
-addresses those three behaviors without changing the accepted profile.
+last permitted forward command. The deployed but unaccepted beta18 candidate
+retains beta17's fixes for those three behaviors and adds only the
+device-tracker direction correction without changing the accepted profile.
 Experimental motion is verified off. Gate 5 and release remain blocked; do not
 merge or publish. Repeat affected backend Gates 2 and 4 before Gate 5.
 
@@ -45,17 +46,36 @@ card Dry-run returned `valid: true`, `would_send: false`, and
 `stop_reason: dry_run`; Real Go stayed disabled. The card was reset afterward.
 VIO was dark/0 features, so no reacceptance motion was attempted.
 
-### beta18 map-marker correction — UNDEPLOYED
+### beta18 map-marker correction deploy — 2026-08-02 21:29-21:39 EDT
 
-Live UI inspection separated two arrows: the beta17 custom-path card's green
+Live UI inspection separated two arrows: the custom-path card's green
 arrow correctly rendered upper-right at 72.8 degrees, while HA's standard map
-card rendered the mower's black tracker marker upper-left. The tracker was
+card rendered the mower's black tracker picture upper-left. The tracker was
 publishing raw Mammotion orientation `-29`; HA expects clockwise compass
 degrees. Beta18 publishes `(-orientation) % 360` (29 degrees for that sample).
 This is presentation-only: no executor or accepted-profile value changed. The
-candidate passes 469 coverage-enabled Python tests, 19 frontend tests, Ruff,
-format and mypy. Deploy motion-disabled and verify the black HA map marker now
-points upper-right before daylight reacceptance.
+candidate passed 469 coverage-enabled Python tests, 19 frontend tests, Ruff,
+format, scoped mypy, all-files pre-commit, and the GitHub validation workflow.
+
+The integration was backed up to
+`/config/mammotion-backup-20260802-2129.tgz` and deployed motion-disabled. All
+46 files matched the tree aggregate hash
+`f14c608a02203602f2463fd0e6a30f6b`; no AppleDouble files were present; both
+card copies matched `694fd1b0b54ab336c9490c620bd4f8cb`. HA's API returned in
+31 seconds and all 128 Mammotion entities returned in 115 seconds. The live
+wheel remains `pymammotion 0.8.12.post1`, backend capabilities are verified,
+the accepted-profile label is exact, console/footer report beta18, and the
+Lovelace resource is `?v=0.6.4-beta18&build=6da6c3d3`. Experimental motion
+remained off, no session existed, and no motion was commanded.
+
+The installed `custom:map-card` 1.15.0 accepts marker CSS but does not itself
+consume the tracker's `direction`. After backing up the dashboard to
+`/config/.storage/lovelace.dashboard_yard.bak.codex-20260802-213848`, a
+Jinja-backed `card-mod` rule was added to rotate its `.entity-picture` by the
+live `direction` attribute. Readback matched the requested config. Browser
+inspection found `direction: 29.0` and computed transform
+`matrix(0.87462, 0.48481, -0.48481, 0.87462, 0, 0)`, confirming a 29-degree
+clockwise upper-right marker that will update with the entity.
 
 ### Gate 5 deploy — 2026-07-31 19:50-20:05 EDT
 
@@ -145,10 +165,10 @@ zero overrides, `linear_pulse_duration_ms` 3500, ceiling still omitted.
 Lesson for any future deploy: a correct file deploy is **not** a correct
 run configuration. Check the execution-profile row, not just the version banner.
 
-Before any newly authorized Gate 5 motion: deploy and reaccept the beta17
+Before any newly authorized Gate 5 motion: reaccept the beta18
 correction recorded in `docs/p0-beta-release.md`; do not treat 0.3-0.5 m as a
 proven usable band. Confirm the browser console banner reads
-`v0.6.4-beta17` (a hard refresh may be needed), confirm the card's execution
+`v0.6.4-beta18` (a hard refresh may be needed), confirm the card's execution
 profile row reads exactly
 `LUBA acceptance profile (Gates 1-4, 2026-07-31)`, save the emitted payload and
 dry-run result, and obtain a fresh daylight operator `go`. Use the same card

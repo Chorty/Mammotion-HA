@@ -438,7 +438,8 @@ count and stop latency dominate. The whole characterization moved 0.5889 m at
 bearing 279.33 degrees, implying a 103.89-degree forward offset (+1.49 degrees
 from 102.4), so the heading profile remains unchanged.
 
-The deployed but unaccepted beta17 correction candidate budgets short approaches by
+The deployed but unaccepted beta18 candidate retains beta17's short-approach
+correction, which budgets approaches by
 discrete confirmed refresh count, uses emergency queue priority for the
 confirmed zero-speed teardown, and skips realignment when no later forward
 command can benefit. It changes neither the public schema nor
@@ -463,7 +464,8 @@ under the plain beta17 URL, and the unique build suffix was required to make
 the actual browser load auditable. Rollback backup:
 `/config/mammotion-backup-20260802-2045.tgz`.
 
-**beta18 device-tracker direction correction — UNDEPLOYED.** Live browser
+**beta18 device-tracker direction correction — DEPLOYED MOTION-DISABLED,
+2026-08-02 21:29-21:39 EDT.** Live browser
 inspection proved the custom-path card was not the reported bad arrow: its
 green marker rendered from `(278.0, 304.5)` to an upper-right tip at `(285.7,
 279.6)`, agreeing with its 72.8-degree label. HA's adjacent standard map card
@@ -473,7 +475,21 @@ clockwise compass bearing; Mammotion's orientation sign is counter-clockwise.
 Beta18 returns `(-orientation) % 360`, producing 29 degrees for the live sample.
 Eight tests pin sign inversion, normalization and invalid values. This changes
 only map-marker presentation, not the executor, service schema or accepted
-profile. The complete beta18 tree passes 469 Python and 19 frontend tests.
+profile. The complete beta18 tree passes 469 Python and 19 frontend tests,
+Ruff, format, scoped mypy, all-files pre-commit and current GitHub checks. The
+integration/card deploy passed file hashes, API/entity recovery, backend
+capabilities, accepted-profile label and browser version checks. Rollback:
+`/config/mammotion-backup-20260802-2129.tgz`.
+
+The adjacent third-party `custom:map-card` 1.15.0 does not automatically use
+the tracker `direction`. Its dashboard config now has a Jinja-backed
+`card-mod` rule that rotates `.entity-picture` from the normalized attribute.
+The dashboard was first backed up to
+`/config/.storage/lovelace.dashboard_yard.bak.codex-20260802-213848`; config
+readback matched the requested addition. With live `direction: 29.0`, browser
+inspection measured the corresponding 29-degree clockwise CSS matrix and the
+rendered mower picture pointed upper-right. Experimental motion remained off,
+no session existed, and no motion was commanded.
 
 Evidence:
 
@@ -737,11 +753,12 @@ same change that records the result, and move this date.
   card services, confirming the ceiling is absent rather than zeroed.
   **Current disposition:** the card has driven the mower in three supervised
   runs but has not completed both Gate 5 segments. Two beta16 short approaches
-  established the refresh-count/stop-latency defect. The deployed beta17
-  correction candidate keeps the accepted profile unchanged and must re-pass
-  affected backend Gates 2 and 4 before Gate 5. Release remains halted.
+  established the refresh-count/stop-latency defect. The deployed beta18
+  candidate retains beta17's correction, keeps the accepted profile unchanged,
+  and must re-pass affected backend Gates 2 and 4 before Gate 5. Release remains
+  halted.
   `CARD_VERSION`, `manifest.json`, `pyproject.toml` and `uv.lock` are bumped
-  together to `0.6.4-beta17` (`0.6.4b17` in `uv.lock`); the host matches, but
+  together to `0.6.4-beta18` (`0.6.4b18` in `uv.lock`); the host matches, but
   affected hardware gates remain open.
 - **`Beta Release` workflow was unrunnable — FIXED 2026-07-31.** Three shell
   expressions in `.github/workflows/beta-release.yml` were written with doubled
