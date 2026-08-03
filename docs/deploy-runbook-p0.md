@@ -9,9 +9,9 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 |                         | Host                                                           | Branch         |
 | ----------------------- | -------------------------------------------------------------- | -------------- |
-| Integration version     | `0.6.4-beta17` candidate                                       | `0.6.4-beta17` candidate |
+| Integration version     | `0.6.4-beta17` candidate                                       | `0.6.4-beta18` candidate |
 | pymammotion pin         | `0.8.12.post1` fork wheel (container verified)                 | same           |
-| Card `CARD_VERSION`     | `0.6.4-beta17`; integration and HACS copies checksum-identical | `0.6.4-beta17` candidate |
+| Card `CARD_VERSION`     | `0.6.4-beta17`; integration and HACS copies checksum-identical | `0.6.4-beta18` candidate |
 | `manual_motion.py`      | present                                                        | present        |
 | `backend_capability.py` | present                                                        | present        |
 | `capabilities.py`       | present                                                        | present        |
@@ -44,6 +44,18 @@ beta17. The exact accepted-profile label rendered, Preview was valid, and the
 card Dry-run returned `valid: true`, `would_send: false`, and
 `stop_reason: dry_run`; Real Go stayed disabled. The card was reset afterward.
 VIO was dark/0 features, so no reacceptance motion was attempted.
+
+### beta18 map-marker correction — UNDEPLOYED
+
+Live UI inspection separated two arrows: the beta17 custom-path card's green
+arrow correctly rendered upper-right at 72.8 degrees, while HA's standard map
+card rendered the mower's black tracker marker upper-left. The tracker was
+publishing raw Mammotion orientation `-29`; HA expects clockwise compass
+degrees. Beta18 publishes `(-orientation) % 360` (29 degrees for that sample).
+This is presentation-only: no executor or accepted-profile value changed. The
+candidate passes 469 coverage-enabled Python tests, 19 frontend tests, Ruff,
+format and mypy. Deploy motion-disabled and verify the black HA map marker now
+points upper-right before daylight reacceptance.
 
 ### Gate 5 deploy — 2026-07-31 19:50-20:05 EDT
 

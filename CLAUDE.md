@@ -26,9 +26,12 @@ acceptance: the card has driven the mower but has not completed a clean
 two-segment run. That is **Gate 5** in
 `docs/p0-beta-release.md`, and it is the one open release gate.
 
-The host and branch now run the still-unaccepted `0.6.4-beta17` correction
-candidate. `manifest.json`, `pyproject.toml`,
-`CARD_VERSION` and `uv.lock` (PEP 440 `0.6.4b17`) must always agree, and the
+The host runs the still-unaccepted `0.6.4-beta17` motion correction; the branch
+is the undeployed `0.6.4-beta18` UI correction candidate. Beta18 negates and
+normalizes Mammotion's counter-clockwise device-tracker orientation for Home
+Assistant's clockwise compass marker, fixing a live upper-left/upper-right
+mirror without changing motion code or the accepted profile. `manifest.json`,
+`pyproject.toml`, `CARD_VERSION` and `uv.lock` (PEP 440 `0.6.4b18`) must always agree, and the
 `Beta Release` workflow verifies all four. The card is served from **two**
 paths, so deploy to both and bump the Lovelace resource key or the browser can
 silently load the stale card. The live Lovelace URL includes the unique build

@@ -1,4 +1,4 @@
-# Handoff prompt — validate and reaccept the beta17 motion correction
+# Handoff prompt — deploy beta18, then reaccept the motion correction
 
 Paste the block below to resume. It is written to be self-contained; everything
 it references is committed on `feat/vio-turn-to-heading` in
@@ -30,8 +30,11 @@ If it reports `enabled: True` and you are not about to run, turn it off with
 
 Last known after the beta17 motion-disabled deployment: mower `MODE_READY` at
 approximately (4.9524, −2.7114), inside `Backyard Right`, RTK Fix, blades off,
-no session. The host and branch run the still-unaccepted `0.6.4-beta17`
-correction candidate. The motion gate is verified off. It is dark with VIO at
+no session. The host runs the still-unaccepted `0.6.4-beta17` motion
+correction; the branch is the undeployed `0.6.4-beta18` map-marker correction.
+Beta18 converts the device tracker's raw Mammotion orientation from
+counter-clockwise to HA's clockwise compass bearing; it does not change motion
+or the accepted profile. The motion gate is verified off. It is dark with VIO at
 0 tracked features, so no motion is authorized by this handoff.
 
 The deploy smoke passed: 128 Mammotion entities, backend verified against
@@ -51,8 +54,8 @@ operator to drive **from the card**: check the execution-profile row, then
 Preview → Dry-run → Real Go. A service call is NOT Gate 5. You cannot click the
 card; the operator must.
 
-Before any beta17 final dry-run, confirm the browser console banner reports
-`v0.6.4-beta17` and the execution-profile row reads exactly
+Before any beta18 final dry-run, confirm the browser console banner reports
+`v0.6.4-beta18` and the execution-profile row reads exactly
 `LUBA acceptance profile (Gates 1-4, 2026-07-31)`. Save the card's emitted
 payload and dry-run result. Do not edit the waypoints or profile between that
 dry-run and Real Go; use the same card instance for all three steps. Save the
@@ -144,7 +147,7 @@ cached and stayed bit-identical across 374 samples.
 ## Validation matrix (run all after any change)
 
 ```sh
-.venv/bin/python -m pytest --cov=custom_components.mammotion --cov-report=term-missing tests  # 461 pass
+.venv/bin/python -m pytest --cov=custom_components.mammotion --cov-report=term-missing tests  # 469 pass
 .venv/bin/python -m ruff check custom_components tests
 .venv/bin/python -m ruff format --check custom_components tests
 .venv/bin/python -m mypy --follow-imports=skip custom_components/mammotion

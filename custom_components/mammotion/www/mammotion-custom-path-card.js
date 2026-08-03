@@ -5,7 +5,7 @@ const MAX_REAL_SEGMENTS = 2;
 const MAX_NUDGE_METRES = 2.0;
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
-const CARD_VERSION = "0.6.4-beta17";
+const CARD_VERSION = "0.6.4-beta18";
 
 // The exact bounded execution profile that passed supervised LUBA acceptance
 // Gates 1-4 on 2026-07-31 (three-write zero stop, bounded straight segment,

@@ -463,6 +463,18 @@ under the plain beta17 URL, and the unique build suffix was required to make
 the actual browser load auditable. Rollback backup:
 `/config/mammotion-backup-20260802-2045.tgz`.
 
+**beta18 device-tracker direction correction — UNDEPLOYED.** Live browser
+inspection proved the custom-path card was not the reported bad arrow: its
+green marker rendered from `(278.0, 304.5)` to an upper-right tip at `(285.7,
+279.6)`, agreeing with its 72.8-degree label. HA's adjacent standard map card
+showed the black mower tracker upper-left because the integration exposed raw
+Mammotion orientation `-29` as `direction`. HA interprets `direction` as a
+clockwise compass bearing; Mammotion's orientation sign is counter-clockwise.
+Beta18 returns `(-orientation) % 360`, producing 29 degrees for the live sample.
+Eight tests pin sign inversion, normalization and invalid values. This changes
+only map-marker presentation, not the executor, service schema or accepted
+profile. The complete beta18 tree passes 469 Python and 19 frontend tests.
+
 Evidence:
 
 - `docs/evidence-gate5-characterization2-dry-run-20260802.json`

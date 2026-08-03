@@ -19,6 +19,24 @@ from .entity import MammotionBaseEntity
 _LOGGER = logging.getLogger(__name__)
 
 
+def _ha_map_direction(orientation: Any) -> float | None:
+    """Convert Mammotion's counter-clockwise heading to HA compass degrees.
+
+    Mammotion reports positive rotation counter-clockwise, while Home
+    Assistant's map marker expects a compass bearing increasing clockwise from
+    north. Passing the raw negative value made a mower facing upper-right render
+    upper-left. Negate and normalize only the presentation attribute; mower-map
+    motion headings and the accepted execution profile are unaffected.
+    """
+    try:
+        direction = float(orientation)
+    except TypeError, ValueError:
+        return None
+    if not math.isfinite(direction):
+        return None
+    return (-direction) % 360
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: MammotionConfigEntry,
@@ -52,7 +70,7 @@ class MammotionTracker(MammotionBaseEntity, TrackerEntity, RestoreEntity):
         )
         if device is None:
             return {}
-        return {ATTR_DIRECTION: device.location.orientation}
+        return {ATTR_DIRECTION: _ha_map_direction(device.location.orientation)}
 
     @property
     def latitude(self) -> float | None:
