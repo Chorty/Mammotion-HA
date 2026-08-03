@@ -26,20 +26,20 @@ acceptance: the card has driven the mower but has not completed a clean
 two-segment run. That is **Gate 5** in
 `docs/p0-beta-release.md`, and it is the one open release gate.
 
-The host and branch run the still-unaccepted `0.6.4-beta18` candidate. Beta18
-retains beta17's motion correction and negates/normalizes Mammotion's
-counter-clockwise device-tracker orientation into a clockwise compass bearing.
-The installed third-party map card does not consume `direction` itself, so the
-live Yard dashboard also has a `card-mod` rule that rotates its mower picture
-from that attribute. This fixes the reported upper-left/upper-right display
-mismatch without changing motion code or the accepted profile. `manifest.json`,
-`pyproject.toml`, `CARD_VERSION` and `uv.lock` (PEP 440 `0.6.4b18`) must always agree, and the
+The host runs the still-unaccepted `0.6.4-beta18` candidate; the branch is the
+undeployed `0.6.4-beta19` stale-orientation safety correction. A zero-command
+live snapshot proved Mammotion exposes only frozen course-over-ground while
+stationary (`toward: -29.589`, VIO inactive/0, RTK yaw 0), so beta19 stops
+drawing that last-travel projection as current mower orientation and blocks
+Nudge unless a trustworthy current orientation is explicitly available. Real
+Go motion code and the accepted profile are unchanged. `manifest.json`,
+`pyproject.toml`, `CARD_VERSION` and `uv.lock` (PEP 440 `0.6.4b19`) must always agree, and the
 `Beta Release` workflow verifies all four. The card is served from **two**
 paths, so deploy to both and bump the Lovelace resource key or the browser can
 silently load the stale card. The live Lovelace URL includes the unique build
-suffix `?v=0.6.4-beta18&build=6da6c3d3`. The Yard dashboard backup immediately
-before the marker-style change is
-`/config/.storage/lovelace.dashboard_yard.bak.codex-20260802-213848`.
+suffix `?v=0.6.4-beta18&build=6da6c3d3`. The misleading third-party-map
+`card-mod` rotation was removed with verified config readback; its pre-change
+backup remains `/config/.storage/lovelace.dashboard_yard.bak.codex-20260802-213848`.
 
 `pre-commit run --all-files` is green as of 2026-07-31 and is now a usable
 gate. Its hook pins must move with `requirements_test.txt`: the Ruff and mypy

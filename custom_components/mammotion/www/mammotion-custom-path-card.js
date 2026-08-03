@@ -1,11 +1,12 @@
 const MAX_WAYPOINTS = 7;
 const MAX_REAL_SEGMENTS = 2;
-// Nudge is the night/no-VIO escape hatch: a straight line along the current
-// facing, never a turn. Capped so a mistake is bounded by geometry.
+// Nudge is capped so a mistake is bounded by geometry. It is available only
+// with trustworthy, map-aligned current orientation; frozen course-over-ground
+// must never authorize it.
 const MAX_NUDGE_METRES = 2.0;
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
-const CARD_VERSION = "0.6.4-beta18";
+const CARD_VERSION = "0.6.4-beta19";
 
 // The exact bounded execution profile that passed supervised LUBA acceptance
 // Gates 1-4 on 2026-07-31 (three-write zero stop, bounded straight segment,
@@ -307,13 +308,13 @@ class MammotionCustomPathCard extends HTMLElement {
   //
   //   target_map_heading = target_reported_heading + calibrated_offset
   //
-  // so forward is (cos, sin) of that angle in map x/y. Showing this rather than
-  // raw `toward` means the arrow points where a Real Go would actually go.
+  // so forward is (cos, sin) of that angle in map x/y. This remains useful for
+  // Real Go control and last-travel diagnostics, but it is not rendered as
+  // current body orientation.
   //
   // ⚠️ `toward` is course-over-ground, NOT a compass heading. While the mower is
-  // stationary it is the bearing of the last movement, so the arrow is a
-  // best-effort indicator and can be stale after a turn. The offset is also a
-  // per-mower calibration; a wrong offset rotates the arrow, not the mower.
+  // stationary it is the bearing of the last movement and can be stale after a
+  // turn. The offset is also a per-mower calibration.
   _headingDegrees() {
     const pos = this._livePosition || this._runtimeState?.position || {};
     const toward = Number(pos.toward);
@@ -324,6 +325,20 @@ class MammotionCustomPathCard extends HTMLElement {
       return null;
     }
     return (((toward + offset) % 360) + 360) % 360;
+  }
+
+  // A course-over-ground bearing is not the mower body's current orientation:
+  // it remains frozen after an in-place pivot. Only render or use an orientation
+  // when the backend explicitly supplies a map-aligned, trustworthy value.
+  // No current Mammotion field meets that contract while VIO is inactive, so
+  // idle cards deliberately show a position dot without a directional arrow.
+  _currentOrientationDegrees() {
+    const orientation = this._runtimeState?.current_orientation || {};
+    const degrees = Number(orientation.map_heading_degrees);
+    if (orientation.trustworthy !== true || !Number.isFinite(degrees)) {
+      return null;
+    }
+    return ((degrees % 360) + 360) % 360;
   }
 
   _segmentPoints() {
@@ -354,8 +369,8 @@ class MammotionCustomPathCard extends HTMLElement {
     if (!this._currentPositionPoint()) {
       blockers.push("position_unavailable");
     }
-    if (this._headingDegrees() == null) {
-      blockers.push("heading_unavailable");
+    if (this._currentOrientationDegrees() == null) {
+      blockers.push("current_orientation_unavailable");
     }
     if (experimental.real_motion_allowed !== true) {
       blockers.push(
@@ -750,16 +765,19 @@ class MammotionCustomPathCard extends HTMLElement {
     });
   }
 
-  // Numeric companion to the map arrow. An arrow alone cannot be checked
-  // against telemetry; this can, and it names its own source so a stale
-  // course-over-ground reading is not mistaken for a compass fix.
+  // Numeric orientation status plus last-travel diagnostics. It names the
+  // source so stale course-over-ground is not mistaken for current heading.
   _headingLabel() {
-    const heading = this._headingDegrees();
-    if (heading == null) {
-      return "unknown (no live position)";
+    const orientation = this._currentOrientationDegrees();
+    if (orientation != null) {
+      const source =
+        this._runtimeState?.current_orientation?.source || "trusted telemetry";
+      return `${orientation.toFixed(1)}° current orientation (${source})`;
     }
+    const heading = this._headingDegrees();
+    if (heading == null) return "current orientation unavailable";
     const pos = this._livePosition || this._runtimeState?.position || {};
-    return `${heading.toFixed(1)}° (from course-over-ground ${Number(pos.toward).toFixed(1)}° + offset ${Number(this._profileValue("calibrated_forward_heading_offset_degrees")).toFixed(1)}°; stale while stationary)`;
+    return `current orientation unavailable; last-travel projection ${heading.toFixed(1)}° (course-over-ground ${Number(pos.toward).toFixed(1)}° + offset ${Number(this._profileValue("calibrated_forward_heading_offset_degrees")).toFixed(1)}°; not mower orientation)`;
   }
 
   _profileLabel() {
@@ -769,27 +787,19 @@ class MammotionCustomPathCard extends HTMLElement {
       : "LUBA acceptance profile (Gates 1-4, 2026-07-31)";
   }
 
-  // Straight-line nudge along the CURRENT facing, for moving the mower a short
-  // distance when VIO is unavailable (i.e. at night).
-  //
-  // Why this is the only night-safe shape: RTK position holds in full darkness,
-  // but VIO heading does not (it reads 0.0 with the feed dead) and `toward` is
-  // course-over-ground, which cannot observe an IN-PLACE pivot. So linear motion
-  // stays measurable in the dark and turning does not. Rather than expose a
-  // blind turn, this puts the target ON the heading ray: the heading error is
-  // ~0 by construction, the turn phase reports `target_heading_reached`, and
-  // ZERO turn commands are sent. Measured 2026-08-01: 0.08 deg error, 0 turn
-  // commands, two clean pulses of 1.0785 m and 1.0449 m.
+  // Straight-line nudge along trustworthy CURRENT orientation only. The old
+  // implementation used course-over-ground, but the 2026-08-02 upper-left
+  // observation proved that value stays frozen after an in-place pivot. Until
+  // a map-aligned orientation source exists, refuse rather than risking a blind
+  // turn or driving the opposite way.
   //
   // ⚠️ `turn_mode: "legacy"` is required only to clear the `vio_active` gate,
   // which blocks up-front whenever turn_mode is "vio" regardless of whether a
-  // turn is actually needed. Legacy steers by course-over-ground and is safe
-  // HERE ONLY BECAUSE NO TURN OCCURS. Do not conclude that legacy is a
-  // night-capable turn mode; it is not, and a blind pivot has no feedback at
-  // all.
+  // turn is actually needed. Do not conclude that legacy is a night-capable
+  // turn mode; it is not, and a blind pivot has no feedback at all.
   _nudgePayload(dryRun) {
     const start = this._currentPositionPoint();
-    const heading = this._headingDegrees();
+    const heading = this._currentOrientationDegrees();
     if (!start || heading == null) return null;
     const metres = this._nudgeMetres();
     if (!(metres > 0)) return null;
@@ -1230,12 +1240,12 @@ class MammotionCustomPathCard extends HTMLElement {
     const nudge = this._nudgePayload(false);
     if (!nudge) {
       this._status =
-        "Nudge needs a live position and heading. `toward` is course-over-ground, so it is unavailable until the mower has moved at least once.";
+        "Nudge needs trustworthy current orientation. Course-over-ground is only last travel and cannot observe an in-place turn.";
       this._render();
       return;
     }
     const metres = this._nudgeMetres();
-    this._status = `Nudging ${metres.toFixed(2)} m along ${this._headingDegrees().toFixed(1)}°…`;
+    this._status = `Nudging ${metres.toFixed(2)} m along ${this._currentOrientationDegrees().toFixed(1)}°…`;
     this._render();
     try {
       const result = await this._callService(nudge.service, nudge.payload);
@@ -1376,8 +1386,10 @@ class MammotionCustomPathCard extends HTMLElement {
     }
 
     if (start) {
-      // Heading arrow first, so the dot sits on top of its tail.
-      const heading = this._headingDegrees();
+      // Draw an arrow only for explicitly trustworthy current orientation.
+      // Stale course-over-ground remains available as text diagnostics but must
+      // not masquerade as the direction the stationary mower currently faces.
+      const heading = this._currentOrientationDegrees();
       if (heading != null) {
         const rad = (heading * Math.PI) / 180;
         // Transform a point one metre ahead rather than rotating in screen
@@ -1486,7 +1498,7 @@ class MammotionCustomPathCard extends HTMLElement {
     const nudgeDisabled = nudgeBlockers.length > 0;
     const nudgeTitle = nudgeDisabled
       ? `Nudge unavailable: ${nudgeBlockers.join(", ")}`
-      : `Drive ${this._nudgeMetres().toFixed(2)} m along ${(this._headingDegrees() ?? 0).toFixed(1)}°. Straight line only — never turns.`;
+      : `Drive ${this._nudgeMetres().toFixed(2)} m along ${(this._currentOrientationDegrees() ?? 0).toFixed(1)}°. Straight line only — never turns.`;
     const segmentCount = this._segmentCount();
     const coordinateEditor = this._waypoints.length
       ? `<div class="coordinate-editor">
@@ -1550,7 +1562,7 @@ class MammotionCustomPathCard extends HTMLElement {
           <button id="abort" type="button">Abort / Stop</button>
           <label><input id="confirm-blades-off" type="checkbox" ${this._confirmBladesOff ? "checked" : ""}/> confirm blades off</label>
           <label><input id="confirm-clear-area" type="checkbox" ${this._confirmClearArea ? "checked" : ""}/> confirm clear area</label>
-          <label title="Straight line along the current facing. Never turns, so it works with VIO dark (at night). Needs the clear-area confirmation only.">Nudge
+          <label title="Straight line only when trustworthy current orientation is available. Stale course-over-ground is refused.">Nudge
             <input id="nudge-distance" type="number" min="0.1" max="${MAX_NUDGE_METRES}" step="0.1" value="${this._nudgeMetres().toFixed(1)}" style="width:4.5em"/> m
           </label>
           <button id="nudge" type="button" title="${this._escapeHtml(nudgeTitle)}" ${nudgeDisabled ? "disabled" : ""}>Nudge forward</button>
@@ -1562,7 +1574,7 @@ class MammotionCustomPathCard extends HTMLElement {
           <span class="waypoint-counter">Waypoints: ${this._waypoints.length} (segments: ${segmentCount})</span>
         </div>
         <div class="map-caption">
-          <span class="legend"><span class="dot" style="background:#22c55e"></span>Green = mower (auto start)</span>
+          <span class="legend"><span class="dot" style="background:#22c55e"></span>Green = mower position; arrow only with trusted live orientation</span>
           <span class="legend"><span class="dot" style="background:#f97316"></span>Click the map to add destinations (max ${MAX_WAYPOINTS}), driven in order</span>
         </div>
         <svg id="path-map"></svg>
@@ -1572,7 +1584,7 @@ class MammotionCustomPathCard extends HTMLElement {
         <div class="preflight-panel">
           <div class="title">Runtime preflight details</div>
           <div class="preflight-row"><span class="label">execution profile</span><span class="value">${this._escapeHtml(this._profileLabel())}</span></div>
-          <div class="preflight-row"><span class="label">facing (map bearing)</span><span class="value">${this._escapeHtml(this._headingLabel())}</span></div>
+          <div class="preflight-row"><span class="label">mower orientation</span><span class="value">${this._escapeHtml(this._headingLabel())}</span></div>
           <div class="preflight-row"><span class="label">active_transport</span><span class="value">${this._escapeHtml(runtimePanel.activeTransport)}</span></div>
           <div class="preflight-row"><span class="label">blade-safe status</span><span class="value">${this._escapeHtml(runtimePanel.bladeSafeLabel)}</span></div>
           <div class="preflight-row"><span class="label">mowing readiness</span><span class="value">${this._escapeHtml(runtimePanel.mowingReadinessLabel)}</span></div>

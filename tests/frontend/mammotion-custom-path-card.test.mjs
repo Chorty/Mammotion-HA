@@ -248,18 +248,26 @@ test("README's written-out defaults are the accepted profile", () => {
   }
 });
 
-// The mower marker used to be a bare dot, which cannot show which way the
-// machine points. Heading comes from course-over-ground plus the calibrated
-// offset -- the same arithmetic the backend aims by -- so the arrow shows where
-// a Real Go would actually drive.
-test("heading is derived the same way the backend aims", () => {
+// Course-over-ground plus the calibrated offset is useful for backend aiming,
+// but it is not the mower's current orientation after an in-place turn.
+test("last-travel projection is not exposed as current orientation", () => {
   const element = card();
   element._runtimeState.position = { x: 1, y: 1, toward: 169.7755 };
 
   // 169.7755 + 102.4 = 272.1755
   assert.ok(Math.abs(element._headingDegrees() - 272.1755) < 1e-6);
+  assert.equal(element._currentOrientationDegrees(), null);
   assert.match(element._headingLabel(), /272\.2°/);
-  assert.match(element._headingLabel(), /course-over-ground/);
+  assert.match(element._headingLabel(), /last-travel projection/);
+  assert.match(element._headingLabel(), /not mower orientation/);
+
+  element._runtimeState.current_orientation = {
+    trustworthy: true,
+    map_heading_degrees: -45,
+    source: "test",
+  };
+  assert.equal(element._currentOrientationDegrees(), 315);
+  assert.match(element._headingLabel(), /315\.0° current orientation/);
 
   // Wraps past 360 rather than running off the end.
   element._runtimeState.position = { x: 1, y: 1, toward: 300 };
@@ -268,18 +276,20 @@ test("heading is derived the same way the backend aims", () => {
   // No usable position must not fabricate a bearing.
   element._runtimeState.position = { x: 1, y: 1 };
   assert.equal(element._headingDegrees(), null);
-  assert.match(element._headingLabel(), /unknown/);
+  element._runtimeState.current_orientation = null;
+  assert.match(element._headingLabel(), /orientation unavailable/);
 });
 
-test("heading arrow is computed in map space, not screen space", () => {
+test("trusted orientation arrow is computed in map space, not screen space", () => {
   const element = card();
-  element._runtimeState.position = { x: 0, y: 0, toward: -102.4 };
-  // toward + offset = 0 deg -> forward is map +x, which must stay +x on screen.
-  assert.ok(Math.abs(element._headingDegrees() - 0) < 1e-9);
+  element._runtimeState.current_orientation = {
+    trustworthy: true,
+    map_heading_degrees: 0,
+  };
 
   // A transform with a FLIPPED y axis, as the real one has (toSY = H - ...).
   const mt = { toSX: (x) => 100 + x * 10, toSY: (y) => 500 - y * 10 };
-  const rad = (element._headingDegrees() * Math.PI) / 180;
+  const rad = (element._currentOrientationDegrees() * Math.PI) / 180;
   const dx = mt.toSX(Math.cos(rad)) - mt.toSX(0);
   const dy = mt.toSY(Math.sin(rad)) - mt.toSY(0);
   assert.ok(dx > 0, "map +x must render as screen +x");
@@ -287,9 +297,9 @@ test("heading arrow is computed in map space, not screen space", () => {
 
   // Map +y must render as screen -y under the flip. Rotating in screen space
   // instead would point the arrow at the mirror image of the real bearing.
-  element._runtimeState.position = { x: 0, y: 0, toward: -12.4 };
-  const rad2 = (element._headingDegrees() * Math.PI) / 180;
-  assert.ok(Math.abs(element._headingDegrees() - 90) < 1e-9);
+  element._runtimeState.current_orientation.map_heading_degrees = 90;
+  const rad2 = (element._currentOrientationDegrees() * Math.PI) / 180;
+  assert.ok(Math.abs(element._currentOrientationDegrees() - 90) < 1e-9);
   assert.ok(mt.toSY(Math.sin(rad2)) - mt.toSY(0) < 0, "map +y is screen -y");
 });
 
@@ -298,7 +308,11 @@ test("heading arrow is computed in map space, not screen space", () => {
 // no blind pivot can happen. These pin that.
 test("nudge targets the heading ray so no turn is ever required", () => {
   const element = card();
-  element._runtimeState.position = { x: 10, y: 5, toward: -102.4 }; // bearing 0
+  element._runtimeState.position = { x: 10, y: 5, toward: 72 };
+  element._runtimeState.current_orientation = {
+    trustworthy: true,
+    map_heading_degrees: 0,
+  };
   element._nudgeDistance = 1.5;
 
   const { payload } = element._nudgePayload(false);
@@ -319,6 +333,10 @@ test("nudge targets the heading ray so no turn is ever required", () => {
 test("nudge is distance-capped and refuses without a heading", () => {
   const element = card();
   element._runtimeState.position = { x: 0, y: 0, toward: 0 };
+  element._runtimeState.current_orientation = {
+    trustworthy: true,
+    map_heading_degrees: 102.4,
+  };
 
   element._nudgeDistance = 99;
   assert.equal(element._nudgeMetres(), 2.0, "must clamp to MAX_NUDGE_METRES");
@@ -330,17 +348,21 @@ test("nudge is distance-capped and refuses without a heading", () => {
     "zero distance sends nothing",
   );
 
-  // No `toward` (never moved since boot) => no heading => refuse rather than
-  // guess a direction and drive.
+  // Stale course-over-ground without trusted current orientation must refuse.
   element._nudgeDistance = 1;
-  element._runtimeState.position = { x: 0, y: 0 };
-  assert.equal(element._headingDegrees(), null);
+  element._runtimeState.position = { x: 0, y: 0, toward: 0 };
+  element._runtimeState.current_orientation = null;
+  assert.equal(element._currentOrientationDegrees(), null);
   assert.equal(element._nudgePayload(false), null);
 });
 
 test("nudge requires clear-area but not the blades checkbox", () => {
   const element = card();
   element._runtimeState.position = { x: 0, y: 0, toward: 0 };
+  element._runtimeState.current_orientation = {
+    trustworthy: true,
+    map_heading_degrees: 102.4,
+  };
   element._nudgeDistance = 0.5;
 
   // Blades-off stays asserted to the backend (telemetry gates it separately),
@@ -364,6 +386,10 @@ test("nudge requires clear-area but not the blades checkbox", () => {
 test("nudge is blocked when the backend will refuse it", () => {
   const element = card();
   element._runtimeState.position = { x: 0, y: 0, toward: 0 };
+  element._runtimeState.current_orientation = {
+    trustworthy: true,
+    map_heading_degrees: 102.4,
+  };
   element._confirmClearArea = true;
   assert.deepEqual(element._motionBackendBlockers(), []);
 
@@ -383,10 +409,14 @@ test("nudge is blocked when the backend will refuse it", () => {
   };
   assert.deepEqual(element._motionBackendBlockers(), ["blade_unsafe"]);
 
-  // No heading is its own named blocker, not a silent no-op.
+  // No current orientation is its own named blocker, not a silent no-op.
   element._runtimeState.safety = { allowed_for_manual_motion: true };
-  element._runtimeState.position = { x: 0, y: 0 };
-  assert.ok(element._motionBackendBlockers().includes("heading_unavailable"));
+  element._runtimeState.current_orientation = null;
+  assert.ok(
+    element
+      ._motionBackendBlockers()
+      .includes("current_orientation_unavailable"),
+  );
 });
 
 test("backend blockers and the two-segment limit lock Real Go", () => {

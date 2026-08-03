@@ -1,4 +1,4 @@
-# Handoff prompt — reaccept the deployed beta18 motion correction
+# Handoff prompt — deploy beta19, then reaccept the motion correction
 
 Paste the block below to resume. It is written to be self-contained; everything
 it references is committed on `feat/vio-turn-to-heading` in
@@ -30,11 +30,10 @@ If it reports `enabled: True` and you are not about to run, turn it off with
 
 Last known after the beta18 motion-disabled deployment: mower `MODE_READY` at
 approximately (4.9524, −2.7114), inside `Backyard Right`, RTK Fix, blades off,
-no session. The host and branch run the still-unaccepted `0.6.4-beta18`
-candidate.
-Beta18 converts the device tracker's raw Mammotion orientation from
-counter-clockwise to HA's clockwise compass bearing; it does not change motion
-or the accepted profile. The motion gate is verified off. It is dark with VIO at
+no session. The host runs the still-unaccepted `0.6.4-beta18` candidate; the
+branch is the undeployed `0.6.4-beta19` stale-orientation safety correction.
+Beta19 does not change Real Go motion or the accepted profile. The motion gate
+is verified off. It is dark with VIO at
 0 tracked features, so no motion is authorized by this handoff.
 
 The beta18 deploy smoke passed: 128 Mammotion entities, backend verified against
@@ -45,13 +44,15 @@ the card was reset to zero waypoints. The live resource URL is
 `?v=0.6.4-beta18&build=6da6c3d3`. Rollback backup:
 `/config/mammotion-backup-20260802-2129.tgz`.
 
-The third-party `custom:map-card` ignores the tracker `direction` attribute by
-default. The live Yard dashboard therefore has a Jinja-backed `card-mod` rule
-that rotates `.entity-picture` from the normalized attribute. At the captured
-state the tracker read `direction: 29.0` and the rendered picture transform was
-the 29-degree matrix `matrix(0.87462, 0.48481, -0.48481, 0.87462, 0, 0)`, so the
-mower marker points upper-right and follows later state changes. Dashboard
-backup: `/config/.storage/lovelace.dashboard_yard.bak.codex-20260802-213848`.
+The beta18 direction conclusion was incomplete. A zero-command snapshot taken
+while the operator visually confirmed the mower faced upper-left showed frozen
+course-over-ground `toward: -29.589`, `location.orientation: -29`, VIO inactive
+with heading 0, and RTK yaw 0. Neither available feed reports the stationary
+body orientation. Beta19 keeps the projected last-travel bearing as explicit
+diagnostic text but draws no orientation arrow from it and disables Nudge
+unless a trustworthy current orientation exists. The earlier third-party-map
+`card-mod` rotation was removed and read back successfully. Dashboard backup:
+`/config/.storage/lovelace.dashboard_yard.bak.codex-20260802-213848`.
 
 ## The blocking Gate 5 results and correction candidate
 
@@ -61,8 +62,8 @@ operator to drive **from the card**: check the execution-profile row, then
 Preview → Dry-run → Real Go. A service call is NOT Gate 5. You cannot click the
 card; the operator must.
 
-Before any beta18 final dry-run, confirm the browser console banner reports
-`v0.6.4-beta18` and the execution-profile row reads exactly
+Before any beta19 final dry-run, confirm the browser console banner reports
+`v0.6.4-beta19` and the execution-profile row reads exactly
 `LUBA acceptance profile (Gates 1-4, 2026-07-31)`. Save the card's emitted
 payload and dry-run result. Do not edit the waypoints or profile between that
 dry-run and Real Go; use the same card instance for all three steps. Save the

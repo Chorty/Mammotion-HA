@@ -9,9 +9,9 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 |                         | Host                                                           | Branch         |
 | ----------------------- | -------------------------------------------------------------- | -------------- |
-| Integration version     | `0.6.4-beta18` candidate                                       | `0.6.4-beta18` candidate |
+| Integration version     | `0.6.4-beta18` candidate                                       | `0.6.4-beta19` candidate |
 | pymammotion pin         | `0.8.12.post1` fork wheel (container verified)                 | same           |
-| Card `CARD_VERSION`     | `0.6.4-beta18`; integration and HACS copies checksum-identical | `0.6.4-beta18` candidate |
+| Card `CARD_VERSION`     | `0.6.4-beta18`; integration and HACS copies checksum-identical | `0.6.4-beta19` candidate |
 | `manual_motion.py`      | present                                                        | present        |
 | `backend_capability.py` | present                                                        | present        |
 | `capabilities.py`       | present                                                        | present        |
@@ -76,6 +76,23 @@ live `direction` attribute. Readback matched the requested config. Browser
 inspection found `direction: 29.0` and computed transform
 `matrix(0.87462, 0.48481, -0.48481, 0.87462, 0, 0)`, confirming a 29-degree
 clockwise upper-right marker that will update with the entity.
+
+That last conclusion was **rejected by direct operator observation**. The mower
+physically faced upper-left while the custom card's projected arrow and the
+rotated third-party marker pointed upper-right. A zero-command dry-run snapshot
+showed why: `toward: -29.589` and `location.orientation: -29` were frozen last
+travel, while VIO was inactive with heading 0 and RTK yaw was 0. No available
+field represented stationary body orientation. The `card-mod` rotation was
+removed with verified Lovelace readback.
+
+### beta19 stale-orientation correction — UNDEPLOYED
+
+Beta19 draws only the mower position dot unless the backend explicitly supplies
+a trustworthy map-aligned current orientation. It labels the old calculation
+as a last-travel projection rather than mower orientation. Nudge now fails
+closed on `current_orientation_unavailable`; Real Go behavior, service schemas
+and the accepted profile are unchanged. Frontend tests pin the separation
+between projected travel and trusted current orientation.
 
 ### Gate 5 deploy — 2026-07-31 19:50-20:05 EDT
 
@@ -165,10 +182,10 @@ zero overrides, `linear_pulse_duration_ms` 3500, ceiling still omitted.
 Lesson for any future deploy: a correct file deploy is **not** a correct
 run configuration. Check the execution-profile row, not just the version banner.
 
-Before any newly authorized Gate 5 motion: reaccept the beta18
+Before any newly authorized Gate 5 motion: deploy and reaccept the beta19
 correction recorded in `docs/p0-beta-release.md`; do not treat 0.3-0.5 m as a
 proven usable band. Confirm the browser console banner reads
-`v0.6.4-beta18` (a hard refresh may be needed), confirm the card's execution
+`v0.6.4-beta19` (a hard refresh may be needed), confirm the card's execution
 profile row reads exactly
 `LUBA acceptance profile (Gates 1-4, 2026-07-31)`, save the emitted payload and
 dry-run result, and obtain a fresh daylight operator `go`. Use the same card

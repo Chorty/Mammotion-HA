@@ -491,6 +491,24 @@ inspection measured the corresponding 29-degree clockwise CSS matrix and the
 rendered mower picture pointed upper-right. Experimental motion remained off,
 no session existed, and no motion was commanded.
 
+**beta18 stationary-orientation conclusion — REJECTED; beta19 correction
+UNDEPLOYED.** The operator visually confirmed the mower physically faced
+upper-left while the custom card's arrow still pointed upper-right. A fresh
+zero-command dry-run snapshot reported `toward: -29.589`,
+`location.orientation: -29`, VIO state/heading `0/0`, and RTK yaw `0`. The two
+nonzero values are frozen course-over-ground, while neither stationary-heading
+feed was usable. Therefore beta18's normalized `direction` is valid as travel
+direction but not as stationary body orientation. The temporary Yard dashboard
+`card-mod` rotation was removed with verified readback.
+
+Beta19 renders a directional arrow only from an explicitly trustworthy,
+map-aligned current-orientation field. With today's telemetry it instead shows
+the position dot and labels `toward + offset` as a last-travel projection that
+is not mower orientation. Nudge also refuses on
+`current_orientation_unavailable`, preventing a stale bearing from authorizing
+the supposedly no-turn escape hatch. Real Go logic, public schemas and
+`LUBA_ACCEPTANCE_PROFILE` are unchanged.
+
 Evidence:
 
 - `docs/evidence-gate5-characterization2-dry-run-20260802.json`
@@ -753,12 +771,12 @@ same change that records the result, and move this date.
   card services, confirming the ceiling is absent rather than zeroed.
   **Current disposition:** the card has driven the mower in three supervised
   runs but has not completed both Gate 5 segments. Two beta16 short approaches
-  established the refresh-count/stop-latency defect. The deployed beta18
-  candidate retains beta17's correction, keeps the accepted profile unchanged,
+  established the refresh-count/stop-latency defect. The beta19 candidate
+  retains beta17's correction, keeps the accepted profile unchanged,
   and must re-pass affected backend Gates 2 and 4 before Gate 5. Release remains
   halted.
   `CARD_VERSION`, `manifest.json`, `pyproject.toml` and `uv.lock` are bumped
-  together to `0.6.4-beta18` (`0.6.4b18` in `uv.lock`); the host matches, but
+  together to `0.6.4-beta19` (`0.6.4b19` in `uv.lock`); the host is still beta18,
   affected hardware gates remain open.
 - **`Beta Release` workflow was unrunnable — FIXED 2026-07-31.** Three shell
   expressions in `.github/workflows/beta-release.yml` were written with doubled

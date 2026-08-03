@@ -136,7 +136,7 @@ last travelling.
 Add the integration-served JavaScript as a dashboard resource:
 
 ```text
-/mammotion/mammotion-custom-path-card.js?v=0.6.4-beta18
+/mammotion/mammotion-custom-path-card.js?v=0.6.4-beta19
 ```
 
 Use resource type `JavaScript module`. The version query is required because
@@ -202,18 +202,16 @@ Notes on the profile:
   July 18 calibration. It is unchanged from the accepted run, but reducing it
   is open beta work.
 
-#### Nudge — moving the mower when VIO is unavailable
+#### Nudge — requires trustworthy current orientation
 
-**Nudge** drives a short straight line along the mower's current facing. It
-exists for the case where you need to shift the machine at night, when
-click-to-go cannot run.
+**Nudge** is a bounded straight-line helper, but it is fail-closed unless the
+backend supplies a trustworthy, map-aligned current orientation.
 
-Why it is shaped this way: RTK position holds in **full darkness**, but VIO
-heading does not, and `toward` is course-over-ground, which cannot observe an
-**in-place** pivot. So linear motion stays measurable in the dark and turning
-does not. Rather than expose a blind turn, Nudge places the target *on the
-heading ray*, so the turn phase has nothing to do and sends **zero turn
-commands** — measured on hardware at a 0.08–0.27 degree heading error.
+The earlier implementation treated `toward + calibrated offset` as current
+facing. Live testing disproved that assumption: `toward` is course-over-ground
+and remained frozen after an in-place pivot while the mower physically faced a
+different direction. VIO and RTK yaw were both unavailable in that stationary
+night state. Beta19 therefore refuses Nudge rather than guessing.
 
 - Capped at **2 m**, so a mistake is bounded by geometry rather than vigilance.
 - Requires the **clear area** confirmation. The blades-off checkbox is not
@@ -221,16 +219,12 @@ commands** — measured on hardware at a 0.08–0.27 degree heading error.
   and cutter RPM are still gated separately by `mower_reports_blades_off`.
 - Every other gate is unchanged: BLE liveness, stop primitive, containment,
   ready state.
-- Unavailable until the mower has moved at least once since boot, because
-  course-over-ground has no value until then. It refuses rather than guessing.
+- Unavailable when only course-over-ground exists, even if the mower has moved
+  since boot. Last travel is not current body orientation.
 - Leaves the accepted profile, so the card labels the run accordingly.
 
-> ⚠️ Nudge sends `turn_mode: "legacy"`, purely to clear the `vio_active` gate,
-> which blocks up-front whenever the mode is `vio` regardless of whether a turn
-> is needed. **Legacy steers by course-over-ground and is safe here only because
-> no turn occurs.** Do not conclude that `legacy` is a night-capable turn mode.
-> If a Nudge result ever reports a non-zero turn count, stop and investigate:
-> it means it tried to steer blind.
+> ⚠️ Do not override the orientation blocker with course-over-ground. A
+> stationary mower may have pivoted since that bearing was recorded.
 
 Real motion additionally requires the integration option **Enable experimental
 BLE-only manual motion**, a positively verified PyMammotion backend, a fresh
