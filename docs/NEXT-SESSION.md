@@ -4,7 +4,7 @@ Updated 2026-08-02 after the second beta16 daylight characterization. This is th
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
-## 🚨 READ FIRST — beta17 correction is undeployed; release is halted
+## 🚨 READ FIRST — beta17 is deployed but unaccepted; release is halted
 
 Two independent beta16 daylight runs rejected duration-only final-approach
 scaling. A 0.450 m single-leg characterization started at `(4.858, -2.132)`
@@ -25,14 +25,18 @@ full 3500 ms calibration pulses delivered 10 and 11 refreshes and moved 1.07737
 and 1.04573 m. Confirmed refresh count and unpredictable stop latency dominate
 nominal duration.
 
-The working tree is now the undeployed `0.6.4-beta17` correction candidate. It
+The working tree and host now run the `0.6.4-beta17` correction candidate. It
 budgets final approaches by discrete confirmed refresh count, sends the
 zero-speed teardown at emergency queue priority, and suppresses re-alignment
 when no forward-command budget remains. The public service schema and frozen
 LUBA acceptance profile are unchanged. This candidate must pass the full local
 suite and CI, then be deployed motion-disabled and re-pass affected backend
-Gates 2 and 4 before a new card Gate 5 run. No physical motion is currently
-authorized.
+Gates 2 and 4 before a new card Gate 5 run. The motion-disabled deploy smoke
+passed with 128 entities, verified backend capabilities, both card paths
+checksum-identical, the exact accepted-profile label, valid Preview, and a
+card Dry-run reporting `would_send: false`. The browser console and card footer
+both showed beta17 after assigning the collision-proof Lovelace URL
+`?v=0.6.4-beta17&build=a2b0d4bf`. No physical motion is currently authorized.
 
 The characterization teardown is complete: experimental motion is verified
 off, no session remains, blades are off, and a 20-second post-stop capture is
@@ -40,6 +44,12 @@ stationary. BLE showed no connects, disconnects, gaps, malformed frames or
 drops. The 0.5889 m whole-run displacement implied a 103.89-degree offset, only
 +1.49 degrees from the retained 102.4-degree profile; do not change the heading
 profile.
+
+It was dark after deployment: VIO reported 0 tracked features. Do not attempt
+affected Gates 2/4 or Gate 5 until a fresh daylight preflight passes. The mower
+remained `MODE_READY`, inside `Backyard Right`, RTK Fix, blades off, no session,
+and experimental motion off after restart and UI smoke. Backup for rollback:
+`/config/mammotion-backup-20260802-2045.tgz`.
 
 Evidence:
 

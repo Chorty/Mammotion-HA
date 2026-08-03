@@ -28,11 +28,20 @@ scripts/ha_set_experimental_motion.py status
 If it reports `enabled: True` and you are not about to run, turn it off with
 `scripts/ha_set_experimental_motion.py off`.
 
-Last known after the second failed run: mower `MODE_READY` at (4.9538,
-−2.7131), `toward` -27.5495, inside `Backyard Right`, RTK Fix, blades off,
-no session. The host runs `0.6.4-beta16`; the working tree is the undeployed
-`0.6.4-beta17` correction candidate. The motion gate is verified off. No motion
-is authorized by this handoff.
+Last known after the beta17 motion-disabled deployment: mower `MODE_READY` at
+approximately (4.9524, −2.7114), inside `Backyard Right`, RTK Fix, blades off,
+no session. The host and branch run the still-unaccepted `0.6.4-beta17`
+correction candidate. The motion gate is verified off. It is dark with VIO at
+0 tracked features, so no motion is authorized by this handoff.
+
+The deploy smoke passed: 128 Mammotion entities, backend verified against
+`pymammotion 0.8.12.post1`, BLE live, both card paths checksum-identical, exact
+accepted-profile label, valid Preview, and a card Dry-run with `valid: true`,
+`would_send: false`, and `stop_reason: dry_run`. Real Go remained disabled and
+the card was reset to zero waypoints. The live resource URL is
+`?v=0.6.4-beta17&build=a2b0d4bf`; the build suffix is required because Chrome
+had a stale beta16 response cached under the plain beta17 URL. Rollback backup:
+`/config/mammotion-backup-20260802-2045.tgz`.
 
 ## The blocking Gate 5 results and correction candidate
 
@@ -73,9 +82,10 @@ The beta17 candidate replaces proportional-duration shortening with a discrete
 refresh-command budget, sends normal pulse teardown zero writes at emergency
 queue priority, and prevents realignment after the final linear command. It
 does not change the public service schema or `LUBA_ACCEPTANCE_PROFILE`. Treat
-it as unproven until the full suite and CI pass, it is deployed motion-disabled,
-and affected backend Gates 2 and 4 are repeated under fresh daylight operator
-authorization. Only after those pass may a fresh unchanged-card Gate 5 be run.
+it as unproven on hardware. The full local suite and GitHub validation workflow
+pass and the motion-disabled deploy smoke is complete. Affected backend Gates 2
+and 4 still require fresh daylight operator authorization. Only after those
+pass may a fresh unchanged-card Gate 5 be run.
 
 ## The open measurement to fold into that run
 

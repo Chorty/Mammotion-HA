@@ -438,12 +438,30 @@ count and stop latency dominate. The whole characterization moved 0.5889 m at
 bearing 279.33 degrees, implying a 103.89-degree forward offset (+1.49 degrees
 from 102.4), so the heading profile remains unchanged.
 
-The undeployed beta17 correction candidate budgets short approaches by
+The deployed but unaccepted beta17 correction candidate budgets short approaches by
 discrete confirmed refresh count, uses emergency queue priority for the
 confirmed zero-speed teardown, and skips realignment when no later forward
 command can benefit. It changes neither the public schema nor
 `LUBA_ACCEPTANCE_PROFILE`. It must pass local/CI validation and affected
 backend Gates 2 and 4 before another card Gate 5 run.
+
+**beta17 motion-disabled deploy — PASSED, 2026-08-02 20:44-20:52 EDT.** The
+candidate passed 461 coverage-enabled Python tests, 19 frontend tests, Ruff,
+format, scoped mypy, all-files pre-commit, and the GitHub validation workflow
+at `a2b0d4bf`. It was then backed up and deployed without arming or commanding
+the mower. HA returned 128 entities, the audited `pymammotion 0.8.12.post1`
+wheel, verified backend capabilities, healthy BLE, and checksum-identical card
+copies. The browser console/footer showed beta17 and the exact accepted-profile
+label. Card Preview and Dry-run passed; Dry-run explicitly reported
+`would_send: false`, while Real Go remained disabled. Experimental motion stayed
+off and no session existed. Because VIO was dark with 0 features, affected
+backend Gates 2/4 and Gate 5 remain blocked until daylight.
+
+The Lovelace resource uses
+`?v=0.6.4-beta17&build=a2b0d4bf`: an old beta16 response was already cached
+under the plain beta17 URL, and the unique build suffix was required to make
+the actual browser load auditable. Rollback backup:
+`/config/mammotion-backup-20260802-2045.tgz`.
 
 Evidence:
 
@@ -707,12 +725,12 @@ same change that records the result, and move this date.
   card services, confirming the ceiling is absent rather than zeroed.
   **Current disposition:** the card has driven the mower in three supervised
   runs but has not completed both Gate 5 segments. Two beta16 short approaches
-  established the refresh-count/stop-latency defect. The undeployed beta17
+  established the refresh-count/stop-latency defect. The deployed beta17
   correction candidate keeps the accepted profile unchanged and must re-pass
   affected backend Gates 2 and 4 before Gate 5. Release remains halted.
   `CARD_VERSION`, `manifest.json`, `pyproject.toml` and `uv.lock` are bumped
-  together to `0.6.4-beta17` (`0.6.4b17` in `uv.lock`); the host remains on
-  beta16 until validation completes.
+  together to `0.6.4-beta17` (`0.6.4b17` in `uv.lock`); the host matches, but
+  affected hardware gates remain open.
 - **`Beta Release` workflow was unrunnable — FIXED 2026-07-31.** Three shell
   expressions in `.github/workflows/beta-release.yml` were written with doubled
   backslashes inside YAML block scalars, which do not process escapes, so sed

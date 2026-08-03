@@ -12,7 +12,7 @@ approach delivered two refresh writes and moved 0.1786 m, while a 1191.8 ms
 approach delivered three and moved 0.4341 m. The latter normal-priority stop
 took 1392.7 ms to confirm; after the only linear command was exhausted, three
 unusable re-alignment turns added further drift. Nominal duration is not a safe
-linear actuation unit. Beta17 is the undeployed correction candidate: discrete
+linear actuation unit. Beta17 is the deployed but unaccepted correction candidate: discrete
 confirmed-refresh budgeting, emergency-priority zero writes, and no re-alignment
 when no forward command remains. The 102.4-degree heading profile is unchanged,
 but the changed executor must re-pass affected backend Gates 2 and 4 before a
@@ -26,12 +26,14 @@ acceptance: the card has driven the mower but has not completed a clean
 two-segment run. That is **Gate 5** in
 `docs/p0-beta-release.md`, and it is the one open release gate.
 
-The host remains on `0.6.4-beta16`; the working tree is the undeployed
-`0.6.4-beta17` correction candidate. `manifest.json`, `pyproject.toml`,
+The host and branch now run the still-unaccepted `0.6.4-beta17` correction
+candidate. `manifest.json`, `pyproject.toml`,
 `CARD_VERSION` and `uv.lock` (PEP 440 `0.6.4b17`) must always agree, and the
 `Beta Release` workflow verifies all four. The card is served from **two**
 paths, so deploy to both and bump the Lovelace resource key or the browser can
-silently load the stale card.
+silently load the stale card. The live Lovelace URL includes the unique build
+suffix `?v=0.6.4-beta17&build=a2b0d4bf` because this browser already had an old
+beta16 response cached under the plain beta17 URL.
 
 `pre-commit run --all-files` is green as of 2026-07-31 and is now a usable
 gate. Its hook pins must move with `requirements_test.txt`: the Ruff and mypy

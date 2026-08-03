@@ -9,9 +9,9 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 |                         | Host                                                           | Branch         |
 | ----------------------- | -------------------------------------------------------------- | -------------- |
-| Integration version     | `0.6.4-beta16`                                                 | `0.6.4-beta17` candidate |
+| Integration version     | `0.6.4-beta17` candidate                                       | `0.6.4-beta17` candidate |
 | pymammotion pin         | `0.8.12.post1` fork wheel (container verified)                 | same           |
-| Card `CARD_VERSION`     | `0.6.4-beta16`; integration and HACS copies checksum-identical | `0.6.4-beta17` candidate |
+| Card `CARD_VERSION`     | `0.6.4-beta17`; integration and HACS copies checksum-identical | `0.6.4-beta17` candidate |
 | `manual_motion.py`      | present                                                        | present        |
 | `backend_capability.py` | present                                                        | present        |
 | `capabilities.py`       | present                                                        | present        |
@@ -20,11 +20,30 @@ The live host ran backend Gates 1-4 and two failed-safe beta16 daylight
 short-approach runs. The independent 0.450 m characterization proved that
 motion is stepwise by confirmed refresh writes and that normal stop latency can
 dominate nominal pulse duration. It also exposed useless realignment after the
-last permitted forward command. The branch's undeployed beta17 candidate
+last permitted forward command. The deployed but unaccepted beta17 candidate
 addresses those three behaviors without changing the accepted profile.
 Experimental motion is verified off. Gate 5 and release remain blocked; do not
-merge or publish. Validate and push beta17 before deploying it, then repeat
-affected backend Gates 2 and 4 before Gate 5.
+merge or publish. Repeat affected backend Gates 2 and 4 before Gate 5.
+
+### beta17 correction deploy — 2026-08-02 20:44-20:52 EDT
+
+`0.6.4-beta17` is deployed motion-disabled. Backup:
+`/config/mammotion-backup-20260802-2045.tgz`. All 46 integration files matched
+the local tree by content hash, no AppleDouble files were present, and both
+card paths matched (`170aca89b0cc5a514dc9d835aee7a3b8`). HA's API returned in
+66 seconds and all 128 Mammotion entities returned in 151 seconds. The loaded
+wheel is `pymammotion 0.8.12.post1`; backend capabilities and BLE are verified.
+The mower remained ready, RTK Fix, blades off, session-free, and experimental
+motion off.
+
+Chrome exposed a cache-key collision: the updated card first loaded as beta17
+through the prior `beta23` key, then the plain beta17 URL replayed an older
+cached beta16 response. The live resource is therefore
+`?v=0.6.4-beta17&build=a2b0d4bf`. After reload, both console and footer reported
+beta17. The exact accepted-profile label rendered, Preview was valid, and the
+card Dry-run returned `valid: true`, `would_send: false`, and
+`stop_reason: dry_run`; Real Go stayed disabled. The card was reset afterward.
+VIO was dark/0 features, so no reacceptance motion was attempted.
 
 ### Gate 5 deploy — 2026-07-31 19:50-20:05 EDT
 
