@@ -9,9 +9,9 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 |                         | Host                                                           | Branch         |
 | ----------------------- | -------------------------------------------------------------- | -------------- |
-| Integration version     | `0.6.4-beta18` candidate                                       | `0.6.4-beta19` candidate |
+| Integration version     | `0.6.4-beta19` candidate                                       | `0.6.4-beta19` candidate |
 | pymammotion pin         | `0.8.12.post1` fork wheel (container verified)                 | same           |
-| Card `CARD_VERSION`     | `0.6.4-beta18`; integration and HACS copies checksum-identical | `0.6.4-beta19` candidate |
+| Card `CARD_VERSION`     | `0.6.4-beta19`; integration and HACS copies checksum-identical | `0.6.4-beta19` candidate |
 | `manual_motion.py`      | present                                                        | present        |
 | `backend_capability.py` | present                                                        | present        |
 | `capabilities.py`       | present                                                        | present        |
@@ -85,7 +85,7 @@ travel, while VIO was inactive with heading 0 and RTK yaw was 0. No available
 field represented stationary body orientation. The `card-mod` rotation was
 removed with verified Lovelace readback.
 
-### beta19 stale-orientation correction — UNDEPLOYED
+### beta19 stale-orientation correction deploy — 2026-08-02 22:07-22:12 EDT
 
 Beta19 draws only the mower position dot unless the backend explicitly supplies
 a trustworthy map-aligned current orientation. It labels the old calculation
@@ -93,6 +93,21 @@ as a last-travel projection rather than mower orientation. Nudge now fails
 closed on `current_orientation_unavailable`; Real Go behavior, service schemas
 and the accepted profile are unchanged. Frontend tests pin the separation
 between projected travel and trusted current orientation.
+
+The host was backed up to `/config/mammotion-backup-20260802-2207.tgz`. All 46
+deployed files matched the tree aggregate hash
+`2c344e3234c175fd85be066259ffcd75`; both card copies matched
+`9152496e514058948ad338103130519f`; no AppleDouble files were present. HA's API
+returned in 76 seconds and all 128 Mammotion entities returned in 201 seconds.
+The installed backend remains `pymammotion 0.8.12.post1`; experimental motion
+was off with no session before and after deployment.
+
+Chrome initially replayed beta16 despite the beta19 resource key, so the final
+auditable URL is `?v=0.6.4-beta19&build=617337d3`. The reloaded card reported
+beta19 and the exact accepted-profile label. DOM inspection found one green
+mower-position dot, zero green heading lines, zero arrowheads, and the explicit
+`current orientation unavailable ... not mower orientation` text. Nudge was
+disabled. No physical motion was commanded.
 
 ### Gate 5 deploy — 2026-07-31 19:50-20:05 EDT
 

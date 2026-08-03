@@ -1,4 +1,4 @@
-# Handoff prompt — deploy beta19, then reaccept the motion correction
+# Handoff prompt — reaccept the deployed beta19 motion correction
 
 Paste the block below to resume. It is written to be self-contained; everything
 it references is committed on `feat/vio-turn-to-heading` in
@@ -30,19 +30,19 @@ If it reports `enabled: True` and you are not about to run, turn it off with
 
 Last known after the beta18 motion-disabled deployment: mower `MODE_READY` at
 approximately (4.9524, −2.7114), inside `Backyard Right`, RTK Fix, blades off,
-no session. The host runs the still-unaccepted `0.6.4-beta18` candidate; the
-branch is the undeployed `0.6.4-beta19` stale-orientation safety correction.
+no session. The host and branch run the still-unaccepted `0.6.4-beta19`
+candidate.
 Beta19 does not change Real Go motion or the accepted profile. The motion gate
 is verified off. It is dark with VIO at
 0 tracked features, so no motion is authorized by this handoff.
 
-The beta18 deploy smoke passed: 128 Mammotion entities, backend verified against
+The beta19 deploy smoke passed: 128 Mammotion entities, backend verified against
 `pymammotion 0.8.12.post1`, BLE live, both card paths checksum-identical, exact
 accepted-profile label, valid Preview, and a card Dry-run with `valid: true`,
 `would_send: false`, and `stop_reason: dry_run`. Real Go remained disabled and
 the card was reset to zero waypoints. The live resource URL is
-`?v=0.6.4-beta18&build=6da6c3d3`. Rollback backup:
-`/config/mammotion-backup-20260802-2129.tgz`.
+`?v=0.6.4-beta19&build=617337d3`. Rollback backup:
+`/config/mammotion-backup-20260802-2207.tgz`.
 
 The beta18 direction conclusion was incomplete. A zero-command snapshot taken
 while the operator visually confirmed the mower faced upper-left showed frozen
@@ -53,6 +53,9 @@ diagnostic text but draws no orientation arrow from it and disables Nudge
 unless a trustworthy current orientation exists. The earlier third-party-map
 `card-mod` rotation was removed and read back successfully. Dashboard backup:
 `/config/.storage/lovelace.dashboard_yard.bak.codex-20260802-213848`.
+The beta19 browser readback found one mower-position dot, zero green heading
+lines, zero arrowheads, the explicit `not mower orientation` label, and disabled
+Nudge. Experimental motion remained off and no session existed.
 
 ## The blocking Gate 5 results and correction candidate
 

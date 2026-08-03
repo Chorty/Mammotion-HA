@@ -492,7 +492,7 @@ rendered mower picture pointed upper-right. Experimental motion remained off,
 no session existed, and no motion was commanded.
 
 **beta18 stationary-orientation conclusion — REJECTED; beta19 correction
-UNDEPLOYED.** The operator visually confirmed the mower physically faced
+DEPLOYED MOTION-DISABLED.** The operator visually confirmed the mower physically faced
 upper-left while the custom card's arrow still pointed upper-right. A fresh
 zero-command dry-run snapshot reported `toward: -29.589`,
 `location.orientation: -29`, VIO state/heading `0/0`, and RTK yaw `0`. The two
@@ -508,6 +508,18 @@ is not mower orientation. Nudge also refuses on
 `current_orientation_unavailable`, preventing a stale bearing from authorizing
 the supposedly no-turn escape hatch. Real Go logic, public schemas and
 `LUBA_ACCEPTANCE_PROFILE` are unchanged.
+
+The complete suite passed (469 Python, 19 frontend, Ruff, format, scoped mypy,
+all-files pre-commit and current GitHub checks). Beta19 was backed up and
+deployed motion-disabled at 22:07-22:12 EDT. All 46 files matched aggregate hash
+`2c344e3234c175fd85be066259ffcd75`, both card copies matched
+`9152496e514058948ad338103130519f`, HA returned 128 entities, and the audited
+`pymammotion 0.8.12.post1` wheel remained installed. The browser required the
+collision-proof resource `?v=0.6.4-beta19&build=617337d3`; its final DOM held
+one mower dot, zero heading lines/arrowheads, the explicit stale-source label,
+and disabled Nudge. Experimental motion stayed off, no session existed, and no
+motion was commanded. Rollback backup:
+`/config/mammotion-backup-20260802-2207.tgz`.
 
 Evidence:
 
@@ -776,7 +788,7 @@ same change that records the result, and move this date.
   and must re-pass affected backend Gates 2 and 4 before Gate 5. Release remains
   halted.
   `CARD_VERSION`, `manifest.json`, `pyproject.toml` and `uv.lock` are bumped
-  together to `0.6.4-beta19` (`0.6.4b19` in `uv.lock`); the host is still beta18,
+  together to `0.6.4-beta19` (`0.6.4b19` in `uv.lock`); the host matches,
   affected hardware gates remain open.
 - **`Beta Release` workflow was unrunnable — FIXED 2026-07-31.** Three shell
   expressions in `.github/workflows/beta-release.yml` were written with doubled

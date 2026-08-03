@@ -26,8 +26,7 @@ acceptance: the card has driven the mower but has not completed a clean
 two-segment run. That is **Gate 5** in
 `docs/p0-beta-release.md`, and it is the one open release gate.
 
-The host runs the still-unaccepted `0.6.4-beta18` candidate; the branch is the
-undeployed `0.6.4-beta19` stale-orientation safety correction. A zero-command
+The host and branch run the still-unaccepted `0.6.4-beta19` candidate. A zero-command
 live snapshot proved Mammotion exposes only frozen course-over-ground while
 stationary (`toward: -29.589`, VIO inactive/0, RTK yaw 0), so beta19 stops
 drawing that last-travel projection as current mower orientation and blocks
@@ -37,7 +36,7 @@ Go motion code and the accepted profile are unchanged. `manifest.json`,
 `Beta Release` workflow verifies all four. The card is served from **two**
 paths, so deploy to both and bump the Lovelace resource key or the browser can
 silently load the stale card. The live Lovelace URL includes the unique build
-suffix `?v=0.6.4-beta18&build=6da6c3d3`. The misleading third-party-map
+suffix `?v=0.6.4-beta19&build=617337d3`. The misleading third-party-map
 `card-mod` rotation was removed with verified config readback; its pre-change
 backup remains `/config/.storage/lovelace.dashboard_yard.bak.codex-20260802-213848`.
 

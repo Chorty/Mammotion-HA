@@ -4,7 +4,7 @@ Updated 2026-08-02 after the second beta16 daylight characterization. This is th
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
-## 🚨 READ FIRST — beta19 is undeployed; release is halted
+## 🚨 READ FIRST — beta19 is deployed motion-disabled; release is halted
 
 The operator identified a live heading-display mismatch after the beta17 smoke:
 the custom-path card's green arrow and 72.8-degree label pointed upper-right,
@@ -18,7 +18,7 @@ points upper-right. Eight conversion tests cover sign, wrapping and unavailable
 values, but the operator then proved the underlying field was not body
 orientation: while the mower physically faced upper-left, a zero-command live
 snapshot still reported frozen course-over-ground `-29.589`, VIO inactive/0 and
-RTK yaw 0. Beta19 is the undeployed correction: no idle direction arrow is
+RTK yaw 0. Beta19 is the deployed correction: no idle direction arrow is
 drawn from last travel, and Nudge fails closed without trustworthy current
 orientation. Motion code and `LUBA_ACCEPTANCE_PROFILE` are unchanged.
 
@@ -41,7 +41,7 @@ full 3500 ms calibration pulses delivered 10 and 11 refreshes and moved 1.07737
 and 1.04573 m. Confirmed refresh count and unpredictable stop latency dominate
 nominal duration.
 
-The host runs beta18 and the branch is beta19. Its beta17 motion
+The host and branch run beta19. Its beta17 motion
 correction budgets final approaches by discrete confirmed refresh count, sends
 the zero-speed teardown at emergency queue priority, and suppresses
 re-alignment when no forward-command budget remains. The public service schema
@@ -51,8 +51,8 @@ motion-disabled deploy smoke
 passed with 128 entities, verified backend capabilities, both card paths
 checksum-identical, the exact accepted-profile label, valid Preview, and a
 card Dry-run reporting `would_send: false`. The browser console and card footer
-both show beta18 at the collision-proof Lovelace URL
-`?v=0.6.4-beta18&build=6da6c3d3`. The third-party map card ignores
+both show beta19 at the collision-proof Lovelace URL
+`?v=0.6.4-beta19&build=617337d3`. The third-party map card ignores
 `direction` by default. The temporary Jinja-backed `card-mod` rotation was
 removed after proving that `direction` was stale travel rather than current
 orientation. Dashboard backup:
@@ -70,7 +70,7 @@ It was dark after deployment: VIO reported 0 tracked features. Do not attempt
 affected Gates 2/4 or Gate 5 until a fresh daylight preflight passes. The mower
 remained `MODE_READY`, inside `Backyard Right`, RTK Fix, blades off, no session,
 and experimental motion off after restart and UI smoke. Backup for rollback:
-`/config/mammotion-backup-20260802-2129.tgz`.
+`/config/mammotion-backup-20260802-2207.tgz`.
 
 Evidence:
 
