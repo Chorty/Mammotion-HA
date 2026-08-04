@@ -4,20 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current P0 Handoff
 
-Read `docs/NEXT-SESSION.md` before continuing P0 or click-to-go work. The
-supervised backend Gates 1-4 passed on the LUBA on 2026-07-31, but Gate 5 is
-still open after two safe beta16 daylight failures on 2026-08-02. The second,
-independent 0.450 m characterization made the cause decisive: a 1012.5 ms
-approach delivered two refresh writes and moved 0.1786 m, while a 1191.8 ms
-approach delivered three and moved 0.4341 m. The latter normal-priority stop
-took 1392.7 ms to confirm; after the only linear command was exhausted, three
-unusable re-alignment turns added further drift. Nominal duration is not a safe
-linear actuation unit. Beta17 is the deployed but unaccepted correction candidate: discrete
-confirmed-refresh budgeting, emergency-priority zero writes, and no re-alignment
-when no forward command remains. The 102.4-degree heading profile is unchanged,
-but the changed executor must re-pass affected backend Gates 2 and 4 before a
-new Gate 5. The experimental-motion gate is verified off. No motion is
-authorized by this handoff.
+Read `docs/CODEX-HANDOFF.md`, then `docs/NEXT-SESSION.md`, before continuing P0
+or click-to-go work. The host runs the still-unaccepted beta19 candidate and
+experimental motion is verified off. Gate 2 passed on 2026-08-03, but Gate 4
+failed before its first linear command: VIO calibration passed, then four VIO
+turn commands moved heading from 6.480° to 139.098° toward a 173.892° target.
+The turn ended `max_commands_reached`, 34.795° outside tolerance, with 0.185 m
+of turn translation; segment 2 never started. This is not a linear-budget
+failure and blocks Gate 5 and release. The durable result, capture, and offline
+diagnosis are under `docs/evidence-gate4-beta19-retry-*20260803*`.
+
+The accepted profile, including its four-turn-command budget and 102.4° offset,
+must not be changed from this one run. First implement and test a narrowly
+bounded turn-planning correction based on the retained evidence, then reproduce
+it on a second daylight geometry under new operator authorization. See
+`docs/CLAUDE-FINAL-IMPLEMENTATION-PROMPT.md` for the complete implementation
+handoff. No motion is authorized by this handoff.
 
 The card's Real Go defaults are now the Gate 4 profile itself, frozen as
 `LUBA_ACCEPTANCE_PROFILE` in `www/mammotion-custom-path-card.js` and pinned by

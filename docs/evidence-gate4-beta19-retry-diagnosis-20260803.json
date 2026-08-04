@@ -1,0 +1,27 @@
+{
+  "outer_stop_reason": "segment_failed",
+  "failed_segment_index": 1,
+  "segment_stop_reason": "turn_phase_incomplete",
+  "classification": "vio_turn_budget_exhausted_before_linear_phase",
+  "conclusion": "The VIO turn phase exhausted its command budget before the target heading tolerance was reached. No normal forward linear command ran.",
+  "turn": {
+    "stop_reason": "max_commands_reached",
+    "commands_sent": 4,
+    "final_heading_error_degrees": 34.795,
+    "translation_m": 0.185,
+    "target_vision_heading": 173.892,
+    "final_vision_heading": 139.098,
+    "progress_degrees": [
+      24.805,
+      36.423,
+      34.741,
+      36.648
+    ]
+  },
+  "linear": {
+    "stop_reason": null,
+    "commands_sent": 0,
+    "started": false
+  },
+  "safe_next_step": "Keep experimental motion disabled. Diagnose the VIO turn budget/translation with a separately authorized daylight turn characterization; do not retry the full path automatically."
+}

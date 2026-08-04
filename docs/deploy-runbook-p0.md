@@ -209,6 +209,29 @@ instance without editing waypoints between the final dry-run and Real Go. Run
 the Real Go result, and always disarm and verify no session after success,
 failure, or abort.
 
+### beta19 backend Gate 2 acceptance — 2026-08-03
+
+A daylight backend 0.100 m segment was accepted. The operator observed an
+approximately 9 cm move, then a stop. The result reported `target_reached` and
+a 0.0105 m final error; VIO calibration supplied the whole observed movement,
+so no normal linear pulse was required. Teardown cleared the session, disabled
+experimental motion, and telemetry remained stationary for over one minute.
+The recorded evidence is `docs/evidence-gate2-beta19-*20260803*`. This is not
+Gate 5: backend Gate 4 and then the unchanged-card UI acceptance remain
+required before release.
+
+### beta19 backend Gate 4 retry — failed, 2026-08-03
+
+The guarded two-segment retry is not an acceptance. Its durable result records
+segment 1 `turn_phase_incomplete`: VIO calibration passed, but the four-command
+turn budget ended `max_commands_reached` 34.795° short of target after 0.185 m
+of incidental turn translation. No linear command or segment 2 ran. The gate
+was disarmed, session cleared, blades stayed off, and post-stop telemetry was
+stationary. See `docs/evidence-gate4-beta19-retry-real-*20260803*` and the
+offline analysis in `docs/evidence-gate4-beta19-retry-diagnosis-20260803.json`.
+Do not retry or expand the turn budget without the implementation and daylight
+re-characterization required by `docs/CLAUDE-FINAL-IMPLEMENTATION-PROMPT.md`.
+
 ## Breaking enum migrations already applied
 
 The host now reports lowercase states such as `mode_working`, `man`, `english`,

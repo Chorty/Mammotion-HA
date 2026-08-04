@@ -46,7 +46,17 @@ correction budgets final approaches by discrete confirmed refresh count, sends
 the zero-speed teardown at emergency queue priority, and suppresses
 re-alignment when no forward-command budget remains. The public service schema
 and frozen LUBA acceptance profile are unchanged. The candidate must re-pass
-affected backend Gates 2 and 4 before a new card Gate 5 run. The
+affected backend Gates 2 and 4 before a new card Gate 5 run. **Gate 2 passed
+on 2026-08-03:** a daylight 0.100 m backend segment returned `target_reached`
+with 0.0105 m final error; the operator saw the 9 cm calibration movement and
+confirmed its stop. The gate was disarmed, no session remained, and the mower
+was stationary for more than a minute. The
+subsequent Gate 4 retry failed in segment 1 before its linear phase:
+calibration passed, but four VIO turns stopped `max_commands_reached` 34.795°
+short of the target. It translated 0.185 m while turning; no linear command or
+segment 2 ran. Keep experimental motion off. The durable evidence and analysis
+are `docs/evidence-gate4-beta19-retry-*20260803*`; implementation instructions
+are `docs/CLAUDE-FINAL-IMPLEMENTATION-PROMPT.md`. The
 motion-disabled deploy smoke
 passed with 128 entities, verified backend capabilities, both card paths
 checksum-identical, the exact accepted-profile label, valid Preview, and a

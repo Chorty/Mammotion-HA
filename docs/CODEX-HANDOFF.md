@@ -28,13 +28,11 @@ scripts/ha_set_experimental_motion.py status
 If it reports `enabled: True` and you are not about to run, turn it off with
 `scripts/ha_set_experimental_motion.py off`.
 
-Last known after the beta18 motion-disabled deployment: mower `MODE_READY` at
-approximately (4.9524, −2.7114), inside `Backyard Right`, RTK Fix, blades off,
-no session. The host and branch run the still-unaccepted `0.6.4-beta19`
-candidate.
-Beta19 does not change Real Go motion or the accepted profile. The motion gate
-is verified off. It is dark with VIO at
-0 tracked features, so no motion is authorized by this handoff.
+After the failed Gate 4 retry on 2026-08-03, the mower was stationary at
+approximately `(5.4960, -2.8510)`, inside `Backyard Right`, RTK Fix, blades
+off, and had no active session. The host and branch run the still-unaccepted
+`0.6.4-beta19` candidate. Experimental motion was explicitly disarmed after
+the test and must remain off unless a newly authorized live test is underway.
 
 The beta19 deploy smoke passed: 128 Mammotion entities, backend verified against
 `pymammotion 0.8.12.post1`, BLE live, both card paths checksum-identical, exact
@@ -96,10 +94,36 @@ The beta17 candidate replaces proportional-duration shortening with a discrete
 refresh-command budget, sends normal pulse teardown zero writes at emergency
 queue priority, and prevents realignment after the final linear command. It
 does not change the public service schema or `LUBA_ACCEPTANCE_PROFILE`. Treat
-it as unproven on hardware. The full local suite and GitHub validation workflow
-pass and the motion-disabled deploy smoke is complete. Affected backend Gates 2
-and 4 still require fresh daylight operator authorization. Only after those
-pass may a fresh unchanged-card Gate 5 be run.
+it as unproven beyond the acceptance listed below. The full local suite and
+GitHub validation workflow pass and the motion-disabled deploy smoke is
+complete.
+
+**Gate 2 passed on 2026-08-03 (daylight, backend service).** The operator
+visually confirmed an approximately 9 cm move and stop. The single 0.100 m
+segment returned `target_reached`; its final error was 0.0105 m. VIO
+calibration itself travelled 0.090417 m, placing the mower inside tolerance,
+so no normal linear pulse was necessary. Emergency teardown, a cleared session,
+experimental-motion disarm, and over one minute of stationary post-stop
+telemetry were confirmed; the BLE report contains no observed link/frame
+faults. Evidence is `docs/evidence-gate2-beta19-*20260803*`.
+
+Gate 4 still requires a fresh daylight operator authorization. Only after it
+passes may a fresh unchanged-card Gate 5 Real Go be run. Gate 4 must be a
+two-leg backend L path and must not reuse a prior confirmation.
+
+**Gate 4 retry failed on 2026-08-03; release remains halted.** The durable
+multi-segment result records `segment_failed` at segment 1:
+`turn_phase_incomplete` / `max_commands_reached`. VIO calibration passed with
+offset `3.779947°`, then four turn commands progressed from `6.480°` to
+`139.098°` toward a `173.892°` target, leaving `34.795°` error and `0.185 m`
+turn translation. `linear_commands_sent` is zero and segment 2 never started;
+this was **not** `max_linear_commands_reached`. Experimental motion was
+disarmed, the session cleared, and telemetry remained stationary afterward.
+See `docs/evidence-gate4-beta19-retry-real-*20260803*` and
+`docs/evidence-gate4-beta19-retry-diagnosis-20260803.json`. The reusable
+offline analyzer is `scripts/diagnose_motion_result.py`; the durable evidence
+runner is `scripts/run_motion_with_evidence.py`. Do not retry a path or change
+the profile before a separately authorized daylight turn characterization.
 
 ## The open measurement to fold into that run
 
