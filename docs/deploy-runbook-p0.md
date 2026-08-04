@@ -241,7 +241,8 @@ its first command** (`turn_budget_infeasible`, `commands_sent: 0`) when the
 evidence-bounded per-command progress (16.5°/s × pulse with refresh; the
 8°/command single-shot quantum without) cannot reach tolerance within
 `vio_turn_max_commands`, or when the refresh-regime translation estimate
-(0.0403 m/s of pulse) would breach the displacement cap. The multi-segment
+(0.0026 m per degree swept, revised 2026-08-04) would breach the displacement
+cap. The multi-segment
 executor additionally refuses a real path whose fixed junction geometry is
 infeasible (`path_turn_infeasible`) before any motion; dry runs report the
 same math without refusing. `scripts/diagnose_motion_result.py` reports the

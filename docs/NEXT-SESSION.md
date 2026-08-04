@@ -73,10 +73,65 @@ that pulse at 35.0 °/s instead of 21.2). And
 standalone `vio_turn_to_heading` results because it is shaped for
 multi-segment paths; `outer_stop_reason` is still correct.
 
-**No constant was changed on this evidence, deliberately.** Revising the
-0.0403 m/s translation bound belongs to a separate review session with this
-evidence in hand, per the session scope. Claim no gates: Gates 4 and 5 remain
-failed/blocked.
+No constant was changed during the measurement session itself. The revision
+review followed immediately afterwards and is recorded below.
+
+## Turn-translation constant revision, 2026-08-04 (off-mower, no deploy)
+
+The review concluded that **raising the per-second bound was the wrong fix**,
+and the code now bounds translation per degree instead.
+
+Pooling both geometries (13 refresh-200 pulses) settled the rotation half
+first: the true minimum is **16.5251 °/s** against the 16.5 floor, set by Gate
+4's pulse 1, not by the 08-04 runs. `16.5` is therefore correct and stays
+**unchanged** — raising it toward the 08-04 minimum of 21.2 would move the
+guard fail-open.
+
+The translation half was both wrong and wrongly shaped. Raising 0.0403 → 0.0720
+(the observed max) and changing nothing else would have **refused two turns
+that demonstrably succeeded**: the +135° run estimated 0.540 m against an
+actual 0.029 m, and the −170° run 0.756 m against 0.296 m. The cause is
+structural — `estimated_translation = needed × per_command_translation`, where
+`needed` already comes from the *pessimistic* rotation floor, so two
+anti-correlated worst cases were multiplied (a slow pulse sweeps fewer degrees
+and therefore drags less). The too-low constant had been accidentally
+cancelling that compounding.
+
+Translation during an in-place turn is the arc a tracked point sweeps about the
+true rotation centre — `translation = r × θ`. It scales with **angle**, not
+elapsed time; per-second is only equivalent at a constant rotation rate, and
+the measured rate varied 16.5–49.6 °/s. The pooled maximum is **0.002410
+m/deg**, implying a physically plausible 13.8 cm offset between the drive
+centre and the tracked point.
+
+`_VIO_TURN_CONSERVATIVE_TRANSLATION_M_PER_SECOND = 0.0403` is replaced by
+`_VIO_TURN_CONSERVATIVE_TRANSLATION_M_PER_DEGREE = 0.0026`, and the estimate is
+now `|initial_error| × 0.0026`, independent of the command count. The constant
+is boxed in from both sides, and the upper wall is the tighter one:
+
+- ≥ 0.002410 — the pooled observed maximum (fail-closed floor);
+- ≤ 0.25/90 = 0.002778 — a 90° L-path junction must stay feasible at a 0.25 m
+  cap. **This is binding**, and an initial choice of 0.0028 was rejected
+  because it violated it and would have refused Gate 4's own junction geometry;
+- ≤ 0.5/170 = 0.00294 — the proven −170° turn at the schema's 0.5 m default.
+
+Result: the guard refuses the failed Gate 4 segment and admits all four
+successful characterization turns, staying conservative on every one (est
+0.442 m vs actual 0.296 m on the −170° run; 0.435 m vs 0.185 m on Gate 4). The
+refresh-0 single-shot branch is deliberately **unchanged** — no single-shot
+per-degree evidence exists, so its translation criterion stays delegated to the
+runtime displacement cap.
+
+Result fields changed: `per_command_translation_bound_m` →
+`translation_bound_m_per_degree`, plus a new `translation_bound_source`. These
+are diagnostic only; no service schema, `LUBA_ACCEPTANCE_PROFILE` value, or
+version location changed, and nothing was deployed. Tests grew 14 → 20 in
+`tests/components/mammotion/test_vio_turn_feasibility.py`, including all four
+characterization runs as ground truth, a test that the estimate is invariant to
+command budget and pulse length, and one pinning both walls of the constant.
+
+Claim no gates: Gates 4 and 5 remain failed/blocked. The guard is still
+**not deployed** — the host runs beta19 `617337d3` without it.
 
 Evidence:
 
@@ -185,9 +240,10 @@ What the code now does (see `docs/CODEX-HANDOFF.md` for the full record):
 - `_vio_turn_budget_feasibility()` refuses a real VIO turn before its first
   command when the evidence floor (16.5°/s with refresh; the 8°/command
   single-shot quantum without) cannot reach tolerance within the budget, or
-  when the refresh-regime translation estimate (0.0403 m/s of pulse) would
-  breach the displacement cap. Stop reason `turn_budget_infeasible`,
-  `commands_sent: 0`.
+  when the refresh-regime translation estimate would breach the displacement
+  cap. Stop reason `turn_budget_infeasible`, `commands_sent: 0`. The
+  translation criterion was revised on 2026-08-04 from 0.0403 m/s of pulse to
+  0.0026 m per degree swept — see the 2026-08-04 sections above.
 - The vector segment surfaces that stop reason directly; the multi-segment
   executor also geometrically preflights junctions 2..N and refuses a real
   path with `path_turn_infeasible` before any motion. Dry runs report the same

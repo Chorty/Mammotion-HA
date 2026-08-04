@@ -9,6 +9,16 @@ could never reach the 18 deg tolerance. The executor burned the budget and
 refuse that turn BEFORE the first turn command, keep genuinely feasible turns
 running, and keep the refusal distinguishable from mid-turn budget exhaustion
 and from `max_linear_commands_reached`.
+
+Second anchor: the 2026-08-04 daylight turn characterization
+(docs/evidence-turnchar-beta19-analysis-20260804.json), four supervised turns
+at +45/-90/+135/-170 deg that ALL reached target. Pooled with Gate 4 it gives
+13 refresh-200 pulses across two geometries, and it is the reason translation
+is bounded per DEGREE rather than per second: rotation rate varied 16.5-49.6
+deg/s, so a per-second bound is not a fixed quantity, and the old per-second
+figure both understated the worst case and compounded with a command count
+derived from the pessimistic rotation floor. Those runs are ground truth --
+the guard must admit all four and still refuse Gate 4.
 """
 
 from __future__ import annotations
@@ -22,6 +32,7 @@ import pytest
 
 from custom_components.mammotion import services as mammotion_services
 from custom_components.mammotion.services import (
+    _VIO_TURN_CONSERVATIVE_TRANSLATION_M_PER_DEGREE,
     _raw_pymammotion_execute_multi_segment,
     _raw_pymammotion_execute_vector_segment,
     _vio_turn_budget_feasibility,
@@ -82,10 +93,12 @@ def test_helper_keeps_a_90_degree_junction_turn_feasible() -> None:
 
     assert feasibility["feasible"] is True
     assert feasibility["reason"] == "within_budget"
-    # ceil(72 / 24.75) = 3 commands; 3 * (0.0403 m/s * 1.5 s) stays under the
-    # 0.25 m cap.
+    # ceil(72 / 24.75) = 3 commands; 90 deg * 0.0026 m/deg = 0.234 m stays under
+    # the 0.25 m cap. This headroom is what bounds the per-degree constant from
+    # above: anything over 0.25/90 = 0.002778 would refuse an L-path junction,
+    # which is the exact geometry Gate 4 needs.
     assert feasibility["estimated_commands_needed"] == 3
-    assert feasibility["estimated_translation_m"] == pytest.approx(0.181, abs=0.001)
+    assert feasibility["estimated_translation_m"] == pytest.approx(0.234, abs=0.001)
 
 
 def test_helper_refuses_when_estimated_translation_exceeds_the_cap() -> None:
@@ -99,12 +112,12 @@ def test_helper_refuses_when_estimated_translation_exceeds_the_cap() -> None:
         max_displacement_m=0.25,
     )
 
-    # ceil(112 / 24.75) = 5 commands fit the budget, but 5 * (0.0403 m/s *
-    # 1.5 s) = 0.302 m would exceed the 0.25 m cap the run enforces anyway.
+    # ceil(112 / 24.75) = 5 commands fit the budget, but sweeping 130 deg at
+    # 0.0026 m/deg = 0.338 m would exceed the 0.25 m cap the run enforces anyway.
     assert feasibility["feasible"] is False
     assert feasibility["reason"] == "translation_cap"
     assert feasibility["estimated_commands_needed"] == 5
-    assert feasibility["estimated_translation_m"] == pytest.approx(0.302, abs=0.001)
+    assert feasibility["estimated_translation_m"] == pytest.approx(0.338, abs=0.001)
 
 
 def test_helper_uses_the_single_shot_quantum_without_refresh() -> None:
@@ -131,11 +144,116 @@ def test_helper_uses_the_single_shot_quantum_without_refresh() -> None:
     assert refused["feasible"] is False
     assert refused["reason"] == "turn_budget"
     assert allowed["feasible"] is True
-    # No trustworthy single-shot translation figure exists (the 0.0403 m/s
+    # No trustworthy single-shot translation figure exists (the 0.0026 m/deg
     # bound is a refresh-regime measurement); the runtime displacement cap
     # bounds translation during execution instead of a preflight estimate.
-    assert refused["per_command_translation_bound_m"] is None
+    assert refused["translation_bound_m_per_degree"] is None
+    assert refused["translation_bound_source"] is None
     assert refused["estimated_translation_m"] is None
+
+
+#: The 2026-08-04 daylight characterization, as retained. Each entry is
+#: (label, initial error deg, commands actually sent, actual displacement m).
+#: All four reached target, so the guard must judge every one feasible.
+CHARACTERIZATION_RUNS = [
+    ("run1 +45", 45.0, 1, 0.012912009913255463),
+    ("run2 -90", 90.0, 2, 0.13031937691686574),
+    ("run3 +135", 135.0, 2, 0.02875065216651603),
+    ("run4 -170", 170.0, 4, 0.2955293555638759),
+]
+
+
+@pytest.mark.parametrize(
+    ("label", "initial_error_degrees", "actual_commands", "actual_displacement_m"),
+    CHARACTERIZATION_RUNS,
+)
+def test_helper_admits_every_characterization_turn_that_succeeded(
+    label: str,
+    initial_error_degrees: float,
+    actual_commands: int,
+    actual_displacement_m: float,
+) -> None:
+    """All four 2026-08-04 turns reached target, so none may be refused.
+
+    This is the regression that rejected simply raising the old per-second
+    bound: at 0.0720 m/s the +135 and -170 deg runs were refused with estimates
+    of 0.540 m and 0.756 m against actuals of 0.029 m and 0.296 m.
+    """
+    feasibility = _vio_turn_budget_feasibility(
+        initial_error_degrees=initial_error_degrees,
+        heading_tolerance_degrees=18.0,
+        max_commands=8,
+        pulse_duration_ms=1500.0,
+        motion_refresh_interval_ms=200,
+        max_displacement_m=0.5,
+    )
+
+    assert feasibility["feasible"] is True, label
+    assert feasibility["reason"] == "within_budget"
+    # The bound must stay on the conservative side of what the hardware did...
+    assert feasibility["estimated_translation_m"] >= actual_displacement_m
+    # ...while the pessimistic rotation floor still over-counts real commands.
+    assert feasibility["estimated_commands_needed"] >= actual_commands
+
+
+def test_translation_estimate_scales_with_angle_not_command_budget() -> None:
+    """Translation is a geometry question, so the command budget cannot move it.
+
+    The superseded model multiplied a per-command translation by a count
+    derived from the pessimistic rotation floor, compounding two anti-correlated
+    worst cases: a slow pulse sweeps fewer degrees and therefore drags less.
+    """
+    same_angle = [
+        _vio_turn_budget_feasibility(
+            initial_error_degrees=120.0,
+            heading_tolerance_degrees=18.0,
+            max_commands=budget,
+            pulse_duration_ms=1500.0,
+            motion_refresh_interval_ms=200,
+            max_displacement_m=1.0,
+        )["estimated_translation_m"]
+        for budget in (5, 6, 8, 12)
+    ]
+
+    assert same_angle == [pytest.approx(0.312, abs=0.001)] * 4
+
+    # Halving the pulse doubles the commands needed but sweeps the same arc.
+    long_pulse = _vio_turn_budget_feasibility(
+        initial_error_degrees=120.0,
+        heading_tolerance_degrees=18.0,
+        max_commands=16,
+        pulse_duration_ms=1500.0,
+        motion_refresh_interval_ms=200,
+        max_displacement_m=1.0,
+    )
+    short_pulse = _vio_turn_budget_feasibility(
+        initial_error_degrees=120.0,
+        heading_tolerance_degrees=18.0,
+        max_commands=16,
+        pulse_duration_ms=750.0,
+        motion_refresh_interval_ms=200,
+        max_displacement_m=1.0,
+    )
+
+    assert (
+        short_pulse["estimated_commands_needed"]
+        > (long_pulse["estimated_commands_needed"])
+    )
+    assert short_pulse["estimated_translation_m"] == pytest.approx(
+        long_pulse["estimated_translation_m"]
+    )
+
+
+def test_translation_bound_stays_within_its_evidence_and_refusal_limits() -> None:
+    """The per-degree constant is boxed in from both sides; pin both walls."""
+    bound = _VIO_TURN_CONSERVATIVE_TRANSLATION_M_PER_DEGREE
+
+    # Floor: at or above the pooled maximum over 13 pulses / two geometries.
+    assert bound >= 0.002410
+    # Ceiling: a 90 deg junction at a 0.25 m cap must stay feasible...
+    assert bound <= 0.25 / 90
+    # ...and the proven -170 deg turn at the schema's 0.5 m default likewise.
+    assert bound <= 0.5 / 170
 
 
 def test_helper_reports_an_already_in_tolerance_error_as_feasible() -> None:

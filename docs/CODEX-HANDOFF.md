@@ -134,8 +134,9 @@ the executor dispatched the turn anyway. `_vio_turn_budget_feasibility()` in
 before its first command, using evidence-anchored conservative bounds:
 16.5°/s (the minimum observed Gate 4 rate) times the configured pulse length
 when `motion_refresh_interval_ms > 0`, the proven 8°/command single-shot
-quantum floor at refresh 0, and — refresh regime only — a 0.0403 m/s worst-case
-translation rate checked against the displacement cap. An infeasible turn is
+quantum floor at refresh 0, and — refresh regime only — a worst-case
+translation estimate checked against the displacement cap (revised 2026-08-04
+from 0.0403 m/s of pulse to 0.0026 m per degree swept). An infeasible turn is
 refused fail-closed with stop reason `turn_budget_infeasible` and
 `commands_sent: 0`; the vector segment executor surfaces that reason directly
 (instead of collapsing it into `turn_phase_incomplete`), and the multi-segment
@@ -178,8 +179,27 @@ the guard's evidence floors, over 9 pulses all `heading_went_fresh: true`:
 BLE was clean over 55 minutes: zero connects, disconnects, sequence gaps,
 unparseable or dropped frames. Full record and evidence filenames are in the
 2026-08-04 section of `docs/NEXT-SESSION.md`; pooled numbers are
-`docs/evidence-turnchar-beta19-analysis-20260804.json`. Revising the 0.0403 m/s
-bound is a separate review session — it was deliberately left unchanged.
+`docs/evidence-turnchar-beta19-analysis-20260804.json`.
+
+**The constant revision followed (2026-08-04, off-mower, committed, NOT
+deployed).** The rotation floor stays 16.5 °/s — pooled across both geometries
+the true minimum is 16.5251 °/s, set by Gate 4, so the floor is correct and
+raising it would move the guard fail-open. The translation criterion was
+**re-shaped, not just re-valued**: raising 0.0403 → 0.0720 alone would have
+refused the +135° and −170° turns that succeeded (estimates 0.540 m and
+0.756 m against actuals 0.029 m and 0.296 m), because the old model multiplied
+a per-command translation by a command count derived from the pessimistic
+rotation floor — two anti-correlated worst cases compounded. Translation during
+an in-place turn is `r × θ`, so it now scales with angle:
+`_VIO_TURN_CONSERVATIVE_TRANSLATION_M_PER_DEGREE = 0.0026`, estimate
+`|initial_error| × 0.0026`. The constant sits between the pooled observed max
+(0.002410) and the binding over-refusal limit 0.25/90 = 0.002778, which keeps a
+90° L-path junction feasible; 0.0028 was tried and rejected for violating it.
+The guard now refuses Gate 4 and admits all four characterization turns. The
+refresh-0 branch is unchanged. Diagnostic fields
+`per_command_translation_bound_m` → `translation_bound_m_per_degree` plus a new
+`translation_bound_source`; no schema, profile, or version location changed.
+Tests 14 → 20.
 
 ## The open measurement to fold into that run
 

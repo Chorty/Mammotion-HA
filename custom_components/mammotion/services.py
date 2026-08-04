@@ -6827,15 +6827,31 @@ def _turn_final_approach_pulse_ms(
 #:   rotation quantum (live 2026-07-18); without refresh, rotation is NOT
 #:   proportional to pulse duration, so a per-command quantum replaces the
 #:   rate model.
-#: - 0.0403 m/s is the maximum per-command translation increment from the same
-#:   Gate 4 run (0.0604 m during pulse 4's 1500 ms), expressed as a rate so it
-#:   scales with the configured pulse. It is a refresh-regime figure: applying
-#:   it to single-shot pulses over-refuses (a measured single-shot turn pulse
-#:   translated at ~0.02 m/s, 2026-07-19), so without refresh the translation
-#:   criterion is left to the runtime displacement cap instead of estimated.
+#: - 0.0028 m/deg bounds translation by the ANGLE turned, not by elapsed time.
+#:   During an in-place turn the tracked point sweeps an arc about the true
+#:   rotation centre, so translation = r * theta; a per-second bound is only
+#:   equivalent at a constant rotation rate, and the measured rate varies
+#:   16.5-49.6 deg/s. The pooled maximum over 13 refresh-200 pulses across two
+#:   geometries (the Gate 4 retry, 2026-08-03, plus the four-turn daylight
+#:   characterization, 2026-08-04) is 0.002410 m/deg, implying a 13.8 cm offset
+#:   between the drive centre and the tracked point. 0.0026 keeps +7.9% margin
+#:   while staying under the two binding over-refusal limits: 0.25/90 =
+#:   0.002778 keeps a 90 deg L-path junction feasible at a 0.25 m cap, and
+#:   0.5/170 = 0.00294 keeps the proven -170 deg turn feasible at the schema's
+#:   0.5 m default. Margin above 0.002778 would refuse Gate 4's own geometry.
+#:   This replaced an earlier 0.0403 m/s per-second bound that was both invalid
+#:   (the characterization measured 0.071959 m/s, 4 of 9 pulses over it) and
+#:   structurally wrong: multiplying it by a command count derived from the
+#:   PESSIMISTIC rotation floor compounded two anti-correlated worst cases, and
+#:   correcting the rate alone would have refused two turns that demonstrably
+#:   succeeded (the +135 deg run estimated 0.540 m against an actual 0.029 m).
+#:   Evidence: docs/evidence-turnchar-beta19-analysis-20260804.json.
+#:   It remains a refresh-regime figure -- no single-shot per-degree evidence
+#:   exists -- so without refresh the translation criterion is still left to
+#:   the runtime displacement cap instead of estimated.
 _VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND = 16.5
 _VIO_TURN_SINGLE_SHOT_DEGREES_PER_COMMAND = 8.0
-_VIO_TURN_CONSERVATIVE_TRANSLATION_M_PER_SECOND = 0.0403
+_VIO_TURN_CONSERVATIVE_TRANSLATION_M_PER_DEGREE = 0.0026
 
 
 def _vio_turn_budget_feasibility(
@@ -6856,21 +6872,28 @@ def _vio_turn_budget_feasibility(
     helper refuses such a turn BEFORE the first turn command, using
     evidence-bounded per-command progress instead of the optimistic configured
     rate. Refusing is the safe direction: the caller dispatches no motion.
+
+    Rotation is bounded per command (a budget question) and translation per
+    degree (a geometry question). Validated against every real turn on record:
+    it refuses the failed Gate 4 segment and admits all four turns of the
+    2026-08-04 daylight characterization, which succeeded at +45/-90/+135/-170
+    degrees.
     """
     pulse_seconds = float(pulse_duration_ms) / 1000
-    per_command_translation: float | None
+    translation_per_degree: float | None
+    translation_bound_source: str | None
     if motion_refresh_interval_ms > 0:
         per_command_rotation = _VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND * pulse_seconds
         rotation_bound_source = "conservative_observed_rate_with_refresh"
-        per_command_translation = (
-            _VIO_TURN_CONSERVATIVE_TRANSLATION_M_PER_SECOND * pulse_seconds
-        )
+        translation_per_degree = _VIO_TURN_CONSERVATIVE_TRANSLATION_M_PER_DEGREE
+        translation_bound_source = "conservative_observed_translation_per_degree"
     else:
         per_command_rotation = _VIO_TURN_SINGLE_SHOT_DEGREES_PER_COMMAND
         rotation_bound_source = "single_shot_rotation_quantum_floor"
         # No trustworthy single-shot translation figure exists; the runtime
         # displacement cap bounds it during execution instead.
-        per_command_translation = None
+        translation_per_degree = None
+        translation_bound_source = None
     info: dict[str, Any] = {
         "feasible": True,
         "reason": None,
@@ -6883,12 +6906,9 @@ def _vio_turn_budget_feasibility(
         "rotation_bound_source": rotation_bound_source,
         "estimated_commands_needed": 0,
         "max_commands": max_commands,
-        "per_command_translation_bound_m": (
-            round(per_command_translation, 4)
-            if per_command_translation is not None
-            else None
-        ),
-        "estimated_translation_m": 0.0 if per_command_translation is not None else None,
+        "translation_bound_m_per_degree": translation_per_degree,
+        "translation_bound_source": translation_bound_source,
+        "estimated_translation_m": 0.0 if translation_per_degree is not None else None,
         "max_displacement_m": max_displacement_m,
     }
     required = info["required_rotation_degrees"]
@@ -6902,8 +6922,15 @@ def _vio_turn_budget_feasibility(
     needed = math.ceil(required / per_command_rotation)
     info["estimated_commands_needed"] = needed
     estimated_translation: float | None = None
-    if per_command_translation is not None:
-        estimated_translation = round(needed * per_command_translation, 3)
+    if translation_per_degree is not None:
+        # Scale by the angle actually swept -- the full initial error, since the
+        # mower must rotate through it to land inside tolerance. Deliberately
+        # NOT scaled by `needed`: that count comes from the pessimistic rotation
+        # floor, and a slow pulse covers fewer degrees and so drags less, so
+        # multiplying the two worst cases compounds anti-correlated pessimism.
+        estimated_translation = round(
+            abs(initial_error_degrees) * translation_per_degree, 3
+        )
         info["estimated_translation_m"] = estimated_translation
     if needed > max_commands:
         info["feasible"] = False
