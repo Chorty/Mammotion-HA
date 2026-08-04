@@ -156,6 +156,31 @@ remain failed/blocked, and the conservative rate constants plus the ~11°-low
 offset question still require a separately authorized daylight turn
 characterization on fresh geometry before any retry.
 
+**The daylight turn characterization ran on 2026-08-04 (measurement only, no
+deploy, no constant change, no gate claimed).** Four supervised in-place turns
+(+45°, −90°, +135°, −170°) at the accepted cadence on the deployed beta19
+build, on fresh geometry in `Backyard Right` with VIO state 2 / `Light` / 80
+features throughout. **All four returned `target_heading_reached`** — including
+the −170° near-worst case, in 4 commands with −0.154° final error. Verdicts on
+the guard's evidence floors, over 9 pulses all `heading_went_fresh: true`:
+
+- **rotation ≥ 16.5 °/s: HELD** — min 21.203, mean 32.454, max 49.565 °/s.
+- **translation ≤ 0.0403 m/s: VIOLATED** — 4 of 9 pulses over, peaking at
+  0.071960 m/s (**+78.6%**). Run 4 commands 1–3 all breached it. The error is
+  **fail-open** for the guard's displacement-cap prediction only; the
+  rotation-feasibility half is unaffected. Run 4 still finished within the
+  0.5 m cap at 0.2955 m.
+- **forward-heading offset: UNTESTED** — no forward drive ran (VIO was already
+  warm, so the warm-up probe was correctly skipped). The `--summarise` 205.38°
+  figure is in-place-turn drift across four reversing phases and must not be
+  read as an offset.
+
+BLE was clean over 55 minutes: zero connects, disconnects, sequence gaps,
+unparseable or dropped frames. Full record and evidence filenames are in the
+2026-08-04 section of `docs/NEXT-SESSION.md`; pooled numbers are
+`docs/evidence-turnchar-beta19-analysis-20260804.json`. Revising the 0.0403 m/s
+bound is a separate review session — it was deliberately left unchanged.
+
 ## The open measurement to fold into that run
 
 `calibrated_forward_heading_offset_degrees: 102.4` looks **~11° low**. Three

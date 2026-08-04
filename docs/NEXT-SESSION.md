@@ -1,8 +1,91 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
-Updated 2026-08-02 after the second beta16 daylight characterization. This is the current handoff;
+Updated 2026-08-04 after the daylight VIO turn characterization. This is the current handoff;
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
+
+## Daylight turn characterization, 2026-08-04 — rotation floor holds, translation bound does NOT
+
+Four supervised in-place VIO turns ran on the deployed beta19 build `617337d3`
+(the turn-feasibility guard is **not** on the host). This was a measurement of
+the mower, not a test of the guard. No constant was changed, no deploy
+happened, no gate was attempted, and no version was bumped. Every run had a
+fresh operator `go`, was armed immediately before and disarmed immediately
+after, and ended verified stationary with blades off and no session.
+
+Conditions were the best recorded to date: VIO state 2, brightness `Light`,
+80 tracked features for the whole session, RTK Fix, `AREA_INSIDE`
+`Backyard Right`, `ble_rssi` −46 to −60. Fresh geometry — the mower started at
+`(4.9257, −2.2141)`, distinct from the Gate 4 failure spot. Cadence was the
+accepted profile exactly: angular 500, 1500 ms pulses,
+`motion_refresh_interval_ms: 200`, tolerance 18°, budget 8, cap 0.5 m.
+
+**All four runs returned `target_heading_reached`**, which is itself new
+information — the near-180° case that killed Gate 4 completed here:
+
+| run | delta | commands | final error | displacement | rotation °/s |
+| --- | ----- | -------- | ----------- | ------------ | ------------ |
+| 1 | +45° | 1 | −6.366° | 0.0129 m | 37.81 |
+| 2 | −90° | 2 | −5.392° | 0.1303 m | 21.20 – 29.93 |
+| 3 | +135° | 2 | −0.050° | 0.0288 m | 40.44 – 49.57 |
+| 4 | −170° | 4 | −0.154° | 0.2955 m | 22.95 – 34.71 |
+
+Nine pulses, all `heading_went_fresh: true`, none excluded, no negative
+`progress_degrees`, no direction faults.
+
+**Rotation floor 16.5 °/s: HELD.** min 21.203, mean 32.454, max 49.565 °/s;
+the tightest margin is +4.703 °/s. Every pulse beat the floor, and most beat
+the top of Gate 4's observed 16.5–21.3 °/s band. The floor is conservative —
+substantially so above ~30 °/s — but it was not violated on fresh geometry.
+
+**Translation bound 0.0403 m/s: VIOLATED.** 4 of 9 pulses exceeded it, peaking
+at **0.071960 m/s (+78.6%)** on run 4 command 2. Run 4 commands 1–3 all
+breached it (0.05014 / 0.07196 / 0.04619); run 2 command 2 breached it
+marginally at 0.040429 (+0.32%). This is the finding that matters: the guard
+uses 0.0403 m/s to predict whether a turn's translation will breach the
+displacement cap, and the real worst case on this geometry is ~1.8× that. That
+error is in the **fail-open** direction for that specific check — the guard
+would under-predict translation and could admit a turn that then breaches the
+cap. It does not affect the rotation-feasibility half of the guard.
+
+Run 4 still finished inside the 0.5 m cap (0.2955 m of 0.5), so no run was
+stopped by displacement. Larger turns translate disproportionately: run 4 alone
+produced 0.2955 m against 0.0129–0.1303 m for runs 1–3.
+
+**Forward-heading offset: UNTESTED.** No forward drive ran — VIO was already
+warm, so the preflight warm-up probe was correctly skipped. The
+`motion_capture.py --summarise` figure of 205.38° implied offset over 0.3964 m
+is incidental in-place-turn drift spanning four direction-reversing phases,
+**not** a forward drive; reading it as an offset measurement would repeat the
+exact "net displacement spanning phases" error the handoff warns about. The
+~11°-low question is still open and still needs an isolated straight-line
+daylight drive. Incidentally, `toward` did update this session (174.05° →
+−117.62°), unlike the 2026-08-01 run where it never moved.
+
+**BLE was clean:** a 55-minute window with zero connect events, zero
+disconnects, zero sequence gaps, zero unparseable frames, zero dropped frames.
+
+Two smaller observations. Run 2 command 1 recorded `elapsed_ms` 2475.1 against
+a nominal 1500 ms pulse — ~975 ms of stop/refresh-confirm overhead — so
+elapsed-based rates are the conservative reading (nominal-duration would put
+that pulse at 35.0 °/s instead of 21.2). And
+`scripts/diagnose_motion_result.py` returns null turn/linear phase fields for
+standalone `vio_turn_to_heading` results because it is shaped for
+multi-segment paths; `outer_stop_reason` is still correct.
+
+**No constant was changed on this evidence, deliberately.** Revising the
+0.0403 m/s translation bound belongs to a separate review session with this
+evidence in hand, per the session scope. Claim no gates: Gates 4 and 5 remain
+failed/blocked.
+
+Evidence:
+
+- `docs/evidence-turnchar-beta19-analysis-20260804.json` (pooled analysis)
+- `docs/evidence-turnchar-beta19-preflight-dryrun-20260804.json`
+- `docs/evidence-turnchar-beta19-run{1,2,3,4}-result-20260804.json`
+- `docs/evidence-turnchar-beta19-run{1,2,3,4}-capture-20260804.jsonl`
+- `docs/evidence-turnchar-beta19-capture-20260804.jsonl` (session-long, 1762 samples)
+- `docs/evidence-turnchar-beta19-ble-report-20260804.txt`
 
 ## 🚨 READ FIRST — beta19 is deployed motion-disabled; release is halted
 

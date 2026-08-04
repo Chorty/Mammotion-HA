@@ -1,0 +1,268 @@
+{
+  "session": "daylight VIO turn characterization on deployed beta19 build 617337d3",
+  "date": "2026-08-04",
+  "branch": "feat/vio-turn-to-heading",
+  "head_commit": "9ef3d103",
+  "host_build": "0.6.4-beta19 (617337d3) - turn-feasibility guard NOT deployed",
+  "entity": "lawn_mower.back_yard_clip_skywalker",
+  "area": "Backyard Right",
+  "cadence": {
+    "angular_speed": 500,
+    "pulse_duration_ms": 1500,
+    "motion_refresh_interval_ms": 200,
+    "heading_tolerance_degrees": 18,
+    "max_commands": 8,
+    "max_displacement_m": 0.5
+  },
+  "conditions": {
+    "brightness_label": "Light",
+    "tracked_features": 80,
+    "vio_state": 2,
+    "rtk": "Fix",
+    "ble_rssi_range": [
+      -60,
+      -46
+    ],
+    "forward_drives_run": 0
+  },
+  "runs": [
+    {
+      "run": 1,
+      "delta_degrees": 45.0,
+      "initial_vision_heading": -84.34271859369233,
+      "target_vision_heading": -39.343,
+      "final_vision_heading": -32.97662778222602,
+      "final_heading_error_degrees": -6.366,
+      "commands_sent": 1,
+      "final_displacement_m": 0.012912009913255463,
+      "stop_reason": "target_heading_reached",
+      "motion_refresh_interval_ms": 200,
+      "rotation_min_deg_per_s": 37.8053,
+      "rotation_max_deg_per_s": 37.8053,
+      "translation_max_m_per_s": 0.009503,
+      "commands": [
+        {
+          "index": 1,
+          "rotation_degrees": 51.366,
+          "progress_degrees": 38.633,
+          "elapsed_ms": 1358.7,
+          "rotation_deg_per_s": 37.8053,
+          "delta_displacement_m": 0.012912,
+          "translation_m_per_s": 0.009503,
+          "heading_went_fresh": true,
+          "refresh_commands_sent": 3,
+          "final_approach_applied": true,
+          "exceeds_translation_cap": false,
+          "below_rotation_floor": false
+        }
+      ]
+    },
+    {
+      "run": 2,
+      "delta_degrees": -90.0,
+      "initial_vision_heading": -32.970212297998046,
+      "target_vision_heading": -122.97,
+      "final_vision_heading": -117.57794000041251,
+      "final_heading_error_degrees": -5.392,
+      "commands_sent": 2,
+      "final_displacement_m": 0.13031937691686574,
+      "stop_reason": "target_heading_reached",
+      "motion_refresh_interval_ms": 200,
+      "rotation_min_deg_per_s": 21.2031,
+      "rotation_max_deg_per_s": 29.9331,
+      "translation_max_m_per_s": 0.040429,
+      "commands": [
+        {
+          "index": 1,
+          "rotation_degrees": -52.48,
+          "progress_degrees": 52.48,
+          "elapsed_ms": 2475.105,
+          "rotation_deg_per_s": 21.2031,
+          "delta_displacement_m": 0.086926,
+          "translation_m_per_s": 0.03512,
+          "heading_went_fresh": true,
+          "refresh_commands_sent": 4,
+          "final_approach_applied": false,
+          "exceeds_translation_cap": false,
+          "below_rotation_floor": false
+        },
+        {
+          "index": 2,
+          "rotation_degrees": -32.128,
+          "progress_degrees": 32.128,
+          "elapsed_ms": 1073.327,
+          "rotation_deg_per_s": 29.9331,
+          "delta_displacement_m": 0.043393,
+          "translation_m_per_s": 0.040429,
+          "heading_went_fresh": true,
+          "refresh_commands_sent": 2,
+          "final_approach_applied": true,
+          "exceeds_translation_cap": true,
+          "below_rotation_floor": false
+        }
+      ]
+    },
+    {
+      "run": 3,
+      "delta_degrees": 135.0,
+      "initial_vision_heading": -117.55811885276258,
+      "target_vision_heading": 17.442,
+      "final_vision_heading": 17.49219218413912,
+      "final_heading_error_degrees": -0.05,
+      "commands_sent": 2,
+      "final_displacement_m": 0.028750652166516035,
+      "stop_reason": "target_heading_reached",
+      "motion_refresh_interval_ms": 200,
+      "rotation_min_deg_per_s": 40.4434,
+      "rotation_max_deg_per_s": 49.5649,
+      "translation_max_m_per_s": 0.014381,
+      "commands": [
+        {
+          "index": 1,
+          "rotation_degrees": 60.684,
+          "progress_degrees": 60.684,
+          "elapsed_ms": 1500.469,
+          "rotation_deg_per_s": 40.4434,
+          "delta_displacement_m": 0.021578,
+          "translation_m_per_s": 0.014381,
+          "heading_went_fresh": true,
+          "refresh_commands_sent": 4,
+          "final_approach_applied": false,
+          "exceeds_translation_cap": false,
+          "below_rotation_floor": false
+        },
+        {
+          "index": 2,
+          "rotation_degrees": 74.366,
+          "progress_degrees": 74.266,
+          "elapsed_ms": 1500.376,
+          "rotation_deg_per_s": 49.5649,
+          "delta_displacement_m": 0.007173,
+          "translation_m_per_s": 0.004781,
+          "heading_went_fresh": true,
+          "refresh_commands_sent": 4,
+          "final_approach_applied": false,
+          "exceeds_translation_cap": false,
+          "below_rotation_floor": false
+        }
+      ]
+    },
+    {
+      "run": 4,
+      "delta_degrees": -170.0,
+      "initial_vision_heading": 17.481833094029643,
+      "target_vision_heading": -152.518,
+      "final_vision_heading": -152.36360045734048,
+      "final_heading_error_degrees": -0.154,
+      "commands_sent": 4,
+      "final_displacement_m": 0.2955293555638759,
+      "stop_reason": "target_heading_reached",
+      "motion_refresh_interval_ms": 200,
+      "rotation_min_deg_per_s": 22.9453,
+      "rotation_max_deg_per_s": 34.7137,
+      "translation_max_m_per_s": 0.071959,
+      "commands": [
+        {
+          "index": 1,
+          "rotation_degrees": -34.432,
+          "progress_degrees": 34.432,
+          "elapsed_ms": 1500.612,
+          "rotation_deg_per_s": 22.9453,
+          "delta_displacement_m": 0.075236,
+          "translation_m_per_s": 0.050137,
+          "heading_went_fresh": true,
+          "refresh_commands_sent": 3,
+          "final_approach_applied": false,
+          "exceeds_translation_cap": true,
+          "below_rotation_floor": false
+        },
+        {
+          "index": 2,
+          "rotation_degrees": -44.858,
+          "progress_degrees": 44.858,
+          "elapsed_ms": 1502.592,
+          "rotation_deg_per_s": 29.8537,
+          "delta_displacement_m": 0.108125,
+          "translation_m_per_s": 0.071959,
+          "heading_went_fresh": true,
+          "refresh_commands_sent": 3,
+          "final_approach_applied": false,
+          "exceeds_translation_cap": true,
+          "below_rotation_floor": false
+        },
+        {
+          "index": 3,
+          "rotation_degrees": -38.465,
+          "progress_degrees": 38.465,
+          "elapsed_ms": 1500.898,
+          "rotation_deg_per_s": 25.628,
+          "delta_displacement_m": 0.069321,
+          "translation_m_per_s": 0.046186,
+          "heading_went_fresh": true,
+          "refresh_commands_sent": 3,
+          "final_approach_applied": false,
+          "exceeds_translation_cap": true,
+          "below_rotation_floor": false
+        },
+        {
+          "index": 4,
+          "rotation_degrees": -52.09,
+          "progress_degrees": 52.09,
+          "elapsed_ms": 1500.561,
+          "rotation_deg_per_s": 34.7137,
+          "delta_displacement_m": 0.042848,
+          "translation_m_per_s": 0.028554,
+          "heading_went_fresh": true,
+          "refresh_commands_sent": 3,
+          "final_approach_applied": false,
+          "exceeds_translation_cap": false,
+          "below_rotation_floor": false
+        }
+      ]
+    }
+  ],
+  "pooled": {
+    "pulses_analyzed": 9,
+    "pulses_excluded_stale": 0,
+    "rotation_deg_per_s": {
+      "min": 21.2031,
+      "mean": 32.4545,
+      "max": 49.5649,
+      "floor": 16.5,
+      "verdict": "HELD",
+      "min_margin": 4.7031
+    },
+    "translation_m_per_s": {
+      "min": 0.004781,
+      "mean": 0.03345,
+      "max": 0.071959,
+      "cap": 0.0403,
+      "verdict": "VIOLATED",
+      "max_margin": 0.031659,
+      "max_exceedance_percent": 78.56,
+      "commands_over_cap": 4
+    }
+  },
+  "forward_heading_offset": {
+    "verdict": "UNTESTED",
+    "configured_degrees": 102.4,
+    "reason": "No forward drive ran: VIO was already warm so the step-4 warm-up probe was correctly skipped. The --summarise implied offset of 205.38 deg over 0.3964 m is incidental in-place-turn drift spanning four direction-reversing phases, not a forward drive, and must not be read as an offset measurement."
+  },
+  "ble": {
+    "window_minutes": 55,
+    "connect_events": 0,
+    "disconnect_events": 0,
+    "sequence_gaps": 0,
+    "unparseable_frames": 0,
+    "dropped_frames": 0
+  },
+  "anomalies": [
+    "run2 command 2 translation 0.040429 m/s marginally exceeds the 0.0403 cap (+0.32%)",
+    "run4 commands 1-3 exceed the translation cap, peaking at 0.071960 m/s (+78.6%)",
+    "run2 command 1 elapsed 2475.1 ms against a nominal 1500 ms pulse (stop/refresh-confirm overhead)",
+    "scripts/diagnose_motion_result.py reports null turn/linear phase fields for standalone vio_turn_to_heading results (shaped for multi-segment paths)"
+  ],
+  "no_negative_progress_pulses": true,
+  "all_runs_stop_reason": "target_heading_reached",
+  "constants_changed": "none - reporting only, per session scope"
+}
