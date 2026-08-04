@@ -264,5 +264,12 @@
   ],
   "no_negative_progress_pulses": true,
   "all_runs_stop_reason": "target_heading_reached",
-  "constants_changed": "none - reporting only, per session scope"
+  "constants_changed": "none during this measurement session, per its scope. The translation bound was revised afterwards -- see superseded_by.",
+  "superseded_by": {
+    "what": "The 0.0403 m/s per-second translation bound recorded here was replaced by _VIO_TURN_CONSERVATIVE_TRANSLATION_M_PER_DEGREE = 0.0026 (estimate = |initial_error| * 0.0026).",
+    "why": "Per-second is the wrong denominator: in-place-turn translation is the arc swept about the rotation centre (r * theta), so it scales with angle, not time. Measured rotation rate varied 16.5-49.6 deg/s. Raising the per-second figure to the observed 0.0720 max would have refused the +135 and -170 deg runs recorded in this very file as SUCCEEDED.",
+    "note": "Every measured value in this file remains correct as recorded and is unchanged. The pooled translation block is expressed against the then-current 0.0403 cap and is a record of that comparison, not a current bound. Per-degree values are NOT in this file; they were derived from the primary run result JSONs.",
+    "commit": "ba0711eb",
+    "rotation_floor": "unchanged at 16.5 deg/s -- pooled true minimum 16.5251 deg/s, set by the Gate 4 retry."
+  }
 }
