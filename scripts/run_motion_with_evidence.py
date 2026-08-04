@@ -28,13 +28,14 @@ def _capture(stop: threading.Event, out: Path, duration: float) -> None:
             try:
                 handle.write(json.dumps(sample(), sort_keys=True) + "\n")
                 handle.flush()
-            except Exception as err:  # evidence must include collection faults
+            except Exception as err:  # noqa: BLE001 - evidence must include collection faults
                 handle.write(json.dumps({"capture_error": repr(err)}) + "\n")
                 handle.flush()
             stop.wait(1)
 
 
 def main() -> int:
+    """Capture telemetry around one reviewed motion service call, durably."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--service", required=True)
     parser.add_argument("--request", type=Path, required=True)
@@ -63,7 +64,7 @@ def main() -> int:
         )
         record = {"request": payload, "result": result}
         code = 0
-    except Exception as err:
+    except Exception as err:  # noqa: BLE001 - the record must retain any fault
         record = {"request": payload, "service_error": repr(err)}
         code = 1
     finally:

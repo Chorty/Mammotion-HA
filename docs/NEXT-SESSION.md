@@ -90,6 +90,43 @@ Evidence:
 - `docs/evidence-gate5-characterization2-post-stop-20260802.jsonl`
 - `docs/evidence-gate5-characterization2-ble-report-20260802.txt`
 
+## Where we stand after the Gate 4 turn-feasibility correction (2026-08-03)
+
+The correction for the failed Gate 4 retry is implemented, test-covered, and
+committed on `feat/vio-turn-to-heading`. It is **not deployed** to the host,
+which still runs the beta19 build `617337d3` without it; nothing physical has
+changed and experimental motion remains off.
+
+What the code now does (see `docs/CODEX-HANDOFF.md` for the full record):
+
+- `_vio_turn_budget_feasibility()` refuses a real VIO turn before its first
+  command when the evidence floor (16.5°/s with refresh; the 8°/command
+  single-shot quantum without) cannot reach tolerance within the budget, or
+  when the refresh-regime translation estimate (0.0403 m/s of pulse) would
+  breach the displacement cap. Stop reason `turn_budget_infeasible`,
+  `commands_sent: 0`.
+- The vector segment surfaces that stop reason directly; the multi-segment
+  executor also geometrically preflights junctions 2..N and refuses a real
+  path with `path_turn_infeasible` before any motion. Dry runs report the same
+  `turn_feasibility` / `junction_turn_feasibility` math without refusing.
+- `scripts/diagnose_motion_result.py` distinguishes
+  `vio_turn_refused_infeasible_preflight` from
+  `vio_turn_budget_exhausted_before_linear_phase` and
+  `linear_budget_exhausted`.
+- Tests: `tests/components/mammotion/test_vio_turn_feasibility.py` (14 cases;
+  the recorded 167.413° case is refused with 7 commands estimated against the
+  budget of 4, and the retained evidence JSON keeps its classification). Full
+  suite 483 passing; profile, schemas, and all four version locations
+  unchanged.
+
+What this does NOT do: it cannot make a near-180° turn succeed — it prevents
+the known-unfinishable dispatch. The next physical step is unchanged and still
+requires fresh daylight operator authorization: a turn characterization on new
+geometry to validate the conservative rate constants and revisit the ~11°-low
+offset question, then a Gate 4 retry (two-leg L path), then Gate 5 from the
+card. Deploying this correction to the host is a separate, explicit step and
+must follow the runbook's two-path card/backend deploy rules.
+
 ## Historical beta16 two-leg failure
 
 The operator used one unchanged beta16 card instance for Preview, Dry-run and

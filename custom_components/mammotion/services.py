@@ -6811,6 +6811,113 @@ def _turn_final_approach_pulse_ms(
     return info
 
 
+#: Conservative per-command turn-progress bounds for the pre-dispatch
+#: feasibility check. Each constant is chosen in the FAIL-CLOSED direction:
+#: rotation is under-estimated (refuses more) and translation is over-estimated
+#: (refuses more). Anchored to retained evidence, not tuning:
+#:
+#: - 16.5 deg/s is the minimum observed rotation rate across the four
+#:   refresh-200 / angular-500 / 1500 ms pulses of the failed Gate 4 retry
+#:   (16.54 / 16.54 / 20.41 / 21.33 deg/s,
+#:   docs/evidence-gate4-beta19-retry-real-result-20260803.json). The
+#:   configured `turn_degrees_per_second` (37) is an optimistic estimate used
+#:   for final-approach shortening and would have judged that 167.4 deg turn
+#:   feasible; the guard must use the floor the hardware actually delivered.
+#: - 8.0 deg/command is the low end of the proven ~8-15 deg single-shot
+#:   rotation quantum (live 2026-07-18); without refresh, rotation is NOT
+#:   proportional to pulse duration, so a per-command quantum replaces the
+#:   rate model.
+#: - 0.0403 m/s is the maximum per-command translation increment from the same
+#:   Gate 4 run (0.0604 m during pulse 4's 1500 ms), expressed as a rate so it
+#:   scales with the configured pulse. It is a refresh-regime figure: applying
+#:   it to single-shot pulses over-refuses (a measured single-shot turn pulse
+#:   translated at ~0.02 m/s, 2026-07-19), so without refresh the translation
+#:   criterion is left to the runtime displacement cap instead of estimated.
+_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND = 16.5
+_VIO_TURN_SINGLE_SHOT_DEGREES_PER_COMMAND = 8.0
+_VIO_TURN_CONSERVATIVE_TRANSLATION_M_PER_SECOND = 0.0403
+
+
+def _vio_turn_budget_feasibility(
+    *,
+    initial_error_degrees: float,
+    heading_tolerance_degrees: float,
+    max_commands: int,
+    pulse_duration_ms: float,
+    motion_refresh_interval_ms: int,
+    max_displacement_m: float,
+) -> dict[str, Any]:
+    """Judge whether a VIO turn can finish inside its configured budget.
+
+    Pure planning math -- no I/O, no coordinator. Gate 4 failed 2026-08-03
+    because a 167.4 deg turn was dispatched against a 4-command budget that the
+    observed rotation rate could never satisfy; the executor burned the budget
+    and 0.185 m of translation before stopping `max_commands_reached`. This
+    helper refuses such a turn BEFORE the first turn command, using
+    evidence-bounded per-command progress instead of the optimistic configured
+    rate. Refusing is the safe direction: the caller dispatches no motion.
+    """
+    pulse_seconds = float(pulse_duration_ms) / 1000
+    per_command_translation: float | None
+    if motion_refresh_interval_ms > 0:
+        per_command_rotation = _VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND * pulse_seconds
+        rotation_bound_source = "conservative_observed_rate_with_refresh"
+        per_command_translation = (
+            _VIO_TURN_CONSERVATIVE_TRANSLATION_M_PER_SECOND * pulse_seconds
+        )
+    else:
+        per_command_rotation = _VIO_TURN_SINGLE_SHOT_DEGREES_PER_COMMAND
+        rotation_bound_source = "single_shot_rotation_quantum_floor"
+        # No trustworthy single-shot translation figure exists; the runtime
+        # displacement cap bounds it during execution instead.
+        per_command_translation = None
+    info: dict[str, Any] = {
+        "feasible": True,
+        "reason": None,
+        "initial_error_degrees": round(abs(initial_error_degrees), 3),
+        "heading_tolerance_degrees": heading_tolerance_degrees,
+        "required_rotation_degrees": round(
+            max(0.0, abs(initial_error_degrees) - heading_tolerance_degrees), 3
+        ),
+        "per_command_rotation_bound_degrees": round(per_command_rotation, 3),
+        "rotation_bound_source": rotation_bound_source,
+        "estimated_commands_needed": 0,
+        "max_commands": max_commands,
+        "per_command_translation_bound_m": (
+            round(per_command_translation, 4)
+            if per_command_translation is not None
+            else None
+        ),
+        "estimated_translation_m": 0.0 if per_command_translation is not None else None,
+        "max_displacement_m": max_displacement_m,
+    }
+    required = info["required_rotation_degrees"]
+    if required <= 0:
+        info["reason"] = "already_within_tolerance"
+        return info
+    if per_command_rotation <= 0 or max_commands < 1:
+        info["feasible"] = False
+        info["reason"] = "turn_budget"
+        return info
+    needed = math.ceil(required / per_command_rotation)
+    info["estimated_commands_needed"] = needed
+    estimated_translation: float | None = None
+    if per_command_translation is not None:
+        estimated_translation = round(needed * per_command_translation, 3)
+        info["estimated_translation_m"] = estimated_translation
+    if needed > max_commands:
+        info["feasible"] = False
+        info["reason"] = "turn_budget"
+    elif estimated_translation is not None and (
+        estimated_translation > max_displacement_m
+    ):
+        info["feasible"] = False
+        info["reason"] = "translation_cap"
+    else:
+        info["reason"] = "within_budget"
+    return info
+
+
 async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
     coordinator: MammotionReportUpdateCoordinator,
     *,
@@ -7004,11 +7111,24 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # translate, and None reads as "not measured" (the 2026-07-19 bug).
         "final_displacement_m": 0.0,
         "turn_degrees_per_second": turn_degrees_per_second,
+        # Populated whenever the initial heading error is known (including
+        # dry-run) so previews expose the same budget math the real path
+        # enforces. None only when there is no heading to judge.
+        "turn_feasibility": None,
         "stop_reason": None,
     }
     if initial_error is not None and abs(initial_error) <= heading_tolerance_degrees:
         result["stop_reason"] = "target_heading_reached"
         return result
+    if initial_error is not None:
+        result["turn_feasibility"] = _vio_turn_budget_feasibility(
+            initial_error_degrees=float(initial_error),
+            heading_tolerance_degrees=heading_tolerance_degrees,
+            max_commands=max_commands,
+            pulse_duration_ms=float(pulse_duration_ms),
+            motion_refresh_interval_ms=motion_refresh_interval_ms,
+            max_displacement_m=max_displacement_m,
+        )
     if dry_run:
         result["stop_reason"] = "dry_run"
         return result
@@ -7017,6 +7137,16 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         return result
     if not _transport_is_ble(coordinator):
         result["stop_reason"] = "ble_not_active_at_fire"
+        return result
+    # Fail-closed budget preflight (Gate 4 retry, 2026-08-03): refuse a turn the
+    # evidence-bounded per-command progress cannot finish within `max_commands`
+    # and the displacement cap, instead of dispatching pulses that provably end
+    # in `max_commands_reached` after real rotation and translation. Zero turn
+    # commands are sent on this path.
+    feasibility = result["turn_feasibility"]
+    if feasibility is not None and not feasibility["feasible"]:
+        result["would_send"] = False
+        result["stop_reason"] = "turn_budget_infeasible"
         return result
 
     consecutive_no_progress = 0
@@ -9889,7 +10019,16 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         return result
 
     if turn_result.get("stop_reason") != "target_heading_reached":
-        result["stop_reason"] = "turn_phase_incomplete"
+        # Keep the pre-dispatch refusal distinguishable from a turn that ran and
+        # fell short: `turn_budget_infeasible` sent zero turn commands, while
+        # `turn_phase_incomplete` covers every mid-turn failure (budget
+        # exhaustion, stale feed, lost transport, ...). Surface the refusal's
+        # budget math on the segment result for offline diagnosis.
+        if turn_result.get("stop_reason") == "turn_budget_infeasible":
+            result["turn_feasibility"] = turn_result.get("turn_feasibility")
+            result["stop_reason"] = "turn_budget_infeasible"
+        else:
+            result["stop_reason"] = "turn_phase_incomplete"
         return result
 
     # A nominally in-place VIO turn can translate materially. Gate 4 on
@@ -10701,6 +10840,50 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
     if blockers and not dry_run:
         result["stop_reason"] = "safety_gates_failed"
         return result
+
+    if turn_mode == "vio":
+        # Zero-motion geometric preflight. The turn a segment must make at each
+        # junction (segments 2..N) is pure path geometry, known before any
+        # command is sent -- only segment 1's turn depends on the unknown
+        # stationary orientation (beta19: no feed reports it) and is judged
+        # post-calibration inside the turn primitive instead. A real run refuses
+        # a path containing a junction the turn budget provably cannot finish
+        # (Gate 4 retry, 2026-08-03); a dry run reports the same math without
+        # refusing, matching the advisory dry-run gate pattern.
+        junction_turn_feasibility: list[dict[str, Any]] = []
+        for junction_index in range(1, total_segments):
+            inbound_heading = _path_heading_degrees(
+                normalized_points[junction_index - 1],
+                normalized_points[junction_index],
+            )
+            outbound_heading = _path_heading_degrees(
+                normalized_points[junction_index],
+                normalized_points[junction_index + 1],
+            )
+            junction_turn_degrees = _heading_error_degrees(
+                inbound_heading, outbound_heading
+            )
+            junction_turn_feasibility.append(
+                {
+                    "segment_index": junction_index + 1,
+                    "turn_degrees": round(junction_turn_degrees, 3),
+                    "feasibility": _vio_turn_budget_feasibility(
+                        initial_error_degrees=junction_turn_degrees,
+                        heading_tolerance_degrees=heading_tolerance_degrees,
+                        max_commands=vio_turn_max_commands,
+                        pulse_duration_ms=float(turn_pulse_duration_ms),
+                        motion_refresh_interval_ms=motion_refresh_interval_ms,
+                        max_displacement_m=max_turn_translation_distance,
+                    ),
+                }
+            )
+        result["junction_turn_feasibility"] = junction_turn_feasibility
+        if not dry_run and any(
+            not junction["feasibility"]["feasible"]
+            for junction in junction_turn_feasibility
+        ):
+            result["stop_reason"] = "path_turn_infeasible"
+            return result
 
     carried_vio_offset = vio_heading_offset_degrees
     for segment_offset in range(total_segments):

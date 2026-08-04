@@ -232,6 +232,27 @@ offline analysis in `docs/evidence-gate4-beta19-retry-diagnosis-20260803.json`.
 Do not retry or expand the turn budget without the implementation and daylight
 re-characterization required by `docs/CLAUDE-FINAL-IMPLEMENTATION-PROMPT.md`.
 
+### Turn-feasibility guard implemented on-branch — 2026-08-03, NOT deployed
+
+The correction demanded by the Gate 4 retry is committed to
+`feat/vio-turn-to-heading` and verified locally only; the host still runs the
+`617337d3` beta19 build without it. A real VIO turn is now refused **before
+its first command** (`turn_budget_infeasible`, `commands_sent: 0`) when the
+evidence-bounded per-command progress (16.5°/s × pulse with refresh; the
+8°/command single-shot quantum without) cannot reach tolerance within
+`vio_turn_max_commands`, or when the refresh-regime translation estimate
+(0.0403 m/s of pulse) would breach the displacement cap. The multi-segment
+executor additionally refuses a real path whose fixed junction geometry is
+infeasible (`path_turn_infeasible`) before any motion; dry runs report the
+same math without refusing. `scripts/diagnose_motion_result.py` reports the
+refusal as `vio_turn_refused_infeasible_preflight`. Tests:
+`tests/components/mammotion/test_vio_turn_feasibility.py`; the full suite is
+483 passing. The accepted profile, service schemas, and all four version
+locations are unchanged, so this section adds **no new deploy step yet**:
+shipping the guard requires a normal version-bumped deploy (both card paths +
+backend + Lovelace key) after a daylight turn characterization validates the
+constants, and any deployed build must re-run affected gates from scratch.
+
 ## Breaking enum migrations already applied
 
 The host now reports lowercase states such as `mode_working`, `man`, `english`,

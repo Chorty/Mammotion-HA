@@ -125,6 +125,37 @@ offline analyzer is `scripts/diagnose_motion_result.py`; the durable evidence
 runner is `scripts/run_motion_with_evidence.py`. Do not retry a path or change
 the profile before a separately authorized daylight turn characterization.
 
+**The turn-planning correction is implemented and locally verified
+(2026-08-03, committed on-branch, NOT deployed).** The recorded failure was a
+feasibility failure: the 167.413° post-calibration error could never reach the
+18° tolerance in four commands at the observed 16.5–21.3°/s rotation rate, yet
+the executor dispatched the turn anyway. `_vio_turn_budget_feasibility()` in
+`custom_components/mammotion/services.py` now judges every real VIO turn
+before its first command, using evidence-anchored conservative bounds:
+16.5°/s (the minimum observed Gate 4 rate) times the configured pulse length
+when `motion_refresh_interval_ms > 0`, the proven 8°/command single-shot
+quantum floor at refresh 0, and — refresh regime only — a 0.0403 m/s worst-case
+translation rate checked against the displacement cap. An infeasible turn is
+refused fail-closed with stop reason `turn_budget_infeasible` and
+`commands_sent: 0`; the vector segment executor surfaces that reason directly
+(instead of collapsing it into `turn_phase_incomplete`), and the multi-segment
+executor geometrically preflights junctions 2..N and refuses a real path with
+`path_turn_infeasible` before any motion. Dry runs report the identical math
+(`turn_feasibility`, `junction_turn_feasibility`) without refusing.
+`scripts/diagnose_motion_result.py` classifies the refusal as
+`vio_turn_refused_infeasible_preflight`, distinct from
+`vio_turn_budget_exhausted_before_linear_phase` (which still classifies the
+retained evidence) and `linear_budget_exhausted`. Replayed against the
+recorded case, the guard refuses before dispatch with an estimate of 7
+commands needed against the budget of 4. Tests:
+`tests/components/mammotion/test_vio_turn_feasibility.py` (14 cases, including
+the retained evidence JSON). No service schema, profile value,
+`LUBA_ACCEPTANCE_PROFILE`, or version location changed. The guard prevents the
+known-unfinishable dispatch but does NOT make the turn succeed: Gates 4 and 5
+remain failed/blocked, and the conservative rate constants plus the ~11°-low
+offset question still require a separately authorized daylight turn
+characterization on fresh geometry before any retry.
+
 ## The open measurement to fold into that run
 
 `calibrated_forward_heading_offset_degrees: 102.4` looks **~11° low**. Three
@@ -182,7 +213,7 @@ cached and stayed bit-identical across 374 samples.
 ## Validation matrix (run all after any change)
 
 ```sh
-.venv/bin/python -m pytest --cov=custom_components.mammotion --cov-report=term-missing tests  # 469 pass
+.venv/bin/python -m pytest --cov=custom_components.mammotion --cov-report=term-missing tests  # 483 pass
 .venv/bin/python -m ruff check custom_components tests
 .venv/bin/python -m ruff format --check custom_components tests
 .venv/bin/python -m mypy --follow-imports=skip custom_components/mammotion

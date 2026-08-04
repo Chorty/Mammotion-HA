@@ -20,6 +20,7 @@ def _round(value: Any, digits: int = 3) -> float | None:
 
 
 def diagnose(document: dict[str, Any]) -> dict[str, Any]:
+    """Classify a saved guarded-motion result by which phase actually failed."""
     result = document.get("result", document)
     segments = result.get("segments") or []
     failed_index = result.get("failed_segment_index")
@@ -37,7 +38,19 @@ def diagnose(document: dict[str, Any]) -> dict[str, Any]:
     linear_stop = linear.get("stop_reason")
     linear_count = segment.get("linear_commands_sent", 0)
     turn_count = segment.get("turn_commands_sent", 0)
-    if turn_stop == "max_commands_reached" and not linear_count:
+    if (
+        turn_stop == "turn_budget_infeasible"
+        or segment.get("stop_reason") == "turn_budget_infeasible"
+        or result.get("stop_reason") == "path_turn_infeasible"
+    ):
+        classification = "vio_turn_refused_infeasible_preflight"
+        conclusion = (
+            "The feasibility preflight refused the turn before any turn command "
+            "was dispatched: the configured turn budget provably cannot reach the "
+            "target heading tolerance under the evidence-bounded per-command "
+            "progress. Zero turn commands ran and no turn translation occurred."
+        )
+    elif turn_stop == "max_commands_reached" and not linear_count:
         classification = "vio_turn_budget_exhausted_before_linear_phase"
         conclusion = (
             "The VIO turn phase exhausted its command budget before the target "
@@ -57,9 +70,12 @@ def diagnose(document: dict[str, Any]) -> dict[str, Any]:
         "segment_stop_reason": segment.get("stop_reason"),
         "classification": classification,
         "conclusion": conclusion,
+        "junction_turn_feasibility": result.get("junction_turn_feasibility"),
         "turn": {
             "stop_reason": turn_stop,
             "commands_sent": turn_count,
+            "turn_feasibility": turn.get("turn_feasibility")
+            or segment.get("turn_feasibility"),
             "final_heading_error_degrees": _round(turn.get("final_heading_error_degrees")),
             "translation_m": _round(turn.get("final_displacement_m")),
             "target_vision_heading": _round(vio.get("target_vision_heading")),
@@ -78,6 +94,7 @@ def diagnose(document: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> int:
+    """Read a result JSON, print its diagnosis, and optionally save it."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("result", type=Path)
     parser.add_argument("--out", type=Path)
