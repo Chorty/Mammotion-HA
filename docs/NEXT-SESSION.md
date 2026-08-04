@@ -127,6 +127,25 @@ offset question, then a Gate 4 retry (two-leg L path), then Gate 5 from the
 card. Deploying this correction to the host is a separate, explicit step and
 must follow the runbook's two-path card/backend deploy rules.
 
+**Sequencing — the characterization does NOT wait for a deploy.** It is a
+measurement of the mower, not a test of the guard, and it runs against the
+`vio_turn_to_heading` service the host already has in beta19 (refresh support
+included), driven by `scripts/run_motion_with_evidence.py` +
+`scripts/motion_capture.py`. Measure per-command rotation and translation at
+the accepted cadence (refresh 200, angular 500, 1500 ms pulses) across several
+target angles on new geometry. The guard itself is already validated offline
+by the test suite; what only hardware can confirm is whether the 16.5°/s and
+0.0403 m/s floors generalize beyond the single Gate 4 run. Order of
+operations: (1) characterize on the deployed beta19 backend under fresh
+operator authorization; (2) confirm or locally revise the constants from that
+evidence; (3) deploy the guard build as a version-bumped candidate per the
+runbook; (4) Gate 4 retry on the deployed guard build; (5) Gate 5 from the
+card. Note a large-angle characterization stays runnable either way: the
+current host build has no guard (bounded by the existing budget/displacement
+caps), and the standalone service's default 8-command budget judges up to
+180° feasible even with the guard — only the 4-command segment profile
+refuses near-180°.
+
 ## Historical beta16 two-leg failure
 
 The operator used one unchanged beta16 card instance for Preview, Dry-run and
