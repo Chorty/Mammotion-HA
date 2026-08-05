@@ -4,6 +4,85 @@ Updated 2026-08-04 after the daylight VIO turn characterization. This is the cur
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
+## 🚨🚨 ROOT CAUSE FOUND, 2026-08-04 21:07 EDT — `toward` is a COMPASS bearing and the legacy path treats it as a MATH angle
+
+Found by **read-only observation of an operator-initiated night mow**. No
+commands were sent; experimental motion stayed off (the gate correctly reported
+`blade_reported_on` + `active_mowing_detected`). Evidence:
+`docs/evidence-darkmow-observation-20260804.jsonl`.
+
+**The relationship is a mirror, not an offset.** Over 65 moving samples with a
+fresh `toward`, spanning travel bearings 85.9–354.8°:
+
+| candidate | circular mean | circular **sd** |
+| --------- | ------------- | --------------- |
+| `bearing − toward` (**the formula in use**) | 88.14° | **15.45°** |
+| `bearing + toward` | 90.13° | **1.93°** |
+
+So `map_bearing = 90.13° − toward`. Split by heading band the invariant holds:
+bearings 0–120° give 89.15° (n=24), bearings 240–360° give 90.62° (n=41) — a
+1.47° difference, inside noise, across ~270° of heading.
+
+That ≈90° is the signature of the standard conversion between a **math angle**
+(`atan2(dy,dx)`, CCW from +x) and a **compass bearing** (CW from north).
+`toward` is a compass bearing. It is the same counter-clockwise convention this
+project already fixed once in `orientation` (beta18:
+`direction = (-orientation) % 360`); it was never applied to `toward`.
+
+**The bug** is at `services.py:2932-2935`:
+
+```python
+reported_heading  = float(current_heading)                    # toward (compass)
+corrected_heading = (reported_heading + heading_offset_degrees) % 360   # toward + 102.4
+target_heading    = _path_heading_degrees(current, target)     # atan2 (math angle)
+heading_error     = _heading_error_degrees(corrected_heading, target_heading)
+```
+
+An additive constant can only equal a mirror at **one** heading. `toward + 102.4`
+equals `90.13 − toward` only at `toward ≈ −6.14°`; elsewhere the aim error is
+`2 × (toward + 6.14)` — it **doubles** with heading deviation.
+
+**Independent confirmation by retrodiction.** Using only tonight's mow-derived
+constant, the model predicts the three 2026-08-01/02 night runs recorded days
+earlier:
+
+| run | recorded bearing | model bearing | error |
+| --- | ---------------- | ------------- | ----- |
+| pulse 1 | 281.20° | 280.35° | −0.86° |
+| pulse 2 | 281.88° | 281.54° | −0.34° |
+| Nudge | 282.92° | 282.75° | −0.17° |
+
+It also reproduces their "implied offsets" (110.57 / 112.95 / 115.37 vs recorded
+111.43 / 113.29 / 115.54) **including the upward trend**, because
+`implied = 90.13 − 2 × toward` is heading-dependent by construction.
+
+**What this overturns.** The earlier entry below closing the ~11° question as
+"unsupported / unmeasurable" is itself now wrong on the key point. `toward` is
+*not* broken and the night numbers were *not* garbage — they were accurate
+measurements of a quantity that is heading-dependent because the formula is
+mis-specified. What *is* confirmed is that no single constant can ever be right.
+
+**Scope.** This affects the **legacy / course-over-ground path** (Nudge,
+`toward`-based aiming) and explains the night Nudge's 0.312 m mostly-cross-track
+miss. The **VIO path is unaffected** — it derives its own per-session offset from
+a calibration drive, which is consistent with the separate finding that 102.4 is
+inert under `turn_mode: "vio"`. Tonight's Gate 4 cross-track error is therefore a
+**different** problem and is not explained by this.
+
+**Also fixed by implication:** `scripts/motion_capture.py --summarise` computes
+`implied = (bearing − toward) % 360` against `CONFIGURED_OFFSET = 102.4`. That is
+the wrong formula, so every "implied offset" it has ever printed is unreliable —
+including tonight's 205.38°. It should report `bearing + toward` (expected ≈90°).
+
+**Nothing was changed.** No constant, no code, no deploy. Fixing the legacy
+heading conversion is a motion-path change that needs its own review and
+daylight validation.
+
+**Bonus confirmation, using the capture fields added an hour earlier:** VIO in
+full darkness reports honestly — `visual_positioning_status: signal_none`,
+tracked 0, detected 0, `brightness: dark`. **No dusk latch** in this sample, so
+the latch is not simply "what VIO does at night".
+
 ## 🚨 Gate 4 attempt on beta20, 2026-08-04 20:40 EDT — FAILED, but the failure moved to cross-track aim
 
 **Gate 4 did not pass.** It also did not fail the way it failed on 2026-08-03.
