@@ -4,6 +4,73 @@ Updated 2026-08-04 after the daylight VIO turn characterization. This is the cur
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
+## Offset re-derivation, 2026-08-04 evening — the ~11° hypothesis rests on a broken measurement
+
+Three supervised ~0.45 m drives at three headings on the deployed beta19 build,
+in the last of the daylight. No deploy, no constant change, no gate claimed.
+Fresh operator `go` per drive, armed immediately before and disarmed
+immediately after each, ending verified stationary at `(4.7028, −2.6513)` with
+blades off and no session.
+
+**`vio_motion_probe` is the wrong vehicle and was rejected before use.** It
+sends `send_movement` once and then loops on `asyncio.sleep()` with no
+`motion_refresh_interval_ms` parameter at all
+(`services.py` `_vio_motion_probe`), so the h-watchdog caps it near 0.10 m —
+under `motion_capture.py`'s `MIN_TRAVEL_FOR_BEARING = 0.20`. It cannot produce
+a valid travel bearing. Only five services expose refresh; for a straight drive
+the usable one is `raw_pymammotion_execute_vector_segment`, whose turn phase
+also solves the circularity of needing the offset in order to aim.
+
+**The vision↔map offset is measured and heading-invariant:**
+
+| drive | travel bearing | vision heading | offset | run stop |
+| ----- | -------------- | -------------- | ------ | -------- |
+| 1 | 208.186° | −153.072° | **+1.258°** | `target_reached` |
+| 2 | 289.306° | −72.736° | **+2.042°** | `max_linear_commands_reached` |
+| 3 | 175.320° | +176.289° | **−0.969°** | `turn_phase_incomplete` |
+
+Mean **+0.777°**, spread **3.012°** across travel bearings spanning 175–289°.
+It is essentially zero and does not vary with heading. The executor re-derives
+it per run anyway (`offset_source: calibration_drive`).
+
+**The 102.4° question is UNMEASURABLE on this hardware — and this is not a
+lighting problem.** `toward` was **frozen across every forward leg**: drive 1
+held `162.7649` across a 0.5351 m leg, drive 2 held `−85.9472` across a
+0.6558 m leg. It updates during *turns*, then freezes during forward travel.
+Since `motion_capture.py --summarise` computes
+`implied = (bearing − toward_first) % 360`, a stale `toward` makes that
+"bearing minus an arbitrary constant", not a measurement. **The
+111.43 / 113.29 / 115.54 night values were computed exactly that way**, which
+also explains why they "trended upward run to run". The ~11°-low claim has no
+measurement behind it and should not be acted on.
+
+**Structural finding: `calibrated_forward_heading_offset_degrees` is not used
+for turn targeting in `turn_mode: "vio"`.** `provided_offset_degrees` reads the
+separate `vio_heading_offset_degrees` parameter (`services.py:9533`, emitted at
+`:9803`); passing 102.4 left it `null` with `offset_source: calibration_drive`.
+Gate 4 ran `turn_mode: "vio"`, so **102.4 was inert there and cannot explain its
+4.70 cm cross-track miss.**
+
+Measurement chain validated: capture-derived travel bearing agreed with the
+executor's computed bearing to **0.14°** (drive 1) and **0.01°** (drive 2).
+
+**Anomaly — drive 3 ended `stop_failed_aborting`.** Both the refresh and the
+stop failed with `RuntimeError: BLE link is not ready for motion:
+command_queue_backlogged`. The executor refused to continue rather than run
+without a guaranteed stop — working as designed. `final_displacement_m` is
+`0.0` and no linear phase ran. Note the durable record **under-reports** the
+motion: `after_vision_heading` is `null` because the poll failed, but the
+capture shows VIO `176.289° → 149.571°`, ~27° of real rotation before the
+h-watchdog cut the motors. The BLE link report over the same 45-minute window
+is completely clean (zero connects, disconnects, gaps, malformed or dropped
+frames), so `command_queue_backlogged` is a queue-state condition, not a link
+fault.
+
+Evidence: `docs/evidence-offset-beta19-analysis-20260804.json`,
+`docs/evidence-offset-beta19-drive{1,2,3}-{result,capture}-20260804.*`,
+`docs/evidence-offset-beta19-capture-20260804.jsonl`,
+`docs/evidence-offset-beta19-ble-report-20260804.txt`.
+
 ## Daylight turn characterization, 2026-08-04 — rotation floor holds, translation bound does NOT
 
 Four supervised in-place VIO turns ran on the deployed beta19 build `617337d3`

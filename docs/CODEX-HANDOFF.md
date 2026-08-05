@@ -201,6 +201,25 @@ refresh-0 branch is unchanged. Diagnostic fields
 `translation_bound_source`; no schema, profile, or version location changed.
 Tests 14 → 20.
 
+**The offset re-derivation ran on 2026-08-04 evening and CLOSES the ~11°
+question as unsupported.** Three ~0.45 m drives at three headings on beta19.
+The vision↔map offset — the one `turn_mode: "vio"` actually uses — measured
++1.258 / +2.042 / −0.969° across travel bearings spanning 175–289°: mean
++0.777°, spread 3.012°, heading-invariant, and re-derived per run by the
+executor anyway. The 102.4° figure is a **different quantity** (`toward`-based)
+and is **unmeasurable on this hardware**: `toward` stayed frozen across every
+forward leg (0.5351 m and 0.6558 m). `--summarise` computes
+`(bearing − toward_first)`, so with `toward` stale it reports bearing minus an
+arbitrary constant — which is how 111.43 / 113.29 / 115.54 arose and why they
+drifted upward. Do not act on the ~11°-low claim. Separately,
+`calibrated_forward_heading_offset_degrees` is **not used for turn targeting**
+in VIO mode (`provided_offset_degrees` reads `vio_heading_offset_degrees`,
+`services.py:9533`), so 102.4 was inert during Gate 4 and cannot explain its
+4.70 cm cross-track miss. One anomaly: drive 3 aborted `stop_failed_aborting`
+on `command_queue_backlogged` (safe, by design) while the BLE link report was
+clean — a queue-state condition, not a link fault. Evidence:
+`docs/evidence-offset-beta19-*20260804*`.
+
 ## The open measurement to fold into that run
 
 `calibrated_forward_heading_offset_degrees: 102.4` looks **~11° low**. Three

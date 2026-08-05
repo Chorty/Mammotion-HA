@@ -1,0 +1,8 @@
+==================================================================
+window: 45 min
+connect events: 0   disconnect events: 0   paired sessions: 0
+
+link quality over the same window:
+  sequence gaps (packet loss) : 0  (0.0/min)
+  unparseable LubaMsg frames  : 0
+  dropped malformed frames    : 0

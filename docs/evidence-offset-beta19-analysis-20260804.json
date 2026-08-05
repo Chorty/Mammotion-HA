@@ -1,0 +1,94 @@
+{
+  "session": "daylight forward-heading offset re-derivation on deployed beta19 build 617337d3",
+  "date": "2026-08-04",
+  "branch": "feat/vio-turn-to-heading",
+  "host_build": "0.6.4-beta19 (617337d3); turn-feasibility guard NOT deployed",
+  "method": "Three isolated raw_pymammotion_execute_vector_segment drives (~0.45 m legs) at three headings. vio_motion_probe was REJECTED as the vehicle: it sends send_movement once and sleeps, with no motion_refresh_interval_ms, so the h-watchdog caps it near 0.10 m -- under motion_capture.py MIN_TRAVEL_FOR_BEARING = 0.20.",
+  "runs": [
+    {
+      "drive": 1,
+      "run_stop_reason": "target_reached",
+      "calibration_travel_bearing_degrees": 208.186,
+      "calibration_vision_heading_degrees": -153.0718694678563,
+      "vision_to_map_offset_degrees": 1.2581,
+      "calibration_distance_m": 0.11856,
+      "vio_feed": {
+        "live": true,
+        "tracked_features": 80,
+        "brightness_raw": 1,
+        "brightness_label": "Light"
+      },
+      "linear_leg": {
+        "travel_bearing_degrees": 286.79141883194154,
+        "distance_m": 0.5358470304107319,
+        "toward_during_leg": "FROZEN",
+        "toward_value": 162.7649
+      }
+    },
+    {
+      "drive": 2,
+      "run_stop_reason": "max_linear_commands_reached",
+      "calibration_travel_bearing_degrees": 289.306,
+      "calibration_vision_heading_degrees": -72.73611743268052,
+      "vision_to_map_offset_degrees": 2.0424,
+      "calibration_distance_m": 0.08318,
+      "vio_feed": {
+        "live": true,
+        "tracked_features": 80,
+        "brightness_raw": 1,
+        "brightness_label": "Light"
+      },
+      "linear_leg": {
+        "travel_bearing_degrees": 175.95595314783782,
+        "distance_m": 0.6579381809866334,
+        "toward_during_leg": "FROZEN",
+        "toward_value": -85.9472
+      }
+    },
+    {
+      "drive": 3,
+      "run_stop_reason": "turn_phase_incomplete",
+      "calibration_travel_bearing_degrees": 175.32,
+      "calibration_vision_heading_degrees": 176.2893880490941,
+      "vision_to_map_offset_degrees": -0.9691,
+      "calibration_distance_m": 0.0907,
+      "vio_feed": {
+        "live": true,
+        "tracked_features": 80,
+        "brightness_raw": 1,
+        "brightness_label": "Light"
+      },
+      "linear_leg": null
+    }
+  ],
+  "vision_to_map_offset": {
+    "verdict": "MEASURED and heading-invariant",
+    "min": -0.9691,
+    "mean": 0.7771,
+    "max": 2.0424,
+    "spread_degrees": 3.0115,
+    "travel_bearings_spanned": [
+      175.32,
+      289.306
+    ],
+    "note": "This is the offset turn_mode=vio actually uses, and the executor re-derives it per run from its own calibration drive (offset_source: calibration_drive)."
+  },
+  "toward_based_offset_102_4": {
+    "verdict": "UNMEASURABLE ON THIS HARDWARE -- not a lighting problem",
+    "evidence": "toward was FROZEN across every forward leg: drive1 held 162.7649 across a 0.5351 m leg, drive2 held -85.9472 across a 0.6558 m leg. toward updates during TURNS and then freezes during forward travel.",
+    "implication": "motion_capture.py --summarise computes implied = (bearing - toward_first) % 360. With toward stale, that is bearing minus an arbitrary constant, not a measurement. The 111.43/113.29/115.54 night values were computed this way and cannot support the ~11-degree-low claim."
+  },
+  "structural_finding": {
+    "claim": "calibrated_forward_heading_offset_degrees (102.4) is NOT used for turn targeting in turn_mode=vio.",
+    "evidence": "provided_offset_degrees reads the separate vio_heading_offset_degrees parameter (services.py:9533/9803); passing 102.4 left it null and offset_source was calibration_drive.",
+    "consequence": "Gate 4 ran turn_mode=vio, so 102.4 was inert there and cannot explain its 4.70 cm cross-track miss."
+  },
+  "measurement_chain_validation": "Capture-derived travel bearing vs executor-computed bearing agreed to 0.14 deg (drive1) and 0.01 deg (drive2).",
+  "anomalies": [
+    "drive3 turn ended stop_failed_aborting: RuntimeError BLE link is not ready for motion: command_queue_backlogged, on both the refresh and the stop. Safe abort by design; final_displacement_m 0.0; no linear phase ran.",
+    "drive3 durable record under-reports rotation: after_vision_heading is null because the poll failed, but the capture shows VIO 176.289 -> 149.571 (~27 deg) before the h-watchdog stopped the motors.",
+    "drive2 ended max_linear_commands_reached; drive3 ended turn_phase_incomplete. Neither affects the calibration offsets, which are taken before those phases."
+  ],
+  "teardown": "experimental motion off, no session, blades zero, mower stationary at (4.7028, -2.6513), collectors stopped.",
+  "constants_changed": "none - measurement only"
+}
