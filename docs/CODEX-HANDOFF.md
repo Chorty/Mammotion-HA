@@ -233,6 +233,32 @@ the schema's 0.5 m default — is the binding limit on the constant. Experimenta
 motion is off, no session, no motion ran, **no gate is claimed**. Sequencing
 step 3 is complete; the next step is the Gate 4 retry in daylight.
 
+**Gate 4 was attempted on beta20 (2026-08-04 20:40 EDT) and FAILED — but the
+failure moved.** Both turn phases passed in 2 commands each with final errors
+**3.808°** and **3.000°**, every pulse `heading_went_fresh: true`; segment 1
+returned `target_reached`; the −90° junction turn the guard preflighted as
+feasible executed cleanly. The 2026-08-03 turn-budget failure mode is gone.
+Segment 2 stopped `max_linear_commands_reached`, landing **0.11660 m** from
+waypoint 2 against a 0.08 m tolerance. The miss is **cross-track, not
+along-track**: final `x = 5.1011` vs target `5.1006` (0.5 mm), with the entire
+error in `y`. Travel bearing was **+5.09°** off expected in segment 1 and
+**+14.29°** in segment 2, i.e. an ~11° vision→map discrepancy at execution time
+despite calibration drives measuring that offset at ≈0° the same evening.
+⚠️ **Confounded by falling light** — `tracked_features` decayed 71 → 58 (min 30)
+and the aim error grew as features fell, so twilight VIO degradation is at
+least as plausible as a systematic error. **Change no constant on this
+evidence**; repeat in real daylight with features holding ~80 first. Gate 4
+must not reuse a prior confirmation. Evidence:
+`docs/evidence-gate4-beta20-*20260804*`.
+
+**VIO liveness is now a cheap pre-session test.** A suspected dusk-latch at
+20:33 (stationary `light`/80, 20 min past sunset) was **disproved** by one
+bounded 25° turn: `heading_went_fresh: true`, 29.04 °/s, features 78 before and
+after. Use a `vio_turn_to_heading` with `max_commands: 2`,
+`max_displacement_m: 0.3` rather than trusting the stationary brightness field.
+Features dip transiently during rotation (80 → 44 → recovered) from motion
+blur; that is normal.
+
 ## The open measurement to fold into that run
 
 `calibrated_forward_heading_offset_degrees: 102.4` looks **~11° low**. Three

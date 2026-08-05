@@ -4,6 +4,71 @@ Updated 2026-08-04 after the daylight VIO turn characterization. This is the cur
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
+## 🚨 Gate 4 attempt on beta20, 2026-08-04 20:40 EDT — FAILED, but the failure moved to cross-track aim
+
+**Gate 4 did not pass.** It also did not fail the way it failed on 2026-08-03.
+Run in fading twilight under explicit operator authorization after a VIO
+liveness check passed; experimental motion was disarmed immediately after and
+the mower is stationary at `(5.1011, −2.1034)`.
+
+**The turn-budget failure mode is gone.** Both turn phases passed, in 2 commands
+each, with every pulse `heading_went_fresh: true`:
+
+| segment | turn cmds | turn final error | linear moved | outcome |
+| ------- | --------- | ---------------- | ------------ | ------- |
+| 1 | 2 | **3.808°** | 0.4483 m | `target_reached` |
+| 2 (junction) | 2 | **3.000°** | 0.4463 m | `max_linear_commands_reached` |
+
+Segment 1 fully reached its waypoint. The −90° junction turn — the geometry the
+deployed guard preflighted as feasible (3 commands vs 4, 0.234 m vs the 0.25 m
+cap) — executed in 2 commands. Compare 2026-08-03, where four turn commands
+left 34.795° of error and no linear command ever ran.
+
+**The new blocker is cross-track aim, and along-track is essentially perfect.**
+Segment 2 landed 0.11660 m from waypoint 2 against a 0.08 m tolerance. The miss
+is almost entirely perpendicular: final `x = 5.1011` against a target of
+`5.1006` — **0.5 mm along-track** — with the whole error in `y`.
+
+| segment | travel bearing | expected | aim error | cross-track |
+| ------- | -------------- | -------- | --------- | ----------- |
+| 1 | 74.594° | 69.501° | **+5.09°** | 0.0398 m |
+| 2 | 354.871° | 340.584° | **+14.29°** | 0.1101 m |
+
+Note the turn ended 3.0° from its **vision** target while travel was 14.29° off
+in the **map** frame — an ~11° vision→map discrepancy at execution time, even
+though the calibration drives measured that offset at ≈0° earlier the same
+evening.
+
+**⚠️ This run is confounded by falling light and must not be over-read.**
+`tracked_features` decayed 71 → 58 across the run with a minimum of 30, and read
+43 stationary afterwards. The aim error **grew as features fell** (+5.09° in
+segment 1, +14.29° in segment 2), so degrading VIO heading quality is at least
+as plausible an explanation as a systematic calibration error. **Do not change
+any constant on this evidence.** The aim-error finding needs a repeat in real
+daylight with features holding ~80 before it can be called a defect rather than
+a twilight artifact. This is precisely the risk the daylight rule exists to
+avoid, and it was accepted knowingly.
+
+Gate 4 must not reuse a prior confirmation, so the retry needs fresh daylight
+operator authorization and fresh geometry. Gate 5 remains blocked.
+
+Evidence: `docs/evidence-gate4-beta20-{dry,real}-{request,result}-20260804.json`,
+`docs/evidence-gate4-beta20-real-capture-20260804.jsonl`,
+`docs/evidence-vio-liveness-beta20-{result,capture}-20260804.*`.
+
+## VIO liveness is now a cheap pre-session test (2026-08-04)
+
+A dusk-latch was suspected at 20:33 EDT — `brightness: light`,
+`tracked_features: 80` while stationary, 20 minutes past sunset. **That
+suspicion was wrong**, and one bounded 25° turn settled it in seconds:
+`heading_went_fresh: true`, 19.627° measured over 675.9 ms = **29.04 °/s**,
+inside the 21.2–49.6 °/s daylight band, with features holding 78 before and
+after. Use this instead of trusting the stationary brightness field: a single
+`vio_turn_to_heading` with `max_commands: 2` and `max_displacement_m: 0.3`.
+
+Also observed: `tracked_features` dips transiently during rotation (80 → 44 →
+recovered within 2 s) from motion blur. That is normal, not a fault.
+
 ## Offset re-derivation, 2026-08-04 evening — the ~11° hypothesis rests on a broken measurement
 
 Three supervised ~0.45 m drives at three headings on the deployed beta19 build,
