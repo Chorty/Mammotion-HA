@@ -50,7 +50,11 @@ SENSORS = (
     "camera_brightness",
     "ble_rssi",
 )
-CONFIGURED_OFFSET = 102.4
+#: `toward` is a compass bearing and the travel bearing computed here is a math
+#: angle, so a correct reading satisfies `bearing + toward == 90`. This replaces
+#: the former additive `CONFIGURED_OFFSET = 102.4`, which compared the two
+#: conventions directly and could therefore only ever be right at one heading.
+COMPASS_MIRROR_DEGREES = 90.0
 # Below this, a travel bearing is dominated by RTK noise rather than motion.
 MIN_TRAVEL_FOR_BEARING = 0.20
 
@@ -142,8 +146,79 @@ def capture(seconds: float, out: pathlib.Path, interval: float) -> int:
     return 0
 
 
+def _signed_delta(value: float, reference: float) -> float:
+    """Return the wrap-aware signed difference between two angles, in (-180, 180]."""
+    return (value - reference + 180) % 360 - 180
+
+
+#: A per-step displacement below this is dominated by position noise rather than
+#: motion, so its bearing is meaningless. Larger than the whole-run threshold
+#: because a single step has far less baseline to average the noise out.
+MIN_STEP_FOR_BEARING = 0.25
+
+
+def _report_compass_mirror(moving: list[dict]) -> None:
+    """Check `bearing + toward == 90` PER STEP, not across the whole capture.
+
+    `toward` is a COMPASS bearing (clockwise from north) while the bearing from
+    ``atan2(dy, dx)`` is a MATH angle (counter-clockwise from +x), so a correct
+    reading satisfies ``bearing + toward == 90``. The former code compared them
+    with a subtraction against a 102.4 "configured offset"; since
+    ``bearing - toward == 90 - 2*toward``, no constant could ever fit and the
+    value appeared to drift with heading.
+
+    This is deliberately per-step. A first-vs-last comparison across a capture
+    spanning several legs measures a net vector that is not a travel direction at
+    all -- on the 2026-08-04 night mow that produced a 101 deg "deviation" from a
+    dataset whose per-step quadrant means were 88.43 / 90.88 / 89.71 / 90.36.
+    Same aggregate-vs-per-item error the rest of this file guards against.
+
+    Steps whose `toward` did not change are skipped: `toward` only tracks during
+    CONTINUOUS motion. In pulsed motion it stays frozen for a whole leg (measured
+    over 0.54 m and 0.66 m legs), which silently poisons any average.
+    """
+    sin_sum = cos_sum = 0.0
+    used = 0
+    stale = 0
+    for previous, current in zip(moving, moving[1:], strict=False):
+        if previous.get("toward") is None or current.get("toward") is None:
+            continue
+        step = math.dist(
+            (previous["x"], previous["y"]), (current["x"], current["y"])
+        )
+        if step < MIN_STEP_FOR_BEARING:
+            continue
+        if previous["toward"] == current["toward"]:
+            stale += 1
+            continue
+        step_bearing = math.degrees(
+            math.atan2(current["y"] - previous["y"], current["x"] - previous["x"])
+        )
+        value = math.radians((step_bearing + float(current["toward"])) % 360)
+        sin_sum += math.sin(value)
+        cos_sum += math.cos(value)
+        used += 1
+    if not used:
+        print(
+            "bearing+toward : NOT COMPUTED -- no step cleared "
+            f"{MIN_STEP_FOR_BEARING} m with a fresh `toward` "
+            f"({stale} stale step(s) skipped)."
+        )
+        return
+    mean = math.degrees(math.atan2(sin_sum, cos_sum)) % 360
+    resultant = math.hypot(sin_sum, cos_sum) / used
+    spread = math.degrees(math.sqrt(max(0.0, -2 * math.log(resultant))))
+    print(
+        f"bearing+toward : {mean:.2f} deg over {used} step(s), circular sd "
+        f"{spread:.2f} deg  (expected ~{COMPASS_MIRROR_DEGREES})"
+    )
+    print(f"deviation      : {_signed_delta(mean, COMPASS_MIRROR_DEGREES):+.2f} deg")
+    if stale:
+        print(f"  note: skipped {stale} step(s) whose `toward` was stale (pulsed motion)")
+
+
 def summarise(path: pathlib.Path) -> int:
-    """Report travel bearing and the offset it implies, per motion burst."""
+    """Report travel bearing and the compass-mirror check, per motion step."""
     rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
     moving = [r for r in rows if r.get("x") is not None]
     if len(moving) < 2:
@@ -172,12 +247,12 @@ def summarise(path: pathlib.Path) -> int:
             f"{MIN_TRAVEL_FOR_BEARING} m, so the bearing would be noise."
         )
         return 0
-    print(f"travel bearing : {bearing:.2f} deg")
-    if first.get("toward") is not None:
-        implied = (bearing - float(first["toward"])) % 360
-        print(f"implied offset : {implied:.2f} deg  (configured {CONFIGURED_OFFSET})")
-        print(f"discrepancy    : {implied - CONFIGURED_OFFSET:+.2f} deg")
+    print(f"travel bearing : {bearing:.2f} deg  (net first->last; see per-step below)")
+    _report_compass_mirror(moving)
     if first.get("toward") == last.get("toward"):
+        # Only trustworthy during CONTINUOUS motion: in pulsed motion `toward`
+        # stays frozen across an entire leg (measured 2026-08-04 over 0.54 m and
+        # 0.66 m legs), while a continuous mow updated it 35 times in 20.7 m.
         print("⚠️  `toward` did NOT change across the run -- treat it as stale.")
     return 0
 
