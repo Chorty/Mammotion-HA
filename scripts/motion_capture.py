@@ -32,7 +32,24 @@ import urllib.error
 import urllib.request
 
 ENTITY = "lawn_mower.back_yard_clip_skywalker"
-SENSORS = ("vio_heading", "vio_tracked_features", "camera_brightness", "ble_rssi")
+# `vio_detected_features` and `visual_positioning_status` are captured alongside
+# the tracked count because tracked alone cannot say WHY a feed is degrading.
+# detected-vs-tracked separates "the scene has no texture" (detected also low)
+# from "tracking is failing" (detected fine, tracked collapsing). And
+# `visual_positioning_status` is the documented dusk-latch discriminator: the
+# latch signature is vio_state holding at 2 while the tracked count collapses to
+# 0 and the heading freezes bit-identical, so the state must be sampled next to
+# the count to see it. On 2026-08-04 a Gate 4 attempt was read as "light
+# degradation" purely from tracked falling 71 -> 58, with no way to confirm which
+# failure it was.
+SENSORS = (
+    "vio_heading",
+    "vio_tracked_features",
+    "vio_detected_features",
+    "visual_positioning_status",
+    "camera_brightness",
+    "ble_rssi",
+)
 CONFIGURED_OFFSET = 102.4
 # Below this, a travel bearing is dominated by RTK noise rather than motion.
 MIN_TRAVEL_FOR_BEARING = 0.20
