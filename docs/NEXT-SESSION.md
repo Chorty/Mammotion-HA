@@ -4,6 +4,39 @@ Updated 2026-08-04 after the daylight VIO turn characterization. This is the cur
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
+## Upstream survey, 2026-08-04 — nothing to adopt (read-only; no writes to `mikey0000`)
+
+Checked so a later session need not repeat it. Fetch only; nothing pushed,
+commented, or opened on any `mikey0000` repository.
+
+**`mikey0000/Mammotion-HA`** — upstream `main` is at `0.6.4-beta11` and is an
+**ancestor of our HEAD**, so we already contain all of it. Branch survey:
+
+| branch | status |
+| ------ | ------ |
+| `agora-webrtc`, `firmware-updates` | already contained in our HEAD |
+| `path-planning` | **wrong problem** — map *drawing* buttons (`start_draw_border`, `start_draw_barrier`, `start_draw_corridor`, `start_erase`), not click-to-path navigation, and built on the 0.5.41 era |
+| `claude/open-code-issues-j9tx7r` | cloud-transport self-healing, Agora WebSocket reconnect, Spino pool-cleaner polling. Our motion path is BLE-only and that watchdog "never acts while BLE covers the device"; the Agora part only helps a camera whose stills are a placeholder |
+
+**`mikey0000/PyMammotion`** — latest release `v0.8.12` (2026-07-27); we run
+Chorty `0.8.12.post1`, i.e. at or ahead of it. Five post-release commits:
+
+- **#177 `is_send_blocked`** (rate-limit gate silently blocking all sends) —
+  **already present** in our build (`transport/base.py:418`, `mqtt.py:342`,
+  `device/handle.py:432`). Cloud/MQTT-scoped anyway.
+- **BLE reassembly fix** ("thanks @Chorty") — this is *our* finding upstreamed:
+  three `clear_notification()` calls on the sequence-gap, checksum-fail and
+  exception paths. **Already present** in our build (lines 381 / 418 / 427).
+- **2026-07-29 saga / `token_manager` / `client` refactor** — cloud auth and
+  token handling. Not in our build and not relevant to BLE-only motion.
+
+**The compass-convention bug is ours, not inherited.** Upstream `services.py` is
+748 lines against our 14,189, and contains **zero** occurrences of
+`calibrated_forward_heading_offset_degrees` / `heading_offset_degrees`. The
+entire click-to-path motion stack is our own code, so no upstream user is
+affected and there is no upstream fix to adopt. No upstream open issue mentions
+heading/orientation/compass.
+
 ## 🚨🚨 ROOT CAUSE FOUND, 2026-08-04 21:07 EDT — `toward` is a COMPASS bearing and the legacy path treats it as a MATH angle
 
 Found by **read-only observation of an operator-initiated night mow**. No
