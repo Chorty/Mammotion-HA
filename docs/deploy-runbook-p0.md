@@ -85,6 +85,42 @@ travel, while VIO was inactive with heading 0 and RTK yaw was 0. No available
 field represented stationary body orientation. The `card-mod` rotation was
 removed with verified Lovelace readback.
 
+### beta20 turn-feasibility guard deploy — 2026-08-04 20:16-20:35 EDT
+
+Ships the corrected turn-feasibility guard. `LUBA_ACCEPTANCE_PROFILE` is
+byte-identical; the only card change is `CARD_VERSION`. No service schema and
+no entity platform file changed (`git diff 9ef3d103..HEAD` touches exactly
+`manifest.json`, `services.py`, and the card). No motion ran and no gate is
+claimed.
+
+Backup `/config/mammotion-backup-20260804-2016.tgz`. All **46** deployed files
+were byte-identical to the local tree by per-file md5; both card copies matched
+`2b1d37bb99069020d2c3eea54b512e9b`; zero AppleDouble entries in the tarball.
+HA API returned after 31 s, Mammotion entities after 235 s, backend verified
+`pymammotion 0.8.12.post1`. Lovelace resource bumped to
+`?v=0.6.4-beta20&build=2b1d37bb`, re-read to verify, keeping the collision-proof
+pattern with the build hash tied to the deployed card's md5.
+
+Two dark-safe dry runs proved the guard is live on the host:
+
+- standalone turn, 179.571° error against a 4-command budget → `feasible:
+  false`, `turn_budget`, 7 commands needed, with the new
+  `translation_bound_m_per_degree: 0.0026` and
+  `translation_bound_source: conservative_observed_translation_per_degree`;
+  `estimated_translation_m: 0.467` = 179.571 × 0.0026, i.e. angle-scaled rather
+  than command-scaled. `would_send: false`, `commands_sent: 0`.
+- multi-segment L path → `junction_turn_feasibility` for the −90° junction is
+  **feasible**: 3 commands against 4, `estimated_translation_m: 0.234` against
+  `max_displacement_m: 0.25`.
+
+⚠️ That junction cap is **0.25 m, not the schema's 0.5 m default**, and it is
+what bounds the per-degree constant from above. 90 × 0.0026 = 0.234 fits with
+0.016 m to spare; the initially proposed 0.0028 would have given 0.252 and
+**refused Gate 4's own junction geometry** on this build. Do not raise the
+constant without re-checking this dry run.
+
+Experimental motion was verified off with no session before and after.
+
 ### beta19 stale-orientation correction deploy — 2026-08-02 22:07-22:12 EDT
 
 Beta19 draws only the mower position dot unless the backend explicitly supplies

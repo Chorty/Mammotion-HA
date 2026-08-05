@@ -220,6 +220,19 @@ on `command_queue_backlogged` (safe, by design) while the BLE link report was
 clean — a queue-state condition, not a link fault. Evidence:
 `docs/evidence-offset-beta19-*20260804*`.
 
+**beta20 IS DEPLOYED (2026-08-04 evening) and the guard is live on the host.**
+All four version locations read `0.6.4-beta20` / `0.6.4b20`; all 46 files
+byte-identical; both card paths `2b1d37bb99069020d2c3eea54b512e9b`; Lovelace
+resource `?v=0.6.4-beta20&build=2b1d37bb`; backend `pymammotion 0.8.12.post1`;
+backup `/config/mammotion-backup-20260804-2016.tgz`. `LUBA_ACCEPTANCE_PROFILE`
+is byte-identical and no entity or schema changed. Dark-safe dry runs confirmed
+the deployed guard reports `translation_bound_m_per_degree: 0.0026`, refuses a
+179.571° turn against a 4-command budget, and judges the −90° L-path junction
+feasible at 0.234 m against a **0.25 m** cap. That 0.25 m junction cap — not
+the schema's 0.5 m default — is the binding limit on the constant. Experimental
+motion is off, no session, no motion ran, **no gate is claimed**. Sequencing
+step 3 is complete; the next step is the Gate 4 retry in daylight.
+
 ## The open measurement to fold into that run
 
 `calibrated_forward_heading_offset_degrees: 102.4` looks **~11° low**. Three
