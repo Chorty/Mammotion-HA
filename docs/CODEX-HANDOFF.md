@@ -204,9 +204,14 @@ Tests 14 → 20.
 **The offset re-derivation ran on 2026-08-04 evening and CLOSES the ~11°
 question as unsupported.** Three ~0.45 m drives at three headings on beta19.
 The vision↔map offset — the one `turn_mode: "vio"` actually uses — measured
-+1.258 / +2.042 / −0.969° across travel bearings spanning 175–289°: mean
-+0.777°, spread 3.012°, heading-invariant, and re-derived per run by the
-executor anyway. The 102.4° figure is a **different quantity** (`toward`-based)
++1.258 / +2.042 / −0.969° across travel bearings spanning 175–289° (mean
++0.777°, spread 3.012°). ⚠️ **Do not read that as a stable constant.**
+`vision_info.heading` lives in the VIO's own frame, **re-anchored on every VIO
+(re)initialisation**, with no fixed relation to map coordinates; `vio_state` was
+2 throughout, so these are three noisy estimates of **one session anchor**. With
+0.083–0.119 m baselines each carries ~±5–7° of noise, *exceeding* the 3.012°
+spread, so heading-invariance is not demonstrated. `vision_info.x/y` are in that
+same frame and are **not** map coordinates. The 102.4° figure is a **different quantity** (`toward`-based)
 and is **unmeasurable on this hardware**: `toward` stayed frozen across every
 forward leg (0.5351 m and 0.6558 m). `--summarise` computes
 `(bearing − toward_first)`, so with `toward` stale it reports bearing minus an
@@ -244,6 +249,17 @@ along-track**: final `x = 5.1011` vs target `5.1006` (0.5 mm), with the entire
 error in `y`. Travel bearing was **+5.09°** off expected in segment 1 and
 **+14.29°** in segment 2, i.e. an ~11° vision→map discrepancy at execution time
 despite calibration drives measuring that offset at ≈0° the same evening.
+**Sharper reading (from the VIO commentary, same night):** segment 1's +5.09° is
+inside expected noise — its offset came from a `calibration_drive` with an
+**0.0892 m** baseline, where 1 cm of position noise is ~6.4° of offset error.
+Segment 2's +14.29° is not: its offset came from `linear_refresh` off a
+**0.4483 m** leg, a 5× better baseline, yet the error doubled. The junction turn
+sits between that refresh and segment 2's drive, and **the offset is refreshed
+only from linear travel, never across a turn** — so a VIO frame that drifts or
+re-anchors during rotation leaves segment 2 aiming on a stale anchor. The
+mid-drive re-aim cannot compensate, because `max_linear_commands: 1` leaves no
+forward budget and beta17 suppresses realignment once it is exhausted.
+
 ⚠️ **Confounded by falling light** — `tracked_features` decayed 71 → 58 (min 30)
 and the aim error grew as features fell, so twilight VIO degradation is at
 least as plausible as a systematic error. **Change no constant on this

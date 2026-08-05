@@ -39,6 +39,27 @@ in the **map** frame — an ~11° vision→map discrepancy at execution time, ev
 though the calibration drives measured that offset at ≈0° earlier the same
 evening.
 
+**Sharper hypothesis, from the VIO commentary (added same night).** The two
+segments' aim errors have *different* explanations, and only the second is a
+candidate defect:
+
+- **Segment 1 (+5.09°) is inside the expected noise.** Its offset came from a
+  `calibration_drive` with a **0.0892 m** baseline; 1 cm of position noise on
+  that baseline is ~6.4° of offset error. Not a defect.
+- **Segment 2 (+14.29°) is not explained that way.** Its offset came from
+  `linear_refresh` off segment 1's **0.4483 m** leg — a 5× longer, *better*
+  baseline — yet the aim error more than doubled. What sits between that
+  refresh and segment 2's drive is **the junction turn**: the offset is
+  refreshed only from *linear* travel and is **never re-derived across a turn**,
+  so a VIO frame that drifts or re-anchors during rotation leaves segment 2
+  aiming with a stale anchor.
+
+Note also that the **mid-drive re-aim** (added after a run that "drifted ~25 deg
+and sailed past the waypoint") cannot help here: with `max_linear_commands: 1`
+there is one forward pulse, and beta17 deliberately suppresses realignment once
+no forward budget remains. So on this profile there is no cross-track
+correction mechanism available at all.
+
 **⚠️ This run is confounded by falling light and must not be over-read.**
 `tracked_features` decayed 71 → 58 across the run with a minimum of 30, and read
 43 stationary afterwards. The aim error **grew as features fell** (+5.09° in
@@ -95,8 +116,28 @@ also solves the circularity of needing the offset in order to aim.
 | 3 | 175.320° | +176.289° | **−0.969°** | `turn_phase_incomplete` |
 
 Mean **+0.777°**, spread **3.012°** across travel bearings spanning 175–289°.
-It is essentially zero and does not vary with heading. The executor re-derives
-it per run anyway (`offset_source: calibration_drive`).
+
+⚠️ **CORRECTED 2026-08-04 (same night), after reading the VIO commentary in
+`_vio_segment_calibration_drive`.** The original wording here — "essentially
+zero and does not vary with heading" — is **not supported**, for two reasons:
+
+1. `vision_info.heading` is a body heading in the **VIO's own frame, which is
+   re-anchored whenever VIO (re)initialises**, and has *no fixed relationship
+   to map-local coordinates*. The offset is a **per-session anchor**, not a
+   physical constant. `vio_state` read 2 at all three drives, so these are three
+   estimates of **one** anchor, not three independent confirmations of a
+   property.
+2. Offset accuracy is dominated by calibration baseline: a 2 cm baseline gives
+   ~25° of error from cm-level position noise (live 2026-07-11), which is why
+   the minimum is 6 cm. These drives used 0.083–0.119 m baselines, so each
+   estimate carries roughly **±5–7°** of noise — *larger than the 3.012° spread*
+   that was read as invariance.
+
+So the correct statement is: the offset for that VIO session sat near zero
+within a noise floor that exceeds the observed spread. Nothing here establishes
+heading-invariance or a stable constant. Consequently `vision_info.x` / `.y`
+are in that same drifting frame and are **not** map coordinates — do not diff
+them against RTK position.
 
 **The 102.4° question is UNMEASURABLE on this hardware — and this is not a
 lighting problem.** `toward` was **frozen across every forward leg**: drive 1
