@@ -1,0 +1,30 @@
+{
+  "entity_id": "lawn_mower.back_yard_clip_skywalker",
+  "area_hash": "1343645155037768237",
+  "points": [
+    {"x": 5.8416, "y": -4.1465},
+    {"x": 5.8416, "y": -4.5465},
+    {"x": 6.2416, "y": -4.5465}
+  ],
+  "dry_run": false,
+  "max_real_segments": 2,
+  "confirm_blades_off": true,
+  "confirm_clear_area": true,
+  "prefer_ble": true,
+  "max_turn_commands": 4,
+  "max_linear_commands": 1,
+  "max_no_progress_pulses": 3,
+  "heading_tolerance_degrees": 18,
+  "min_progress_distance": 0.0025,
+  "calibrated_forward_heading_offset_degrees": 102.4,
+  "turn_mode": "vio",
+  "vio_turn_max_commands": 4,
+  "turn_pulse_duration_ms": 1500,
+  "linear_pulse_duration_ms": 3500,
+  "waypoint_tolerance": 0.08,
+  "sample_delays": [0, 3],
+  "motion_refresh_interval_ms": 200,
+  "final_approach_metres_per_pulse": 1.06,
+  "turn_degrees_per_second": 37,
+  "ble_auto_recover": false
+}
