@@ -6,20 +6,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Read `docs/CODEX-HANDOFF.md`, then `docs/NEXT-SESSION.md`, before continuing P0
 or click-to-go work. The host runs the still-unaccepted beta19 candidate and
-experimental motion is verified off. Gate 2 passed on 2026-08-03, but Gate 4
-failed before its first linear command: VIO calibration passed, then four VIO
-turn commands moved heading from 6.480° to 139.098° toward a 173.892° target.
-The turn ended `max_commands_reached`, 34.795° outside tolerance, with 0.185 m
-of turn translation; segment 2 never started. This is not a linear-budget
-failure and blocks Gate 5 and release. The durable result, capture, and offline
-diagnosis are under `docs/evidence-gate4-beta19-retry-*20260803*`.
+experimental motion is verified off. Gate 2 passed on 2026-08-03, and Gate 4 — which
+failed on 2026-08-03 before its first linear command — was **re-passed on
+2026-08-05**: both segments `target_reached`, misses 0.0403 m and 0.0330 m
+against an 0.08 m tolerance. Read `docs/gate4-repass-20260805.md` before acting
+on this; the evidence is `docs/evidence-gate4-beta20-day2j-*20260805*`.
 
-The accepted profile, including its four-turn-command budget and 102.4° offset,
-must not be changed from this one run. First implement and test a narrowly
-bounded turn-planning correction based on the retained evidence, then reproduce
-it on a second daylight geometry under new operator authorization. See
-`docs/CLAUDE-FINAL-IMPLEMENTATION-PROMPT.md` for the complete implementation
-handoff. No motion is authorized by this handoff.
+The re-pass is real but **does not yet underwrite Gate 5**, for two reasons.
+First, it used three parameters the frozen `LUBA_ACCEPTANCE_PROFILE` does not
+carry (`linear_pulse_duration_ms` 1300 vs 3500, `max_linear_commands` 3 vs 1,
+and `max_turn_translation_distance` 0.30, which the card never sends so it
+inherits the backend default 0.25). `docs/p0-beta-release.md:98-102` says
+passing Gates 1-4 while the card emits a *different* profile is the exact gap
+that profile exists to close — so either the card profile moves to match, or the
+re-pass does not count for Gate 5. That decision is open. Second, the run passed
+by overshooting and recovering (2.2773 m travelled for a 1.0400 m path; a
+103.427° recovery turn that is only legal at the 0.30 cap), and reproduction on
+a second daylight geometry remains required and unmet.
+
+Do not change the accepted profile casually; changing it obligates the card
+copy, a `CARD_VERSION` bump deployed to both serving paths, and the pinning
+tests listed in §4 of the re-pass doc. See
+`docs/CLAUDE-FINAL-IMPLEMENTATION-PROMPT.md` for the older implementation
+handoff, noting that its turn-planning premise was overtaken by the 2026-08-05
+measurements. No motion is authorized by this handoff.
 
 The card's Real Go defaults are now the Gate 4 profile itself, frozen as
 `LUBA_ACCEPTANCE_PROFILE` in `www/mammotion-custom-path-card.js` and pinned by

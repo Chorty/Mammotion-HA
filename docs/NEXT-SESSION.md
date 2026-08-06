@@ -1,8 +1,42 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
-Updated 2026-08-04 after the daylight VIO turn characterization. This is the current handoff;
+Updated 2026-08-05 after the Gate 4 re-pass. This is the current handoff;
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
+
+## 🚦 START HERE, 2026-08-05 — Gate 4 re-passed, but on a profile the card does not emit
+
+**Read `docs/gate4-repass-20260805.md` first.** Gate 4 failed on 2026-08-03 and
+was re-passed on 2026-08-05: both segments `target_reached`, misses 0.0403 m and
+0.0330 m against an 0.08 m tolerance
+(`docs/evidence-gate4-beta20-day2j-real-result-20260805.json`).
+
+Three things a next session must not miss:
+
+1. **The re-pass used three parameters the frozen `LUBA_ACCEPTANCE_PROFILE` does
+   not carry** — `linear_pulse_duration_ms` 1300 (card: 3500),
+   `max_linear_commands` 3 (card: 1), and `max_turn_translation_distance` 0.30,
+   which the card never sends at all (so it inherits the backend default 0.25).
+   `docs/p0-beta-release.md:98-102` says passing Gates 1-4 while the card emits a
+   *different* profile is the exact gap that profile was created to close.
+   **Either the card profile moves to match, or this re-pass does not underwrite
+   a Gate 5 attempt.** That decision is open and is not mine to make.
+
+2. **It passed by overshooting and recovering, not by tracking.** 2.2773 m of
+   actual travel for a 1.0400 m planned path; segment 1 needed a 103.427°
+   recovery turn. That recovery is only legal at `max_turn_translation_distance`
+   0.30 — at 0.25 it is refused, which is exactly how the day2e and day2h
+   attempts died (`vio_realign_incomplete`).
+
+3. **Reproduction on a second daylight geometry is still required and still
+   unmet.** One run does not settle a profile, especially given a 2-6 cm pulsed
+   measurement noise floor against an 0.08 m tolerance.
+
+Two kinematic claims previously in these notes were **refuted by direct RTK
+measurement** on 2026-08-05 and should not be relied on: single-shot linear does
+*not* give fine distance control (it is a fixed ~0.11 m step regardless of
+commanded duration), and single-shot turning is ~2.4°/command, not ~8-9°.
+Refresh 200 is the controllable regime for both phases. See §6 of the re-pass doc.
 
 ## Upstream survey, 2026-08-04 — nothing to adopt (read-only; no writes to `mikey0000`)
 
