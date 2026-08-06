@@ -82,6 +82,7 @@ from custom_components.mammotion.services import (
     _manual_velocity_segment_test,
     _motion_open_sleep,
     _motion_refresh_window,
+    _normalised_linear_pulse_distance,
     _normalize_mower_areas,
     _normalize_mower_tasks,
     _point_on_segment,
@@ -98,6 +99,7 @@ from custom_components.mammotion.services import (
     _raw_pymammotion_turn_to_heading,
     _raw_vector_readiness_phase_passed,
     _raw_vector_readiness_test,
+    _requires_reverse_recovery,
     _settle_linear_position_feed,
     _streak_shows_dead_telemetry,
     _streak_shows_no_actuation,
@@ -1555,6 +1557,8 @@ def test_manual_velocity_pulse_defaults_match_executor_pulse() -> None:
                 "max_real_segments": 1,
                 "max_turn_commands": 4,
                 "max_linear_commands": 2,
+                "final_approach_metres_per_pulse": 1.06,
+                "turn_degrees_per_second": 37.0,
                 "calibrated_forward_heading_offset_degrees": 116.5,
                 # App-parity refresh defaults ON for the executors (B1 2026-07-22).
                 "motion_refresh_interval_ms": 200,
@@ -4497,6 +4501,55 @@ async def test_raw_pymammotion_execute_multi_segment_dry_run_chains_segments(
 
 
 @pytest.mark.asyncio
+async def test_multi_segment_forwards_approach_and_turn_rate_to_every_segment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Card profile constants reach the vector executor instead of being ignored."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    forwarded: list[tuple[float, float]] = []
+
+    async def fake_vector(
+        coordinator_arg: MammotionReportUpdateCoordinator,
+        points: list[dict[str, float]],
+        **kwargs: object,
+    ) -> dict:
+        forwarded.append(
+            (
+                float(kwargs["final_approach_metres_per_pulse"]),
+                float(kwargs["turn_degrees_per_second"]),
+            )
+        )
+        return {
+            "valid": True,
+            "stop_reason": "dry_run",
+            "blockers": [],
+            "phases": [{"passed": True}, {"passed": True}],
+            "final_telemetry": _custom_path_telemetry_snapshot(coordinator_arg),
+            "progress_diagnostics": [],
+        }
+
+    monkeypatch.setattr(
+        mammotion_services, "_raw_pymammotion_execute_vector_segment", fake_vector
+    )
+
+    result = await _raw_pymammotion_execute_multi_segment(
+        coordinator,
+        [
+            {"x": 1.0, "y": 1.0},
+            {"x": 1.1, "y": 1.0},
+            {"x": 1.2, "y": 1.1},
+        ],
+        final_approach_metres_per_pulse=1.23,
+        turn_degrees_per_second=41.5,
+        sample_delays=(0,),
+    )
+
+    assert result["final_approach_metres_per_pulse"] == 1.23
+    assert result["turn_degrees_per_second"] == 41.5
+    assert forwarded == [(1.23, 41.5), (1.23, 41.5)]
+
+
+@pytest.mark.asyncio
 async def test_vector_segment_vio_dry_run_plans_calibration_and_turn() -> None:
     """Default VIO turn mode dry-runs with a planned calibration drive + turn."""
     coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
@@ -4846,6 +4899,112 @@ def test_final_approach_prefers_the_distance_observed_this_run() -> None:
     assert info["refresh_command_limit"] == 8
     assert info["target_nonzero_writes"] == 9
     assert info["pulse_duration_ms"] == 3500.0
+
+
+def test_final_approach_normalises_bounded_pulses_by_actual_write_count() -> None:
+    """A bounded pulse can calibrate later approaches without shrinking the scale."""
+    # day2j's first segment pulse 1: 0.4192 m from initial + three refresh writes.
+    normalised = _normalised_linear_pulse_distance(0.4191586454, 3)
+
+    assert normalised == pytest.approx(1.1526862749)
+    info = _final_approach_pulse_ms(
+        distance_to_target=0.2222578683,
+        observed_pulse_distances=[normalised],
+        default_metres_per_pulse=1.06,
+        pulse_duration_ms=1300.0,
+        refresh_interval_ms=200,
+    )
+    assert info["metres_per_pulse_source"] == "observed"
+    assert info["refresh_command_limit"] == 2
+
+
+def test_final_approach_observation_cannot_increase_the_motion_budget() -> None:
+    """A low observation may stop short but must not add writes and overshoot."""
+    info = _final_approach_pulse_ms(
+        distance_to_target=0.18,
+        observed_pulse_distances=[0.96],
+        default_metres_per_pulse=1.06,
+        pulse_duration_ms=1300.0,
+        refresh_interval_ms=200,
+    )
+
+    assert info["observed_metres_per_pulse"] == 0.96
+    assert info["metres_per_pulse"] == 1.06
+    assert info["metres_per_pulse_source"] == "default_conservative_floor"
+    assert info["refresh_command_limit"] == 1
+
+
+@pytest.mark.parametrize(
+    "evidence_name",
+    [
+        "evidence-gate4-beta20-day2i-real-result-20260805.json",
+        "evidence-gate4-beta20-day2j-real-result-20260805.json",
+    ],
+)
+def test_final_approach_replays_gate4_1300ms_write_limits(
+    evidence_name: str,
+) -> None:
+    """The conservative estimator preserves every recorded day2i/day2j write cap."""
+    evidence_path = pathlib.Path(__file__).parents[3] / "docs" / evidence_name
+    evidence = json.loads(evidence_path.read_text())
+
+    for segment in evidence["result"]["segments"]:
+        segment_result = segment["result"]
+        progress_by_index = {
+            item["command_index"]: item
+            for item in segment_result["progress_diagnostics"]
+        }
+        observed_by_speed: dict[int, list[float]] = {}
+        for command in segment_result["command_results"]:
+            if command.get("phase") != "linear_forward_to_target":
+                continue
+            speed = int(command["selection"]["linear_speed"])
+            approach = _final_approach_pulse_ms(
+                distance_to_target=command["selection"]["distance_to_target"],
+                observed_pulse_distances=observed_by_speed.get(speed, []),
+                default_metres_per_pulse=1.06,
+                pulse_duration_ms=1300.0,
+                refresh_interval_ms=200,
+            )
+            assert (
+                approach["refresh_command_limit"]
+                == command["final_approach"]["refresh_command_limit"]
+            )
+
+            measured = progress_by_index[command["index"]]["measured_delta"]["distance"]
+            refreshes = command["motion_refresh"]["refresh_commands_sent"]
+            observed_by_speed.setdefault(speed, []).append(
+                _normalised_linear_pulse_distance(measured, refreshes)
+            )
+
+
+def test_reverse_recovery_guard_replays_both_gate4_passes() -> None:
+    """Both nominal Gate 4 passes contain a U-turn that forward-only must refuse."""
+    docs = pathlib.Path(__file__).parents[3] / "docs"
+    day2j = json.loads(
+        (docs / "evidence-gate4-beta20-day2j-real-result-20260805.json").read_text()
+    )
+    beta21 = json.loads(
+        (
+            docs / "evidence-gate4-beta21-second-geometry-summary-20260806.json"
+        ).read_text()
+    )
+
+    day2j_errors = [
+        item["aim_error_degrees"]
+        for segment in day2j["result"]["segments"]
+        for item in segment["result"]["realignments"]
+    ]
+    beta21_errors = [
+        error
+        for segment in beta21["real_result"]["segments"]
+        for error in segment["realignment_errors_degrees"]
+    ]
+
+    assert any(_requires_reverse_recovery(error) for error in day2j_errors)
+    assert any(_requires_reverse_recovery(error) for error in beta21_errors)
+    assert not _requires_reverse_recovery(89.999)
+    assert _requires_reverse_recovery(90.0)
 
 
 @pytest.mark.parametrize(
@@ -5557,6 +5716,139 @@ async def test_vector_segment_vio_realigns_when_facing_drifts_off_bearing(
     # This fixture intentionally leaves position static, so after exercising
     # the re-alignment decision the executor fails closed on no progress.
     assert result["stop_reason"] == "no_target_progress"
+
+
+@pytest.mark.asyncio
+async def test_vector_segment_refuses_a_u_turn_after_passing_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forward-only segment stops instead of recovering to a target behind it."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=10.0, vio_state=2
+    )
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    async def fake_calibration(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        return {
+            "passed": True,
+            "reason": "calibrated",
+            "offset_degrees": 110.0,
+            "map_motion_heading_degrees": 120.0,
+            "vision_heading": 10.0,
+            "vio_state": 2,
+            "distance_m": 0.06,
+            "pulses_sent": 1,
+            "command_results": [],
+        }
+
+    turn_calls: list[dict[str, object]] = []
+
+    async def fake_vio_turn(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        turn_calls.append(kwargs)
+        return {
+            "stop_reason": "target_heading_reached",
+            "commands_sent": 1,
+            "command_results": [],
+        }
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+    monkeypatch.setattr(
+        mammotion_services, "_vio_segment_calibration_drive", fake_calibration
+    )
+    monkeypatch.setattr(mammotion_services, "_vio_turn_to_heading", fake_vio_turn)
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        max_linear_commands=2,
+        sample_delays=(0,),
+    )
+
+    assert result["stop_reason"] == "target_requires_reverse_recovery"
+    assert abs(result["reverse_recovery_guard"]["aim_error_degrees"]) == 120.0
+    assert result["linear_commands_sent"] == 1
+    # Only the initial heading turn ran; no U-turn recovery was dispatched.
+    assert len(turn_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_vector_segment_stops_when_the_realign_budget_is_exhausted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An off-bearing segment with no correction left stops instead of driving on."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    # Facing estimate = vision_heading + offset = 10 + (-90) = -80 deg map,
+    # bearing to target is 0 deg -> 80 deg aim error: over the 15 deg realign
+    # threshold but under the 90 deg reverse-recovery boundary, so this is the
+    # budget decision and not the U-turn guard.
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=10.0, vio_state=2
+    )
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    async def fake_calibration(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        return {
+            "passed": True,
+            "reason": "calibrated",
+            "offset_degrees": -90.0,
+            "map_motion_heading_degrees": 280.0,
+            "vision_heading": 10.0,
+            "vio_state": 2,
+            "distance_m": 0.06,
+            "pulses_sent": 1,
+            "command_results": [],
+        }
+
+    turn_calls: list[dict[str, object]] = []
+
+    async def fake_vio_turn(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        turn_calls.append(kwargs)
+        return {
+            "stop_reason": "target_heading_reached",
+            "commands_sent": 1,
+            "command_results": [],
+        }
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+    monkeypatch.setattr(
+        mammotion_services, "_vio_segment_calibration_drive", fake_calibration
+    )
+    monkeypatch.setattr(mammotion_services, "_vio_turn_to_heading", fake_vio_turn)
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.1, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        max_linear_commands=2,
+        vio_max_realignments=0,
+        sample_delays=(0,),
+    )
+
+    # Before this guard the exhausted budget silently skipped the correction and
+    # spent the remaining forward budget driving 80 deg off the bearing.
+    assert result["stop_reason"] == "vio_realign_budget_exhausted"
+    assert result["linear_commands_sent"] == 1
+    assert result["realignments"] == []
+    # Only the initial heading turn ran; no correction was dispatched.
+    assert len(turn_calls) == 1
 
 
 @pytest.mark.asyncio

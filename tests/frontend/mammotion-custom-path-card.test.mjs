@@ -132,7 +132,7 @@ test("seven-point dry-run is retained but real payload is capped at two", () => 
 });
 
 // The card must emit the exact bounded profile that passed supervised LUBA
-// acceptance Gates 1-4 on 2026-07-31 -- see docs/p0-beta-release.md. These are
+// Gate 4 re-pass on 2026-08-05 -- see docs/gate4-repass-20260805.md. These are
 // the values the hardware actually executed; drifting from them silently would
 // make the card's Real Go an untested profile again.
 test("default Real Go payload is the Gate 4 accepted profile", () => {
@@ -143,7 +143,9 @@ test("default Real Go payload is the Gate 4 accepted profile", () => {
 
   assert.equal(payload.max_turn_commands, 4);
   assert.equal(payload.vio_turn_max_commands, 4);
-  assert.equal(payload.max_linear_commands, 1);
+  assert.equal(payload.max_linear_commands, 3);
+  assert.equal(payload.linear_pulse_duration_ms, 1300);
+  assert.equal(payload.max_turn_translation_distance, 0.3);
   assert.equal(payload.waypoint_tolerance, 0.08);
   assert.equal(payload.min_progress_distance, 0.0025);
   assert.equal(payload.calibrated_forward_heading_offset_degrees, 102.4);

@@ -936,9 +936,9 @@ RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("linear_pulse_duration_ms", default=3500.0): vol.All(
             vol.Coerce(float), vol.Range(min=50.0, max=4000.0)
         ),
-        # Fallback metres-per-pulse for the final-approach scaling, used only
-        # until the run has measured a full pulse of its own. 1.06 m is the
-        # live 2026-07-27 figure at linear 400 / 3500 ms / refresh 200.
+        # Fallback eleven-write distance for final-approach scaling, used only
+        # until the run has measured a pulse of its own. 1.06 m is the live
+        # 2026-07-27 figure at linear 400: one initial write plus ten refreshes.
         vol.Optional("final_approach_metres_per_pulse", default=1.06): vol.All(
             vol.Coerce(float), vol.Range(min=0.05, max=5.0)
         ),
@@ -1059,6 +1059,12 @@ RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA = vol.Schema(
         ),
         vol.Optional("linear_pulse_duration_ms", default=3500.0): vol.All(
             vol.Coerce(float), vol.Range(min=50.0, max=4000.0)
+        ),
+        vol.Optional("final_approach_metres_per_pulse", default=1.06): vol.All(
+            vol.Coerce(float), vol.Range(min=0.05, max=5.0)
+        ),
+        vol.Optional("turn_degrees_per_second", default=37.0): vol.All(
+            vol.Coerce(float), vol.Range(min=1.0, max=180.0)
         ),
         # App-parity motion cadence. Defaults to 200 ms, the app's own timer:
         # B1 (2026-07-22) proved re-sending the movement command every 200 ms
@@ -9279,6 +9285,17 @@ _DEFAULT_METRES_PER_LINEAR_PULSE = 1.06
 #: lower measured count so a short approach never requests more actuation than
 #: its distance fraction supports. The initial non-zero write is additional.
 _DEFAULT_REFRESH_COMMANDS_PER_LINEAR_PULSE = 10
+# A correction of 90 degrees or more cannot have a forward component toward
+# the waypoint.  Calling that a "re-alignment" permits a U-turn after the mower
+# has passed the target -- exactly the overshoot-and-recovery path captured on
+# 2026-08-05 and independently filmed on 2026-08-06.  A forward-only segment
+# must stop instead of silently becoming a reverse-recovery controller.
+_MAX_FORWARD_REALIGNMENT_DEGREES = 90.0
+
+
+def _requires_reverse_recovery(aim_error_degrees: float) -> bool:
+    """Return whether reaching the target now requires a non-forward recovery."""
+    return abs(float(aim_error_degrees)) >= _MAX_FORWARD_REALIGNMENT_DEGREES
 
 
 def _final_approach_pulse_ms(
@@ -9305,11 +9322,12 @@ def _final_approach_pulse_ms(
     BLE write and stop latency make nominal time a poor actuation unit. Bound
     the discrete non-zero writes instead and stop immediately after the budget.
 
-    Self-calibrating: ``observed_pulse_distances`` holds the measured distance of
-    each full-length pulse in this run, so the scale factor tracks today's
-    speed, grass and gradient rather than a constant baked in from one evening.
-    ``default_metres_per_pulse`` only covers the first pulse, before there is
-    anything to observe.
+    Self-calibrating: ``observed_pulse_distances`` holds each measured pulse
+    normalised to the eleven non-zero writes represented by the fallback. This
+    lets bounded final-approach pulses contribute instead of making the fallback
+    permanently load-bearing on short segments. ``default_metres_per_pulse``
+    only covers the first pulse at a given speed, before there is anything to
+    observe.
     """
     info: dict[str, Any] = {
         "applied": False,
@@ -9329,8 +9347,19 @@ def _final_approach_pulse_ms(
         return info
 
     if observed_pulse_distances:
-        metres_per_pulse = sum(observed_pulse_distances) / len(observed_pulse_distances)
-        info["metres_per_pulse_source"] = "observed"
+        observed_metres_per_pulse = sum(observed_pulse_distances) / len(
+            observed_pulse_distances
+        )
+        # Never let a slow/noisy observation increase the next motion budget.
+        # Over-estimating distance per write can stop short and use another
+        # bounded pulse; under-estimating it adds writes and can overshoot.
+        metres_per_pulse = max(default_metres_per_pulse, observed_metres_per_pulse)
+        info["observed_metres_per_pulse"] = round(observed_metres_per_pulse, 4)
+        info["metres_per_pulse_source"] = (
+            "observed"
+            if observed_metres_per_pulse >= default_metres_per_pulse
+            else "default_conservative_floor"
+        )
     else:
         metres_per_pulse = default_metres_per_pulse
         info["metres_per_pulse_source"] = "default"
@@ -9361,6 +9390,15 @@ def _final_approach_pulse_ms(
         }
     )
     return info
+
+
+def _normalised_linear_pulse_distance(
+    measured_distance: float, refresh_commands_sent: int
+) -> float:
+    """Normalise a measured pulse to the fallback's eleven non-zero writes."""
+    actual_nonzero_writes = max(int(refresh_commands_sent), 0) + 1
+    fallback_nonzero_writes = _DEFAULT_REFRESH_COMMANDS_PER_LINEAR_PULSE + 1
+    return measured_distance * fallback_nonzero_writes / actual_nonzero_writes
 
 
 _VIO_TURN_MODES = ("vio", "legacy")
@@ -10216,10 +10254,11 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     # very first pulse are better explained by a mower that never moved; the
     # 2026-07-19 signature was ten good pulses followed by three frozen ones.
     feed_moved_earlier = False
-    # Measured distance of each FULL-length linear pulse this run. Drives the
-    # self-calibrating final-approach scaling, so the scale factor reflects
-    # today's speed, grass and gradient rather than a baked-in constant.
-    observed_pulse_distances: list[float] = []
+    # Measured pulse distances, normalised to the fallback's eleven non-zero
+    # writes and kept separate by commanded speed. Bounded pulses are useful
+    # samples once normalised; excluding them made the 1.06 m fallback
+    # permanently load-bearing on every short Gate 4 segment.
+    observed_pulse_distances_by_speed: dict[int, list[float]] = {}
     while command_index < effective_linear_ceiling:
         command_index += 1
         before = _custom_path_telemetry_snapshot(coordinator)
@@ -10297,7 +10336,9 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         # final approach lands on the target instead of stepping past it.
         final_approach = _final_approach_pulse_ms(
             distance_to_target=selection.get("distance_to_target"),
-            observed_pulse_distances=observed_pulse_distances,
+            observed_pulse_distances=observed_pulse_distances_by_speed.get(
+                int(selection["linear_speed"]), []
+            ),
             default_metres_per_pulse=final_approach_metres_per_pulse,
             pulse_duration_ms=linear_pulse_duration_ms,
             refresh_interval_ms=motion_refresh_interval_ms,
@@ -10415,14 +10456,30 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                 "measured_delta": _telemetry_position_delta(before, after),
             }
         )
-        # Feed full-length pulses back into the final-approach scale factor.
-        # Scaled pulses are deliberately excluded: they are short by design, so
-        # averaging them in would shrink the estimate and under-drive the next
-        # approach.
-        if not final_approach["applied"]:
-            measured_distance = (progress.get("measured_delta") or {}).get("distance")
-            if measured_distance is not None and float(measured_distance) > 0:
-                observed_pulse_distances.append(float(measured_distance))
+        # Feed every measured pulse back into the final-approach scale factor.
+        # Normalising by its actual non-zero write count makes bounded pulses
+        # comparable with the eleven-write fallback instead of excluding the
+        # only samples short Gate 4 segments ever produce.
+        measured_distance = (progress.get("measured_delta") or {}).get("distance")
+        if (
+            motion_refresh_interval_ms > 0
+            and measured_distance is not None
+            and float(measured_distance) > 0
+        ):
+            refresh_commands_sent = int(
+                command_result["motion_refresh"]["refresh_commands_sent"]
+            )
+            normalised_distance = _normalised_linear_pulse_distance(
+                float(measured_distance), refresh_commands_sent
+            )
+            observed_pulse_distances_by_speed.setdefault(
+                int(selection["linear_speed"]), []
+            ).append(normalised_distance)
+            command_result["final_approach_observation"] = {
+                "measured_distance": float(measured_distance),
+                "nonzero_writes": refresh_commands_sent + 1,
+                "normalised_metres_per_eleven_writes": round(normalised_distance, 4),
+            }
         result["progress_diagnostics"].append(progress)
         completion_status = _manual_velocity_completion_status(
             normalized_points,
@@ -10493,7 +10550,6 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                 and reading["vision_heading"] is not None
                 and current_now is not None
                 and target is not None
-                and realignments_used < vio_max_realignments
                 # A re-alignment only has value when another forward command
                 # can follow it. Live 2026-08-02 the sole linear command ended
                 # 8.46 cm from target, then three otherwise-successful turns
@@ -10504,7 +10560,23 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                 facing = (float(reading["vision_heading"]) + float(offset_now)) % 360
                 bearing = _path_heading_degrees(current_now, target)
                 aim_error = _heading_error_degrees(facing, bearing)
+                if _requires_reverse_recovery(aim_error):
+                    result["reverse_recovery_guard"] = {
+                        "after_linear_pulse": command_index,
+                        "facing_degrees": round(facing, 3),
+                        "bearing_degrees": round(bearing, 3),
+                        "aim_error_degrees": round(aim_error, 3),
+                        "max_forward_realignment_degrees": (
+                            _MAX_FORWARD_REALIGNMENT_DEGREES
+                        ),
+                        "reason": "target_requires_reverse_recovery",
+                    }
+                    result["stop_reason"] = "target_requires_reverse_recovery"
+                    return result
                 if abs(aim_error) > vio_realign_threshold_degrees:
+                    if realignments_used >= vio_max_realignments:
+                        result["stop_reason"] = "vio_realign_budget_exhausted"
+                        return result
                     realignments_used += 1
                     realign_target = _normalized_heading_degrees(
                         bearing - float(offset_now)
@@ -10674,6 +10746,8 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
     calibrated_forward_heading_offset_degrees: float = 116.5,
     turn_pulse_duration_ms: float = 300.0,
     linear_pulse_duration_ms: float = 300.0,
+    final_approach_metres_per_pulse: float = _DEFAULT_METRES_PER_LINEAR_PULSE,
+    turn_degrees_per_second: float = _DEFAULT_TURN_DEGREES_PER_SECOND,
     turn_mode: str = "vio",
     vio_heading_offset_degrees: float | None = None,
     vio_turn_max_commands: int = 8,
@@ -10837,6 +10911,8 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
         # phase stalls (live 2026-07-19).
         "turn_pulse_duration_ms": turn_pulse_duration_ms,
         "linear_pulse_duration_ms": linear_pulse_duration_ms,
+        "final_approach_metres_per_pulse": final_approach_metres_per_pulse,
+        "turn_degrees_per_second": turn_degrees_per_second,
         "vio_turn_max_commands": vio_turn_max_commands,
         "vio_angular_speed": vio_angular_speed,
         "max_linear_pulse_ceiling": max_linear_pulse_ceiling,
@@ -10993,6 +11069,8 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
             ),
             turn_pulse_duration_ms=turn_pulse_duration_ms,
             linear_pulse_duration_ms=linear_pulse_duration_ms,
+            final_approach_metres_per_pulse=final_approach_metres_per_pulse,
+            turn_degrees_per_second=turn_degrees_per_second,
             motion_refresh_interval_ms=motion_refresh_interval_ms,
             turn_mode=turn_mode,
             vio_heading_offset_degrees=carried_vio_offset,
@@ -13420,6 +13498,10 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             ],
             turn_pulse_duration_ms=call.data["turn_pulse_duration_ms"],
             linear_pulse_duration_ms=call.data["linear_pulse_duration_ms"],
+            final_approach_metres_per_pulse=call.data[
+                "final_approach_metres_per_pulse"
+            ],
+            turn_degrees_per_second=call.data["turn_degrees_per_second"],
             motion_refresh_interval_ms=call.data["motion_refresh_interval_ms"],
             turn_mode=call.data["turn_mode"],
             vio_heading_offset_degrees=call.data.get("vio_heading_offset_degrees"),

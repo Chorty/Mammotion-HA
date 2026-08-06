@@ -109,7 +109,7 @@ Gates 1-4 while the card emitted a *different* profile is exactly the gap that
   and loading the other silently serves the stale card, which would test the old
   profile while the log says otherwise.
 - The card's **execution profile** row must read
-  `LUBA acceptance profile (Gates 1-4, 2026-07-31)`. If it reads
+  `LUBA acceptance profile (Gate 4 re-pass, 2026-08-05)`. If it reads
   `customised (not hardware-accepted)`, the dashboard YAML is overriding the
   profile and the run does not count as Gate 5 — remove the overrides first.
 - Run preview, then dry-run, then Real Go, in that order, from the same card

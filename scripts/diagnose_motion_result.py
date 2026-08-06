@@ -56,6 +56,24 @@ def diagnose(document: dict[str, Any]) -> dict[str, Any]:
             "The VIO turn phase exhausted its command budget before the target "
             "heading tolerance was reached. No normal forward linear command ran."
         )
+    elif segment.get("stop_reason") == "target_requires_reverse_recovery":
+        classification = "forward_only_segment_refused_reverse_recovery"
+        conclusion = (
+            "The mower ended a forward pulse with the waypoint at or behind 90 "
+            "degrees, so no forward command could close the remaining distance. "
+            "The segment stopped rather than dispatching a U-turn and calling it "
+            "a re-alignment. This is the recorded overshoot-and-recovery path "
+            "being refused, not a new fault: expect it whenever a pulse "
+            "overshoots a short leg."
+        )
+    elif segment.get("stop_reason") == "vio_realign_budget_exhausted":
+        classification = "vio_realign_budget_exhausted_before_target"
+        conclusion = (
+            "The segment was off the bearing to its waypoint by more than the "
+            "re-alignment threshold with no correction budget left, so it "
+            "stopped instead of spending the remaining forward budget driving "
+            "off-bearing."
+        )
     elif linear_stop == "max_linear_commands_reached" or segment.get("stop_reason") == "max_linear_commands_reached":
         classification = "linear_budget_exhausted"
         conclusion = "The turn completed, but the permitted linear-command budget was exhausted."
@@ -70,6 +88,7 @@ def diagnose(document: dict[str, Any]) -> dict[str, Any]:
         "segment_stop_reason": segment.get("stop_reason"),
         "classification": classification,
         "conclusion": conclusion,
+        "reverse_recovery_guard": segment.get("reverse_recovery_guard"),
         "junction_turn_feasibility": result.get("junction_turn_feasibility"),
         "turn": {
             "stop_reason": turn_stop,

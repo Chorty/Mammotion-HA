@@ -1,6 +1,7 @@
 # P0 deploy and rollback runbook (host 192.168.1.106)
 
-First deployed 2026-07-29 and updated through the 2026-08-02 Gate 5 characterization. For
+First deployed 2026-07-29 and updated through the 2026-08-06 beta22 containment
+deploy. For
 any later deploy, work while the mower is stopped and experimental motion is
 off. Restarting HA while BLE is unhealthy has previously left the integration
 in `setup_error` with no auto-retry, needing a manual entry reload.
@@ -9,22 +10,108 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 |                         | Host                                                           | Branch         |
 | ----------------------- | -------------------------------------------------------------- | -------------- |
-| Integration version     | `0.6.4-beta19` candidate                                       | `0.6.4-beta19` candidate |
+| Integration version     | `0.6.4-beta22` staging candidate                               | `0.6.4-beta22` candidate |
 | pymammotion pin         | `0.8.12.post1` fork wheel (container verified)                 | same           |
-| Card `CARD_VERSION`     | `0.6.4-beta19`; integration and HACS copies checksum-identical | `0.6.4-beta19` candidate |
+| Card `CARD_VERSION`     | `0.6.4-beta22`; integration and HACS copies checksum-identical | `0.6.4-beta22` candidate |
 | `manual_motion.py`      | present                                                        | present        |
 | `backend_capability.py` | present                                                        | present        |
 | `capabilities.py`       | present                                                        | present        |
 
-The live host ran backend Gates 1-4 and two failed-safe beta16 daylight
-short-approach runs. The independent 0.450 m characterization proved that
-motion is stepwise by confirmed refresh writes and that normal stop latency can
-dominate nominal pulse duration. It also exposed useless realignment after the
-last permitted forward command. The deployed but unaccepted beta18 candidate
-retains beta17's fixes for those three behaviors and adds only the
-device-tracker direction correction without changing the accepted profile.
+The live host ran backend Gates 1-4, two failed-safe beta16 daylight
+short-approach runs, the beta20 Gate 4 re-pass, and the beta21 second-geometry
+reproduction. Beta22 is an **unaccepted, motion-disabled staging candidate**. It
+carries the four-field Gate 4 re-pass profile, the off-mower executor/estimator
+corrections recorded in `docs/gate4-repass-20260805.md`, and the reverse-recovery
+containment guard; it does not establish mower acceptance.
 Experimental motion is verified off. Gate 5 and release remain blocked; do not
-merge or publish. Repeat affected backend Gates 2 and 4 before Gate 5.
+merge or publish.
+
+⚠️ **Beta22 is expected to make Gate 4 fail.** The guard refuses a correction
+present in *both* recorded Gate 4 passes, so a Gate 4 run on this build will
+most likely stop with `target_requires_reverse_recovery` where beta20/beta21
+reported `target_reached`. That is containment, not regression: the earlier
+passes were bought by driving past the waypoint and U-turning back. The next
+motion decision is whether to fix control quality (stop-latency lead, pulse
+sizing) or to accept overshoot-and-recovery — not a Gate 5 attempt.
+
+### beta22 reverse-recovery containment deploy — 2026-08-06 19:51-19:56 EDT
+
+`0.6.4-beta22` is deployed motion-disabled. Backup:
+`/config/mammotion-backup-20260806-1951-beta22.tgz`. All **46** integration files
+were byte-identical to the local tree by per-file md5 (aggregate
+`dbab51a64ff86032fec28b130d2d0605`); the tarball was built with
+`COPYFILE_DISABLE=1` plus explicit `._*`/`__pycache__` excludes and the host
+carries **zero** AppleDouble entries. Both card copies matched
+`49dd1df816162f523285d485e4a8cb6e`. HA's API returned in **41 s** and all **128**
+Mammotion entities in **108 s**, with no `setup_error`.
+
+The Lovelace resource was updated and read back as
+`/hacsfiles/mammotion/mammotion-custom-path-card.js?v=0.6.4-beta22&build=49dd1df8`.
+Container backend verified `pymammotion 0.8.12.post1`;
+`export_runtime_state` reported `backend_verified: true` with both capabilities
+true, `real_motion_allowed: false`, `enabled: false`, no active session, no
+route (`reason: no_route`), `MODE_READY`, blade `OFF` at 0 rpm with
+`blade_safe_for_motion: true`, and position `(5.6444, -4.4875)` RTK `Fix` /
+`AREA_INSIDE` — the unchanged 2026-08-06 second-geometry resting point.
+
+Both card paths were additionally fetched over HTTP and returned `200` with the
+same md5, so the new card is proven served, not merely present on disk. The
+deployed `services.py` was grepped on the host and carries
+`_MAX_FORWARD_REALIGNMENT_DEGREES = 90.0`; the deployed card carries
+`max_linear_commands: 3`, `linear_pulse_duration_ms: 1300`, and
+`max_turn_translation_distance: 0.3`.
+
+What changed on the host relative to beta21: `services.py` (the ≥90°
+reverse-recovery guard and the fail-closed realignment budget) and the card's
+`CARD_VERSION`. `LUBA_ACCEPTANCE_PROFILE` is byte-identical, the
+execution-profile label still reads exactly
+`LUBA acceptance profile (Gate 4 re-pass, 2026-08-05)`, and no service schema or
+entity platform file changed. No motion service was called and no motion was
+commanded.
+
+**BLE was initially unverifiable, then verified at 20:29.** At the 19:56 readback
+the transport had not re-registered (`ble_transport_not_registered`,
+`active_transport: none`, `online: false`) across an 8-minute poll, because the
+mower battery was at **2%** — a flat mower never advertises, so the transport
+cannot register. The `ble_rssi: -62` in that readback was the mower's own last
+self-report, a **cached value and not a liveness signal** (the same trap recorded
+on 2026-07-25); `online: false` corroborated. The read-only
+`scripts/mammotion_preflight_gates.py` correctly reported `BLE link live` as a
+FAIL throughout that window.
+
+The mower docked itself at 20:10 EDT — **no motion was commanded by this
+session** — and charged to 26%. The 20:29 re-check is clean: `active_transport:
+ble`, `online: true`, `ble_rssi -46`, preflight `BLE link live PASS (entity=on
+transport=ble rssi=-48)`, which matches the excellent dock proxy coverage
+measured on 2026-07-29. Motion remained disabled with no session throughout.
+
+⚠️ **The mower is now on the dock at `(4.3188, 3.2862)`**, so the standing
+blockers are `experimental_motion_disabled` + `position_not_valid_for_motion`,
+and `zone_hash: 0` with `pos_type: CHARGE_ON` are the correct docked readings.
+Undock into a mapped area before any future authorized run.
+
+Durable record: `docs/evidence-beta22-containment-deploy-20260806.json`.
+
+### beta21 Gate 4 profile staging deploy — 2026-08-05 21:59-22:07 EDT
+
+`0.6.4-beta21` is deployed motion-disabled from the candidate tree. Backup:
+`/config/mammotion-backup-20260805-beta21-staging.tgz`. All **46** integration
+files matched the local tree aggregate hash
+`ee4a94bfb540bbcd05311cc7754047ba`; the tarball contained no AppleDouble or
+`__pycache__` entries. Both card copies matched
+`59a9a7dd4b7451ffce13cd0494df4646`. HA's API returned in 55 seconds and all
+128 Mammotion entities returned in 142 seconds.
+
+The registered Lovelace resource was updated and read back as
+`/hacsfiles/mammotion/mammotion-custom-path-card.js?v=0.6.4-beta21&build=59a9a7dd`.
+Browser readback showed the beta21 footer and console banner, exact
+`LUBA acceptance profile (Gate 4 re-pass, 2026-08-05)` label, and
+`PyMammotion backend 0.8.12.post1 (verified)`. Real Go, Nudge, and dry-run were
+disabled with no path set. A transient BLE/queue blocker appeared immediately
+after restart and cleared during the reconnect window; the final runtime-state
+readback contained only `experimental_motion_disabled`, with
+`real_motion_allowed: false`, no active session, and `MODE_READY`. No motion
+service was called and no motion was commanded.
 
 ### beta17 correction deploy — 2026-08-02 20:44-20:52 EDT
 

@@ -1295,6 +1295,14 @@
           "name": "Linear pulse duration",
           "description": "How long each forward pulse runs before an explicit stop is sent. send_movement is a continuous-velocity command with no built-in duration bound, so this stop is required to keep pulses short and predictable."
         },
+        "final_approach_metres_per_pulse": {
+          "name": "Final approach metres per pulse",
+          "description": "Fallback eleven-write travel distance used to bound the final approach until this run has measured its own pulses."
+        },
+        "turn_degrees_per_second": {
+          "name": "Turn degrees per second",
+          "description": "Fallback refreshed turn rate used to shorten the final turn pulse until this run measures its own rate."
+        },
         "sample_delays": {
           "name": "Sample delays",
           "description": "Seconds after each command to sample telemetry before continuing."
@@ -1412,6 +1420,14 @@
         "linear_pulse_duration_ms": {
           "name": "Linear pulse duration",
           "description": "How long each forward pulse runs before an explicit stop is sent. send_movement is a continuous-velocity command with no built-in duration bound, so this stop is required to keep pulses short and predictable."
+        },
+        "final_approach_metres_per_pulse": {
+          "name": "Final approach metres per pulse",
+          "description": "Fallback eleven-write travel distance used to bound the final approach until this run has measured its own pulses."
+        },
+        "turn_degrees_per_second": {
+          "name": "Turn degrees per second",
+          "description": "Fallback refreshed turn rate used to shorten the final turn pulse until this run measures its own rate."
         },
         "sample_delays": {
           "name": "Sample delays",

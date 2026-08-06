@@ -1,0 +1,131 @@
+{
+  "date": "2026-08-06",
+  "candidate": "0.6.4-beta21",
+  "test": "Gate 4 second daylight geometry reproduction",
+  "operator_authorized": true,
+  "points": [
+    {"x": 5.137, "y": -4.9762},
+    {"x": 5.657, "y": -4.9762},
+    {"x": 5.657, "y": -4.4562}
+  ],
+  "profile": {
+    "turn_mode": "vio",
+    "max_turn_commands": 4,
+    "vio_turn_max_commands": 4,
+    "max_linear_commands": 3,
+    "max_turn_translation_distance": 0.3,
+    "linear_pulse_duration_ms": 1300,
+    "motion_refresh_interval_ms": 200,
+    "final_approach_metres_per_pulse": 1.06,
+    "turn_degrees_per_second": 37,
+    "waypoint_tolerance": 0.08
+  },
+  "dry_run": {
+    "valid": true,
+    "stop_reason": "dry_run",
+    "ready_for_multi_segment": true,
+    "warnings": [],
+    "blockers": [],
+    "initial_vio_feed": {
+      "live": true,
+      "tracked_features": 80,
+      "brightness_label": "Light"
+    },
+    "junction_turn_feasibility": {
+      "turn_degrees": 90.0,
+      "estimated_commands_needed": 3,
+      "max_commands": 4,
+      "estimated_translation_m": 0.234,
+      "max_displacement_m": 0.3
+    }
+  },
+  "real_result": {
+    "stop_reason": "target_reached",
+    "failed_segment_index": null,
+    "segments_planned": 2,
+    "real_segments_executed": 2,
+    "elapsed_seconds": 93.144,
+    "errors": [],
+    "warnings": [],
+    "blockers": [],
+    "segments": [
+      {
+        "index": 1,
+        "passed": true,
+        "stop_reason": "target_reached",
+        "commands_sent": 13,
+        "turn_commands_sent": 9,
+        "linear_commands_sent": 3,
+        "final_miss_m": 0.07195,
+        "linear_pulse_distances_m": [0.44077, 0.24872, 0.28478],
+        "linear_nonzero_writes": [4, 3, 4],
+        "realignment_errors_degrees": [-22.179, -45.51, -112.325]
+      },
+      {
+        "index": 2,
+        "passed": true,
+        "stop_reason": "target_reached",
+        "commands_sent": 5,
+        "turn_commands_sent": 3,
+        "linear_commands_sent": 2,
+        "final_miss_m": 0.03374,
+        "linear_pulse_distances_m": [0.3089, 0.12303],
+        "linear_nonzero_writes": [4, 2],
+        "realignment_errors_degrees": [-20.754]
+      }
+    ],
+    "final_position": {
+      "x": 5.6444,
+      "y": -4.4875,
+      "rtk_status_label": "Fix",
+      "pos_type_label": "AREA_INSIDE"
+    }
+  },
+  "capture": {
+    "samples": 173,
+    "window": "14:47:41-14:50:52 EDT",
+    "net_displacement_m": 0.7045,
+    "sampled_cumulative_travel_over_0_005_m_steps_m": 2.0618,
+    "post_run_samples": 59,
+    "post_run_window": "14:49:48-14:50:52 EDT",
+    "post_run_displacement_m": 0.0
+  },
+  "ble_log_window": {
+    "minutes": 10,
+    "disconnects": 0,
+    "sequence_gaps": 0,
+    "unparseable_frames": 0,
+    "dropped_frames": 0
+  },
+  "operator_camera": {
+    "path": "/private/tmp/claude-501/-Users-mattjoslin-Documents-Git-Projects-Mammotion-HA/Files/User attachment.gif",
+    "format": "GIF",
+    "size_pixels": [480, 353],
+    "frames": 1195,
+    "duration_seconds": 119.5,
+    "observed": [
+      "initial stationary interval",
+      "repeated in-place pivots and heading reversals",
+      "traverse and partial backtracking rather than a clean orthogonal L",
+      "mower remained within the visible cleared lawn",
+      "clean stationary finish"
+    ],
+    "limitation": "The fixed camera is not calibrated to mower map coordinates, so video pixels cannot support metric distance or map-bearing claims."
+  },
+  "teardown": {
+    "experimental_motion_enabled": false,
+    "real_motion_allowed": false,
+    "active_session": null,
+    "work_mode": "MODE_READY",
+    "blade_rpm": 0,
+    "position_valid": true,
+    "vio_tracked_features": 80
+  },
+  "raw_local_evidence": [
+    "/private/tmp/mammotion-beta21-dry/daylight-second-geometry-20260806.json",
+    "/private/tmp/mammotion-beta21-gate4-second-geometry-request-20260806.json",
+    "/private/tmp/mammotion-beta21-gate4-second-geometry-result-20260806.json",
+    "/private/tmp/mammotion-beta21-gate4-second-geometry-capture-20260806.jsonl",
+    "/private/tmp/claude-501/-Users-mattjoslin-Documents-Git-Projects-Mammotion-HA/Files/User attachment.gif"
+  ]
+}

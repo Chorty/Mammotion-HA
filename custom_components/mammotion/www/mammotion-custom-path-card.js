@@ -6,14 +6,13 @@ const MAX_REAL_SEGMENTS = 2;
 const MAX_NUDGE_METRES = 2.0;
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
-const CARD_VERSION = "0.6.4-beta20";
+const CARD_VERSION = "0.6.4-beta22";
 
 // The exact bounded execution profile that passed supervised LUBA acceptance
-// Gates 1-4 on 2026-07-31 (three-write zero stop, bounded straight segment,
+// Gate 4 re-pass on 2026-08-05 (three-write zero stop, bounded straight segment,
 // active-session abort, 176 deg VIO regression, corrected two-leg L path;
-// see docs/p0-beta-release.md). It is deliberately conservative: one linear
-// command per segment with NO loop-to-tolerance ceiling, so a segment that
-// falls short stops short instead of pulsing on.
+// see docs/gate4-repass-20260805.md). It remains bounded: three linear commands
+// per segment with NO loop-to-tolerance ceiling.
 //
 // This is the card's built-in default because it is the only Real Go profile
 // any hardware has actually executed. Overriding ANY key below in the card
@@ -28,7 +27,7 @@ const LUBA_ACCEPTANCE_PROFILE = Object.freeze({
   turn_mode: "vio",
   max_turn_commands: 4,
   vio_turn_max_commands: 4,
-  max_linear_commands: 1,
+  max_linear_commands: 3,
   // null = loop-to-tolerance disabled. The key is omitted from the payload so
   // the backend's `max_linear_pulse_ceiling is None` branch is what runs.
   max_linear_pulse_ceiling: null,
@@ -36,9 +35,10 @@ const LUBA_ACCEPTANCE_PROFILE = Object.freeze({
   heading_tolerance_degrees: 18,
   waypoint_tolerance: 0.08,
   min_progress_distance: 0.0025,
+  max_turn_translation_distance: 0.3,
   calibrated_forward_heading_offset_degrees: 102.4,
   turn_pulse_duration_ms: 1500,
-  linear_pulse_duration_ms: 3500,
+  linear_pulse_duration_ms: 1300,
   motion_refresh_interval_ms: 200,
   final_approach_metres_per_pulse: 1.06,
   turn_degrees_per_second: 37,
@@ -784,7 +784,7 @@ class MammotionCustomPathCard extends HTMLElement {
     const overrides = this._profileOverrides();
     return overrides.length
       ? `customised (not hardware-accepted): ${overrides.join(", ")}`
-      : "LUBA acceptance profile (Gates 1-4, 2026-07-31)";
+      : "LUBA acceptance profile (Gate 4 re-pass, 2026-08-05)";
   }
 
   // Straight-line nudge along trustworthy CURRENT orientation only. The old
@@ -835,6 +835,9 @@ class MammotionCustomPathCard extends HTMLElement {
         prefer_ble: Boolean(this._profileValue("prefer_ble")),
         turn_mode: "legacy",
         max_turn_commands: Number(this._profileValue("max_turn_commands")),
+        max_turn_translation_distance: Number(
+          this._profileValue("max_turn_translation_distance"),
+        ),
         max_linear_commands: pulses,
         max_no_progress_pulses: Number(
           this._profileValue("max_no_progress_pulses"),
@@ -890,6 +893,9 @@ class MammotionCustomPathCard extends HTMLElement {
       confirm_clear_area: dryRun ? false : this._confirmClearArea,
       prefer_ble: Boolean(this._profileValue("prefer_ble")),
       max_turn_commands: Number(this._profileValue("max_turn_commands")),
+      max_turn_translation_distance: Number(
+        this._profileValue("max_turn_translation_distance"),
+      ),
       max_linear_commands: Number(this._profileValue("max_linear_commands")),
       max_no_progress_pulses: Number(
         this._profileValue("max_no_progress_pulses"),

@@ -5,24 +5,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Current P0 Handoff
 
 Read `docs/CODEX-HANDOFF.md`, then `docs/NEXT-SESSION.md`, before continuing P0
-or click-to-go work. The host runs the still-unaccepted beta19 candidate and
-experimental motion is verified off. Gate 2 passed on 2026-08-03, and Gate 4 — which
+or click-to-go work. The host runs the still-unaccepted, motion-disabled
+`0.6.4-beta22` candidate and experimental motion is verified off. Gate 2 passed
+on 2026-08-03, and Gate 4 — which
 failed on 2026-08-03 before its first linear command — was **re-passed on
-2026-08-05**: both segments `target_reached`, misses 0.0403 m and 0.0330 m
-against an 0.08 m tolerance. Read `docs/gate4-repass-20260805.md` before acting
-on this; the evidence is `docs/evidence-gate4-beta20-day2j-*20260805*`.
+2026-08-05** and **reproduced on a second daylight geometry on 2026-08-06**.
+Read `docs/gate4-repass-20260805.md` before acting
+on this; the evidence is `docs/evidence-gate4-beta20-day2j-*20260805*` and
+`docs/evidence-gate4-beta21-second-geometry-summary-20260806.json`.
 
-The re-pass is real but **does not yet underwrite Gate 5**, for two reasons.
-First, it used three parameters the frozen `LUBA_ACCEPTANCE_PROFILE` does not
-carry (`linear_pulse_duration_ms` 1300 vs 3500, `max_linear_commands` 3 vs 1,
-and `max_turn_translation_distance` 0.30, which the card never sends so it
-inherits the backend default 0.25). `docs/p0-beta-release.md:98-102` says
-passing Gates 1-4 while the card emits a *different* profile is the exact gap
-that profile exists to close — so either the card profile moves to match, or the
-re-pass does not count for Gate 5. That decision is open. Second, the run passed
-by overshooting and recovering (2.2773 m travelled for a 1.0400 m path; a
-103.427° recovery turn that is only legal at the 0.30 cap), and reproduction on
-a second daylight geometry remains required and unmet.
+**Neither pass tracked its path, and beta22 deliberately refuses the behaviour
+that produced them.** Both runs passed by driving past the waypoint and turning
+back — 2.28 m and 2.06 m of travel for a 1.04 m path, with 103.427° and
+−112.325° recovery turns. Beta22 treats a correction of 90° or more as a change
+of motion contract and stops with `target_requires_reverse_recovery` rather than
+dispatching a U-turn, so **a Gate 4 run on the current build is expected to fail
+where beta20/beta21 passed.** That is containment, not regression. The open
+question is control quality — lead the stop by `speed × latency`, or accept
+overshoot-and-recovery explicitly — **not** a Gate 4 retry or a Gate 5 attempt.
+
+The card now emits the Gate 4 re-pass profile, so the profile-identity gap
+(`docs/p0-beta-release.md:98-102`) is closed for those three fields
+(`linear_pulse_duration_ms` 1300, `max_linear_commands` 3,
+`max_turn_translation_distance` 0.30 sent explicitly). The profile is still
+accepted on overshoot-and-recovery evidence only.
 
 Do not change the accepted profile casually; changing it obligates the card
 copy, a `CARD_VERSION` bump deployed to both serving paths, and the pinning
@@ -38,17 +44,16 @@ acceptance: the card has driven the mower but has not completed a clean
 two-segment run. That is **Gate 5** in
 `docs/p0-beta-release.md`, and it is the one open release gate.
 
-The host and branch run the still-unaccepted `0.6.4-beta19` candidate. A zero-command
+The host and branch run the still-unaccepted `0.6.4-beta22` candidate. A zero-command
 live snapshot proved Mammotion exposes only frozen course-over-ground while
-stationary (`toward: -29.589`, VIO inactive/0, RTK yaw 0), so beta19 stops
+stationary (`toward: -29.589`, VIO inactive/0, RTK yaw 0), so since beta19 the card stops
 drawing that last-travel projection as current mower orientation and blocks
-Nudge unless a trustworthy current orientation is explicitly available. Real
-Go motion code and the accepted profile are unchanged. `manifest.json`,
-`pyproject.toml`, `CARD_VERSION` and `uv.lock` (PEP 440 `0.6.4b19`) must always agree, and the
+Nudge unless a trustworthy current orientation is explicitly available. `manifest.json`,
+`pyproject.toml`, `CARD_VERSION` and `uv.lock` (PEP 440 `0.6.4b22`) must always agree, and the
 `Beta Release` workflow verifies all four. The card is served from **two**
 paths, so deploy to both and bump the Lovelace resource key or the browser can
 silently load the stale card. The live Lovelace URL includes the unique build
-suffix `?v=0.6.4-beta19&build=617337d3`. The misleading third-party-map
+suffix `?v=0.6.4-beta22&build=49dd1df8`. The misleading third-party-map
 `card-mod` rotation was removed with verified config readback; its pre-change
 backup remains `/config/.storage/lovelace.dashboard_yard.bak.codex-20260802-213848`.
 

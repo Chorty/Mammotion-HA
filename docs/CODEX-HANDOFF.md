@@ -1,24 +1,28 @@
-# Handoff prompt — decide the acceptance profile after the 2026-08-05 Gate 4 re-pass
+# Handoff prompt — beta22 contains the Gate 4 U-turn; decide control quality next
 
 Paste the block below to resume. It is written to be self-contained; everything
-it references is committed on `feat/vio-turn-to-heading` in
+it references is committed on `feat/gate4-day2j-profile` in
 `Chorty/Mammotion-HA`.
 
 ---
 
 You are resuming P0 completion on the Mammotion-HA repo, branch
-`feat/vio-turn-to-heading` (remote `origin` = `Chorty/Mammotion-HA`).
+`feat/gate4-day2j-profile` (remote `origin` = `Chorty/Mammotion-HA`). The branch
+is one review commit ahead of `feat/vio-turn-to-heading`; confirm the worktree
+is clean and inspect that commit before making another change.
 
-**Read first, in this order:** `CLAUDE.md`, then `docs/NEXT-SESSION.md` (its
-"🚨 READ FIRST" block), then the
-matching section of `docs/p0-beta-release.md`. Confirm
+**Read first, in this order:** `CLAUDE.md`, `docs/NEXT-SESSION.md` (its
+2026-08-06 evening block), `docs/gate4-repass-20260805.md`, then the matching
+section of `docs/p0-beta-release.md`. Confirm
 `git status --short --branch` is clean and inspect `git log -1 --stat` before
 editing. Do not reconstruct live-test facts from chat history; those documents
 hold the structured record.
 
 ## Immediate safety state
 
-⚠️ The experimental-motion gate may have been left **ARMED**. Check first:
+The 2026-08-06 test teardown verified experimental motion **OFF**, no active
+session, `MODE_READY`, blades zero, RTK Fix, and VIO Light/80, and the beta22
+deploy readback that evening confirmed the same. Still check first:
 
 ```sh
 set -a && source .env && set +a
@@ -28,12 +32,127 @@ scripts/ha_set_experimental_motion.py status
 If it reports `enabled: True` and you are not about to run, turn it off with
 `scripts/ha_set_experimental_motion.py off`.
 
-After the Gate 4 re-pass on 2026-08-05, the mower was stationary at
-approximately `(5.2359, -3.0852)`, inside `Backyard Right`, RTK Fix, blades
-zero, no active session, and **not charging** — it was left in the yard, not
-docked. The host and branch run the still-unaccepted `0.6.4-beta19` candidate.
-Experimental motion was explicitly disarmed after the test and must remain off
-unless a newly authorized live test is underway.
+The host runs the motion-disabled `0.6.4-beta22` staging candidate. The final
+2026-08-06 position was `(5.6444, -4.4875)` inside `Backyard Right`; 59 samples
+over 64 seconds measured 0.0000 m post-run movement, and the post-deploy
+readback found the mower still there. Experimental motion must remain off unless
+a new, exact test receives fresh operator authorization.
+
+## Where this stands — 2026-08-06 evening
+
+Gate 4 reproduced its **boolean** pass on a second 0.52 m x 0.52 m daylight L:
+both segments returned `target_reached`, with misses 0.07195 m and 0.03374 m.
+It did not reproduce clean tracking. Segment 1 used 0.9743 m of linear travel
+on its 0.52 m leg and recovery errors of -22.179°, -45.510°, and -112.325°.
+Dense telemetry sampled about 2.06 m cumulative travel for the 1.04 m path.
+The operator's 119.5-second GIF independently shows repeated pivots, reversals,
+and partial backtracking rather than two controlled perpendicular legs. Read
+`docs/evidence-gate4-beta21-second-geometry-summary-20260806.json` and section 7
+of `docs/gate4-repass-20260805.md`.
+
+**The containment guard is now written, tested, versioned as beta22, and
+deployed motion-disabled.** The executor used to call a >=90° correction a VIO
+"re-alignment", silently converting a forward-only segment into a U-turn after
+passing its target. `_requires_reverse_recovery()` now sits at the post-linear
+realignment decision: at `abs(aim_error) >= 90°` the segment stops with
+`target_requires_reverse_recovery` before dispatching the U-turn. It also stops
+with `vio_realign_budget_exhausted` instead of continuing forward after the
+realignment budget is gone. Tests replay both Gate 4 passes and directly prove
+that only the initial turn runs in the >=90° case.
+
+Verification completed on the shipped tree:
+
+- the complete coverage suite passes: **499 tests**;
+- all 19 frontend tests, scoped mypy, Ruff lint, Ruff format, and all-files
+  pre-commit pass, and pre-commit modified nothing.
+
+Two review findings were closed with the guard: the previously untested
+`vio_realign_budget_exhausted` abort is pinned by a direct executor test, and
+`scripts/diagnose_motion_result.py` now classifies both new stop reasons
+(`forward_only_segment_refused_reverse_recovery`,
+`vio_realign_budget_exhausted_before_target`) instead of falling through to
+`inspect_recorded_stop_reason`.
+
+The existing `linear_distance_ceiling_factor` was reviewed but deliberately not
+expanded here: it is enforced only in loop-to-tolerance mode, checked after a
+pulse, and defaults to 2.0, so it would not have prevented either recorded
+U-turn. That is a separate cumulative-travel design change, not a substitute
+for the geometric guard.
+
+## The next decision is control quality, not another gate attempt
+
+Do **not** proceed to Gate 5, and do not queue a Gate 4 retry expecting a pass.
+The guard refuses a correction present in **both** recorded Gate 4 passes, so a
+Gate 4 run on beta22 will most likely stop `target_requires_reverse_recovery`
+where beta20/beta21 reported `target_reached`. That is the intended trade — an
+honest failure replacing a boolean pass bought by a U-turn — and it means the
+open question is how to stop overshooting in the first place:
+
+1. Lead the stop by `speed × latency` rather than managing overshoot with pulse
+   sizing, which only works when the leg length is known in advance
+   (§8.3 of `docs/gate4-repass-20260805.md`). Measured interrupted-stop overshoot
+   was 0.15–0.26 m across day2d/e/f/h.
+2. Or accept overshoot-and-recovery as shipped behaviour, which means relaxing
+   the guard deliberately and documenting why — not leaving it to the executor
+   to decide silently.
+
+**Open, deliberately not fixed:** the pre-linear post-turn correction
+(`services.py` `post_turn_alignment`, around line 10147) can still dispatch a
+correction at an aim error ≥90° if the initial turn's own drift — up to the
+0.30 m cap — carries the mower past a short waypoint. No recorded run has
+exercised that site, so guarding it would be an un-evidenced motion-path change
+outside this commit's replay coverage. Decide it on evidence, not symmetry.
+
+## beta22 deploy — 2026-08-06 19:51-19:56 EDT, motion-disabled, no motion commanded
+
+Backup `/config/mammotion-backup-20260806-1951-beta22.tgz`. All **46**
+integration files byte-identical to the local tree (aggregate
+`dbab51a64ff86032fec28b130d2d0605`), zero AppleDouble entries; both card copies
+`49dd1df816162f523285d485e4a8cb6e`. HA API returned in **41 s**, all **128**
+Mammotion entities in **108 s**, no `setup_error`. Lovelace resource read back as
+`?v=0.6.4-beta22&build=49dd1df8`. Container backend verified
+`pymammotion 0.8.12.post1`. Runtime readback: `real_motion_allowed: false`,
+`enabled: false`, no active session, no route, `MODE_READY`, blade `OFF` at 0 rpm
+with `blade_safe_for_motion: true`, position `(5.6444, -4.4875)` RTK `Fix` /
+`AREA_INSIDE`. `LUBA_ACCEPTANCE_PROFILE` is byte-identical and the
+execution-profile label still reads exactly
+`LUBA acceptance profile (Gate 4 re-pass, 2026-08-05)`; only `services.py` and
+`CARD_VERSION` changed relative to beta21. Full record in
+`docs/deploy-runbook-p0.md` and
+`docs/evidence-beta22-containment-deploy-20260806.json`.
+
+**BLE: initially unverifiable, since VERIFIED.** At the 19:56 readback the
+transport had not re-registered (`ble_transport_not_registered`,
+`active_transport: none`, `online: false`) across an 8-minute poll, because the
+mower battery was at **2%** — a flat mower never advertises, so the transport
+cannot register. That was the whole explanation, not a link fault; the
+`ble_rssi: -62` in that readback was the mower's own cached self-report, which is
+**not** a liveness signal.
+
+The mower docked itself at 20:10 EDT (**no motion was commanded by this
+session**) and charged to 26%. The 20:29 re-check is clean: `active_transport:
+ble`, `online: true`, `ble_rssi -46`, and the read-only preflight reports
+`BLE link live PASS (entity=on transport=ble rssi=-48)` — matching the documented
+excellent dock proxy coverage. **The deploy verification is complete.**
+
+**The beta22 dry-run verification is complete** (20:43 EDT). A two-segment dry
+run with the exact card profile returned `valid: true`, `stop_reason: dry_run`,
+`would_send: false`, 0 real segments, empty errors/warnings/blockers; it echoed
+`final_approach_metres_per_pulse: 1.06` and `turn_degrees_per_second: 37.0`
+(proving the plumbing fix is live) and judged the 90° junction feasible at 3
+commands of 4. No command was dispatched.
+
+⚠️ That dry run is **not** run-readiness: its own `initial_vio_feed` is
+`{live: false, tracked_features: 0, brightness: Dark}`, and dry-run VIO gates are
+advisory by design. A real `turn_mode: "vio"` run is refused before dispatch with
+`blockers: ["vio_active"]`.
+
+**Live state at handoff (~20:44 EDT).** The operator undocked the mower and ended
+the paused mowing task; **no motion was commanded by this session**. Mower at
+`(4.6715, -1.1719)`, `AREA_INSIDE` `Backyard Right`, `zone_hash` non-zero, RTK
+Fix, `MODE_READY`, blades OFF at 0 rpm, BLE live at −60, battery **28%**, gate
+off, no session, route cleared to `no_route`. **Nothing can run tonight**: VIO is
+dark at 0 features and 28% is not a run budget.
 
 Two operational notes from that session. `scripts/linear_duration_sweep.py`
 needs `custom_components.mammotion` at DEBUG or its `ble_alive()` guard aborts
@@ -371,7 +490,7 @@ cached and stayed bit-identical across 374 samples.
 ## Validation matrix (run all after any change)
 
 ```sh
-.venv/bin/python -m pytest --cov=custom_components.mammotion --cov-report=term-missing tests  # 483 pass
+.venv/bin/python -m pytest --cov=custom_components.mammotion --cov-report=term-missing tests  # 499 pass
 .venv/bin/python -m ruff check custom_components tests
 .venv/bin/python -m ruff format --check custom_components tests
 .venv/bin/python -m mypy --follow-imports=skip custom_components/mammotion

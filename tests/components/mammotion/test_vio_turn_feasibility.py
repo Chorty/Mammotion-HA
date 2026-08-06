@@ -608,3 +608,86 @@ def test_diagnose_keeps_linear_budget_exhaustion_distinct() -> None:
 
     assert report["classification"] == "linear_budget_exhausted"
     assert report["turn"]["stop_reason"] == "target_heading_reached"
+
+
+def test_diagnose_names_a_refused_reverse_recovery() -> None:
+    """A refused U-turn must name itself, not fall through to 'inspect'."""
+    guard = {
+        "after_linear_pulse": 1,
+        "facing_degrees": 120.0,
+        "bearing_degrees": 0.0,
+        "aim_error_degrees": -120.0,
+        "max_forward_realignment_degrees": 90.0,
+        "reason": "target_requires_reverse_recovery",
+    }
+    document = {
+        "result": {
+            "stop_reason": "segment_failed",
+            "failed_segment_index": 1,
+            "segments": [
+                {
+                    "index": 1,
+                    "result": {
+                        "stop_reason": "target_requires_reverse_recovery",
+                        "reverse_recovery_guard": guard,
+                        "turn_commands_sent": 2,
+                        "linear_commands_sent": 1,
+                        "phases": [
+                            {
+                                "name": "turn_to_target_heading",
+                                "result": {
+                                    "stop_reason": "target_heading_reached",
+                                    "commands_sent": 2,
+                                    "command_results": [],
+                                },
+                            },
+                        ],
+                        "vio": {"target_vision_heading": 90.0},
+                    },
+                }
+            ],
+        }
+    }
+
+    report = diagnose_motion_result.diagnose(document)
+
+    assert report["classification"] == "forward_only_segment_refused_reverse_recovery"
+    assert report["reverse_recovery_guard"] == guard
+    assert report["linear"]["started"] is True
+
+
+def test_diagnose_names_an_exhausted_realignment_budget() -> None:
+    """The off-bearing stop is distinct from a linear budget exhaustion."""
+    document = {
+        "result": {
+            "stop_reason": "segment_failed",
+            "failed_segment_index": 1,
+            "segments": [
+                {
+                    "index": 1,
+                    "result": {
+                        "stop_reason": "vio_realign_budget_exhausted",
+                        "turn_commands_sent": 4,
+                        "linear_commands_sent": 1,
+                        "realignments": [],
+                        "phases": [
+                            {
+                                "name": "turn_to_target_heading",
+                                "result": {
+                                    "stop_reason": "target_heading_reached",
+                                    "commands_sent": 2,
+                                    "command_results": [],
+                                },
+                            },
+                        ],
+                        "vio": {"target_vision_heading": 90.0},
+                    },
+                }
+            ],
+        }
+    }
+
+    report = diagnose_motion_result.diagnose(document)
+
+    assert report["classification"] == "vio_realign_budget_exhausted_before_target"
+    assert report["reverse_recovery_guard"] is None

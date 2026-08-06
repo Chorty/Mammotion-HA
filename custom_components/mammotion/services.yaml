@@ -2161,6 +2161,24 @@ raw_pymammotion_execute_multi_segment:
           max: 4000
           step: 50
           unit_of_measurement: ms
+    final_approach_metres_per_pulse:
+      required: false
+      default: 1.06
+      selector:
+        number:
+          min: 0.05
+          max: 5.0
+          step: 0.01
+          unit_of_measurement: m
+    turn_degrees_per_second:
+      required: false
+      default: 37.0
+      selector:
+        number:
+          min: 1.0
+          max: 180.0
+          step: 0.5
+          unit_of_measurement: "°/s"
     motion_refresh_interval_ms:
       required: false
       default: 200

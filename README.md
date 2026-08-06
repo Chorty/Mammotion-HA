@@ -107,12 +107,11 @@ feature. Preview and dry-run support up to seven destinations. Real execution
 is limited to two segments and is disabled unless every backend safety gate
 passes.
 
-The bounded backend completed supervised LUBA acceptance on 2026-07-31,
-including active abort and a two-leg L path. The card's built-in Real Go
-defaults are now that same bounded profile, so the payload the card emits by
-default matches the one the backend gates executed. The card has not itself
-driven the mower end-to-end: UI-to-mower Real Go is still unvalidated, and any
-run remains operator-supervised.
+The bounded backend re-passed the two-leg Gate 4 path on 2026-08-05. The card's
+built-in Real Go defaults match that bounded profile, but the re-pass still
+requires reproduction on a second daylight geometry before Gate 5. The card has
+not itself driven the mower end-to-end: UI-to-mower Real Go is still
+unvalidated, and any run remains operator-supervised.
 
 Overriding any motion field in the card YAML leaves the accepted profile. The
 card then labels its **execution profile** row `customised (not
@@ -136,7 +135,7 @@ last travelling.
 Add the integration-served JavaScript as a dashboard resource:
 
 ```text
-/mammotion/mammotion-custom-path-card.js?v=0.6.4-beta19
+/mammotion/mammotion-custom-path-card.js?v=0.6.4-beta21
 ```
 
 Use resource type `JavaScript module`. The version query is required because
@@ -170,14 +169,15 @@ prefer_ble: true
 turn_mode: vio
 max_turn_commands: 4
 vio_turn_max_commands: 4
-max_linear_commands: 1
+max_linear_commands: 3
 max_no_progress_pulses: 3
 heading_tolerance_degrees: 18
 waypoint_tolerance: 0.08
 min_progress_distance: 0.0025
 calibrated_forward_heading_offset_degrees: 102.4
 turn_pulse_duration_ms: 1500
-linear_pulse_duration_ms: 3500
+linear_pulse_duration_ms: 1300
+max_turn_translation_distance: 0.3
 motion_refresh_interval_ms: 200
 final_approach_metres_per_pulse: 1.06
 turn_degrees_per_second: 37
@@ -189,9 +189,9 @@ sample_delays:
 
 Notes on the profile:
 
-- `max_linear_pulse_ceiling` is deliberately **unset**. The accepted profile
-  runs one linear command per segment with no loop-to-tolerance, so a segment
-  that falls short stops short rather than continuing to pulse. Setting it
+- `max_linear_pulse_ceiling` is deliberately **unset**. The candidate profile
+  runs at most three linear commands per segment with no loop-to-tolerance.
+  Setting it
   re-enables loop-to-tolerance and leaves the accepted profile.
 - `calibrated_forward_heading_offset_degrees` is a per-mower measurement taken
   on the acceptance LUBA. Re-derive it for a different mower instead of

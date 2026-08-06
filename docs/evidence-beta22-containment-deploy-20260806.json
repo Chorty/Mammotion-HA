@@ -1,0 +1,203 @@
+{
+  "date": "2026-08-06",
+  "candidate": "0.6.4-beta22",
+  "type": "motion-disabled staging deploy",
+  "motion_commanded": false,
+  "gate_claimed": null,
+  "operator_authorized_deploy_only": true,
+  "change_summary": {
+    "shipped_code_delta_vs_beta21": [
+      "custom_components/mammotion/services.py",
+      "custom_components/mammotion/www/mammotion-custom-path-card.js (CARD_VERSION only)"
+    ],
+    "guard": {
+      "constant": "_MAX_FORWARD_REALIGNMENT_DEGREES",
+      "value_degrees": 90.0,
+      "stop_reason": "target_requires_reverse_recovery",
+      "site": "post-linear VIO realignment decision in _raw_pymammotion_execute_vector_segment",
+      "second_stop_reason": "vio_realign_budget_exhausted",
+      "unguarded_site_left_open": "pre-linear post_turn_alignment correction; no recorded run exercised it at >=90 degrees"
+    },
+    "unchanged": [
+      "LUBA_ACCEPTANCE_PROFILE",
+      "execution-profile label 'LUBA acceptance profile (Gate 4 re-pass, 2026-08-05)'",
+      "all service schemas",
+      "pymammotion pin 0.8.12.post1"
+    ]
+  },
+  "expected_consequence": "A Gate 4 run on beta22 is expected to stop target_requires_reverse_recovery rather than target_reached. Evidence replay proves both recorded Gate 4 passes (day2j +103.427 deg, beta21 second geometry -112.325 deg) contain a correction this guard refuses. This is containment, not regression.",
+  "local_verification": {
+    "pytest_with_coverage": 499,
+    "frontend_tests": 19,
+    "ruff_check": "pass",
+    "ruff_format_check": "50 files already formatted",
+    "mypy_scoped": "no issues in 28 source files",
+    "pre_commit_all_files": "pass, modified nothing"
+  },
+  "version_sites": {
+    "custom_components/mammotion/manifest.json": "0.6.4-beta22",
+    "pyproject.toml": "0.6.4-beta22",
+    "CARD_VERSION": "0.6.4-beta22",
+    "uv.lock": "0.6.4b22"
+  },
+  "deploy": {
+    "window_edt": "19:51-19:56",
+    "backup": "/config/mammotion-backup-20260806-1951-beta22.tgz",
+    "integration_files": 46,
+    "files_byte_identical_to_tree": true,
+    "aggregate_md5_of_per_file_manifest": "dbab51a64ff86032fec28b130d2d0605",
+    "appledouble_entries_on_host": 0,
+    "card_md5_both_paths": "49dd1df816162f523285d485e4a8cb6e",
+    "card_http_200_both_paths": true,
+    "ha_api_back_seconds": 41,
+    "mammotion_entities": 128,
+    "entities_ready_seconds": 108,
+    "setup_error": false,
+    "lovelace_resource": "/hacsfiles/mammotion/mammotion-custom-path-card.js?v=0.6.4-beta22&build=49dd1df8",
+    "container_pymammotion": "0.8.12.post1"
+  },
+  "runtime_readback": {
+    "backend_verified": true,
+    "capabilities": {
+      "ble_teardown_failure_atomic": true,
+      "blufi_reassembly_reset": true
+    },
+    "experimental_motion_enabled": false,
+    "real_motion_allowed": false,
+    "active_session": null,
+    "last_session": null,
+    "work_mode_label": "MODE_READY",
+    "charge_state": "not_charging",
+    "blade": {
+      "reported_state_label": "OFF",
+      "current_cutter_rpm": 0,
+      "blade_safe_for_motion": true,
+      "blade_rpm_looks_latched": false
+    },
+    "route": {"route_present": false, "blocks_motion": false, "reason": "no_route"},
+    "position": {
+      "x": 5.6444,
+      "y": -4.4875,
+      "rtk_status_label": "Fix",
+      "pos_type_label": "AREA_INSIDE",
+      "area": "Backyard Right",
+      "zone_hash": "1343645155037768237",
+      "valid_for_motion": true
+    },
+    "note_position": "Unchanged from the 2026-08-06 second-geometry teardown resting point; the mower did not move during the deploy."
+  },
+  "runtime_readback_2029_edt_after_charging": {
+    "experimental_motion_enabled": false,
+    "real_motion_allowed": false,
+    "blockers": ["experimental_motion_disabled", "position_not_valid_for_motion"],
+    "active_session": null,
+    "last_session": null,
+    "backend_verified": true,
+    "active_transport": "ble",
+    "online": true,
+    "ble_rssi": -46,
+    "work_mode_label": "MODE_READY",
+    "charge_state_label": "docked_or_charging",
+    "battery_percent": 26,
+    "blade": {"reported_state_label": "OFF", "current_cutter_rpm": 0, "blade_safe_for_motion": true},
+    "route": "no_route",
+    "position": {"x": 4.3188, "y": 3.2862, "rtk_status_label": "Fix", "pos_type_label": "CHARGE_ON", "valid_for_motion": false},
+    "note": "The mower is now ON THE DOCK, not at the 2026-08-06 run resting point. It docked at 20:10 EDT without any command from this session. position_not_valid_for_motion and zone_hash 0 / CHARGE_ON are the correct docked readings, not defects; they replace ble_transport_not_registered in the blocker list, which is the intended improvement."
+  },
+  "beta22_dry_run_verification_2043_edt": {
+    "service": "mammotion.raw_pymammotion_execute_multi_segment",
+    "dry_run": true,
+    "motion_commanded": false,
+    "profile_sent": "exact card LUBA_ACCEPTANCE_PROFILE (Gate 4 re-pass, 2026-08-05)",
+    "result": {
+      "valid": true,
+      "stop_reason": "dry_run",
+      "would_send": false,
+      "segments_planned": 2,
+      "real_segments_executed": 0,
+      "errors": [],
+      "warnings": [],
+      "blockers": [],
+      "final_approach_metres_per_pulse_echoed": 1.06,
+      "turn_degrees_per_second_echoed": 37.0,
+      "junction_turn_feasibility": {
+        "segment_index": 2,
+        "turn_degrees": 90.0,
+        "feasible": true,
+        "reason": "within_budget",
+        "required_rotation_degrees": 72.0,
+        "per_command_rotation_bound_degrees": 24.75,
+        "rotation_bound_source": "conservative_observed_rate_with_refresh",
+        "estimated_commands_needed": 3,
+        "max_commands": 4
+      }
+    },
+    "significance": "Completes the deploy verification item that the BLE outage blocked. Proves on the deployed beta22 build that the multi-segment path plans, that the card profile's final_approach_metres_per_pulse and turn_degrees_per_second are now schema-validated and echoed (the plumbing defect fixed in this commit), and that the turn-feasibility math runs with the current constants. No command was dispatched.",
+    "initial_vio_feed": {"live": false, "tracked_features": 0, "brightness_label": "Dark"},
+    "vio_caveat": "The dry run reports valid:true while its own initial_vio_feed says VIO is unusable, because dry-run VIO gates are ADVISORY by design (passed: dry_run). A real turn_mode:'vio' run would be refused before dispatch with blockers:['vio_active']. Do not read this dry run as readiness for a night Gate 4/Gate 5 attempt."
+  },
+  "post_undock_state_2044_edt": {
+    "note": "Operator undocked the mower and ended the paused mowing task; no motion was commanded by this session.",
+    "position": {"x": 4.6715, "y": -1.1719, "rtk_status_label": "Fix", "pos_type_label": "AREA_INSIDE", "area": "Backyard Right"},
+    "zone_hash": "1343645155037768237",
+    "work_mode_label": "MODE_READY",
+    "route": {"reason": "no_route", "route_present": false, "blocks_motion": false},
+    "battery_percent": 28,
+    "active_transport": "ble",
+    "online": true,
+    "ble_rssi": -60,
+    "vio": {"brightness": "dark", "tracked_features": 0},
+    "experimental_motion_enabled": false,
+    "real_motion_allowed": false,
+    "active_session": null,
+    "standing_blockers": ["experimental_motion_disabled"],
+    "run_readiness": "NOT READY. VIO is dark with 0 tracked features, so anything using turn_mode:'vio' -- Real Go, Gate 4, Gate 5 -- is refused before dispatch by design. Battery 28% is also not a run budget. Ending the paused mow correctly cleared the route to no_route, reproducing the documented stale_route_while_ready behaviour."
+  },
+  "preflight_dry_checks_only": {
+    "script": "scripts/mammotion_preflight_gates.py",
+    "read_only": true,
+    "pass": [
+      "backend verified",
+      "in a mapped zone",
+      "position valid",
+      "VIO usable (turns only)",
+      "mower ready/paused",
+      "blade RPM zero"
+    ],
+    "fail_expected": [
+      "experimental motion OFF (intended; not armed)",
+      "BLE link live",
+      "standing gate blockers"
+    ]
+  },
+  "ble_state": {
+    "verified": true,
+    "at_first_readback_1956_edt": {
+      "state": "ble_transport_not_registered",
+      "active_transport": "none",
+      "online": false,
+      "self_reported_ble_rssi": -62,
+      "polled_window_minutes": 8,
+      "battery_percent": 2,
+      "battery_sensor": "sensor.back_yard_clip_skywalker_battery",
+      "battery_last_changed_utc": "2026-08-06T23:54:50.684744+00:00",
+      "root_cause": "Mower battery at 2 percent. A flat/powered-down mower never advertises, so the BLE transport could not register. Not a link fault and not a deploy defect. The -62 rssi was the mower's own cached self-report, not a liveness signal (established 2026-07-25); online:false corroborated."
+    },
+    "at_recheck_2029_edt": {
+      "state": "live",
+      "active_transport": "ble",
+      "online": true,
+      "ble_rssi": -46,
+      "preflight_ble_link_live": "PASS (entity=on transport=ble rssi=-48)",
+      "battery_percent": 26,
+      "charging": true,
+      "note": "The mower returned to the dock at 20:10 EDT under its own/operator action -- no motion was commanded by this session -- and BLE came up as soon as it powered back on. rssi -46/-48 matches the documented excellent dock proxy coverage. The BLE half of the deploy verification is therefore COMPLETE."
+    }
+  },
+  "safety": {
+    "motion_service_called": false,
+    "gate_armed_at_any_point": false,
+    "pushed_to_any_remote": false,
+    "mikey0000_remotes_push_disabled": true
+  }
+}

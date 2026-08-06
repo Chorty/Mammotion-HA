@@ -78,6 +78,7 @@ Only one copy exists in the repo; the second serving path is on the HA host.
 | `linear_pulse_duration_ms` | 3500 | **1300** | changed |
 | `max_linear_commands` | 1 | **3** | changed |
 | `max_turn_translation_distance` | *(absent — backend default 0.25)* | **0.30** | **must be added** |
+| `final_approach_metres_per_pulse` | 1.06 | 1.06 | retained; see §5 |
 | `prefer_ble` | true | true | same |
 | `turn_mode` | vio | vio | same |
 | `max_turn_commands` | 4 | 4 | same |
@@ -89,7 +90,6 @@ Only one copy exists in the repo; the second serving path is on the HA host.
 | `calibrated_forward_heading_offset_degrees` | 102.4 | 102.4 | same |
 | `turn_pulse_duration_ms` | 1500 | 1500 | same |
 | `motion_refresh_interval_ms` | 200 | 200 | same |
-| `final_approach_metres_per_pulse` | 1.06 | 1.06 | same |
 | `turn_degrees_per_second` | 37 | 37 | same |
 | `ble_auto_recover` | false | false | same |
 | `sample_delays` | [0, 3] | [0, 3] | same |
@@ -99,20 +99,26 @@ The third row is the subtle one: the card **never sends**
 the value that refused the recovery turn. A card run today would still fail the
 way day2e and day2h did.
 
-## 4. What must change if this profile is adopted
+## 4. Review candidate if this profile is adopted
 
-Not done. Listed so the decision is costed.
+The review branch makes the candidate mechanically complete without adopting,
+versioning or deploying it. The three day2j values belong in the mower-specific
+card profile, not the backend schema defaults: changing the schemas would alter
+direct service calls and other mower models on the evidence of one LUBA run.
+The card therefore sends `max_turn_translation_distance` explicitly, while the
+generic vector and multi-segment defaults remain 0.25 and their independent
+linear-command defaults remain 1 and 2.
 
-- `custom_components/mammotion/www/mammotion-custom-path-card.js:26` — the three fields above.
-- `CARD_VERSION` bump, and deploy to **both** serving paths (`/mammotion/` and `/hacsfiles/`), plus a Lovelace resource-key bump. Confirm the banner in the browser console, not the upload.
-- The card's execution-profile row text, currently required by
-  `docs/p0-beta-release.md:111` to read `LUBA acceptance profile (Gates 1-4, 2026-07-31)`.
-  That date is now wrong if the profile moves.
-- Pinning tests that assert the old values:
-  - `tests/frontend/mammotion-custom-path-card.test.mjs:146` (`max_linear_commands == 1`)
-  - `tests/components/mammotion/test_motion_scripts.py:275` (`max_linear_commands == 1`)
-  - `tests/components/mammotion/test_map_task_visibility.py:1469, 1533, 4174, 4217, 4254, 4292, 4600, 4739, 4747`
-- Backend schema defaults in `custom_components/mammotion/services.py` (multiple service schemas: `max_linear_commands` at lines 894 and 1018, `max_turn_translation_distance` at 927 and 1051) — decide whether defaults move or whether the card carries the values explicitly.
+The earlier site inventory was wrong. Only the frontend profile test was a pin
+of `LUBA_ACCEPTANCE_PROFILE`. `test_motion_scripts.py:275` tests a standalone
+one-segment script default, and the listed `test_map_task_visibility.py` sites
+test generic schema defaults or explicitly selected executor budgets/durations;
+changing them would silently widen unrelated call paths. They remain unchanged.
+The candidate updates the card profile and payload, the frontend pin, the README
+copy pinned by that frontend test, and the execution-profile label. It does not
+bump `CARD_VERSION`. Adoption would still require that bump, deployment to both
+serving paths (`/mammotion/` and `/hacsfiles/`), a Lovelace resource-key bump,
+and browser-console banner confirmation.
 
 ## 5. Open questions and caveats
 
@@ -131,11 +137,46 @@ attempt. This is a decision, not a formality.
 final-approach shortening (below), but not all of it. Wheel slip, dirt, grass
 drag and battery state are uncontrolled.
 
-**`final_approach_metres_per_pulse` behaviour is not understood.** Early pulses
-appear to run the full commanded duration regardless of remaining distance
-(day2h pulse 2 travelled 0.334 m with ~0.17 m remaining), yet late pulses are
-small and well-scaled (0.0787, 0.0934). Both observations are in the evidence
-and they are not reconciled. Do not build on either until this is explained.
+**`final_approach_metres_per_pulse` is applied by write count, not duration.**
+The executor consults it before every linear pulse. Scaling is disabled when
+refresh is off, remaining distance is unavailable, or the metres-per-pulse
+estimate is unusable; it also leaves a pulse unbounded when the remaining
+distance is at least the estimate (`services.py:9325-9345`). Otherwise it
+converts the distance fraction into a count of non-zero writes against the
+eleven-write 1.06 m reference (`services.py:9347-9364`). It never shortens
+`linear_pulse_duration_ms`: the initial movement write is unconditional
+(`services.py:10321-10327`), and only the later refresh writes are capped
+(`services.py:10348-10360`, `services.py:4251-4254`).
+
+That explains both observations. day2h pulse 2 was bounded to two refreshes,
+so it received three non-zero writes including the initial write; day2j's final
+two pulses were bounded to one refresh, so each received two. The same mechanism
+explains why nominally identical 1717 ms day2b/day2e commands travelled 0.455 m
+and 0.661 m: their remaining distances selected different write counts. By
+contrast, the RTK duration sweeps call `manual_velocity_pulse_test`, whose
+travel window is controlled directly by duration. The sweep curve therefore
+does not describe executor pulse sizing; §6's non-transfer warning has a code
+path explanation, not merely observed variance.
+
+The old self-calibration had a defect: it recorded a pulse only when scaling
+was *not* applied (`services.py` at the former line 10422). Every short day2i
+and day2j pulse was marked applied against the 1.06 m fallback, so none could
+ever replace that fallback. The committed 1300 ms evidence does not support a
+standalone replacement constant. Four deadline-limited, four-write 1300 ms
+pulses travelled 0.3496–0.4192 m, but substituting their roughly 0.39 m mean
+while retaining the algorithm's eleven-write denominator would be internally
+inconsistent and would weaken shortening. The review candidate therefore
+retains 1.06 as the eleven-write reference and fixes the estimator: every
+measured pulse is normalised by its actual initial-plus-refresh write count,
+kept separate by commanded speed, and may calibrate the next pulse. The 1.06 m
+fallback is a conservative floor: an observation may remove writes but may
+never add one, because stopping short leaves another bounded correction while
+an extra write can overshoot. Direct replay of every day2i/day2j linear command
+preserves the recorded refresh limits. The review also found and fixed a
+separate plumbing defect: the card emitted `final_approach_metres_per_pulse`
+and `turn_degrees_per_second`, but the multi-segment handler ignored both; they
+are now schema-validated, echoed, and forwarded to each vector segment. This
+code has only offline test coverage; it has not been motion-tested.
 
 **Tolerance versus noise floor.** `waypoint_tolerance: 0.08` sits at or below
 the 2–6 cm pulsed-measurement noise floor. day2h missed by 8 mm — a margin far
@@ -203,15 +244,78 @@ commands, with 0.024 m of drift per command, aborting on the runtime
 displacement cap. The ~8–9°/command figure in the project notes does not
 describe it.
 
-## 7. Suggested next steps
+## 7. Beta21 second-geometry reproduction — 2026-08-06
 
-1. Decide the profile question in §5 before any Gate 5 attempt.
-2. Reproduce Gate 4 on a second daylight geometry — still required, still unmet.
-3. Explain the `final_approach_metres_per_pulse` inconsistency in §5.
-4. Consider whether the stop-latency overshoot deserves a code fix (lead the
+The required second daylight geometry was run after the beta21 profile and
+estimator candidate was reviewed and deployed motion-disabled. The exact dry
+run and real request used a distinct 0.52 m east, then 0.52 m north L from
+`(5.1370, -4.9762)`. Before arming, RTK was Fix, BLE was live, the mower was
+`MODE_READY`, blades were zero, and fresh VIO was Light with 80 tracked
+features. The dry run was valid and ready with no warnings or blockers; its
+90° junction estimated three turn commands against a budget of four and
+0.234 m translation against the 0.30 m cap.
+
+The real run returned `target_reached`, executed both segments, and had no
+top-level errors, warnings, blockers, or failed segment. Segment 1 finished
+0.07195 m from its waypoint and segment 2 finished 0.03374 m from the endpoint,
+both inside the unchanged 0.08 m tolerance. The durable compact record is
+`docs/evidence-gate4-beta21-second-geometry-summary-20260806.json`.
+
+**This reproduces the boolean pass, not clean tracking.** Segment 1 again
+overshot and recovered: it used three linear pulses totalling 0.9743 m on a
+0.52 m leg and realigned by -22.179°, -45.510°, and -112.325°. Its 0.07195 m
+miss clears the tolerance by only 8 mm, which is below the measured position
+noise floor. Segment 2 was cleaner but still used 0.4319 m of measured linear
+travel after beginning 0.4634 m from its target. The telemetry capture sampled
+approximately 2.06 m of cumulative travel over a 1.04 m planned path. This is
+the same qualitative overshoot-and-recovery behavior as day2j, on a different
+orientation and location.
+
+The operator's 119.5-second fixed-camera GIF independently confirms that
+interpretation. After an initial stationary interval, the mower performs
+repeated pivots and heading reversals, traverses across the frame, and partially
+backtracks before its final approach. It does not visibly trace two controlled
+perpendicular legs. It remains inside the visible cleared lawn and ends
+stationary, so the video shows bounded recovery rather than a runaway, but it
+also makes the control-quality failure obvious. The camera is not calibrated to
+map coordinates; it supports those qualitative sequence claims, not metric
+distance or map-bearing measurements.
+
+The estimator fix behaved fail-short in the live executor. Segment 2's last
+pulse used the `default_conservative_floor`: a lower 0.8495 m observation did
+not increase the budget, so the pulse remained at one refresh/two non-zero
+writes and travelled 0.1230 m. The run ended session-free and was immediately
+disarmed. Fifty-nine post-run samples over 64 seconds measured 0.0000 m of
+movement; BLE logs showed no disconnect, sequence gap, malformed frame, or
+dropped frame.
+
+The first off-mower containment correction after this run treats a correction
+of 90° or more as a change of motion contract, not a re-alignment. A forward
+command has no component toward a target at or behind that boundary, so the
+executor stops with `target_requires_reverse_recovery` before dispatching the
+U-turn. It also stops when the realignment budget is exhausted instead of
+continuing another off-bearing forward pulse. Evidence replay proves both
+nominal Gate 4 passes contain a correction the guard would refuse; a direct
+executor test proves the recovery turn is not called.
+
+**Shipped as `0.6.4-beta22` and deployed motion-disabled on 2026-08-06** (record
+in `docs/deploy-runbook-p0.md`). It has still **not been motion-tested**, and it
+is expected to make a Gate 4 run stop `target_requires_reverse_recovery` rather
+than pass — see §8. One site is deliberately left unguarded: the pre-linear
+post-turn correction can still dispatch a correction at an aim error ≥90° if the
+initial turn's own drift carries the mower past a short waypoint. No recorded run
+exercised it, so it stays open pending evidence.
+
+## 8. Suggested next steps
+
+1. Treat Gate 4 as reproduced at its written pass criterion, but do not call
+   the path tracking clean or the 8 mm segment-1 margin meaningful.
+2. Decide whether this overshoot-and-recovery behavior is acceptable for Gate 5
+   or whether it requires an executor/control-quality fix first.
+3. Consider whether the stop-latency overshoot deserves a code fix (lead the
    stop by `speed × latency`) rather than being managed by pulse sizing, which
    only works when the leg length is known in advance.
-5. `scripts/linear_duration_sweep.py` requires `custom_components.mammotion` at
+4. `scripts/linear_duration_sweep.py` requires `custom_components.mammotion` at
    DEBUG, or its `ble_alive()` guard aborts on a false negative — it greps HA
    logs for `BLETransport send`, which are not emitted at INFO. It also requires
    `scripts/map.json`, which is not in the repo; regenerate it from the

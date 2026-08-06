@@ -1,10 +1,129 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
-Updated 2026-08-05 after the Gate 4 re-pass. This is the current handoff;
+Updated 2026-08-06 after the beta22 containment deploy. This is the current handoff;
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
-## 🚦 START HERE, 2026-08-05 — Gate 4 re-passed, but on a profile the card does not emit
+## 🚨 START HERE, 2026-08-06 evening — beta22 is deployed motion-disabled; the U-turn path is closed
+
+The host runs `0.6.4-beta22`. It is the beta21 tree plus the reverse-recovery
+containment guard, and it is an **unaccepted, motion-disabled staging
+candidate**. No motion ran during the deploy and none is authorized.
+
+**What the guard does.** After a forward pulse, a correction at or beyond 90°
+now stops the segment with `target_requires_reverse_recovery` instead of being
+dispatched as a "re-alignment" (`services.py` `_requires_reverse_recovery`,
+`_MAX_FORWARD_REALIGNMENT_DEGREES = 90.0`). A forward-only segment can no longer
+silently become a U-turn controller. Separately, an off-bearing segment with no
+correction budget left now stops with `vio_realign_budget_exhausted` rather than
+spending its remaining forward budget driving off-bearing.
+
+**⚠️ Expect Gate 4 to fail on this build, and do not treat that as a
+regression.** Evidence replay proves *both* recorded Gate 4 passes — day2j
+(+103.427°) and the beta21 second geometry (−112.325°) — contain a correction
+this guard refuses. Those passes were bought by driving past the waypoint and
+turning back: 2.06–2.28 m of travel for a 1.04 m path. Beta22 converts that
+boolean pass into an honest stop. The open decision is **not** "retry Gate 4"; it
+is whether to fix control quality first or to accept overshoot-and-recovery as
+the shipped behaviour. See §8 of `docs/gate4-repass-20260805.md`.
+
+**Deploy facts** (full record in `docs/deploy-runbook-p0.md`): backup
+`/config/mammotion-backup-20260806-1951-beta22.tgz`; 46/46 files byte-identical,
+aggregate `dbab51a64ff86032fec28b130d2d0605`, zero AppleDouble; both card copies
+`49dd1df816162f523285d485e4a8cb6e`; API back in 41 s, 128 entities in 108 s;
+resource `?v=0.6.4-beta22&build=49dd1df8`; backend `pymammotion 0.8.12.post1`
+verified. Runtime readback: motion disabled, `real_motion_allowed: false`, no
+session, no route, `MODE_READY`, blades OFF at 0 rpm, position `(5.6444,
+-4.4875)` RTK Fix / `AREA_INSIDE` — unmoved since the 2026-08-06 teardown.
+Durable record: `docs/evidence-beta22-containment-deploy-20260806.json`.
+
+**BLE: initially unverifiable, since VERIFIED — deploy checks are complete.** At
+the 19:56 readback the transport had not re-registered
+(`ble_transport_not_registered`, `active_transport: none`, `online: false`)
+across an 8-minute poll, because the battery was at **2%**. A flat mower never
+advertises, so the transport cannot register — that was the whole explanation,
+not a link fault, and the `ble_rssi: -62` in that readback was the mower's own
+cached self-report, **not** a liveness signal.
+
+The mower docked itself at 20:10 EDT (**no motion was commanded by this
+session**) and charged to 26%. The 20:29 re-check: `active_transport: ble`,
+`online: true`, `ble_rssi -46`, preflight `BLE link live PASS (entity=on
+transport=ble rssi=-48)`.
+
+**The beta22 dry-run verification is complete** (20:43 EDT, the item the BLE
+outage had blocked). A two-segment dry run with the exact card profile returned
+`valid: true`, `stop_reason: dry_run`, `would_send: false`, 0 real segments, and
+empty errors/warnings/blockers. It echoed `final_approach_metres_per_pulse: 1.06`
+and `turn_degrees_per_second: 37.0` — proving the plumbing defect fixed in this
+commit is live — and computed the 90° junction as feasible (3 commands of 4,
+`rotation_bound_source: conservative_observed_rate_with_refresh`). No command was
+dispatched.
+
+⚠️ **Do not read that dry run as run-readiness.** Its own
+`initial_vio_feed` is `{live: false, tracked_features: 0, brightness: Dark}`.
+Dry-run VIO gates are **advisory** by design (`passed: dry_run`), so a dry run
+reports valid while VIO is unusable. A real `turn_mode: "vio"` run is refused
+before dispatch with `blockers: ["vio_active"]`.
+
+**Live state at handoff (2026-08-06 ~20:44 EDT).** The operator undocked the
+mower and ended the paused mowing task; **no motion was commanded by this
+session**. Mower at `(4.6715, -1.1719)`, `AREA_INSIDE` `Backyard Right`,
+`zone_hash` non-zero, RTK Fix, `MODE_READY`, blades OFF at 0 rpm, BLE transport
+live at −60, battery **28%**, motion gate off, no session. Ending the mow cleared
+the route to `no_route` / `blocks_motion: false`, reproducing the documented
+`stale_route_while_ready` behaviour.
+
+**Nothing can run tonight.** VIO is dark at 0 features, so Real Go / Gate 4 /
+Gate 5 are all refused by design, and 28% is not a run budget. The next physical
+step needs daylight, a charged battery, and — per the containment finding above —
+a decision on control quality first, not another Gate 4 attempt.
+
+**Two review findings recorded with the guard.** The previously untested
+`vio_realign_budget_exhausted` abort is now pinned by a direct executor test, and
+`scripts/diagnose_motion_result.py` names both new stop reasons
+(`forward_only_segment_refused_reverse_recovery`,
+`vio_realign_budget_exhausted_before_target`) instead of falling through to
+`inspect_recorded_stop_reason`.
+
+**Still open, deliberately not fixed.** The pre-linear post-turn correction
+(`services.py` `post_turn_alignment`, around line 10147) can still dispatch a
+correction at an aim error ≥90° if the initial turn's own drift — up to the
+0.30 m cap — carries the mower past a short waypoint. No recorded run has
+exercised that site, so guarding it would be an un-evidenced motion-path change
+outside this commit's replay coverage. Decide it on evidence, not symmetry.
+
+**Also still open:** the profile-identity question in §5 of
+`docs/gate4-repass-20260805.md`. The card now emits the Gate 4 re-pass profile,
+so that specific gap is closed, but the profile itself remains accepted on
+overshoot-and-recovery evidence only.
+
+## Historical start block — 2026-08-06 morning — Gate 4 reproduced, but only by reversing after overshoot
+
+The host runs beta21 and the card now emits the reviewed Gate 4 profile. A
+second daylight geometry on 2026-08-06 returned `target_reached` for both
+segments, but repeated the control-quality failure: 2.06 m sampled travel for a
+1.04 m path, including a -112.325° recovery after segment 1 passed its target.
+The operator GIF visibly confirms pivots, reversals and backtracking. Evidence:
+`docs/evidence-gate4-beta21-second-geometry-summary-20260806.json` and section 7
+of `docs/gate4-repass-20260805.md`.
+
+Experimental motion was disarmed immediately. Final readback: disabled, no
+session, `MODE_READY`, blades zero, RTK Fix, VIO Light/80; 64 seconds of
+post-run telemetry were stationary. **No further motion or Gate 5 is ready.**
+
+An off-mower safety patch is in progress on `feat/gate4-day2j-profile`. It
+refuses post-linear VIO realignment when `abs(aim_error) >= 90°`, returning
+`target_requires_reverse_recovery` before a U-turn can be sent. It also fails
+closed when the VIO realignment budget is exhausted. Evidence replay proves
+both nominal Gate 4 passes contain a correction this guard would refuse, and a
+direct executor test proves no recovery turn is dispatched. All 374 scoped
+executor tests and the complete 496-test coverage suite pass, as do frontend,
+mypy, Ruff, and all-files pre-commit. The existing cumulative-distance ceiling
+would not have prevented these U-turns and was deliberately left as a separate
+design item. Final review, beta22 versioning, and a motion-disabled staging
+deploy remain. See `docs/CODEX-HANDOFF.md` for the exact continuation checklist.
+
+## Historical start block — 2026-08-05
 
 **Read `docs/gate4-repass-20260805.md` first.** Gate 4 failed on 2026-08-03 and
 was re-passed on 2026-08-05: both segments `target_reached`, misses 0.0403 m and
