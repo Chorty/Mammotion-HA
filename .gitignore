@@ -30,3 +30,8 @@ scripts/firmware/
 # Coverage data from `pytest --cov` (CI reports to the terminal, never a file)
 .coverage
 .coverage.*
+
+# Local motion-test artifacts: site-specific yard geometry regenerable from the
+# get_map_data service, and transient sweep output overwritten by every run.
+scripts/map.json
+scripts/sweep_results.json
