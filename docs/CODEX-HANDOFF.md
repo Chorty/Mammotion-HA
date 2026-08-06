@@ -1,4 +1,4 @@
-# Handoff prompt — reaccept the deployed beta19 motion correction
+# Handoff prompt — decide the acceptance profile after the 2026-08-05 Gate 4 re-pass
 
 Paste the block below to resume. It is written to be self-contained; everything
 it references is committed on `feat/vio-turn-to-heading` in
@@ -28,11 +28,22 @@ scripts/ha_set_experimental_motion.py status
 If it reports `enabled: True` and you are not about to run, turn it off with
 `scripts/ha_set_experimental_motion.py off`.
 
-After the failed Gate 4 retry on 2026-08-03, the mower was stationary at
-approximately `(5.4960, -2.8510)`, inside `Backyard Right`, RTK Fix, blades
-off, and had no active session. The host and branch run the still-unaccepted
-`0.6.4-beta19` candidate. Experimental motion was explicitly disarmed after
-the test and must remain off unless a newly authorized live test is underway.
+After the Gate 4 re-pass on 2026-08-05, the mower was stationary at
+approximately `(5.2359, -3.0852)`, inside `Backyard Right`, RTK Fix, blades
+zero, no active session, and **not charging** — it was left in the yard, not
+docked. The host and branch run the still-unaccepted `0.6.4-beta19` candidate.
+Experimental motion was explicitly disarmed after the test and must remain off
+unless a newly authorized live test is underway.
+
+Two operational notes from that session. `scripts/linear_duration_sweep.py`
+needs `custom_components.mammotion` at DEBUG or its `ble_alive()` guard aborts
+on a false negative — it greps HA logs for `BLETransport send`, which are not
+emitted at INFO; the log level was returned to `info` at the end of the session.
+The same script also needs `scripts/map.json`, which is deliberately not in the
+repo — regenerate it from the `get_map_data` service. Separately, a full disk
+destroyed one run's durable result mid-session (`day2b`): the evidence runner
+keeps capture and request but cannot survive ENOSPC, so check free space before
+a live run.
 
 The beta19 deploy smoke passed: 128 Mammotion entities, backend verified against
 `pymammotion 0.8.12.post1`, BLE live, both card paths checksum-identical, exact
@@ -107,11 +118,39 @@ experimental-motion disarm, and over one minute of stationary post-stop
 telemetry were confirmed; the BLE report contains no observed link/frame
 faults. Evidence is `docs/evidence-gate2-beta19-*20260803*`.
 
-Gate 4 still requires a fresh daylight operator authorization. Only after it
-passes may a fresh unchanged-card Gate 5 Real Go be run. Gate 4 must be a
-two-leg backend L path and must not reuse a prior confirmation.
+**🚦 GATE 4 RE-PASSED 2026-08-05 — read `docs/gate4-repass-20260805.md` before
+acting on anything below.** The 2026-08-03 failure described in the next
+paragraph is superseded as a *status*, though its evidence remains valid. The
+re-pass: both segments `target_reached`, misses `0.0403 m` and `0.0330 m`
+against an `0.08 m` tolerance, two-leg backend L path, fresh operator
+authorization, no reuse of a prior confirmation. Evidence is
+`docs/evidence-gate4-beta20-day2j-*20260805*`.
 
-**Gate 4 retry failed on 2026-08-03; release remains halted.** The durable
+**It does not yet clear the way to Gate 5, for two reasons.**
+
+1. It ran on three parameters the frozen `LUBA_ACCEPTANCE_PROFILE` does not
+   carry: `linear_pulse_duration_ms` 1300 (card 3500), `max_linear_commands` 3
+   (card 1), and `max_turn_translation_distance` 0.30 — which the card **never
+   sends**, so a card run inherits the backend default 0.25 and would still fail
+   the way the day2e/day2h attempts did (`vio_realign_incomplete`).
+   `docs/p0-beta-release.md:98-102` says passing Gates 1-4 while the card emits a
+   *different* profile is the exact gap that profile exists to close. **Either
+   the card profile moves to match, or this re-pass does not underwrite a Gate 5
+   Real Go.** That decision is open and was deliberately left to the operator.
+2. It passed by overshooting and recovering, not by tracking: `2.2773 m` of
+   actual travel for a `1.0400 m` planned path, including a `103.427°` recovery
+   turn that is legal only at the 0.30 cap. Reproduction on a second daylight
+   geometry remains **required and unmet**.
+
+Two kinematic claims in the older sections below were **refuted by direct RTK
+measurement on 2026-08-05** and must not be relied on: single-shot linear does
+not give fine distance control (fixed ~`0.11 m` step across a 5× duration
+range), and single-shot turning is ~`2.4°`/command, not ~8-9°. Refresh 200 is
+the controllable regime for both phases. Sweep data:
+`docs/evidence-linear-sweep-refresh200-20260805.json` and
+`docs/evidence-linear-sweep-singleshot-20260805.json`.
+
+**Gate 4 retry failed on 2026-08-03 (superseded 2026-08-05, see above).** The durable
 multi-segment result records `segment_failed` at segment 1:
 `turn_phase_incomplete` / `max_commands_reached`. VIO calibration passed with
 offset `3.779947°`, then four turn commands progressed from `6.480°` to
