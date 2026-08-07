@@ -99,6 +99,7 @@ from custom_components.mammotion.services import (
     _raw_pymammotion_turn_to_heading,
     _raw_vector_readiness_phase_passed,
     _raw_vector_readiness_test,
+    _report_stream_probe,
     _requires_reverse_recovery,
     _settle_linear_position_feed,
     _streak_shows_dead_telemetry,
@@ -5716,6 +5717,156 @@ async def test_vector_segment_vio_realigns_when_facing_drifts_off_bearing(
     # This fixture intentionally leaves position static, so after exercising
     # the re-alignment decision the executor fails closed on no progress.
     assert result["stop_reason"] == "no_target_progress"
+
+
+def _drive_report_probe_clock(
+    monkeypatch: pytest.MonkeyPatch,
+    coordinator: SimpleNamespace,
+    arrival_times: list[float],
+) -> dict[str, float]:
+    """Run the probe against a fake clock that stamps reports at fixed times.
+
+    The probe polls a monotonic timestamp, so a real clock would make the test
+    both slow and flaky. Advance a fake one from inside ``asyncio.sleep`` and
+    stamp ``last_report_at`` as each scheduled arrival time is crossed.
+    """
+    clock = {"t": 0.0}
+    handle = coordinator.manager.mower(coordinator.device_name)
+    handle.last_report_at = 0.0
+
+    async def fake_sleep(seconds: float) -> None:
+        clock["t"] += seconds
+        due = [at for at in arrival_times if at <= clock["t"]]
+        if due:
+            handle.last_report_at = due[-1]
+
+    monkeypatch.setattr(mammotion_services.time, "monotonic", lambda: clock["t"])
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+    return clock
+
+
+@pytest.mark.asyncio
+async def test_report_stream_probe_measures_arrival_intervals(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The probe reports the feed's own cadence, not its polling cadence."""
+    coordinator = _pulse_coordinator()
+    # Reports every 200 ms. A 1.1 s sampler could never resolve this, which is
+    # the whole reason the probe exists.
+    _drive_report_probe_clock(monkeypatch, coordinator, [0.2, 0.4, 0.6, 0.8, 1.0])
+
+    result = await _report_stream_probe(
+        coordinator,
+        period_ms=200,
+        no_change_period_ms=200,
+        duration_seconds=1.5,
+    )
+
+    assert result["reason"] == "completed"
+    assert result["reports_observed"] == 5
+    assert result["summary"]["median_ms"] == pytest.approx(200.0, abs=1.0)
+    assert result["honoured_requested_period"] is True
+    # The requested period must reach the device as a protocol field.
+    coordinator.manager.request_iot_sync_continuous.assert_awaited_once()
+    kwargs = coordinator.manager.request_iot_sync_continuous.await_args.kwargs
+    assert kwargs["period"] == 200
+    assert kwargs["no_change_period"] == 200
+
+
+@pytest.mark.asyncio
+async def test_report_stream_probe_detects_a_device_ignoring_the_period(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A device that clamps to 1 s must not be recorded as honouring 200 ms."""
+    coordinator = _pulse_coordinator()
+    _drive_report_probe_clock(monkeypatch, coordinator, [1.0, 2.0, 3.0])
+
+    result = await _report_stream_probe(
+        coordinator,
+        period_ms=200,
+        no_change_period_ms=200,
+        duration_seconds=3.5,
+    )
+
+    assert result["summary"]["median_ms"] == pytest.approx(1000.0, abs=1.0)
+    assert result["honoured_requested_period"] is False
+
+
+@pytest.mark.asyncio
+async def test_report_stream_probe_commands_no_motion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The probe is read-only: it must never dispatch a movement command."""
+    coordinator = _pulse_coordinator()
+    _drive_report_probe_clock(monkeypatch, coordinator, [0.5, 1.0])
+
+    await _report_stream_probe(
+        coordinator,
+        period_ms=1000,
+        no_change_period_ms=1000,
+        duration_seconds=1.5,
+    )
+
+    handle = coordinator.manager.mower(coordinator.device_name)
+    coordinator.async_move_forward.assert_not_called()
+    coordinator.async_move_back.assert_not_called()
+    coordinator.manager.send_command_with_args.assert_not_called()
+    handle.commands.send_movement.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_report_stream_probe_always_stops_its_subscription(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A short-period stream left running is a standing BLE load."""
+    coordinator = _pulse_coordinator()
+    _drive_report_probe_clock(monkeypatch, coordinator, [0.5])
+
+    ok = await _report_stream_probe(
+        coordinator,
+        period_ms=500,
+        no_change_period_ms=500,
+        duration_seconds=1.0,
+    )
+    assert ok["subscription_stopped"] is True
+    coordinator.manager.request_iot_sync_continuous_stop.assert_awaited_once()
+
+    # ... and on the failure path too, which is where a leak would actually hurt.
+    coordinator.manager.request_iot_sync_continuous_stop.reset_mock()
+
+    async def boom(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("BLE link is not ready for motion")
+
+    monkeypatch.setattr(
+        mammotion_services, "_settle_ble_command_queue", boom, raising=True
+    )
+    failed = await _report_stream_probe(
+        coordinator,
+        period_ms=500,
+        no_change_period_ms=500,
+        duration_seconds=1.0,
+    )
+    assert failed["reason"].startswith("RuntimeError")
+    assert failed["subscription_stopped"] is True
+    coordinator.manager.request_iot_sync_continuous_stop.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_report_stream_probe_refuses_during_a_motion_session() -> None:
+    """Never reconfigure the report feed underneath a live motion run."""
+    coordinator = _pulse_coordinator()
+    coordinator.manual_motion_owner = "raw_pymammotion_execute_multi_segment"
+
+    result = await _report_stream_probe(
+        coordinator,
+        period_ms=200,
+        no_change_period_ms=200,
+        duration_seconds=5.0,
+    )
+
+    assert result["reason"] == "manual_motion_session_active"
+    assert result["subscription_started"] is False
+    coordinator.manager.request_iot_sync_continuous.assert_not_called()
 
 
 @pytest.mark.asyncio

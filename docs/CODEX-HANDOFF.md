@@ -96,12 +96,17 @@ open question is how to stop overshooting in the first place:
    the guard deliberately and documenting why — not leaving it to the executor
    to decide silently.
 
-**Open, deliberately not fixed:** the pre-linear post-turn correction
-(`services.py` `post_turn_alignment`, around line 10147) can still dispatch a
-correction at an aim error ≥90° if the initial turn's own drift — up to the
-0.30 m cap — carries the mower past a short waypoint. No recorded run has
-exercised that site, so guarding it would be an un-evidenced motion-path change
-outside this commit's replay coverage. Decide it on evidence, not symmetry.
+**RESOLVED 2026-08-07 — leave the pre-linear post-turn site unguarded.** An
+offline replay of every committed multi-segment result (11 files, 10
+`post_turn_alignment` records) found **zero** post-turn aim errors at or beyond
+90°. The worst is **18.78°** — about a fifth of the boundary — the largest turn
+displacement is 0.207 m, and both corrections that ran succeeded. Guarding it
+would refuse a condition that has never occurred, and at this site a ≥90°
+reading more likely indicates a bad VIO offset than a genuine overshoot, because
+the mower has not yet driven forward on that segment. Revisit if a run exceeds
+~45°, if `max_turn_translation_distance` goes above 0.30, or if legs shorter than
+~0.30 m are adopted. Evidence:
+`docs/evidence-post-turn-alignment-replay-20260807.json`.
 
 ## beta22 deploy — 2026-08-06 19:51-19:56 EDT, motion-disabled, no motion commanded
 

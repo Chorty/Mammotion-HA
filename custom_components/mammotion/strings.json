@@ -2268,6 +2268,28 @@
           "description": "End time of the non-work hours."
         }
       }
+    },
+    "report_stream_probe": {
+      "name": "Report stream probe",
+      "description": "Read-only telemetry-rate diagnostic. Subscribes to the device report stream at a requested period, counts how often reports actually arrive, then stops the subscription. Commands no motion.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        },
+        "period_ms": {
+          "name": "Report period",
+          "description": "Device-side reporting period to request, in milliseconds. The library default is 1000."
+        },
+        "no_change_period_ms": {
+          "name": "No-change period",
+          "description": "Device-side reporting period used while the reported data is unchanging. This is what governs the rate for a stationary mower, so hold it equal to the report period when probing."
+        },
+        "duration_seconds": {
+          "name": "Duration",
+          "description": "How long to observe report arrivals before stopping."
+        }
+      }
     }
   },
   "exceptions": {

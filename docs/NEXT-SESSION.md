@@ -85,12 +85,11 @@ a decision on control quality first, not another Gate 4 attempt.
 `vio_realign_budget_exhausted_before_target`) instead of falling through to
 `inspect_recorded_stop_reason`.
 
-**Still open, deliberately not fixed.** The pre-linear post-turn correction
-(`services.py` `post_turn_alignment`, around line 10147) can still dispatch a
-correction at an aim error ≥90° if the initial turn's own drift — up to the
-0.30 m cap — carries the mower past a short waypoint. No recorded run has
-exercised that site, so guarding it would be an un-evidenced motion-path change
-outside this commit's replay coverage. Decide it on evidence, not symmetry.
+**RESOLVED 2026-08-07 — the pre-linear post-turn site stays unguarded.** Replay
+of all 10 committed `post_turn_alignment` records found **zero** aim errors ≥90°;
+worst is 18.78°, and both corrections that ran succeeded. Guarding it would
+refuse a condition that has never occurred. Revisit thresholds and full reasoning
+in `docs/evidence-post-turn-alignment-replay-20260807.json`.
 
 **Also still open:** the profile-identity question in §5 of
 `docs/gate4-repass-20260805.md`. The card now emits the Gate 4 re-pass profile,

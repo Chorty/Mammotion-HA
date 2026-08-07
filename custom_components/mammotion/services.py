@@ -80,6 +80,7 @@ SERVICE_RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT = (
 SERVICE_RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT = "raw_pymammotion_execute_multi_segment"
 SERVICE_FORWARD_TWO_PULSE_LATENCY_TEST = "forward_two_pulse_latency_test"
 SERVICE_POSITION_FEEDBACK_DIAGNOSTIC = "position_feedback_diagnostic"
+SERVICE_REPORT_STREAM_PROBE = "report_stream_probe"
 SERVICE_VIO_MOTION_PROBE = "vio_motion_probe"
 SERVICE_VIO_TURN_PROBE = "vio_turn_probe"
 SERVICE_VIO_TURN_TO_HEADING = "vio_turn_to_heading"
@@ -598,6 +599,27 @@ FORWARD_TWO_PULSE_LATENCY_TEST_SCHEMA = vol.Schema(
         vol.Optional("dry_run", default=True): cv.boolean,
         vol.Optional("confirm_blades_off", default=False): cv.boolean,
         vol.Optional("confirm_clear_area", default=False): cv.boolean,
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
+#: Read-only telemetry-rate probe. No movement parameters exist on purpose:
+#: this service cannot command motion, so it takes no speeds, no pulse counts
+#: and no blade/area confirmations. 100 ms is the floor under test because it
+#: is well below the 1000 ms library default without asking the device for a
+#: rate no evidence suggests it supports.
+REPORT_STREAM_PROBE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+        vol.Optional("period_ms", default=1000): vol.All(
+            vol.Coerce(int), vol.Range(min=100, max=10000)
+        ),
+        vol.Optional("no_change_period_ms", default=1000): vol.All(
+            vol.Coerce(int), vol.Range(min=100, max=10000)
+        ),
+        vol.Optional("duration_seconds", default=20.0): vol.All(
+            vol.Coerce(float), vol.Range(min=2.0, max=120.0)
+        ),
     },
     extra=vol.ALLOW_EXTRA,
 )
@@ -3934,6 +3956,124 @@ _BLE_TRANSIENT_QUEUE_REASONS = (
 )
 _BLE_QUEUE_SETTLE_TIMEOUT_SECONDS = 6.0
 _BLE_QUEUE_SETTLE_POLL_SECONDS = 0.1
+
+
+#: Poll cadence for `_report_stream_probe`. The whole point of the probe is to
+#: resolve a report rate that a 1.1 s sampler could not (the 2026-08-06
+#: direction review reported its own sampling interval as the feed's rate), so
+#: this must stay far below the shortest period under test. At 20 ms it
+#: oversamples a 100 ms period 5x. It reads an in-memory float; no I/O.
+_REPORT_PROBE_POLL_SECONDS = 0.02
+
+
+async def _report_stream_probe(
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    period_ms: int,
+    no_change_period_ms: int,
+    duration_seconds: float,
+) -> dict[str, Any]:
+    """Measure how often the device actually reports at a requested period.
+
+    Read-only with respect to motion: this dispatches the ``request_iot_sys``
+    subscription config and nothing else. No movement command is sent, no
+    motion confirmations are taken, and the experimental-motion gate is not
+    consulted because nothing here can move the mower.
+
+    ``period`` and ``no_change_period`` are *device-side* protocol fields
+    (``ReportInfoCfg``), not client polling knobs, and both default to 1000 ms
+    in pymammotion. Nothing in this integration has ever lowered them, so
+    whether the device honours a shorter period is unmeasured -- that is what
+    this answers. For a stationary mower the reported data is unchanging, so
+    ``no_change_period`` (not ``period``) is what governs the cadence at rest;
+    both are exposed so the caller can hold them equal.
+
+    Arrivals are counted from ``DeviceHandle.last_report_at``, a monotonic
+    timestamp stamped on every received ``LubaMsg``. It advances even when the
+    mower is stationary and its coordinates never change, which is exactly why
+    position-derived sampling could not measure this.
+    """
+    result: dict[str, Any] = {
+        "period_ms": period_ms,
+        "no_change_period_ms": no_change_period_ms,
+        "duration_seconds": duration_seconds,
+        "poll_interval_ms": int(_REPORT_PROBE_POLL_SECONDS * 1000),
+        "sampling_method": (
+            "polled DeviceHandle.last_report_at every "
+            f"{int(_REPORT_PROBE_POLL_SECONDS * 1000)} ms and recorded each "
+            "distinct value; intervals are between successive report arrivals, "
+            "not between polls"
+        ),
+        "motion_commanded": False,
+        "subscription_started": False,
+        "subscription_stopped": False,
+        "reports_observed": 0,
+        "intervals_ms": [],
+        "reason": None,
+    }
+    handle = coordinator.manager.mower(coordinator.device_name)
+    if handle is None:
+        result["reason"] = "device_handle_unavailable"
+        return result
+    # Never reconfigure the report stream underneath a live motion run: the
+    # executor's own progress and completion checks read this feed.
+    if getattr(coordinator, "manual_motion_owner", None) is not None:
+        result["reason"] = "manual_motion_session_active"
+        return result
+
+    try:
+        await coordinator.manager.request_iot_sync_continuous(
+            coordinator.device_name,
+            period=period_ms,
+            no_change_period=no_change_period_ms,
+        )
+        result["subscription_started"] = True
+        result["queue_settle"] = await _settle_ble_command_queue(coordinator)
+
+        arrivals: list[float] = []
+        last_seen = handle.last_report_at
+        deadline = time.monotonic() + duration_seconds
+        while time.monotonic() < deadline:
+            await asyncio.sleep(_REPORT_PROBE_POLL_SECONDS)
+            stamped = handle.last_report_at
+            if stamped != last_seen:
+                last_seen = stamped
+                arrivals.append(stamped)
+        result["reports_observed"] = len(arrivals)
+        result["intervals_ms"] = [
+            round((later - earlier) * 1000, 1)
+            for earlier, later in zip(arrivals, arrivals[1:], strict=False)
+        ]
+        result["reason"] = "completed"
+    except Exception as err:  # noqa: BLE001
+        result["reason"] = f"{type(err).__name__}: {err}"
+    finally:
+        # Always tear the subscription down, including on the error path: a
+        # short-period stream left running is a standing BLE load.
+        if result["subscription_started"]:
+            try:
+                await coordinator.manager.request_iot_sync_continuous_stop(
+                    coordinator.device_name
+                )
+                result["subscription_stopped"] = True
+            except Exception as err:  # noqa: BLE001
+                result["stop_error"] = f"{type(err).__name__}: {err}"
+
+    intervals = result["intervals_ms"]
+    if intervals:
+        ordered = sorted(intervals)
+        result["summary"] = {
+            "count": len(ordered),
+            "min_ms": ordered[0],
+            "median_ms": ordered[len(ordered) // 2],
+            "max_ms": ordered[-1],
+            "mean_ms": round(sum(ordered) / len(ordered), 1),
+            "observed_rate_hz": round(1000 / (sum(ordered) / len(ordered)), 3),
+        }
+        result["honoured_requested_period"] = (
+            result["summary"]["median_ms"] <= no_change_period_ms * 1.5
+        )
+    return result
 
 
 async def _settle_ble_command_queue(
@@ -13547,6 +13687,18 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             active_route=active_route,
         )
 
+    async def handle_report_stream_probe(call: ServiceCall) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        return await _report_stream_probe(
+            mower.reporting_coordinator,
+            period_ms=call.data["period_ms"],
+            no_change_period_ms=call.data["no_change_period_ms"],
+            duration_seconds=call.data["duration_seconds"],
+        )
+
     async def handle_position_feedback_diagnostic(
         call: ServiceCall,
     ) -> dict[str, Any]:
@@ -14057,6 +14209,18 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             handle_position_feedback_diagnostic,
         ),
         schema=POSITION_FEEDBACK_DIAGNOSTIC_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    # Deliberately NOT wrapped in _wrap_exclusive_manual_motion: that wrapper
+    # claims the mower only for real *motion* runs, keyed on `dry_run: false`,
+    # and this service has no dry_run field and commands no motion. It guards
+    # itself instead by refusing while `manual_motion_owner` is set, so it can
+    # never reconfigure the report stream underneath a live run.
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_REPORT_STREAM_PROBE,
+        handle_report_stream_probe,
+        schema=REPORT_STREAM_PROBE_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(

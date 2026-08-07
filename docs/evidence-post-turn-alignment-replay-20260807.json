@@ -1,0 +1,37 @@
+{
+  "date": "2026-08-07",
+  "question": "Does the pre-linear post-turn correction site (services.py post_turn_alignment) need the same >=90 degree reverse-recovery guard that beta22 applied to the post-linear site?",
+  "method": "Offline replay of every committed multi-segment real result. No motion, no mower. Read post_turn_alignment.before.aim_error_degrees from each segment.",
+  "files_scanned": 11,
+  "post_turn_alignment_records": 10,
+  "records": [
+    {"file": "evidence-gate4-beta20-day2f-real-result-20260805.json", "segment": 1, "aim_error_degrees": -18.78, "correction_attempted": true, "passed": true, "turn_displacement_m": 0.2068},
+    {"file": "evidence-gate4-beta20-day2j-real-result-20260805.json", "segment": 2, "aim_error_degrees": -16.032, "correction_attempted": true, "passed": true, "turn_displacement_m": 0.0403},
+    {"file": "evidence-gate4-beta20-day2j-real-result-20260805.json", "segment": 1, "aim_error_degrees": 12.871, "correction_attempted": false, "passed": true, "turn_displacement_m": 0.1291},
+    {"file": "evidence-gate4-beta20-real-result-20260804.json", "segment": 2, "aim_error_degrees": -11.537, "correction_attempted": false, "passed": true, "turn_displacement_m": 0.1209},
+    {"file": "evidence-gate4-beta20-day2i-real-result-20260805.json", "segment": 1, "aim_error_degrees": 9.543, "correction_attempted": false, "passed": true, "turn_displacement_m": 0.1001},
+    {"file": "evidence-gate4-beta20-day2e-real-result-20260805.json", "segment": 1, "aim_error_degrees": -6.964, "correction_attempted": false, "passed": true, "turn_displacement_m": 0.0642},
+    {"file": "evidence-gate4-beta20-real-result-20260804.json", "segment": 1, "aim_error_degrees": -3.814, "correction_attempted": false, "passed": true, "turn_displacement_m": 0.0621},
+    {"file": "evidence-gate4-beta20-day2i-real-result-20260805.json", "segment": 2, "aim_error_degrees": 3.328, "correction_attempted": false, "passed": true, "turn_displacement_m": 0.038},
+    {"file": "evidence-gate4-beta20-day2h-real-result-20260805.json", "segment": 1, "aim_error_degrees": -2.591, "correction_attempted": false, "passed": true, "turn_displacement_m": 0.0647},
+    {"file": "evidence-gate4-beta20-day2d-real-result-20260805.json", "segment": 1, "aim_error_degrees": -0.631, "correction_attempted": false, "passed": true, "turn_displacement_m": 0.1781}
+  ],
+  "result": {
+    "records_at_or_over_90_degrees": 0,
+    "max_absolute_aim_error_degrees": 18.78,
+    "max_turn_displacement_m": 0.2068,
+    "corrections_attempted": 2,
+    "corrections_that_failed": 0
+  },
+  "conclusion": "LEAVE UNGUARDED. No recorded run has ever produced a post-turn aim error at or beyond 90 degrees; the worst observed is 18.78 degrees, roughly a fifth of the boundary, and both corrections that ran succeeded. Adding the guard here would be an un-evidenced motion-path change guarding a condition that has never occurred, and it would carry a real cost: at this site a >=90 degree reading is far more likely to indicate a bad VIO offset or a corrupt bearing than a genuine overshoot, because the mower has not yet driven forward on this segment. Failing closed on it would convert a recoverable state into a refused run.",
+  "revisit_if": [
+    "A recorded run produces a post-turn aim error above roughly 45 degrees, i.e. the observed maximum doubles.",
+    "max_turn_translation_distance is raised above 0.30, which would let the initial turn carry the mower further past a short waypoint.",
+    "Waypoint legs shorter than about 0.30 m are adopted, where 0.207 m of turn drift is a large fraction of the leg."
+  ],
+  "caveats": [
+    "Ten records from eight runs, all on the LUBA at one site, all with max_turn_translation_distance at 0.25 or 0.30.",
+    "This is an offline replay of committed evidence, not a hardware test.",
+    "The post-linear guard shipped in beta22 is unaffected by this finding and stays in place."
+  ]
+}

@@ -860,6 +860,41 @@ forward_two_pulse_latency_test:
       selector:
         boolean:
 
+report_stream_probe:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+    period_ms:
+      required: false
+      default: 1000
+      selector:
+        number:
+          min: 100
+          max: 10000
+          step: 100
+          unit_of_measurement: ms
+    no_change_period_ms:
+      required: false
+      default: 1000
+      selector:
+        number:
+          min: 100
+          max: 10000
+          step: 100
+          unit_of_measurement: ms
+    duration_seconds:
+      required: false
+      default: 20
+      selector:
+        number:
+          min: 2
+          max: 120
+          step: 1
+          unit_of_measurement: s
+
 position_feedback_diagnostic:
   fields:
     entity_id:
