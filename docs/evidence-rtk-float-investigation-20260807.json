@@ -4,7 +4,28 @@
   "subject": "RTK stuck in Float, and a motion-gate gap it exposed",
   "operator_authorized_motion": true,
   "gate_claimed": null,
-  "summary": "RTK held Float for roughly 1h45m across two positions, a dock/RTK resync, and a supervised 1.6 m relocation. Corrections are arriving and the base station has not been moved, so the cause is not the rover's local environment. Separately and more importantly, the backend motion gate was found not to check RTK quality at all.",
+  "RESOLVED_AT_1839_EDT": {
+    "outcome": "The operator power-cycled the dock and RTK base station at ~18:15 EDT. At 18:39:08 the RTK group refreshed together: rtk_position float -> fix, position_level 2 -> 1, satellites_robot 26 -> 23, l1_signal_quality 35 -> 29. RTK is now Fix.",
+    "confirms": "The leading hypothesis in this document -- the base station's own survey or solution, not the rover's environment -- was correct. A rover-side resync could not clear it; a base power cycle did.",
+    "position_level_mapping_learned": "level 1 = Fix, level 2 = Float."
+  },
+  "CORRECTION_read_before_the_observations_below": {
+    "what_was_wrong": "This document originally claimed RTK 'held Float for roughly 1h45m across two positions'. That overstated the evidence. The RTK sensor group was FROZEN from 15:40-15:42 EDT until 18:39, so repeated polling re-read one latched value rather than sampling a live signal.",
+    "how_it_was_caught": "A forced burst of 50 reports via mammotion.report_stream_probe refreshed no RTK entity at all -- timestamps byte-identical before and after -- while ble_rssi and battery updated every few minutes.",
+    "what_this_invalidates": [
+      "The claim of continuous Float persistence: it was one reading, re-displayed.",
+      "The sync_rtk_and_dock test: inconclusive, it was evaluated against a frozen value.",
+      "The 1.6 m relocation AS AN RTK TEST: inconclusive for the same reason. The move itself and its motion data remain valid."
+    ],
+    "what_still_stands": [
+      "RTK genuinely was not Fix -- confirmed retrospectively, since the value moved to fix the moment fresh data arrived.",
+      "The base station was the cause.",
+      "The 13.9 cm stationary position jump at 15:45-15:48 is a real observation of unstable positioning; only its attribution to a live 'Float' label was unsupported."
+    ],
+    "underlying_defect_worth_fixing": "rtk_position derives from basestation_info.rtk_status (sensor.py:570). When the device stops sending that structure the sensor LATCHES its last value instead of going unavailable, so a three-hour-old reading presents as current. Same failure class as the latched blade RPM, the coordinator-cached vio_heading, and the frozen toward. It matters most here because RTK quality is exactly what a precision gate depends on. rtk_correction_age and rtk_signal_quality are worse still: unpopulated since the 00:20 EDT restart.",
+    "method_lesson": "Bit-identical values across repeated polls are evidence of a dead feed until proven otherwise. Check last_updated against an entity known to be moving before concluding a value is stable."
+  },
+  "summary": "RTK read Float from 15:40 until a base-station power cycle restored Fix at 18:39. The rover's reception was healthy throughout and the base had not been moved, so the fault was the base's own solution. Note the persistence claim was an artifact of latched sensors -- see CORRECTION above. Separately and independently, the backend motion gate was found not to check RTK quality at all.",
   "observations": {
     "rtk_status": "Float (RTKStatus.FLOAT = 5; FIX = 4) continuously 15:40-17:20 EDT",
     "reception_is_healthy": {

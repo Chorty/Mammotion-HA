@@ -4,27 +4,42 @@ Updated 2026-08-06 after the beta22 containment deploy. This is the current hand
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
-## 🚨🚨 BLOCKER, 2026-08-07 afternoon — RTK is stuck in Float, and the motion gate never checks it
+## ✅ RESOLVED, 2026-08-07 18:39 EDT — RTK is back to Fix; a base power cycle did it
 
-**Nothing precision-grade can run until RTK returns to Fix.** It held `Float`
-continuously from 15:40 to 17:20 EDT across two positions, a dock/RTK resync, and
-a supervised 1.6 m relocation. Full record:
+RTK read `Float` from 15:40. The operator power-cycled the **dock and RTK base
+station** at ~18:15, and at **18:39:08** the whole RTK group refreshed together:
+`rtk_position` float → **fix**, `position_level` 2 → **1**, `satellites_robot`
+26 → 23, `l1_signal_quality` 35 → 29. (So `position_level` **1 = Fix, 2 =
+Float**.)
+
+The cause was the **base station's own solution/survey**, not the rover: its
+reception was healthy throughout (24 co-viewed satellites) and it had not been
+moved. A rover-side `sync_rtk_and_dock` could not clear it; a base power cycle
+did. **Precision work is unblocked.** Full record:
 `docs/evidence-rtk-float-investigation-20260807.json`.
 
-What Float costs: a **13.9 cm position jump while stationary**, against 0.55 cm
-max under Fix. That is ~250× worse and larger than the whole 0.08 m waypoint
-tolerance.
+### ⚠️ Two measurement traps this session walked into — do not repeat them
 
-What is ruled out: it is **not** the correction link (24 co-viewed satellites on
-both bands, 26 tracked, `rtk_over_datalink`), **not** local multipath (moving
-1.6 m changed nothing), and **not** a moved base station (operator confirms).
-⚠️ Do not repeat the mistake made mid-session of reading `rtk_correction_age: 0`
-and `rtk_signal_quality: 0` as "no corrections" — both are unpopulated in this
-mode and had not changed for hours while every other field updated continuously.
+1. **RTK sensors LATCH.** From 15:40 to 18:39 the entire RTK group was frozen,
+   so repeated polling re-read one stale value while looking like a stable
+   signal. A forced burst of 50 reports refreshed **no** RTK entity, which is how
+   it was caught. `rtk_position` derives from `basestation_info.rtk_status`
+   (`sensor.py:570`) and holds its last value instead of going unavailable when
+   the device stops sending that structure — same failure class as latched blade
+   RPM, cached `vio_heading`, frozen `toward`. Mid-session conclusions about
+   Float *persistence*, and both the resync and relocation as RTK tests, were
+   invalidated by this and have been corrected in the evidence file.
+2. **`rtk_correction_age` and `rtk_signal_quality` are dead fields** —
+   unpopulated since the 00:20 EDT restart. Their zeros were briefly read as
+   "no corrections arriving"; they mean "no data".
 
-Leading hypothesis is the **base station's own solution or survey**. Next actions
-are physical: inspect its power and sky view, power-cycle and let it re-survey,
-and retest near the dock where every successful gate has run.
+**Method rule:** bit-identical values across repeated polls are evidence of a
+dead feed until proven otherwise. Check `last_updated` against an entity known to
+be moving before calling a value stable.
+
+**Still worth fixing:** a freshness guard, so a latched RTK value can never be
+read as current. That matters more than any threshold choice, because a threshold
+on stale data is worthless.
 
 ### ⚠️ The gate gap this exposed — decide before the next run
 

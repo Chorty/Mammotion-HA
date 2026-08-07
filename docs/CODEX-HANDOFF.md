@@ -1,19 +1,29 @@
 # Handoff prompt — beta23; the faster-feed fix is refuted, tolerance is next
 
-## 🚨🚨 2026-08-07 afternoon — RTK STUCK IN FLOAT; nothing precision-grade can run
+## ✅ 2026-08-07 18:39 EDT — RTK RESTORED TO FIX by a base-station power cycle
 
-RTK held `Float` from 15:40 to 17:20 EDT across two positions, a dock/RTK
-resync, and an authorized 1.6 m relocation. Float measured a **13.9 cm
-stationary position jump** versus 0.55 cm max under Fix — larger than the whole
-0.08 m waypoint tolerance. Ruled out: correction link (24 co-viewed satellites),
-local multipath (moving 1.6 m changed nothing), moved base station (operator
-confirms). Leading hypothesis is the **base station's own survey/solution**;
-next actions are physical. Record:
+RTK read `Float` from 15:40 until the operator power-cycled the dock and RTK
+base station. At **18:39:08** the group refreshed: `rtk_position` → **fix**,
+`position_level` 2 → **1** (so 1 = Fix, 2 = Float), `satellites_robot` 26 → 23,
+`l1_signal_quality` 35 → 29. The fault was the **base station's own
+survey/solution** — rover reception was healthy (24 co-viewed satellites)
+throughout and a rover-side `sync_rtk_and_dock` could not clear it.
+**Precision work is unblocked.** Record:
 `docs/evidence-rtk-float-investigation-20260807.json`.
 
-⚠️ **Do not re-derive "the corrections aren't arriving" from
-`rtk_correction_age: 0` / `rtk_signal_quality: 0`.** Both are unpopulated in this
-mode and stale by hours. That inference was made and withdrawn mid-session.
+⚠️ **Two measurement traps, both walked into this session:**
+1. **The RTK sensors LATCH.** They were frozen 15:40→18:39, so polling re-read
+   one stale value that looked like a stable signal. Caught by forcing 50
+   reports and seeing **no** RTK entity refresh. `rtk_position` comes from
+   `basestation_info.rtk_status` (`sensor.py:570`) and holds its last value
+   rather than going unavailable. Claims of Float *persistence*, and the resync
+   and relocation as RTK tests, were invalidated and corrected in the evidence.
+2. **`rtk_correction_age` / `rtk_signal_quality` are dead fields** — unpopulated
+   since the 00:20 restart. Their zeros mean "no data", not "no corrections".
+
+**Method rule:** bit-identical values across polls are evidence of a dead feed
+until proven otherwise; check `last_updated` against an entity known to be
+moving. A freshness guard on RTK is worth more than any threshold choice.
 
 **OPEN DECISION — the motion gate does not check RTK at all.**
 `_is_valid_motion_position` validates coordinates, zero-pose, `pos_type` and
