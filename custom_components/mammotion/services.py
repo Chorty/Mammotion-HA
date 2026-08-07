@@ -4010,6 +4010,104 @@ _BLE_QUEUE_SETTLE_POLL_SECONDS = 0.1
 _REPORT_PROBE_POLL_SECONDS = 0.02
 
 
+async def _observe_report_arrivals(
+    coordinator: MammotionReportUpdateCoordinator,
+    handle: Any,
+    duration_seconds: float,
+) -> tuple[list[float], dict[str, list[float]]]:
+    """Poll for report arrivals, split by whole-traffic and by channel.
+
+    Returns ``(message_arrivals, per_channel_arrivals)``. The first counts every
+    inbound ``LubaMsg``; the second attributes arrivals to the position, RTK and
+    VIO channels independently, because a channel that never changes is a
+    channel that is not reporting -- which whole-traffic counting cannot reveal.
+    """
+    arrivals: list[float] = []
+    last_seen = handle.last_report_at
+    channel_last = _report_channel_fingerprints(coordinator)
+    channel_arrivals: dict[str, list[float]] = {k: [] for k in channel_last}
+    deadline = time.monotonic() + duration_seconds
+    while time.monotonic() < deadline:
+        await asyncio.sleep(_REPORT_PROBE_POLL_SECONDS)
+        stamped = handle.last_report_at
+        if stamped != last_seen:
+            last_seen = stamped
+            arrivals.append(stamped)
+        now = time.monotonic()
+        for name, fingerprint in _report_channel_fingerprints(coordinator).items():
+            if fingerprint != channel_last.get(name):
+                channel_last[name] = fingerprint
+                channel_arrivals[name].append(now)
+    return arrivals, channel_arrivals
+
+
+def _summarise_channel_arrivals(
+    name: str, stamps: list[float], duration_seconds: float
+) -> dict[str, Any]:
+    """Reduce one channel's arrival times to a cadence summary."""
+    intervals = [
+        round((later - earlier) * 1000, 1)
+        for earlier, later in zip(stamps, stamps[1:], strict=False)
+    ]
+    summary: dict[str, Any] = {
+        "channel": name,
+        "updates": len(stamps),
+        "updates_per_second": round(len(stamps) / max(duration_seconds, 1e-6), 3),
+        "intervals_ms": intervals,
+    }
+    if intervals:
+        ordered = sorted(intervals)
+        summary |= {
+            "min_ms": ordered[0],
+            "median_ms": ordered[len(ordered) // 2],
+            "max_ms": ordered[-1],
+            "mean_ms": round(sum(ordered) / len(ordered), 1),
+        }
+    else:
+        # Zero updates across the whole window is the finding, not a gap in the
+        # data: a stationary mower's position genuinely may not change, but a
+        # silent RTK channel is the 2026-08-07 latch.
+        summary["note"] = "no updates observed in the window"
+    return summary
+
+
+def _report_channel_fingerprints(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> dict[str, tuple[Any, ...]]:
+    """Snapshot one fingerprint per report channel.
+
+    ``last_report_at`` counts every inbound ``LubaMsg`` regardless of content,
+    which is why the 2026-08-07 probe could measure total traffic but not the
+    *position* cadence -- the number that actually governs overshoot. pymammotion
+    mutates ``report_data`` in place as reports arrive, so fingerprinting each
+    channel separately and watching which one changes attributes an arrival to
+    its channel without needing per-message hooks.
+    """
+    data = getattr(coordinator, "data", None)
+    report = getattr(data, "report_data", None)
+    location = _latest_location(data)
+    rtk = getattr(report, "rtk", None)
+    vision = getattr(report, "vision_info", None)
+    return {
+        "position": (
+            getattr(location, "real_pos_x", None),
+            getattr(location, "real_pos_y", None),
+            getattr(location, "real_toward", None),
+        ),
+        "rtk": (
+            getattr(rtk, "status", None),
+            getattr(rtk, "gps_stars", None),
+            getattr(rtk, "lat_std", None),
+            getattr(rtk, "lon_std", None),
+        ),
+        "vio": (
+            getattr(vision, "heading", None),
+            getattr(vision, "vio_state", None),
+            getattr(vision, "tracked_feature_count", None),
+        ),
+    }
+
+
 async def _report_stream_probe(
     coordinator: MammotionReportUpdateCoordinator,
     *,
@@ -4074,16 +4172,14 @@ async def _report_stream_probe(
         result["subscription_started"] = True
         result["queue_settle"] = await _settle_ble_command_queue(coordinator)
 
-        arrivals: list[float] = []
-        last_seen = handle.last_report_at
-        deadline = time.monotonic() + duration_seconds
-        while time.monotonic() < deadline:
-            await asyncio.sleep(_REPORT_PROBE_POLL_SECONDS)
-            stamped = handle.last_report_at
-            if stamped != last_seen:
-                last_seen = stamped
-                arrivals.append(stamped)
+        arrivals, channel_arrivals = await _observe_report_arrivals(
+            coordinator, handle, duration_seconds
+        )
         result["reports_observed"] = len(arrivals)
+        result["channels"] = {
+            name: _summarise_channel_arrivals(name, stamps, duration_seconds)
+            for name, stamps in channel_arrivals.items()
+        }
         result["intervals_ms"] = [
             round((later - earlier) * 1000, 1)
             for earlier, later in zip(arrivals, arrivals[1:], strict=False)

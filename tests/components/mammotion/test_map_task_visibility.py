@@ -5931,6 +5931,48 @@ async def test_report_stream_probe_sees_through_unrelated_traffic(
 
 
 @pytest.mark.asyncio
+async def test_report_stream_probe_separates_channels_from_total_traffic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A silent channel must be visible even while total traffic looks healthy.
+
+    This is the 2026-08-07 shape exactly: messages kept arriving at ~2 Hz while
+    the RTK channel had been frozen for three hours. Counting LubaMsgs cannot
+    see that; attributing arrivals per channel can.
+    """
+    coordinator = _pulse_coordinator()
+    clock = _drive_report_probe_clock(
+        monkeypatch, coordinator, [0.2, 0.4, 0.6, 0.8, 1.0]
+    )
+
+    # Position advances on every poll; RTK is latched and never changes.
+    location = SimpleNamespace(real_pos_x=1.0, real_pos_y=1.0, real_toward=0.0)
+    coordinator.data.report_data.locations = [location]
+    real_sleep = mammotion_services.asyncio.sleep
+
+    async def moving_sleep(seconds: float) -> None:
+        await real_sleep(seconds)
+        location.real_pos_x = 1.0 + clock["t"]
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", moving_sleep)
+
+    result = await _report_stream_probe(
+        coordinator,
+        period_ms=200,
+        no_change_period_ms=200,
+        duration_seconds=1.2,
+    )
+
+    channels = result["channels"]
+    assert channels["position"]["updates"] > 0
+    assert channels["rtk"]["updates"] == 0
+    assert channels["rtk"]["note"] == "no updates observed in the window"
+    # Total traffic was healthy the whole time, which is precisely why the
+    # per-channel split is needed.
+    assert result["reports_observed"] > 0
+
+
+@pytest.mark.asyncio
 async def test_report_stream_probe_commands_no_motion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
