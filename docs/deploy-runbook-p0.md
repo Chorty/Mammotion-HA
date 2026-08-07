@@ -10,9 +10,9 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 |                         | Host                                                           | Branch         |
 | ----------------------- | -------------------------------------------------------------- | -------------- |
-| Integration version     | `0.6.4-beta24` staging candidate                               | `0.6.4-beta24` candidate |
+| Integration version     | `0.6.4-beta25` staging candidate                               | `0.6.4-beta25` candidate |
 | pymammotion pin         | `0.8.12.post1` fork wheel (container verified)                 | same           |
-| Card `CARD_VERSION`     | `0.6.4-beta24`; integration and HACS copies checksum-identical | `0.6.4-beta24` candidate |
+| Card `CARD_VERSION`     | `0.6.4-beta25`; integration and HACS copies checksum-identical | `0.6.4-beta25` candidate |
 | `manual_motion.py`      | present                                                        | present        |
 | `backend_capability.py` | present                                                        | present        |
 | `capabilities.py`       | present                                                        | present        |
@@ -33,6 +33,29 @@ reported `target_reached`. That is containment, not regression: the earlier
 passes were bought by driving past the waypoint and U-turning back. The next
 motion decision is whether to fix control quality (stop-latency lead, pulse
 sizing) or to accept overshoot-and-recovery — not a Gate 5 attempt.
+
+### beta25 RTK threshold correction deploy — 2026-08-07 19:22-19:26 EDT
+
+`0.6.4-beta25` is deployed motion-disabled. Backup:
+`/config/mammotion-backup-20260807-1922-beta25.tgz`. All **46** files
+byte-identical (aggregate `f1bbea08235697eb75b618282b0df98c`), zero AppleDouble;
+both card copies `3431ab4413eff37b3766f80937d17676`. API back in **30 s**,
+entities in 114 s. Resource `?v=0.6.4-beta25&build=3431ab44`. Backend verified
+`pymammotion 0.8.12.post1`. Gate off, no session, `MODE_READY`, blades 0.
+
+**Why this shipped the same evening as beta24:** beta24's RTK staleness
+threshold of 300 s was measured wrong within the hour. A healthy Fix-locked
+*stationary* mower went 582 s without an RTK payload change, so beta24 would
+have refused legitimate motion with `rtk_telemetry_stale`. Raised to 1800 s —
+~3x the longest legitimate quiet observed, 6x under the three-hour latch it
+catches. Verified live after deploy: `rtk_report_age_seconds` reporting,
+`rtk_telemetry_stale: false`, `rtk_report_stale_threshold_seconds: 1800.0`, no
+blockers.
+
+⚠️ The bound is **under-characterised**: the upper limit on legitimate quiet is
+unknown, only that it exceeds ten minutes. If a run is refused with
+`rtk_telemetry_stale` while RTK is demonstrably healthy, raise the constant
+rather than assuming a latch.
 
 ### beta24 RTK freshness guard + per-channel probe deploy — 2026-08-07 19:03-19:07 EDT
 
