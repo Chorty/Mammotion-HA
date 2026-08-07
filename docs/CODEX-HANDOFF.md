@@ -1,5 +1,33 @@
 # Handoff prompt — beta23; the faster-feed fix is refuted, tolerance is next
 
+## 🚨🚨 2026-08-07 afternoon — RTK STUCK IN FLOAT; nothing precision-grade can run
+
+RTK held `Float` from 15:40 to 17:20 EDT across two positions, a dock/RTK
+resync, and an authorized 1.6 m relocation. Float measured a **13.9 cm
+stationary position jump** versus 0.55 cm max under Fix — larger than the whole
+0.08 m waypoint tolerance. Ruled out: correction link (24 co-viewed satellites),
+local multipath (moving 1.6 m changed nothing), moved base station (operator
+confirms). Leading hypothesis is the **base station's own survey/solution**;
+next actions are physical. Record:
+`docs/evidence-rtk-float-investigation-20260807.json`.
+
+⚠️ **Do not re-derive "the corrections aren't arriving" from
+`rtk_correction_age: 0` / `rtk_signal_quality: 0`.** Both are unpopulated in this
+mode and stale by hours. That inference was made and withdrawn mid-session.
+
+**OPEN DECISION — the motion gate does not check RTK at all.**
+`_is_valid_motion_position` validates coordinates, zero-pose, `pos_type` and
+`zone_hash` only, so `valid_for_motion` read `True` throughout this Float session
+and a real precision run would have been permitted on 13.9 cm positioning. Every
+prior gate ran at Fix by luck. Choose before the next run: hard blocker
+(`rtk_not_fixed`), warn-and-record, or blocker with an explicit
+`allow_degraded_rtk` override. Hard-blocking is fail-closed but halts all motion
+testing while this fault persists — which is why it was not chosen unilaterally.
+
+**Schema note learned the hard way:** `max_linear_commands` is capped at **3** in
+the vector-segment schema. Covering more ground needs longer pulses, not more
+commands.
+
 ## 🚨 2026-08-07 — read this before the beta22 sections below
 
 The host runs `0.6.4-beta23`, motion-disabled, adding only a read-only

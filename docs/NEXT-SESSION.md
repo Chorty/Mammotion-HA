@@ -4,7 +4,54 @@ Updated 2026-08-06 after the beta22 containment deploy. This is the current hand
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
-## 🚨 START HERE, 2026-08-07 — beta23 deployed; the "just ask for a faster feed" fix is REFUTED
+## 🚨🚨 BLOCKER, 2026-08-07 afternoon — RTK is stuck in Float, and the motion gate never checks it
+
+**Nothing precision-grade can run until RTK returns to Fix.** It held `Float`
+continuously from 15:40 to 17:20 EDT across two positions, a dock/RTK resync, and
+a supervised 1.6 m relocation. Full record:
+`docs/evidence-rtk-float-investigation-20260807.json`.
+
+What Float costs: a **13.9 cm position jump while stationary**, against 0.55 cm
+max under Fix. That is ~250× worse and larger than the whole 0.08 m waypoint
+tolerance.
+
+What is ruled out: it is **not** the correction link (24 co-viewed satellites on
+both bands, 26 tracked, `rtk_over_datalink`), **not** local multipath (moving
+1.6 m changed nothing), and **not** a moved base station (operator confirms).
+⚠️ Do not repeat the mistake made mid-session of reading `rtk_correction_age: 0`
+and `rtk_signal_quality: 0` as "no corrections" — both are unpopulated in this
+mode and had not changed for hours while every other field updated continuously.
+
+Leading hypothesis is the **base station's own solution or survey**. Next actions
+are physical: inspect its power and sky view, power-cycle and let it re-survey,
+and retest near the dock where every successful gate has run.
+
+### ⚠️ The gate gap this exposed — decide before the next run
+
+`_is_valid_motion_position` (`services.py`) validates coordinates, zero-pose,
+`pos_type` and `zone_hash`. **It does not check RTK quality at all.**
+`valid_for_motion` read `True` throughout this Float session, so the backend
+would have permitted a real precision run on 13.9 cm positioning. Every prior
+gate ran at Fix by luck, not design.
+
+The fix is **not yet chosen** and is the operator's call, because hard-blocking
+non-Fix would halt all motion testing while this fault persists:
+hard blocker (`rtk_not_fixed`) / warn-and-record / blocker with an explicit
+`allow_degraded_rtk` override for characterisation runs.
+
+### The 1.6 m relocation (authorized, clean)
+
+`(4.8768, −1.8125)` → `(5.0026, −3.4058)`, net **1.598 m** on a 1.5 m plan, one
+turn command, three linear pulses (0.568/0.466/0.492 m), stopped
+`max_linear_commands_reached` **3.6 mm** outside a deliberately loosened 0.15 m
+tolerance. Teardown verified: disarmed, no session, blades 0, `MODE_READY`.
+Note `max_linear_commands` is capped at **3** by the vector-segment schema, so
+reaching further needs longer pulses, not more commands.
+
+`scripts/camera_motion_check.py` got its first true-positive validation on this
+run — see the 2026-08-07 tooling note below.
+
+## START HERE (earlier), 2026-08-07 — beta23 deployed; the "just ask for a faster feed" fix is REFUTED
 
 The host runs `0.6.4-beta23`, motion-disabled. It adds one read-only diagnostic,
 `report_stream_probe`, and changes no motion behaviour. No motion has run.

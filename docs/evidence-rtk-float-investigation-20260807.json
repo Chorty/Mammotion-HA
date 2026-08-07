@@ -1,0 +1,81 @@
+{
+  "date": "2026-08-07",
+  "candidate": "0.6.4-beta23",
+  "subject": "RTK stuck in Float, and a motion-gate gap it exposed",
+  "operator_authorized_motion": true,
+  "gate_claimed": null,
+  "summary": "RTK held Float for roughly 1h45m across two positions, a dock/RTK resync, and a supervised 1.6 m relocation. Corrections are arriving and the base station has not been moved, so the cause is not the rover's local environment. Separately and more importantly, the backend motion gate was found not to check RTK quality at all.",
+  "observations": {
+    "rtk_status": "Float (RTKStatus.FLOAT = 5; FIX = 4) continuously 15:40-17:20 EDT",
+    "reception_is_healthy": {
+      "l1_satellites_co_viewing": 24,
+      "l2_satellites_co_viewing": 24,
+      "satellites_robot": 26,
+      "l1_signal_quality": 35,
+      "l2_signal_quality": 28,
+      "position_mode": "rtk_over_datalink",
+      "reading": "The rover hears the base station and plenty of satellites. Reception quality and solution type are different things; strong signal with an unresolved carrier-phase ambiguity is a normal combination."
+    },
+    "stale_sensors_that_misled_an_earlier_reading": {
+      "rtk_correction_age": 0,
+      "rtk_signal_quality": 0,
+      "last_changed_utc": "04:20:45",
+      "note": "Both unchanged for hours while every other field updated every few seconds. They are unpopulated in this mode, so their zeros mean 'no data', not 'no corrections'. An earlier conclusion in this session that the correction link was broken was drawn from these two zeros and is WITHDRAWN -- the co-viewing counts refute it."
+    },
+    "float_position_error_measured": {
+      "stationary_jump_m": 0.139,
+      "window": "15:45-15:48 EDT, zero commands issued",
+      "comparison_under_fix": "0.00044 m mean, 0.00553 m max stationary jitter (2026-08-04 mow capture)",
+      "ratio": "~250x worse, and a single jump exceeds the entire 0.08 m waypoint tolerance"
+    }
+  },
+  "interventions_tried": [
+    {"action": "button.sync_rtk_and_dock", "time": "16:16 EDT", "sends": "read_write_device / bidire_comm_cmd rw_id=5 rw=1 context=1 -- a register query, no movement command", "result": "no convergence after 15 min", "camera_confirmed_no_motion": true},
+    {"action": "relocate the mower 1.6 m under operator authorization", "time": "16:58 EDT", "result": "no convergence after 12 min at the new position", "conclusion": "Local multipath at the original spot is RULED OUT."}
+  ],
+  "remaining_hypotheses": [
+    "The base station's own solution or its surveyed position is bad. It has not been physically moved, so a stale or never-completed survey is the leading candidate.",
+    "A base-station power/firmware state that a rover-side resync cannot clear.",
+    "Site-wide obstruction affecting the base rather than the rover."
+  ],
+  "suggested_next_actions_physical": [
+    "Inspect the base station: power, sky view, and whether its survey completed.",
+    "Power-cycle the base station and allow a full re-survey before retesting.",
+    "Retest Fix with the mower back near the dock, where every previous successful gate ran."
+  ],
+  "authorized_move": {
+    "purpose": "RTK diagnostic relocation, explicitly NOT a precision test",
+    "service": "raw_pymammotion_execute_vector_segment",
+    "start": {"x": 4.8768, "y": -1.8125},
+    "end": {"x": 5.0026, "y": -3.4058},
+    "target": {"x": 4.879, "y": -3.3146},
+    "net_displacement_m": 1.5983,
+    "planned_m": 1.5,
+    "linear_pulse_distances_m": [0.56774, 0.46566, 0.49222],
+    "linear_travel_sum_m": 1.5256,
+    "travel_bearing_deg": 274.51,
+    "commands_sent": 5,
+    "turn_commands_sent": 1,
+    "linear_commands_sent": 3,
+    "stop_reason": "max_linear_commands_reached",
+    "final_distance_to_target_m": 0.15360,
+    "waypoint_tolerance_m": 0.15,
+    "reverse_recovery_guard_fired": false,
+    "profile_note": "max_linear_commands is capped at 3 by the vector-segment schema, so the pulse was lengthened to 2000 ms rather than adding a fourth command. Tolerance was deliberately loosened to 0.15 m because this was a relocation, not an accuracy measurement.",
+    "outcome_reading": "Missed the loosened tolerance by 3.6 mm on the last permitted pulse. Only one turn command was needed, so the mower was already close to the required bearing.",
+    "teardown": {"disarmed": true, "active_session": null, "blade_rpm": 0, "work_mode": "MODE_READY", "verified_after": true}
+  },
+  "gate_gap_found": {
+    "severity": "high",
+    "function": "_is_valid_motion_position (custom_components/mammotion/services.py)",
+    "checks_today": ["source available", "x/y present", "not a zero pose", "pos_type in AREA_INSIDE/TURN_AREA_INSIDE/CHANNEL_AREA_OVERLAP", "zone_hash non-zero"],
+    "does_not_check": "RTK solution quality, at all",
+    "consequence": "valid_for_motion read True throughout this Float session, and the backend would have permitted a real precision run on positioning with 13.9 cm excursions against an 0.08 m tolerance. Every previous gate happened to run at Fix; that was luck, not design.",
+    "status": "OPEN -- fix not yet chosen. Hard-blocking non-Fix is the fail-closed option but would halt all motion testing while this fault persists, so the choice between blocker / warn-and-record / blocker-with-override is the operator's and is deliberately not made here."
+  },
+  "caveats": [
+    "One site, one base station, one afternoon.",
+    "The 13.9 cm figure is a single observed jump, not a characterised distribution.",
+    "No claim here bears on Gate 4 or Gate 5; no gate was attempted."
+  ]
+}
