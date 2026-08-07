@@ -5767,6 +5767,60 @@ def test_rtk_freshness_blocks_motion_only_once_the_payload_is_stale() -> None:
     assert stale["allowed_for_manual_motion"] is False
 
 
+def _rtk_telemetry(label: str | None) -> dict[str, object]:
+    """Safety telemetry carrying a specific RTK solution type."""
+    telemetry = _safety_telemetry()
+    position = dict(telemetry["position"])  # type: ignore[arg-type]
+    position["rtk_status_label"] = label
+    telemetry["position"] = position
+    return telemetry
+
+
+def test_rtk_quality_blocks_a_precision_run_on_a_degraded_fix() -> None:
+    """Float is decimetre-grade; a precision run on it steers on noise.
+
+    Measured 2026-08-07: Fix jitters 0.55 cm at worst while stationary, Float
+    produced a 13.9 cm jump with no command sent -- larger than the entire
+    0.08 m waypoint tolerance.
+    """
+    fix = _runtime_motion_safety_summary(_rtk_telemetry("Fix"))
+    assert "rtk_not_precise" not in fix["blockers"]
+    assert fix["rtk_degraded"] is False
+
+    for degraded in ("Float", "Single", "None"):
+        summary = _runtime_motion_safety_summary(_rtk_telemetry(degraded))
+        assert "rtk_not_precise" in summary["blockers"], degraded
+        assert summary["allowed_for_manual_motion"] is False
+        assert summary["rtk_status_label"] == degraded
+
+
+def test_rtk_quality_override_permits_a_deliberate_degraded_run() -> None:
+    """Relocations legitimately do not need centimetre accuracy.
+
+    Both cases occurred on 2026-08-07: a 1.6 m relocation on Float was entirely
+    reasonable, while a precision measurement on Float would have been
+    meaningless. The override makes the caller say which kind of run it is, and
+    the choice is recorded either way.
+    """
+    summary = _runtime_motion_safety_summary(
+        _rtk_telemetry("Float"), allow_degraded_rtk=True
+    )
+
+    assert "rtk_not_precise" not in summary["blockers"]
+    # The override suppresses the refusal but never hides the condition.
+    assert summary["rtk_degraded"] is True
+    assert summary["rtk_degraded_override"] is True
+    assert summary["rtk_status_label"] == "Float"
+
+
+def test_rtk_quality_unknown_status_does_not_block() -> None:
+    """Unknown is unmeasured, not degraded -- same rule as freshness."""
+    summary = _runtime_motion_safety_summary(_rtk_telemetry(None))
+
+    assert "rtk_not_precise" not in summary["blockers"]
+    assert summary["rtk_degraded"] is False
+
+
 def test_rtk_freshness_is_advisory_when_it_cannot_be_measured() -> None:
     """`None` means unmeasured, not unsafe -- diagnostic callers have no tracker."""
     summary = _runtime_motion_safety_summary(

@@ -889,6 +889,11 @@ RAW_PYMAMMOTION_TURN_TO_HEADING_SCHEMA = vol.Schema(
 
 RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA = vol.Schema(
     {
+        # Opt-out of the RTK Fix requirement for runs whose result does not
+        # depend on centimetre accuracy (relocations, characterisation). Must be
+        # stated deliberately: a precision run on Float steers against a
+        # position that jumps further than the tolerance it is aiming at.
+        vol.Optional("allow_degraded_rtk", default=False): cv.boolean,
         vol.Required(ATTR_ENTITY_ID): cv.entity_id,
         vol.Required("points"): vol.All(
             cv.ensure_list,
@@ -1006,6 +1011,11 @@ RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA = vol.Schema(
 
 RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA = vol.Schema(
     {
+        # Opt-out of the RTK Fix requirement for runs whose result does not
+        # depend on centimetre accuracy (relocations, characterisation). Must be
+        # stated deliberately: a precision run on Float steers against a
+        # position that jumps further than the tolerance it is aiming at.
+        vol.Optional("allow_degraded_rtk", default=False): cv.boolean,
         vol.Required(ATTR_ENTITY_ID): cv.entity_id,
         vol.Required("points"): vol.All(
             cv.ensure_list,
@@ -1900,6 +1910,15 @@ def blade_rpm_stale_register(
 #: tighter bound; that measurement needs a moving mower.
 _RTK_REPORT_STALE_SECONDS = 1800.0
 
+#: RTK solution types precise enough for a run whose result depends on position.
+#: Only a resolved carrier-phase fix qualifies. Measured 2026-08-07 on this
+#: mower: **Fix** jitters 0.044 cm mean / 0.55 cm max while stationary, whereas
+#: **Float** produced a single 13.9 cm jump with no command sent -- larger than
+#: the entire 0.08 m waypoint tolerance. Float is decimetre-grade and Single is
+#: metre-grade; steering a precision run on either means chasing a target that
+#: moves further than the tolerance being aimed at.
+_RTK_PRECISE_STATUS_LABELS = frozenset({"Fix"})
+
 
 def _rtk_report_age_seconds(coordinator: Any) -> float | None:
     """Seconds since the RTK payload last changed, or None if unmeasurable.
@@ -1919,6 +1938,7 @@ def _runtime_motion_safety_summary(
     active_route: dict[str, Any] | None = None,
     rpm_stale_register: bool = False,
     rtk_report_age_seconds: float | None = None,
+    allow_degraded_rtk: bool = False,
 ) -> dict[str, Any]:
     """Return conservative safety summary for diagnostics and future motion gates.
 
@@ -1927,6 +1947,13 @@ def _runtime_motion_safety_summary(
     diagnostic and test callers legitimately have no coordinator to ask, and
     refusing on "unmeasured" would break every one of them. The motion path
     supplies it, which is where it matters.
+
+    ``allow_degraded_rtk`` opts a run out of the Fix requirement. It exists
+    because both cases occurred on 2026-08-07: a 1.6 m relocation on Float was
+    entirely reasonable (nothing about it depended on centimetre accuracy),
+    while a precision measurement on Float would have been meaningless. A flat
+    refusal would have blocked the first; permitting silently would have spoiled
+    the second. The override makes the caller state which kind of run it is.
     """
     blade = _runtime_blade_diagnostics(telemetry, rpm_stale_register=rpm_stale_register)
     route_status = _runtime_route_status(
@@ -1951,6 +1978,14 @@ def _runtime_motion_safety_summary(
     )
     if rtk_stale:
         blockers.append("rtk_telemetry_stale")
+
+    rtk_label = (telemetry.get("position") or {}).get("rtk_status_label")
+    # Unknown status does not block, matching the freshness rule: many diagnostic
+    # and test callers build telemetry without it, and refusing on "unmeasured"
+    # would break them. Only a positively-known non-Fix state refuses.
+    rtk_degraded = rtk_label is not None and rtk_label not in _RTK_PRECISE_STATUS_LABELS
+    if rtk_degraded and not allow_degraded_rtk:
+        blockers.append("rtk_not_precise")
     return {
         "allowed_for_manual_motion": not blockers,
         "blockers": blockers,
@@ -1964,6 +1999,11 @@ def _runtime_motion_safety_summary(
         "rtk_report_age_seconds": rtk_report_age_seconds,
         "rtk_report_stale_threshold_seconds": _RTK_REPORT_STALE_SECONDS,
         "rtk_telemetry_stale": rtk_stale,
+        # Recorded whether or not it blocked, so a run's positioning quality is
+        # always attributable after the fact.
+        "rtk_status_label": rtk_label,
+        "rtk_degraded": rtk_degraded,
+        "rtk_degraded_override": bool(allow_degraded_rtk),
     }
 
 
@@ -4744,6 +4784,7 @@ def _manual_motion_authorization(
         active_route=route,
         rpm_stale_register=rpm_stale_register,
         rtk_report_age_seconds=_rtk_report_age_seconds(coordinator),
+        allow_degraded_rtk=call_data.get("allow_degraded_rtk") is True,
     )
     liveness = _ble_link_liveness(coordinator)
     status = experimental_motion_status(
