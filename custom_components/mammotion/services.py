@@ -1875,14 +1875,46 @@ def blade_rpm_stale_register(
     return _blade_rpm_stale_verdict(history[-_BLADE_RPM_RECONFIRM_POLLS:])
 
 
+#: How long the RTK report payload may go unchanged before it is treated as
+#: stale rather than steady. Live RTK carries satellite counts and per-band
+#: signal quality that drift continuously with the constellation -- when the
+#: base station rejoined on 2026-08-07 they moved 26 -> 23 and 35 -> 29 within a
+#: single tick. The failure this guards against was not marginal: the whole
+#: group sat byte-identical for **three hours** (15:40-18:39) while
+#: `valid_for_motion` kept reporting True, so a real precision run could have
+#: been dispatched against a three-hour-old fix. 300 s is deliberately generous
+#: -- it is 36x shorter than the observed failure yet far longer than any
+#: plausible quiet period on a live link.
+_RTK_REPORT_STALE_SECONDS = 300.0
+
+
+def _rtk_report_age_seconds(coordinator: Any) -> float | None:
+    """Seconds since the RTK payload last changed, or None if unmeasurable.
+
+    Tolerates coordinators without the tracker (older builds, test doubles) by
+    returning None, which the safety summary treats as "not evaluated" rather
+    than as a failure.
+    """
+    age = getattr(coordinator, "rtk_report_age_seconds", None)
+    return float(age) if isinstance(age, int | float) else None
+
+
 def _runtime_motion_safety_summary(
     telemetry: dict[str, Any],
     *,
     ha_state: str | None = None,
     active_route: dict[str, Any] | None = None,
     rpm_stale_register: bool = False,
+    rtk_report_age_seconds: float | None = None,
 ) -> dict[str, Any]:
-    """Return conservative safety summary for diagnostics and future motion gates."""
+    """Return conservative safety summary for diagnostics and future motion gates.
+
+    ``rtk_report_age_seconds`` is seconds since the RTK payload last changed, or
+    ``None`` when the caller could not measure it. ``None`` does **not** block:
+    diagnostic and test callers legitimately have no coordinator to ask, and
+    refusing on "unmeasured" would break every one of them. The motion path
+    supplies it, which is where it matters.
+    """
     blade = _runtime_blade_diagnostics(telemetry, rpm_stale_register=rpm_stale_register)
     route_status = _runtime_route_status(
         telemetry,
@@ -1900,6 +1932,12 @@ def _runtime_motion_safety_summary(
         blockers.append("active_route_detected")
     if not position_valid:
         blockers.append("position_not_valid_for_motion")
+    rtk_stale = (
+        rtk_report_age_seconds is not None
+        and rtk_report_age_seconds > _RTK_REPORT_STALE_SECONDS
+    )
+    if rtk_stale:
+        blockers.append("rtk_telemetry_stale")
     return {
         "allowed_for_manual_motion": not blockers,
         "blockers": blockers,
@@ -1908,6 +1946,11 @@ def _runtime_motion_safety_summary(
         "active_route_detected": route_status["route_present"],
         "active_route_status": route_status,
         "position_valid_for_motion": position_valid,
+        # Diagnostic regardless of the verdict: a run that later looks wrong
+        # can be checked against how fresh its positioning actually was.
+        "rtk_report_age_seconds": rtk_report_age_seconds,
+        "rtk_report_stale_threshold_seconds": _RTK_REPORT_STALE_SECONDS,
+        "rtk_telemetry_stale": rtk_stale,
     }
 
 
@@ -2088,6 +2131,7 @@ def _export_runtime_state(
         telemetry,
         ha_state=ha_state,
         active_route=route,
+        rtk_report_age_seconds=_rtk_report_age_seconds(coordinator),
     )
     ble_liveness = _ble_link_liveness(coordinator)
     capabilities = capability_snapshot(coordinator)
@@ -4590,6 +4634,7 @@ def _manual_motion_authorization(
         ha_state=ha_state,
         active_route=route,
         rpm_stale_register=rpm_stale_register,
+        rtk_report_age_seconds=_rtk_report_age_seconds(coordinator),
     )
     liveness = _ble_link_liveness(coordinator)
     status = experimental_motion_status(
@@ -4688,7 +4733,10 @@ def motion_gate_snapshot(
         # anything polling on demand.
         _record_blade_rpm_sample(coordinator, telemetry)
         safety = _runtime_motion_safety_summary(
-            telemetry, ha_state=None, active_route=route
+            telemetry,
+            ha_state=None,
+            active_route=route,
+            rtk_report_age_seconds=_rtk_report_age_seconds(coordinator),
         )
         liveness = _ble_link_liveness(coordinator)
         status = experimental_motion_status(

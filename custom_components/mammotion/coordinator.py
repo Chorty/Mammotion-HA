@@ -191,6 +191,23 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         #: middle of a guarded motion run (the saga would block the mower's command
         #: queue and stall the run's pulses).
         self.manual_motion_owner: str | None = None
+        #: Freshness tracking for the RTK report channel. On 2026-08-07 the whole
+        #: RTK group froze for **three hours** while every other field kept
+        #: updating: `rtk_position` held "float" from 15:40 to 18:39 and only
+        #: moved once the base station was power-cycled. Nothing marked it stale,
+        #: so a three-hour-old reading presented as current and the motion gate
+        #: still reported `valid_for_motion: True`. A forced burst of 50 reports
+        #: refreshed none of it, which is how the latch was caught.
+        #:
+        #: Detection follows the principle the linear phase already uses
+        #: (`_streak_shows_dead_telemetry`): a live feed is never perfectly
+        #: still. The RTK payload carries satellite counts and per-band signal
+        #: quality, which drift continuously as the constellation moves -- when
+        #: the base returned, they went 26 -> 23 and 35 -> 29 in the same tick.
+        #: A byte-identical payload therefore means reports stopped arriving,
+        #: not that reception is unusually steady.
+        self._rtk_fingerprint: tuple[Any, ...] | None = None
+        self._rtk_fingerprint_changed_at: float = time.monotonic()
         # The service layer owns the concrete ManualMotionSession type to avoid
         # coupling normal mower operation to experimental motion internals.
         self.manual_motion_session: Any | None = None
@@ -1489,6 +1506,34 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
             await self.async_send_command(command_str, **kwargs)
         await self.async_get_reports(count=5)
 
+    def note_rtk_report_seen(self, device: MowingDevice | None) -> None:
+        """Record whether the RTK report channel produced anything new.
+
+        Called on every report refresh. Only the *changed-at* timestamp is
+        stored, so a genuinely stable link keeps a small age while a latched one
+        grows without bound.
+        """
+        rtk = getattr(getattr(device, "report_data", None), "rtk", None)
+        if rtk is None:
+            return
+        fingerprint = (
+            getattr(rtk, "status", None),
+            getattr(rtk, "gps_stars", None),
+            getattr(rtk, "age", None),
+            getattr(rtk, "lat_std", None),
+            getattr(rtk, "lon_std", None),
+            tuple(getattr(rtk, "l1_satellites", None) or ()),
+            tuple(getattr(rtk, "l2_satellites", None) or ()),
+        )
+        if fingerprint != self._rtk_fingerprint:
+            self._rtk_fingerprint = fingerprint
+            self._rtk_fingerprint_changed_at = time.monotonic()
+
+    @property
+    def rtk_report_age_seconds(self) -> float:
+        """Seconds since the RTK report payload last changed."""
+        return round(time.monotonic() - self._rtk_fingerprint_changed_at, 3)
+
     async def async_request_report_snapshot(self) -> None:
         """Fire a one-shot count=1 snapshot; no-op while BLE stream is active."""
         await self.manager.request_report_snapshot(self.device_name)
@@ -2262,6 +2307,7 @@ class MammotionReportUpdateCoordinator(MammotionBaseUpdateCoordinator[MowingDevi
 
         LOGGER.debug("Updated Mammotion device %s", self.device_name)
         self.update_failures = 0
+        self.note_rtk_report_seen(device)
         await self.async_save_data(device)
 
         if self.data.mower_state.ble_mac != "" and len(self._on_stop) == 0:

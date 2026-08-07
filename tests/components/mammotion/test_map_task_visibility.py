@@ -101,6 +101,8 @@ from custom_components.mammotion.services import (
     _raw_vector_readiness_test,
     _report_stream_probe,
     _requires_reverse_recovery,
+    _rtk_report_age_seconds,
+    _runtime_motion_safety_summary,
     _settle_linear_position_feed,
     _streak_shows_dead_telemetry,
     _streak_shows_no_actuation,
@@ -5717,6 +5719,113 @@ async def test_vector_segment_vio_realigns_when_facing_drifts_off_bearing(
     # This fixture intentionally leaves position static, so after exercising
     # the re-alignment decision the executor fails closed on no progress.
     assert result["stop_reason"] == "no_target_progress"
+
+
+def _safety_telemetry() -> dict[str, object]:
+    """Minimal telemetry that clears every guard except the one under test."""
+    return {
+        "online": True,
+        "work_mode": 11,
+        "work_mode_label": "MODE_READY",
+        "blade": {"reported_state": 0, "current_cutter_rpm": 0},
+        "position": {
+            "x": 1.0,
+            "y": 1.0,
+            "source": "report",
+            "pos_type_label": "AREA_INSIDE",
+            "zone_hash": 123,
+        },
+    }
+
+
+def test_rtk_freshness_blocks_motion_only_once_the_payload_is_stale() -> None:
+    """A latched RTK reading must not pass as current.
+
+    On 2026-08-07 the whole RTK group sat byte-identical for three hours while
+    `valid_for_motion` kept reporting True, so a precision run could have been
+    dispatched against a three-hour-old fix.
+    """
+    fresh = _runtime_motion_safety_summary(
+        _safety_telemetry(), rtk_report_age_seconds=12.0
+    )
+    assert "rtk_telemetry_stale" not in fresh["blockers"]
+    assert fresh["rtk_telemetry_stale"] is False
+    assert fresh["rtk_report_age_seconds"] == 12.0
+
+    stale = _runtime_motion_safety_summary(
+        _safety_telemetry(), rtk_report_age_seconds=3 * 60 * 60.0
+    )
+    assert "rtk_telemetry_stale" in stale["blockers"]
+    assert stale["allowed_for_manual_motion"] is False
+
+
+def test_rtk_freshness_is_advisory_when_it_cannot_be_measured() -> None:
+    """`None` means unmeasured, not unsafe -- diagnostic callers have no tracker."""
+    summary = _runtime_motion_safety_summary(
+        _safety_telemetry(), rtk_report_age_seconds=None
+    )
+
+    assert "rtk_telemetry_stale" not in summary["blockers"]
+    assert summary["rtk_report_age_seconds"] is None
+
+
+def test_rtk_tracker_refreshes_only_when_the_payload_actually_changes() -> None:
+    """The tracker must distinguish a steady link from a latched one.
+
+    Bound to a stand-in carrying only the two attributes the method touches, so
+    this exercises the real coordinator logic without building a coordinator.
+    Asserted through the public age property rather than the private timestamp.
+    """
+    holder = SimpleNamespace(
+        _rtk_fingerprint=None, _rtk_fingerprint_changed_at=time.monotonic() - 60.0
+    )
+    cls = mammotion_coordinator.MammotionReportUpdateCoordinator
+    note = cls.note_rtk_report_seen.__get__(holder, SimpleNamespace)
+    age = cls.rtk_report_age_seconds.fget  # type: ignore[attr-defined]
+
+    def device(status: int, stars: int) -> SimpleNamespace:
+        return SimpleNamespace(
+            report_data=SimpleNamespace(
+                rtk=SimpleNamespace(
+                    status=status,
+                    gps_stars=stars,
+                    age=0,
+                    lat_std=0.01,
+                    lon_std=0.01,
+                    l1_satellites=[1, 2],
+                    l2_satellites=[3],
+                )
+            )
+        )
+
+    note(device(4, 26))
+    assert age(holder) < 1.0  # first sighting resets the clock
+
+    # A byte-identical payload is the latch signature: it must NOT count as
+    # fresh, or a frozen feed would look perpetually healthy. Age keeps growing.
+    holder._rtk_fingerprint_changed_at -= 120.0  # noqa: SLF001 - test stand-in
+    note(device(4, 26))
+    assert age(holder) >= 120.0
+
+    # Satellite counts drift continuously on a live link (26 -> 23 was the real
+    # transition when the base station rejoined on 2026-08-07).
+    note(device(4, 23))
+    assert age(holder) < 1.0
+
+    # Absent data must never raise inside the update path.
+    holder._rtk_fingerprint_changed_at -= 120.0  # noqa: SLF001 - test stand-in
+    note(SimpleNamespace(report_data=None))
+    note(None)
+    assert age(holder) >= 120.0  # and must not be mistaken for freshness
+
+
+def test_rtk_age_accessor_tolerates_a_coordinator_without_the_tracker() -> None:
+    """Older builds and test doubles must degrade to None, never raise."""
+    assert _rtk_report_age_seconds(SimpleNamespace()) is None
+    assert _rtk_report_age_seconds(SimpleNamespace(rtk_report_age_seconds=4.5)) == 4.5
+    assert (
+        _rtk_report_age_seconds(SimpleNamespace(rtk_report_age_seconds="nope")) is None
+    )
 
 
 def _drive_report_probe_clock(
