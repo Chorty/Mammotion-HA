@@ -5793,6 +5793,35 @@ async def test_report_stream_probe_detects_a_device_ignoring_the_period(
 
 
 @pytest.mark.asyncio
+async def test_report_stream_probe_sees_through_unrelated_traffic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fast median must not read as 'honoured' when the worst gap is a clamp.
+
+    This is the live 2026-08-07 shape: requesting 200 ms produced a median well
+    under 200 ms because other inbound LubaMsg traffic lands between the
+    periodic reports, while the largest gap stayed near 1 s -- the device
+    clamping. Judging on the median alone called that a success.
+    """
+    coordinator = _pulse_coordinator()
+    # Bursty traffic, then a ~1 s hole: the clamp the median hides.
+    _drive_report_probe_clock(
+        monkeypatch, coordinator, [0.05, 0.10, 0.15, 1.10, 1.15, 1.20]
+    )
+
+    result = await _report_stream_probe(
+        coordinator,
+        period_ms=200,
+        no_change_period_ms=200,
+        duration_seconds=1.6,
+    )
+
+    assert result["summary"]["median_ms"] < 200
+    assert result["summary"]["max_ms"] > 500
+    assert result["honoured_requested_period"] is False
+
+
+@pytest.mark.asyncio
 async def test_report_stream_probe_commands_no_motion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

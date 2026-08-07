@@ -4,7 +4,57 @@ Updated 2026-08-06 after the beta22 containment deploy. This is the current hand
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
-## 🚨 START HERE, 2026-08-06 evening — beta22 is deployed motion-disabled; the U-turn path is closed
+## 🚨 START HERE, 2026-08-07 — beta23 deployed; the "just ask for a faster feed" fix is REFUTED
+
+The host runs `0.6.4-beta23`, motion-disabled. It adds one read-only diagnostic,
+`report_stream_probe`, and changes no motion behaviour. No motion has run.
+
+**The probe answered its question, and the answer is no.** The wire report
+`period` field defaults to 1000 ms and nothing in this integration had ever
+lowered it, so the obvious hypothesis was a cheap ~5× win. It is refuted:
+
+| requested period | mean median interval |
+| --- | --- |
+| 1000 ms | 706.9 ms |
+| 200 ms | 590.3 ms |
+
+Interleaved 1000/200 three times each. Observed ratio **1.20** against **5.0**
+expected if honoured, and the spread *within* a setting (445–640 ms) is larger
+than the difference *between* settings (117 ms) — the signature of no effect.
+Across all 203 pooled intervals at every setting, p90 is 1002 ms and the max is
+1107 ms: nothing ever waited materially longer than ~1 s and nothing responded to
+a shorter request. Evidence:
+`docs/evidence-report-rate-probe-20260807.json`.
+
+⚠️ **One limitation bounds that conclusion.** `last_report_at` is stamped on
+*every* received LubaMsg, not only on periodic position reports, so the probe
+measures total inbound traffic rather than the position-report channel. The
+refutation holds (a real 5× change in the report channel would still have moved
+the total), but the **exact position-report cadence is still unmeasured**. To
+close it, discriminate arrivals per `RptInfoType` or diff the parsed position
+payload instead of the message timestamp.
+
+**What this does to the plan.** The "expose `period`, request 200 ms" work is
+dead — drop it. The *other* half of the feed fix is untouched and still worth
+doing on its own merits: the Gate 4/5 executor never holds a continuous
+subscription during motion while four other motion paths do
+(`_manual_velocity_pulse_test`, `_manual_velocity_cumulative_pulse_test`,
+`_experimental_execute_segment_burst`, `_manual_velocity_segment_test`). That is
+a defect regardless of the rate the subscription runs at. The tolerance question
+(§4 of the direction review) is now the more important branch.
+
+**Also resolved:** the pre-linear post-turn guard site stays unguarded — replay
+of all 10 committed `post_turn_alignment` records found zero aim errors ≥90°,
+worst 18.78°. See `docs/evidence-post-turn-alignment-replay-20260807.json`.
+
+**Documentation correction:** the runbook's "128 Mammotion entities" is a
+readiness-poll value, not a stable count. `scripts/ha_restart.sh` exits as soon
+as the count reaches 100, so the number it prints depends on when the poll lands
+(it read 130 this time). The settled count is **131**, with 18
+unavailable/unknown for an idle mower. Do not treat a difference here as a
+regression.
+
+## Historical start block — 2026-08-06 evening — beta22 is deployed motion-disabled; the U-turn path is closed
 
 The host runs `0.6.4-beta22`. It is the beta21 tree plus the reverse-recovery
 containment guard, and it is an **unaccepted, motion-disabled staging

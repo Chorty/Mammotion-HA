@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Read `docs/CODEX-HANDOFF.md`, then `docs/NEXT-SESSION.md`, before continuing P0
 or click-to-go work. The host runs the still-unaccepted, motion-disabled
-`0.6.4-beta22` candidate and experimental motion is verified off. Gate 2 passed
+`0.6.4-beta23` candidate and experimental motion is verified off. Gate 2 passed
 on 2026-08-03, and Gate 4 — which
 failed on 2026-08-03 before its first linear command — was **re-passed on
 2026-08-05** and **reproduced on a second daylight geometry on 2026-08-06**.
@@ -44,16 +44,17 @@ acceptance: the card has driven the mower but has not completed a clean
 two-segment run. That is **Gate 5** in
 `docs/p0-beta-release.md`, and it is the one open release gate.
 
-The host and branch run the still-unaccepted `0.6.4-beta22` candidate. A zero-command
+The host and branch run the still-unaccepted `0.6.4-beta23` candidate, which adds
+only a read-only `report_stream_probe` diagnostic on top of beta22. A zero-command
 live snapshot proved Mammotion exposes only frozen course-over-ground while
 stationary (`toward: -29.589`, VIO inactive/0, RTK yaw 0), so since beta19 the card stops
 drawing that last-travel projection as current mower orientation and blocks
 Nudge unless a trustworthy current orientation is explicitly available. `manifest.json`,
-`pyproject.toml`, `CARD_VERSION` and `uv.lock` (PEP 440 `0.6.4b22`) must always agree, and the
+`pyproject.toml`, `CARD_VERSION` and `uv.lock` (PEP 440 `0.6.4b23`) must always agree, and the
 `Beta Release` workflow verifies all four. The card is served from **two**
 paths, so deploy to both and bump the Lovelace resource key or the browser can
 silently load the stale card. The live Lovelace URL includes the unique build
-suffix `?v=0.6.4-beta22&build=49dd1df8`. The misleading third-party-map
+suffix `?v=0.6.4-beta23&build=88563080`. The misleading third-party-map
 `card-mod` rotation was removed with verified config readback; its pre-change
 backup remains `/config/.storage/lovelace.dashboard_yard.bak.codex-20260802-213848`.
 

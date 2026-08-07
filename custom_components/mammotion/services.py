@@ -4070,8 +4070,15 @@ async def _report_stream_probe(
             "mean_ms": round(sum(ordered) / len(ordered), 1),
             "observed_rate_hz": round(1000 / (sum(ordered) / len(ordered)), 3),
         }
+        # A median alone is too weak: unrelated inbound traffic pulls it below
+        # the requested period even when the device is clamping. Require the
+        # *worst* gap to respect the request too, since a honoured period puts
+        # a ceiling on the interval rather than merely a typical value.
+        # Measured 2026-08-07: at every requested period from 100 to 1000 ms the
+        # max gap stayed near 1.0-1.1 s, which is what a clamp looks like.
         result["honoured_requested_period"] = (
             result["summary"]["median_ms"] <= no_change_period_ms * 1.5
+            and result["summary"]["max_ms"] <= no_change_period_ms * 2.5
         )
     return result
 

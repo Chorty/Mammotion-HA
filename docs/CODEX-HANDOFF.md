@@ -1,3 +1,41 @@
+# Handoff prompt — beta23; the faster-feed fix is refuted, tolerance is next
+
+## 🚨 2026-08-07 — read this before the beta22 sections below
+
+The host runs `0.6.4-beta23`, motion-disabled, adding only a read-only
+`report_stream_probe` diagnostic. Deploy record is in `docs/deploy-runbook-p0.md`.
+
+**The report-rate hypothesis is REFUTED.** The wire `period` field defaults to
+1000 ms and nothing had ever lowered it, so a cheap ~5× feed improvement looked
+available. Interleaving 1000 ms and 200 ms three times each gave mean medians of
+706.9 ms and 590.3 ms — ratio **1.20** against **5.0** if honoured — and the
+within-setting spread (445–640 ms) exceeds the between-setting difference
+(117 ms). Across 203 pooled intervals at every setting, p90 is 1002 ms and max is
+1107 ms. Evidence: `docs/evidence-report-rate-probe-20260807.json`.
+
+⚠️ **Bounded by one limitation:** `last_report_at` stamps *every* LubaMsg, not
+just periodic position reports, so this measures total inbound traffic. The
+refutation stands, but the **position-report cadence itself remains unmeasured**.
+Close it by stamping arrivals per `RptInfoType` or diffing the parsed position
+payload.
+
+**Consequences.** Drop the "expose `period`, request 200 ms" work. Keep the other
+half: the Gate 4/5 executor still never holds a continuous subscription during
+motion while four other motion paths do — a defect independent of rate. The
+tolerance decision (§4 of `docs/direction-review-20260806.md`) is now the leading
+item.
+
+**Also resolved 2026-08-07:** the pre-linear post-turn guard site stays
+unguarded — zero of 10 committed `post_turn_alignment` records reached 90°, worst
+18.78°. See `docs/evidence-post-turn-alignment-replay-20260807.json`.
+
+⚠️ **`docs/direction-review-20260806.md` carries a correction.** Its headline
+"1.11 s position update interval" was the *sampler's* interval, not the feed's;
+that claim and everything derived from it are withdrawn. The surviving argument
+is in its §7 (code findings). Read the correction box before citing that review.
+
+---
+
 # Handoff prompt — beta22 contains the Gate 4 U-turn; decide control quality next
 
 Paste the block below to resume. It is written to be self-contained; everything

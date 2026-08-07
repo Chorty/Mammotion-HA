@@ -10,9 +10,9 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 |                         | Host                                                           | Branch         |
 | ----------------------- | -------------------------------------------------------------- | -------------- |
-| Integration version     | `0.6.4-beta22` staging candidate                               | `0.6.4-beta22` candidate |
+| Integration version     | `0.6.4-beta23` staging candidate                               | `0.6.4-beta23` candidate |
 | pymammotion pin         | `0.8.12.post1` fork wheel (container verified)                 | same           |
-| Card `CARD_VERSION`     | `0.6.4-beta22`; integration and HACS copies checksum-identical | `0.6.4-beta22` candidate |
+| Card `CARD_VERSION`     | `0.6.4-beta23`; integration and HACS copies checksum-identical | `0.6.4-beta23` candidate |
 | `manual_motion.py`      | present                                                        | present        |
 | `backend_capability.py` | present                                                        | present        |
 | `capabilities.py`       | present                                                        | present        |
@@ -33,6 +33,30 @@ reported `target_reached`. That is containment, not regression: the earlier
 passes were bought by driving past the waypoint and U-turning back. The next
 motion decision is whether to fix control quality (stop-latency lead, pulse
 sizing) or to accept overshoot-and-recovery — not a Gate 5 attempt.
+
+### beta23 report-rate probe deploy — 2026-08-07 00:17-00:21 EDT
+
+`0.6.4-beta23` is deployed motion-disabled. Backup:
+`/config/mammotion-backup-20260807-0017-beta23.tgz`. All **46** integration files
+byte-identical to the local tree (aggregate `71ef5ccddb3dd04b33732cd4871b555a`),
+zero AppleDouble entries; both card copies `885630808fafb80c7b38c39ea1bad628`.
+HA API returned in **51 s**, no `setup_error`. Lovelace resource read back as
+`?v=0.6.4-beta23&build=88563080`. Container backend verified
+`pymammotion 0.8.12.post1`. The new `report_stream_probe` service is registered
+on the host with all four fields (60 mammotion services total). Motion gate
+verified off before and after; no session; no motion commanded.
+
+Adds exactly one thing: a read-only `report_stream_probe` diagnostic. No motion
+path, service schema default, `LUBA_ACCEPTANCE_PROFILE` value, or entity
+platform changed.
+
+⚠️ **Entity-count note — read before treating a mismatch as a regression.**
+`scripts/ha_restart.sh` prints an entity count but **exits as soon as it reaches
+100**, so the printed number depends on when the poll lands mid-load. It read
+**130** here versus **128** on earlier deploys; the *settled* count is **131**
+(18 unavailable/unknown for an idle mower). The historical "128 Mammotion
+entities" in the sections below is therefore a readiness sample, not a stable
+invariant. Compare settled counts, or ignore the number.
 
 ### beta22 reverse-recovery containment deploy — 2026-08-06 19:51-19:56 EDT
 

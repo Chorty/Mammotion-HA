@@ -1,0 +1,69 @@
+{
+  "date": "2026-08-07",
+  "candidate": "0.6.4-beta23",
+  "test": "Report-stream rate probe -- does the device honour a shorter reporting period?",
+  "motion_commanded": false,
+  "gate_armed": false,
+  "gate_claimed": null,
+  "conditions": {
+    "mower_state": "MODE_READY, stationary, undocked, in Backyard Right",
+    "experimental_motion_enabled": false,
+    "active_session": null,
+    "ble": "live, transport=ble, queue depth 0, last_send_age 0.1 s at probe start",
+    "note": "Stationary throughout. A stationary mower's reported data is unchanging, so no_change_period governs the periodic cadence; it was held equal to period in every run."
+  },
+  "method": {
+    "service": "mammotion.report_stream_probe",
+    "subscription": "request_iot_sync_continuous(period, no_change_period), count=0 RPT_START",
+    "observable": "DeviceHandle.last_report_at -- a monotonic timestamp stamped on EVERY received LubaMsg",
+    "sampling": "polled every 20 ms, recording each distinct value; intervals are between successive arrivals, not between polls",
+    "why_this_sampling": "The 2026-08-06 direction review reported its own 1.113 s sampler interval as the feed's rate. 20 ms oversamples even the 100 ms setting 5x, so that confound cannot recur.",
+    "subscription_verified_dispatched": true
+  },
+  "sweep": [
+    {"period_ms": 1000, "reports": 50, "median_ms": 357.1, "min_ms": 152.5, "max_ms": 825.8, "rate_hz": 2.023},
+    {"period_ms": 500, "reports": 39, "median_ms": 874.4, "min_ms": 33.4, "max_ms": 1219.6, "rate_hz": 1.578},
+    {"period_ms": 200, "reports": 32, "median_ms": 973.6, "min_ms": 159.7, "max_ms": 1048.0, "rate_hz": 1.249},
+    {"period_ms": 100, "reports": 50, "median_ms": 479.2, "min_ms": 139.6, "max_ms": 824.4, "rate_hz": 2.011}
+  ],
+  "interleaved_control": {
+    "design": "1000/200 alternated three times each, 20 s per run, to control for slow drift in BLE conditions",
+    "period_1000_medians_ms": [638.7, 963.3, 518.6],
+    "period_200_medians_ms": [312.8, 504.9, 953.1],
+    "mean_1000_ms": 706.9,
+    "mean_200_ms": 590.3,
+    "observed_ratio": 1.2,
+    "expected_ratio_if_honoured": 5.0,
+    "within_setting_spread_ms": "445 (at 1000) and 640 (at 200)",
+    "between_setting_difference_ms": 117,
+    "reading": "The spread WITHIN a setting is larger than the difference BETWEEN settings. That is the signature of no effect."
+  },
+  "pooled_intervals": {
+    "n": 203,
+    "min_ms": 42.5,
+    "p10_ms": 131.5,
+    "median_ms": 551.9,
+    "p90_ms": 1002.2,
+    "max_ms": 1107.5
+  },
+  "findings": {
+    "period_is_not_honoured": "CONFIRMED. Requesting 100, 200 or 500 ms produced no increase in arrival rate over requesting 1000 ms; the observed ratio is 1.2 against 5.0 expected. The cheap-fix hypothesis -- that lowering the wire period yields a ~5x faster feed -- is REFUTED.",
+    "a_one_second_ceiling_is_visible": "Across all 203 pooled intervals at every requested period, p90 is 1002 ms and the maximum is 1107 ms. Nothing ever waited materially longer than ~1 s, and nothing responded to a shorter request. That is consistent with a ~1000 ms periodic report the device clamps to, with additional non-periodic traffic arriving in between.",
+    "inbound_traffic_is_faster_than_1_hz": "Pooled median inter-arrival is 552 ms (~1.8 Hz), well under 1000 ms. So total inbound LubaMsg traffic is faster than the periodic report period -- which is why the median alone is a misleading statistic here."
+  },
+  "limitation_that_bounds_the_conclusion": {
+    "observable_is_too_broad": "last_report_at is stamped on EVERY received LubaMsg, not only on periodic position reports. The probe therefore measures total inbound message rate, not the position-report cadence specifically. A period effect confined to the report channel could be masked by unrelated traffic.",
+    "consequence": "The refutation of 'lower the period for a faster feed' is sound, because a real 5x change in the report channel would still have moved the total. But the exact position-report cadence remains UNMEASURED, and the ~1 s ceiling is inferred from the interval distribution rather than observed per-channel.",
+    "next_step_to_close_it": "Discriminate position-bearing reports from other traffic -- e.g. stamp arrivals per RptInfoType, or diff the parsed position/RTK payload rather than the message timestamp."
+  },
+  "other_caveats": [
+    "One device, one session, one evening, stationary only.",
+    "A moving mower may report differently; this was deliberately a zero-motion test.",
+    "The probe's own honoured_requested_period heuristic was tightened after this run: judging on the median alone called the 1000 ms run 'honoured' while other traffic pulled the median under the request. It now also requires the max gap to respect the request."
+  ],
+  "what_this_means_for_the_plan": {
+    "phase_2_feed_fixes": "The 'expose period and ask for 200 ms' half is DEAD -- no evidence supports it. The other half stands on its own and is unaffected: the Gate 4/5 executor still never holds a continuous subscription during motion while four other motion paths do, and that is a defect regardless of what rate the subscription runs at.",
+    "phase_3_tolerance": "Now the more important branch. If ~1 s is genuinely the position-report cadence, then at the fast tier's measured 0.28 m/s roughly 28 cm passes between reports, and an 0.08 m tolerance is not reachable at that speed -- pointing at a slower final approach, a relaxed tolerance, or both.",
+    "not_established": "That last sentence is a hypothesis carried forward, not a result. It depends on the ~1 s figure being the POSITION report cadence, which this probe could not isolate."
+  }
+}
