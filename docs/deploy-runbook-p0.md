@@ -10,9 +10,9 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 |                         | Host                                                           | Branch         |
 | ----------------------- | -------------------------------------------------------------- | -------------- |
-| Integration version     | `0.6.4-beta23` staging candidate                               | `0.6.4-beta23` candidate |
+| Integration version     | `0.6.4-beta24` staging candidate                               | `0.6.4-beta24` candidate |
 | pymammotion pin         | `0.8.12.post1` fork wheel (container verified)                 | same           |
-| Card `CARD_VERSION`     | `0.6.4-beta23`; integration and HACS copies checksum-identical | `0.6.4-beta23` candidate |
+| Card `CARD_VERSION`     | `0.6.4-beta24`; integration and HACS copies checksum-identical | `0.6.4-beta24` candidate |
 | `manual_motion.py`      | present                                                        | present        |
 | `backend_capability.py` | present                                                        | present        |
 | `capabilities.py`       | present                                                        | present        |
@@ -33,6 +33,33 @@ reported `target_reached`. That is containment, not regression: the earlier
 passes were bought by driving past the waypoint and U-turning back. The next
 motion decision is whether to fix control quality (stop-latency lead, pulse
 sizing) or to accept overshoot-and-recovery — not a Gate 5 attempt.
+
+### beta24 RTK freshness guard + per-channel probe deploy — 2026-08-07 19:03-19:07 EDT
+
+`0.6.4-beta24` is deployed motion-disabled. Backup:
+`/config/mammotion-backup-20260807-1903-beta24.tgz`. All **46** integration
+files byte-identical to the tree (aggregate
+`2bf75c1312257fbcf58d1e75ab4a7cb8`), zero AppleDouble; both card copies
+`73b1774077957755ef26eed846f4c186`. HA API returned in **41 s**, entities in
+125 s, no `setup_error`. Lovelace resource read back as
+`?v=0.6.4-beta24&build=73b17740`. Backend verified `pymammotion 0.8.12.post1`.
+Gate verified off before and after; no session; no motion commanded.
+
+Two changes, both off-mower:
+
+- **RTK freshness guard.** The coordinator fingerprints the RTK payload on every
+  report refresh; the safety summary reports `rtk_report_age_seconds` and blocks
+  with `rtk_telemetry_stale` past 300 s. Wired into the three authorization
+  boundaries only, not the fifteen diagnostic call sites. An unmeasurable age is
+  `None` and does not block. **No Fix requirement was added** — that threshold
+  remains an open operator decision.
+- **Per-channel report attribution** in `report_stream_probe`.
+
+⚠️ **First per-channel result changes the plan.** Stationary with RTK Fix, 40 s:
+75 messages arrived at ~1.9 Hz and **none** carried a changed position, RTK or
+VIO payload. The position-report cadence therefore cannot be measured from a
+stationary mower — the measurement needs a moving one, in daylight, under fresh
+authorization. See `docs/evidence-per-channel-report-probe-20260807.json`.
 
 ### beta23 report-rate probe deploy — 2026-08-07 00:17-00:21 EDT
 

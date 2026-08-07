@@ -1,0 +1,45 @@
+{
+  "date": "2026-08-07",
+  "candidate": "0.6.4-beta24",
+  "test": "Per-channel report arrival cadence, stationary mower, RTK Fix",
+  "motion_commanded": false,
+  "gate_armed": false,
+  "purpose": "Close the limitation recorded on 2026-08-06: the original probe counted every inbound LubaMsg and so measured total traffic, not the position-report cadence that governs overshoot.",
+  "conditions": {
+    "rtk_status": "Fix (restored 18:39 by base-station power cycle)",
+    "mower": "stationary at (5.0026, -3.4058), MODE_READY, blades 0, no session",
+    "experimental_motion_enabled": false,
+    "position_source_populated": "report_data.locations[0] -> x 5.0026, y -3.4058, toward -169.0238"
+  },
+  "method": {
+    "service": "mammotion.report_stream_probe",
+    "duration_seconds": 40,
+    "requested_period_ms": 1000,
+    "sampling": "channel payloads fingerprinted every 20 ms; an arrival is counted when a channel's fingerprint changes",
+    "channels": {
+      "position": "locations[0].real_pos_x / real_pos_y / real_toward",
+      "rtk": "report_data.rtk status / gps_stars / lat_std / lon_std",
+      "vio": "vision_info heading / vio_state / tracked_feature_count"
+    }
+  },
+  "result": {
+    "total_lubamsg_arrivals": 75,
+    "total_traffic_rate_hz": 1.876,
+    "total_traffic_median_interval_ms": 536.3,
+    "position_updates": 0,
+    "rtk_updates": 0,
+    "vio_updates": 0
+  },
+  "finding": "Messages arrived steadily at ~1.9 Hz for 40 seconds and NOT ONE carried a changed position, RTK or VIO payload. The instrumentation is not at fault: the position path is populated and a unit test drives position forward while holding RTK latched and sees exactly that split.",
+  "interpretation": {
+    "leading": "The device appears not to push position/RTK/VIO updates for a stationary mower -- either it suppresses unchanged values, or the ~1.9 Hz traffic is other message types entirely (keepalives, status).",
+    "consequence": "The position-report cadence CANNOT be measured from a stationary mower. The measurement the 2026-08-06 direction review needs -- how often position updates DURING motion, which bounds how precisely a stop can be timed -- requires a moving mower, daylight, and fresh operator authorization.",
+    "not_established": "Whether the device is suppressing unchanged values or simply not sending these channels. Distinguishing them needs either a moving-mower run or per-RptInfoType decoding below the pymammotion data model."
+  },
+  "secondary_value": "This probe would have caught the 2026-08-07 RTK latch in 40 seconds rather than three hours: it reports a silent channel as a finding while total traffic looks healthy, which is precisely the shape that hid the latch.",
+  "caveats": [
+    "One 40-second window, one mower, stationary only.",
+    "Fingerprints are taken at the pymammotion data-model level, so a report that arrives carrying identical values is indistinguishable from a report that never arrived.",
+    "No gate is claimed and no motion ran."
+  ]
+}

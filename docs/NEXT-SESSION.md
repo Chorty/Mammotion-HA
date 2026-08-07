@@ -4,6 +4,47 @@ Updated 2026-08-06 after the beta22 containment deploy. This is the current hand
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
+## 🚦 START HERE, 2026-08-07 evening — beta24 deployed; the next measurement needs a MOVING mower
+
+Host runs `0.6.4-beta24`, motion-disabled. Two additions, both off-mower:
+
+**1. An RTK freshness guard** — the motion gate now refuses with
+`rtk_telemetry_stale` when the RTK payload has not changed for 300 s, and
+reports `rtk_report_age_seconds` either way. This exists because on 2026-08-07 a
+three-hour-old fix presented as current and `valid_for_motion` stayed `True`.
+Detection reuses the project's own principle: a live feed is never perfectly
+still. An unmeasurable age is `None` and does **not** block, so diagnostic
+callers are unaffected. **It deliberately does NOT require RTK to read Fix** —
+that threshold is still the operator's open decision (below).
+
+**2. Per-channel report attribution** — `report_stream_probe` now splits
+arrivals into position / RTK / VIO instead of counting all inbound LubaMsgs,
+closing the limitation recorded on 2026-08-06.
+
+### ⚠️ What the per-channel probe found, and why it matters
+
+Stationary mower, RTK Fix, 40 s: **75 messages arrived at ~1.9 Hz and not one
+carried a changed position, RTK or VIO payload.** The probe is not at fault —
+the position path is populated and a unit test proves the split works.
+
+So **the position-report cadence cannot be measured from a stationary mower.**
+The device appears not to push these channels when nothing is moving. The
+measurement the direction review actually needs — how often position updates
+*during motion*, which bounds how precisely a stop can be timed — **requires a
+moving mower, daylight, and fresh operator authorization.** That is the next
+physical step, and it is a straight line, not a gate attempt.
+Evidence: `docs/evidence-per-channel-report-probe-20260807.json`.
+
+Silver lining: this probe would have caught the RTK latch in 40 seconds instead
+of three hours, because it reports a silent channel while total traffic looks
+healthy — exactly the shape that hid it.
+
+### Still open — the operator's call
+
+Whether the motion gate should require RTK **Fix**: hard blocker, warn-and-record,
+or blocker with an explicit `allow_degraded_rtk` override for characterisation
+runs. Freshness is now guarded regardless; this is about quality.
+
 ## ✅ RESOLVED, 2026-08-07 18:39 EDT — RTK is back to Fix; a base power cycle did it
 
 RTK read `Float` from 15:40. The operator power-cycled the **dock and RTK base
