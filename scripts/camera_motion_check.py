@@ -80,22 +80,28 @@ COMPARE_SIZE = (960, 540)
 #: well under this at the compare size.
 PIXEL_DELTA_THRESHOLD = 35
 
-#: Fraction of changed pixels above which a frame pair is called movement.
-#: Measured 2026-08-07 on a verified-stationary mower in daylight: a single
-#: 12 s pair changed 0.097%, but a 22 s seven-frame baseline peaked at 0.201%
-#: step-to-step and 0.295% first-to-last as the light shifted. So 0.5% carries
-#: roughly 1.7x headroom over the observed floor, not the 5x an early
-#: single-sample reading suggested. Raise it if wind or cloud movement start
-#: producing false positives; do not lower it without a fresh baseline.
+#: Whole-frame changed fraction. Retained as a diagnostic only -- it is NOT the
+#: movement criterion, because it cannot work: at this camera distance the mower
+#: covers roughly 0.1% of the frame, so even driving 1.6 m moved only 0.20-0.32%
+#: of pixels (measured 2026-08-07) against a stationary lighting floor that
+#: itself reaches 0.295%. Signal and noise overlap, and an early version of this
+#: script used exactly this statistic and reported "no movement" for a mower
+#: that had demonstrably driven 1.6 m.
 MOVEMENT_FRACTION_THRESHOLD = 0.005
 
-#: ⚠️ SENSITIVITY FLOOR -- this detector is deliberately blunt.
-#: Movement is inferred from how much of the frame changed, so displacements
-#: smaller than the mower's own silhouette barely register: a few centimetres
-#: shifts only the edge pixels and lands *below* the noise floor above. It
-#: answers "did the machine move at all" over a whole run. It cannot confirm a
-#: small bounded move such as Gate 2's 9 cm, and must never be used to argue a
-#: waypoint was or was not reached.
+#: The real criterion: the most-changed block. Localised change separates
+#: cleanly where whole-frame change does not. Same 2026-08-07 run -- the three
+#: linear pulses lit block [2,8] to 17.4%, 41.3% and 29.8%, while every other
+#: step in the capture stayed at or below 3.4% and sat in a different block.
+#: 10% is placed in that gap, ~1.7x above the observed non-mower maximum and
+#: ~1.7x below the weakest true detection.
+MOVEMENT_PEAK_BLOCK_THRESHOLD = 0.10
+
+#: ⚠️ SENSITIVITY FLOOR. Detection needs the mower to vacate enough of one block
+#: to clear the threshold, so this is validated for moves of roughly a metre and
+#: up (1.6 m detected 2026-08-07). A few centimetres shifts only edge pixels and
+#: will NOT register: it cannot confirm a small bounded move such as Gate 2's
+#: 9 cm, and must never be used to argue a waypoint was or was not reached.
 
 
 def _fetch(ha_url: str, token: str, camera: str, dest: Path) -> tuple[bool, str]:
@@ -174,7 +180,8 @@ def compare(first: np.ndarray, second: np.ndarray) -> dict[str, Any]:
         "peak_block_row_col": [int(hottest[0]), int(hottest[1])],
         "block_grid": [rows, cols],
         "blocks_over_2pct": int((blocks > 0.02).sum()),
-        "movement": bool(fraction > MOVEMENT_FRACTION_THRESHOLD),
+        "movement": bool(blocks.max() > MOVEMENT_PEAK_BLOCK_THRESHOLD),
+        "movement_by_whole_frame": bool(fraction > MOVEMENT_FRACTION_THRESHOLD),
     }
 
 
