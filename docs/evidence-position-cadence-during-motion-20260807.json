@@ -1,0 +1,61 @@
+{
+  "date": "2026-08-07",
+  "candidate": "0.6.4-beta25",
+  "test": "Position-report cadence DURING motion -- the measurement the direction review needed",
+  "operator_authorized_motion": true,
+  "gate_claimed": null,
+  "why_this_run_existed": "The 2026-08-06 direction review asserted a 1.11 s position update interval; that figure was the sampler's own rate and was withdrawn. The 2026-08-07 per-channel probe then showed the position channel is silent while the mower is stationary, so the cadence could only be measured with the mower moving.",
+  "method": {
+    "sampler": "export_runtime_state polled externally, median 89 ms interval = 11.2 Hz",
+    "oversampling": "~12x the cadence being resolved, so the 2026-08-06 confound cannot recur",
+    "why_this_works": "coordinator.data is mutated in place by pymammotion as reports arrive, so a fast external poll observes real arrivals rather than a coordinator tick",
+    "samples": 1627,
+    "window_seconds": 149.9,
+    "distinct_positions": 12
+  },
+  "conditions": {
+    "rtk": "Fix throughout the entire run -- no drop to Float under motion",
+    "vio": "light, 80 tracked features",
+    "ble": "live, rssi -64",
+    "start": {"x": 5.0026, "y": -3.4058},
+    "end": {"x": 4.8885, "y": -4.9028}
+  },
+  "RESULT_position_update_interval_ms": {
+    "min": 774,
+    "p10": 820,
+    "median": 1031,
+    "p90": 23503,
+    "max": 62868,
+    "note": "The long tail is the stationary intervals between pulses, when the channel goes silent as established earlier the same day. The moving cadence is the min/p10/median cluster: roughly one update per second."
+  },
+  "RESULT_distance_per_update_while_moving": {
+    "median_cm": 47.1,
+    "max_cm": 57.4,
+    "note": "MEASURED, not inferred from an assumed rate. This is how far the mower travels between successive position reports at the fast tier's operating speed."
+  },
+  "what_this_establishes": {
+    "headline": "The position feed updates about once per second during motion, and at the fast tier the mower covers ~47 cm between updates.",
+    "consequence_for_tolerance": "A stop decision is made against a position that can be up to ~47 cm stale. An 0.08 m waypoint tolerance is therefore NOT achievable at the fast tier by any control law -- the information required arrives less often than the error accumulates. This restores the direction review's conclusion, but now on a sound 12x-oversampled measurement rather than the withdrawn one.",
+    "speed_required_for_8cm": "0.08 m / 1.03 s = about 0.078 m/s. The existing slow tier measures ~0.10 m/s, giving ~10 cm per update -- still marginally too fast.",
+    "speed_supported_by_current_slow_tier": "~0.10 m/s x 1.03 s = ~10-11 cm per update, which is consistent with a 0.15 m tolerance and not with 0.08 m."
+  },
+  "secondary_findings": {
+    "rtk_held_fix_under_motion": "RTK read Fix across all 1627 samples. The base-station power cycle earlier that evening held up under driving -- this was an open risk and is now closed.",
+    "clean_run": "stop_reason target_reached, 5 commands (1 turn + 3 linear), pulses 0.4754 / 0.5811 / 0.3943 m = 1.451 m for a 1.5 m leg. One turn command only. No reverse-recovery guard trigger. This is the first clean, well-tracked pass of the session and it happened under RTK Fix -- a contrast with the Float-era overshoot runs worth noting but NOT worth over-reading from one run."
+  },
+  "teardown": {
+    "experimental_motion_enabled": false,
+    "real_motion_allowed": false,
+    "active_session": null,
+    "work_mode": "MODE_READY",
+    "blade_rpm": 0,
+    "final_position": {"x": 4.8885, "y": -4.9028},
+    "rtk": "Fix"
+  },
+  "caveats": [
+    "One run, one mower, one speed tier. The slow tier's cadence was not separately measured.",
+    "The median is dominated by the fast tier; whether the device reports faster at lower speeds is unknown.",
+    "Distance-per-update depends on speed, so the 47 cm figure is specific to the fast tier.",
+    "No gate is claimed. target_reached here was a 1.5 m single segment at a deliberately loosened 0.15 m tolerance, not a Gate 4 geometry."
+  ]
+}

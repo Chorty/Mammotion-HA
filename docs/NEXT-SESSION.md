@@ -4,7 +4,49 @@ Updated 2026-08-06 after the beta22 containment deploy. This is the current hand
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
-## 🚦 START HERE, 2026-08-07 evening — beta24 deployed; the next measurement needs a MOVING mower
+## ✅ MEASURED, 2026-08-07 19:30 EDT — the position feed updates ~1x/second during motion
+
+**The number the direction review needed now exists, measured soundly.** Sampled
+at 11.2 Hz (89 ms) — ~12x oversampling, so the 2026-08-06 confound cannot recur —
+across an authorized 1.5 m drive under RTK Fix.
+
+| position update interval | value |
+| --- | --- |
+| min | **774 ms** |
+| p10 | 820 ms |
+| **median** | **1031 ms** |
+| p90 / max | 23.5 s / 62.9 s (stationary gaps between pulses) |
+
+**Distance travelled between updates while moving: median 47.1 cm, max 57.4 cm.**
+Measured, not inferred.
+
+### What this settles
+
+A stop decision is made against a position up to ~47 cm stale, so **an 0.08 m
+waypoint tolerance is not achievable at the fast tier by any control law** — the
+information arrives less often than the error accumulates. The direction
+review's conclusion is restored, this time on a sound measurement rather than the
+withdrawn one.
+
+- 8 cm needs ≈ **0.078 m/s**. The existing slow tier measures ~0.10 m/s → ~10 cm
+  per update: still marginally too fast.
+- ~0.15 m tolerance is consistent with the slow tier as it stands.
+
+So the tolerance decision is now a real choice between **slowing the final
+approach below the current slow tier** and **relaxing the tolerance to ~0.15 m**.
+Evidence: `docs/evidence-position-cadence-during-motion-20260807.json`.
+
+### Two bonuses from the same run
+
+**RTK held Fix across all 1627 samples** — the base-station power cycle survives
+driving. That was an open risk and is now closed.
+
+**The run was clean:** `target_reached`, 1 turn + 3 linear pulses
+(0.475/0.581/0.394 m = 1.451 m for a 1.5 m leg), no reverse-recovery trigger.
+First well-tracked pass of the session, under Fix. Do not over-read one run, but
+it contrasts sharply with the Float-era overshoot behaviour.
+
+## Superseded — beta24 deployed; the next measurement needs a MOVING mower
 
 Host runs `0.6.4-beta24`, motion-disabled. Two additions, both off-mower:
 
