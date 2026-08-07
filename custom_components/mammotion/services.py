@@ -1876,16 +1876,29 @@ def blade_rpm_stale_register(
 
 
 #: How long the RTK report payload may go unchanged before it is treated as
-#: stale rather than steady. Live RTK carries satellite counts and per-band
-#: signal quality that drift continuously with the constellation -- when the
-#: base station rejoined on 2026-08-07 they moved 26 -> 23 and 35 -> 29 within a
-#: single tick. The failure this guards against was not marginal: the whole
+#: stale rather than steady.
+#:
+#: The failure this guards against was not marginal: on 2026-08-07 the whole RTK
 #: group sat byte-identical for **three hours** (15:40-18:39) while
 #: `valid_for_motion` kept reporting True, so a real precision run could have
-#: been dispatched against a three-hour-old fix. 300 s is deliberately generous
-#: -- it is 36x shorter than the observed failure yet far longer than any
-#: plausible quiet period on a live link.
-_RTK_REPORT_STALE_SECONDS = 300.0
+#: been dispatched against a three-hour-old fix.
+#:
+#: ⚠️ The first value tried here was 300 s, justified as "far longer than any
+#: plausible quiet period on a live link". That was wrong, and measuring it the
+#: same evening disproved it: on a healthy Fix-locked **stationary** mower the
+#: payload went unchanged for over 10 minutes straight (age climbed 256 s ->
+#: 582 s with no reset), which 300 s would have reported as stale, blocking
+#: motion with nothing actually wrong. A stationary mower's RTK simply has
+#: little to report.
+#:
+#: 1800 s sits between the two: ~3x the longest legitimate quiet period observed
+#: and 6x shorter than the real failure. It is **under-characterised** -- the
+#: upper bound on legitimate quiet is unknown, only that it exceeds 10 minutes --
+#: so if a future run is refused with `rtk_telemetry_stale` while RTK is
+#: demonstrably healthy, raise this rather than assuming a latch. Measuring
+#: quiet during *motion*, where the channel should be active, would allow a much
+#: tighter bound; that measurement needs a moving mower.
+_RTK_REPORT_STALE_SECONDS = 1800.0
 
 
 def _rtk_report_age_seconds(coordinator: Any) -> float | None:

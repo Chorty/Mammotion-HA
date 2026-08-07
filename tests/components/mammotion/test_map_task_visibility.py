@@ -5752,6 +5752,14 @@ def test_rtk_freshness_blocks_motion_only_once_the_payload_is_stale() -> None:
     assert fresh["rtk_telemetry_stale"] is False
     assert fresh["rtk_report_age_seconds"] == 12.0
 
+    # A healthy Fix-locked but STATIONARY mower was measured going 582 s without
+    # a payload change on 2026-08-07. That must not be called stale -- the first
+    # threshold tried (300 s) would have blocked motion with nothing wrong.
+    quiet = _runtime_motion_safety_summary(
+        _safety_telemetry(), rtk_report_age_seconds=600.0
+    )
+    assert "rtk_telemetry_stale" not in quiet["blockers"]
+
     stale = _runtime_motion_safety_summary(
         _safety_telemetry(), rtk_report_age_seconds=3 * 60 * 60.0
     )
