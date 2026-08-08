@@ -1,0 +1,109 @@
+{
+  "title": "Base-station query and RTK base telemetry -- first live results",
+  "date": "2026-08-07",
+  "build": "0.6.4-beta28",
+  "motion_commanded": false,
+  "probe_result": {
+    "motion_commanded": false,
+    "wait_seconds": 15.0,
+    "poll_interval_seconds": 0.15,
+    "command_sent": true,
+    "answered": false,
+    "samples": 101,
+    "before": {
+      "available": true,
+      "rtk_status": 0,
+      "sats_num": 0,
+      "rtk_channel": 0,
+      "rtk_switch": 0,
+      "mqtt_rtk_status": 0,
+      "lora_channel": 0,
+      "wifi_rssi": 0,
+      "app_connect_type": 0,
+      "basestation_status": 0,
+      "connect_status_since_poweron": 2,
+      "score_info": {
+        "base_score": 0,
+        "base_leve": 0,
+        "base_moved": 0,
+        "base_moving": 0
+      }
+    },
+    "best": {
+      "available": true,
+      "rtk_status": 0,
+      "sats_num": 0,
+      "rtk_channel": 0,
+      "rtk_switch": 0,
+      "mqtt_rtk_status": 0,
+      "lora_channel": 0,
+      "wifi_rssi": 0,
+      "app_connect_type": 0,
+      "basestation_status": 0,
+      "connect_status_since_poweron": 2,
+      "score_info": {
+        "base_score": 0,
+        "base_leve": 0,
+        "base_moved": 0,
+        "base_moving": 0
+      }
+    },
+    "final": {
+      "available": true,
+      "rtk_status": 0,
+      "sats_num": 0,
+      "rtk_channel": 0,
+      "rtk_switch": 0,
+      "mqtt_rtk_status": 0,
+      "lora_channel": 0,
+      "wifi_rssi": 0,
+      "app_connect_type": 0,
+      "basestation_status": 0,
+      "connect_status_since_poweron": 2,
+      "score_info": {
+        "base_score": 0,
+        "base_leve": 0,
+        "base_moved": 0,
+        "base_moving": 0
+      }
+    },
+    "clobbered_after_answer": false,
+    "reason": "no_query_fields_observed"
+  },
+  "probe_conclusion": "command_sent true; 101 samples at 150 ms over 15 s; ZERO query-only fields ever observed and no clobber detected, so the report-channel race is ruled out and this is a real negative for THIS read path.",
+  "probe_defect_found": "The probe reads mower.report_data.basestation_info, but this installation has a SEPARATE RTK device (rtkbna235279309) whose base.to_app frames are reduced by RTKStateReducer onto RTKBaseStationDevice. The probe may simply be reading the wrong object.",
+  "base_station_live_state": {
+    "device": "rtkbna235279309",
+    "position_mode": "rtk_over_internet",
+    "connection_type": "con_wifi",
+    "wifi_rssi_dbm": -72,
+    "satellites": 26,
+    "latitude": 34.0245718145,
+    "longitude": -84.7698523611666,
+    "lora_version": "915.0.0.1222"
+  },
+  "mower_position_mode": "rtk_over_datalink",
+  "correction_chain": "internet NTRIP/MQTT source -> base station (WiFi) -> LoRa E22 datalink -> mower",
+  "base_self_position_history_utc": {
+    "14:00:00": [
+      34.0245718145,
+      -84.7698523611666
+    ],
+    "22:19:14": [
+      34.0245515906667,
+      -84.7698970755001
+    ],
+    "23:05:57": [
+      34.0245718145,
+      -84.7698523611666
+    ],
+    "note": "22:19:14 UTC = 18:19:14 EDT = the operator power cycle, NOT the Float onset (15:40 EDT). Reverted after ~47 min.",
+    "displacement_m": {
+      "north": -2.25,
+      "east": -4.13,
+      "total": 4.7
+    }
+  },
+  "float_onset_check": "No change recorded in base position_mode, satellites, latitude or longitude across the 15:40 EDT Float onset.",
+  "resolution_caveat": "RTK device telemetry is recorded only ~9 times in 12.5 h (roughly hourly). The negative at Float onset is therefore weakly resolved -- a transient well under an hour would not appear."
+}

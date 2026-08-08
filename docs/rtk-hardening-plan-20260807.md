@@ -205,6 +205,61 @@ read-only, log `base_score` alongside RTK state, and catch the next Float
 episode with both. A recurrence log is still worth keeping — date, duration,
 what cleared it — but it is no longer the only avenue.
 
+### P3b — 🔑 the correction chain is NOT what this plan assumed (2026-08-07 22:5x)
+
+First live base-station query, on beta28. Evidence:
+`docs/evidence-basestation-query-20260807.json`. No motion commanded.
+
+**The single most important finding, and it reframes P3.** This installation has
+a **separate RTK device**, `rtkbna235279309`, with its own entities. Reading them
+directly:
+
+| | |
+| --- | --- |
+| base `position_mode` | **`rtk_over_internet`** |
+| base `connection_type` | `con_wifi`, `wifi_rssi` **−72 dBm** |
+| base satellites | 26 |
+| mower `position_mode` | `rtk_over_datalink` |
+
+So the correction chain is **internet source → base station (WiFi) → LoRa E22 →
+mower**. The base is **not** running on its own surveyed position as the leading
+hypothesis assumed; it takes corrections from the internet and relays them.
+
+That makes a whole class of upstream failure — NTRIP/MQTT correction outage, WiFi
+drop, ISP hiccup — capable of degrading what the base relays **without changing
+anything the base reports about itself**, while the LoRa datalink stays up and
+satellites stay visible. That is precisely the 2026-08-07 signature, and it
+explains both why a rover-side `sync_rtk_and_dock` did nothing and why only a
+power cycle (forcing a WiFi/correction-source reconnect) helped.
+
+**What the base's own history shows.** Its self-reported position moved exactly
+once: `34.0245718145, −84.7698523611666` → `34.0245515906667, −84.7698970755001`
+at **22:19:14 UTC = 18:19:14 EDT**, reverting at 19:05 EDT. That is **4.7 m**,
+and it is the **power cycle**, not the Float onset — the base re-deriving its
+position on reboot and converging back over ~47 min. A base that converges
+correctly.
+
+⚠️ **No change is recorded in base `position_mode`, satellites, latitude or
+longitude across the 15:40 EDT Float onset.** But RTK-device telemetry is
+recorded only ~9 times in 12.5 h — roughly hourly — so this negative is **weakly
+resolved** and cannot exclude a sub-hour transient.
+
+**Net effect on the ranked hypotheses:** "base survey never converged" is
+**demoted** — the base doesn't primarily survey, and it demonstrably converges
+when it does. "Corrections wrong at the source, upstream of the base" is now
+**leading**, and it is monitorable: `position_mode`, `wifi_rssi` and
+`connect_status_since_poweron` are all readable per-tick rather than needing a
+query the hardware may not answer.
+
+**The probe also found a defect in itself.** `basestation_info_probe` sent the
+command and sampled 101 times at 150 ms over 15 s without ever seeing a
+query-only field, with no clobber detected — so the report-channel race is ruled
+out and it is a real negative *for that read path*. But the path may be wrong:
+the probe reads `mower.report_data.basestation_info`, while `base.to_app` frames
+carrying the RTK device's own `iot_id` are reduced by `RTKStateReducer` onto
+`RTKBaseStationDevice` instead. Before concluding the hardware ignores
+`request_basestation_info_t`, the probe must also read the RTK device's state.
+
 ### P4 — the operator runbook
 
 Short, in `docs/deploy-runbook-p0.md`: if RTK reads Float, do not spend a session
