@@ -33,7 +33,11 @@ from pymammotion.utility.device_type import DeviceType
 from .backend_capability import async_probe_backend_capabilities
 from .capabilities import capability_snapshot
 from .const import DOMAIN, LOGGER
-from .coordinator import MammotionReportUpdateCoordinator, MammotionSpinoCoordinator
+from .coordinator import (
+    MammotionReportUpdateCoordinator,
+    MammotionRTKCoordinator,
+    MammotionSpinoCoordinator,
+)
 from .manual_motion import (
     REAL_CLICK_TO_GO_SEGMENT_LIMIT,
     ManualMotionCancelledError,
@@ -4160,6 +4164,78 @@ def _basestation_snapshot(
     }
 
 
+def _rtk_base_station_snapshot(device: Any) -> dict[str, Any]:
+    """Read an ``RTKBaseStationDevice`` -- the base's own ``iot_id`` state.
+
+    This is the *other* place a ``base.to_app`` reply can land. Frames carrying
+    the base station's own ``iot_id`` are reduced by pymammotion's
+    ``RTKStateReducer`` onto ``RTKBaseStationDevice``; only frames carrying the
+    **mower's** ``iot_id`` reach ``report_data.basestation_info``
+    (:func:`_basestation_snapshot`). A probe that reads only the mower can
+    therefore see nothing while the base is answering perfectly well.
+
+    ``MammotionRTKCoordinator._async_update_data`` already issues
+    ``async_send_and_wait("basestation_info", "to_app")`` every tick, so on an
+    installation with a separate RTK device this state is normally already
+    populated without anyone asking.
+    """
+    if device is None:
+        return {"available": False}
+    score = getattr(device, "score_info", None)
+    return {
+        "available": True,
+        "sats_num": getattr(device, "sats_num", None),
+        "rtk_status": getattr(device, "rtk_status", None),
+        "rtk_channel": getattr(device, "rtk_channel", None),
+        "rtk_switch": getattr(device, "rtk_switch", None),
+        "mqtt_rtk_status": getattr(device, "mqtt_rtk_status", None),
+        "app_connect_type": getattr(device, "app_connect_type", None),
+        "lora_channel": getattr(device, "lora_channel", None),
+        "lora_scan": getattr(device, "lora_scan", None),
+        "lora_locid": getattr(device, "lora_locid", None),
+        "lora_netid": getattr(device, "lora_netid", None),
+        "lowpower_status": getattr(device, "lowpower_status", None),
+        "ble_rssi": getattr(device, "ble_rssi", None),
+        "wifi_rssi": getattr(device, "wifi_rssi", None),
+        "basestation_status": getattr(device, "basestation_status", None),
+        "connect_status_since_poweron": getattr(
+            device, "connect_status_since_poweron", None
+        ),
+        # The base's own reference position, in radians on this model. On
+        # 2026-08-07 this moved exactly once -- 4.7 m at the power cycle, then
+        # back 47 min later -- which is a base re-deriving and converging, not
+        # a base that has lost its position.
+        "lat": getattr(device, "lat", None),
+        "lon": getattr(device, "lon", None),
+        "lora_version": getattr(device, "lora_version", None),
+        "online": getattr(device, "online", None),
+        "score_info": None
+        if score is None
+        else {
+            "base_score": getattr(score, "base_score", None),
+            "base_leve": getattr(score, "base_leve", None),
+            "base_moved": getattr(score, "base_moved", None),
+            "base_moving": getattr(score, "base_moving", None),
+        },
+    }
+
+
+def _rtk_base_station_sources(
+    hass: HomeAssistant,
+) -> list[tuple[str, MammotionRTKCoordinator]]:
+    """Return ``(name, coordinator)`` for every configured RTK base station."""
+    sources: list[tuple[str, MammotionRTKCoordinator]] = []
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        runtime_data = getattr(entry, "runtime_data", None)
+        if not runtime_data:
+            continue
+        sources.extend(
+            (rtk.name, rtk.coordinator)
+            for rtk in getattr(runtime_data, "RTK", None) or []
+        )
+    return sources
+
+
 #: Fields on ``report_data.basestation_info`` that **only** a
 #: ``response_basestation_info_t`` reply can populate. The report channel's
 #: ``rpt_basestation_info`` carries versions, ``basestation_status`` and
@@ -4195,6 +4271,7 @@ async def _basestation_info_probe(
     coordinator: MammotionReportUpdateCoordinator,
     *,
     wait_seconds: float,
+    rtk_sources: Sequence[tuple[str, MammotionRTKCoordinator]] | None = None,
 ) -> dict[str, Any]:
     """Ask the RTK base station to report its own status.
 
@@ -4234,19 +4311,31 @@ async def _basestation_info_probe(
     So this polls the struct through the wait window and keeps the
     most-informative sample it ever sees. A reply is recognised by any
     query-only field going non-default, which the report channel can never do.
+
+    ⚠️ **And it watches two read paths, because the mower is often the wrong
+    one.** A reply carrying the base station's own ``iot_id`` is reduced onto
+    ``RTKBaseStationDevice``, never onto the mower's ``report_data``. The first
+    corrected run (beta28, 101 samples over 15 s) saw nothing on the mower path
+    while the installation had a perfectly live separate RTK device --
+    ``rtk_over_internet``, 26 satellites, reporting its own coordinates. Passing
+    ``rtk_sources`` (see :func:`_rtk_base_station_sources`) watches both, and
+    ``answered_via`` records which path actually produced the answer.
     """
     poll_interval = 0.15
+    rtk_sources = list(rtk_sources or [])
     result: dict[str, Any] = {
         "motion_commanded": False,
         "wait_seconds": wait_seconds,
         "poll_interval_seconds": poll_interval,
         "command_sent": False,
         "answered": False,
+        "answered_via": None,
         "samples": 0,
         "before": _basestation_snapshot(coordinator),
         "best": None,
         "final": None,
         "clobbered_after_answer": False,
+        "rtk_devices": [],
         "reason": None,
     }
     try:
@@ -4259,12 +4348,21 @@ async def _basestation_info_probe(
         deadline = time.monotonic() + max(wait_seconds, 0.0)
         best: dict[str, Any] | None = None
         latest: dict[str, Any] = result["before"]
+        rtk_best: dict[str, dict[str, Any]] = {}
+        rtk_latest: dict[str, dict[str, Any]] = {}
         samples = 0
         while True:
             latest = _basestation_snapshot(coordinator)
             samples += 1
             if _basestation_has_query_fields(latest) and best is None:
                 best = latest
+            for name, rtk_coordinator in rtk_sources:
+                snapshot = _rtk_base_station_snapshot(
+                    getattr(rtk_coordinator, "data", None)
+                )
+                rtk_latest[name] = snapshot
+                if _basestation_has_query_fields(snapshot) and name not in rtk_best:
+                    rtk_best[name] = snapshot
             if time.monotonic() >= deadline:
                 break
             await asyncio.sleep(poll_interval)
@@ -4272,13 +4370,33 @@ async def _basestation_info_probe(
         result["samples"] = samples
         result["final"] = latest
         result["best"] = best or latest
-        result["answered"] = best is not None
+        result["rtk_devices"] = [
+            {
+                "name": name,
+                "answered": name in rtk_best,
+                "best": rtk_best.get(name) or rtk_latest.get(name),
+                "final": rtk_latest.get(name),
+            }
+            for name, _ in rtk_sources
+        ]
+
+        # Either read path answering counts, and which one is recorded --
+        # a probe that only watched the mower would have called a live base
+        # silent on 2026-08-07.
+        via: list[str] = []
         if best is not None:
+            via.append("mower_report_data")
             result["clobbered_after_answer"] = not _basestation_has_query_fields(latest)
+        via.extend(f"rtk_device:{name}" for name in rtk_best)
+        result["answered"] = bool(via)
+        result["answered_via"] = via or None
+        if via:
             result["reason"] = "answered"
         else:
             # Never "the base is dead": a base that answers with all-default
-            # values is indistinguishable from one that never answered.
+            # values is indistinguishable from one that never answered, and an
+            # installation with no separate RTK device has one fewer place to
+            # look rather than a fault.
             result["reason"] = "no_query_fields_observed"
     except Exception as err:  # noqa: BLE001
         result["reason"] = f"{type(err).__name__}: {err}"
@@ -14091,6 +14209,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         return await _basestation_info_probe(
             mower.reporting_coordinator,
             wait_seconds=call.data["wait_seconds"],
+            rtk_sources=_rtk_base_station_sources(hass),
         )
 
     async def handle_report_stream_probe(call: ServiceCall) -> dict[str, Any]:

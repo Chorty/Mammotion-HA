@@ -58,6 +58,7 @@ from custom_components.mammotion.services import (
     VIO_TURN_TO_HEADING_SCHEMA,
     _app_scale_speeds,
     _app_speed_scale_report,
+    _basestation_has_query_fields,
     _basestation_info_probe,
     _ble_connect_cooldown_active,
     _ble_link_liveness,
@@ -6062,6 +6063,65 @@ async def test_basestation_probe_survives_the_report_channel_clobber() -> None:
     assert result["clobbered_after_answer"] is True
     assert result["final"]["sats_num"] == 0
     assert result["samples"] > 1
+
+
+@pytest.mark.asyncio
+async def test_basestation_probe_reads_the_rtk_device_not_only_the_mower() -> None:
+    """A reply on the base's own iot_id must still count as an answer.
+
+    ``base.to_app`` frames carrying the RTK device's iot_id are reduced onto
+    ``RTKBaseStationDevice`` and never touch the mower's ``report_data``. The
+    first corrected live run saw nothing on the mower path while the
+    installation had a live base station reporting 26 satellites, so watching
+    only the mower would call a healthy base silent.
+    """
+    coordinator = _pulse_coordinator()
+    coordinator.data.report_data.basestation_info = SimpleNamespace(
+        basestation_status=0,
+        connect_status_since_poweron=2,
+        rtk_status=0,
+        sats_num=0,
+        score_info=SimpleNamespace(
+            base_score=0, base_leve=0, base_moved=0, base_moving=0
+        ),
+    )
+    rtk_coordinator = SimpleNamespace(
+        data=SimpleNamespace(
+            sats_num=26,
+            rtk_status=4,
+            lora_channel=7,
+            wifi_rssi=-72,
+            lat=0.5938,
+            lon=-1.4795,
+            online=True,
+            score_info=SimpleNamespace(
+                base_score=91, base_leve=2, base_moved=0, base_moving=0
+            ),
+        )
+    )
+
+    async def send(command: str, **_kw: object) -> bool:
+        return True
+
+    coordinator.async_send_command = send
+
+    result = await _basestation_info_probe(
+        coordinator,
+        wait_seconds=0.0,
+        rtk_sources=[("rtkbna235279309", rtk_coordinator)],
+    )
+
+    assert result["answered"] is True
+    assert result["answered_via"] == ["rtk_device:rtkbna235279309"]
+    assert result["reason"] == "answered"
+    # The mower path genuinely saw nothing; that is reported, not papered over.
+    assert _basestation_has_query_fields(result["final"]) is False
+    rtk = result["rtk_devices"][0]
+    assert rtk["name"] == "rtkbna235279309"
+    assert rtk["answered"] is True
+    assert rtk["best"]["sats_num"] == 26
+    assert rtk["best"]["score_info"]["base_score"] == 91
+    assert result["motion_commanded"] is False
 
 
 @pytest.mark.asyncio
