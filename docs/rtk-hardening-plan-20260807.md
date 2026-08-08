@@ -108,10 +108,45 @@ Also worth extracting from that log: whether satellite count or signal quality
 drift *precedes* a Float transition, which is the only early-warning candidate
 identified so far.
 
-### P3 — root cause, which is still unknown
+### P3 — root cause, substantially narrowed 2026-08-07 21:12
 
-A base power cycle is a **remedy, not a diagnosis**. Ranked hypotheses, with what
-would distinguish each:
+**⚠️ This section corrects an overstatement made earlier in this document.** It
+claimed "nothing in the mower's telemetry reaches the base station's internal
+state". That is **wrong**: `sensor.*_last_error` carries
+`"mcu: The RTK reference station has been disconnected, Please wait for
+automatic reconnection"`, which is a direct base-station signal.
+
+**What the error history establishes.** Twelve hours of history contains exactly
+two errors: a battery-low from 2026-08-06, and the reference-station disconnect
+with device timestamp **2026-08-07T22:19:07Z = 18:19:07 EDT**. That is roughly
+four minutes *after* the operator power-cycled the base — so the error is the
+**power cycle itself**, not the fault.
+
+**The decisive negative:** no reference-station error fired during the
+15:40–18:39 Float window. The mower never reported losing the base. Together
+with 24 co-viewed satellites throughout, the base was **connected and
+transmitting for the entire episode**.
+
+That reshapes the hypothesis space:
+
+| hypothesis | status |
+| --- | --- |
+| Base disconnect / dead datalink | **ruled out** — no error fired, 24 co-viewed satellites |
+| Base firmware hang stopping transmission | **unlikely** — would be expected to raise the disconnect error |
+| **Base transmitting usable but WRONG corrections** (bad or never-completed survey, bad reference position) | **leading** — the only mechanism consistent with corrections flowing while the rover cannot resolve |
+| Ambiguity resolution failure from base-side multipath | possible, and would look identical from the rover |
+
+So the fault is almost certainly in the *content* of the corrections, not their
+delivery. A rover-side resync cannot fix that, which is exactly what was
+observed; only restarting the base — forcing a fresh survey — can.
+
+**Monitoring that follows from this.** `last_error` is a genuine base-station
+observable and should be watched. ⚠️ Two traps: its timestamp is **UTC**, and it
+**latches** — it was still showing the 18:19 error at 21:12 with RTK healthy and
+`Fix`. HA also picked it up ~46 minutes after the device recorded it, so it is
+not a real-time signal. Use `last_error_time`, not the state's `last_changed`.
+
+Remaining ranked hypotheses, with what would distinguish each:
 
 1. **Base survey-in never completed or completed badly.** Most consistent with
    the evidence: rover fine, corrections arriving, only a base restart helps.
