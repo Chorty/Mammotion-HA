@@ -104,7 +104,7 @@ and 75.8 min (yard then docked). Summary committed as
 
 **The quiet distribution does not support a timeout.** Across both logs the RTK
 payload changed **once each**, and the maximum observed legitimate quiet was
-**3654.9 s (60.9 min)** docked and **3573.5 s (59.6 min)** in the yard, with
+**3745.2 s (62.4 min)** docked and **3573.5 s (59.6 min)** in the yard, with
 median age ~1380 s. Every one of those samples was healthy `Fix` with the mower
 stationary. So legitimate quiet reliably reaches ~1 h against an observed fault
 of ~3 h — the same 3x separation as before, now from a much larger sample rather

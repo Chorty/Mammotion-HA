@@ -90,5 +90,50 @@
       }
     }
   ],
-  "snapshot_note": "rtk_watch2 was still running when this summary was taken; figures are a snapshot to 22:07:47."
+  "snapshot_note": "rtk_watch2 was still running when this summary was taken; figures are a snapshot to 22:07:47.",
+  "rtk_watch2_final": {
+    "log": "rtk_watch2_final.jsonl",
+    "records": 239,
+    "first_sample": "20:51:59",
+    "last_sample": "22:51:27",
+    "span_seconds": 7167.8,
+    "span_minutes": 119.5,
+    "rtk_states": {
+      "Fix": 227,
+      "Float": 1,
+      "null": 11
+    },
+    "pos_types": {
+      "AREA_INSIDE": 54,
+      "CHARGE_ON": 173,
+      "AREA_BORDER_ON": 1,
+      "null": 11
+    },
+    "degraded_records": 1,
+    "quiet_records": 65,
+    "age_seconds": {
+      "min": 8.174,
+      "max": 3745.232,
+      "median": 809.1
+    },
+    "payload_changes": {
+      "count": 2,
+      "quiet_before_each_change_s": [
+        1126.109,
+        3745.232
+      ],
+      "max_observed_quiet_s": 3745.232
+    },
+    "satellites": {
+      "min": 17.0,
+      "max": 32.0,
+      "median": 19.0
+    },
+    "coviewed": {
+      "min": 16.0,
+      "max": 27.0,
+      "median": 17.0
+    }
+  },
+  "final_note": "rtk_watch2 ran to completion: 239 records over 119.5 min. Maximum observed legitimate quiet rose to 3745.2 s (62.4 min), strengthening the P2 conclusion -- the earlier 3654.9 s figure was a mid-run snapshot. The 11 null records are the two HA restarts for the beta27/beta28 deploys, not feed faults. The single Float remains the docking transition described above, not a recurrence."
 }
