@@ -1,0 +1,147 @@
+{
+  "title": "Gate 5 attempt 3 (beta30) -- FAILED SAFE on a BLE command TimeoutError during the turn phase",
+  "date": "2026-08-08",
+  "time_local": "15:10 EDT",
+  "build": "0.6.4-beta30",
+  "driven_from": "the card, in the browser (Preview -> Dry-run -> Real Go, one instance, waypoints untouched)",
+  "outcome": "FAILED SAFE. segments_executed 1 of 2, segment 1 passed=false, stop_reason=turn_phase_incomplete.",
+  "profile_identity_CONFIRMED": {
+    "note": "The full accepted profile WAS on the wire -- this closes the profile-identity question even though the gate did not pass.",
+    "waypoint_tolerance": 0.15,
+    "max_turn_commands": 4,
+    "max_linear_commands": 3,
+    "turn_mode": "vio",
+    "vio_turn_max_commands": 4,
+    "linear_pulse_duration_ms": 1300,
+    "turn_pulse_duration_ms": 1500,
+    "max_turn_translation_distance": 0.3,
+    "calibrated_forward_heading_offset_degrees": 102.4,
+    "max_linear_pulse_ceiling": null,
+    "motion_refresh_interval_ms": 200,
+    "confirm_blades_off": true,
+    "confirm_clear_area": true
+  },
+  "geometry": {
+    "points": [
+      [
+        5.64,
+        -1.33
+      ],
+      [
+        5.55,
+        -2.1
+      ],
+      [
+        4.85,
+        -2.15
+      ]
+    ],
+    "leg1_m": 0.7752,
+    "leg2_m": 0.7018,
+    "total_m": 1.477
+  },
+  "failure_chain": [
+    {
+      "step": "vio_calibration_drive",
+      "ok": true,
+      "pulses": 1,
+      "distance_m": 0.0982,
+      "offset_degrees": 358.4849,
+      "offset_source": "calibration_drive"
+    },
+    {
+      "step": "turn_command_1",
+      "ok": true,
+      "angular_speed": 500,
+      "pulse_ms": 1500,
+      "measured_change_deg": -45.714,
+      "heading_error_before": -80.636,
+      "heading_error_after": -34.921,
+      "displacement_m": 0.1171,
+      "motion_refresh_commands_sent": 4
+    },
+    {
+      "step": "turn_command_2",
+      "ok": false,
+      "error": "TimeoutError: ",
+      "pulse_ms": 1145.9,
+      "final_approach": "final_approach_scaled_to_remaining_angle",
+      "stop_ack": null,
+      "note": "Command never completed. Everything downstream is unmeasured."
+    },
+    {
+      "step": "turn_phase",
+      "stop_reason": "command_failed",
+      "commands_sent": 2
+    },
+    {
+      "step": "segment_1",
+      "stop_reason": "turn_phase_incomplete",
+      "passed": false
+    }
+  ],
+  "the_link_looked_healthy": {
+    "ble_link_live_diagnostics_before_the_failing_command": {
+      "live": true,
+      "is_connected": true,
+      "is_usable": true,
+      "queue_depth": 0,
+      "cooldown_active": false,
+      "last_send_age_seconds": 5.2,
+      "queue_dispatch_paused": false
+    },
+    "ble_rssi_dbm_initial": -56,
+    "ble_rssi_dbm_final": -60,
+    "conclusion": "No signal-strength or queue explanation. The link reported itself fully healthy immediately before the command that timed out."
+  },
+  "turn_was_feasible": {
+    "feasible": true,
+    "reason": "within_budget",
+    "initial_error_degrees": 80.636,
+    "required_rotation_degrees": 62.636,
+    "estimated_commands_needed": 3,
+    "max_commands": 4,
+    "estimated_translation_m": 0.21,
+    "max_displacement_m": 0.3,
+    "note": "The budget was adequate. It failed on command 2 of an estimated 3, on delivery not on control."
+  },
+  "what_is_NOT_implicated": [
+    "waypoint_tolerance 0.15 -- the failure occurred before the linear phase ran at all",
+    "geometry -- both legs were inside the validated range",
+    "the profile -- confirmed correct on the wire",
+    "VIO -- state 2, 80 tracked features, brightness Light, calibration passed",
+    "RTK -- Fix throughout",
+    "operator confirmations -- both true, all 11 safety gates passed"
+  ],
+  "safe_stop_verified": {
+    "session": null,
+    "blades": "OFF rpm 0",
+    "work_mode": "MODE_READY",
+    "pos_type": "AREA_INSIDE",
+    "rtk": "Fix",
+    "net_movement_m": 0.1934,
+    "final_position": [
+      5.8325,
+      -1.309
+    ],
+    "gate": "disarmed immediately after"
+  },
+  "gate5_failure_history": [
+    {
+      "attempt": 1,
+      "build": "beta12",
+      "cause": "legs 2.13/2.31 m against max_linear_commands 1"
+    },
+    {
+      "attempt": 2,
+      "build": "beta16",
+      "cause": "max_linear_commands_reached, stopped 0.131 m short -- INSIDE the 0.15 m tolerance adopted since"
+    },
+    {
+      "attempt": 3,
+      "build": "beta30",
+      "cause": "TimeoutError on turn command 2; BLE delivery, not control"
+    }
+  ],
+  "assessment": "Three attempts, three DIFFERENT causes. Each previous cause is now addressed; this is a newly exposed one. Gate 5 has still never reached the linear phase of segment 1, so it has not yet tested what it exists to test."
+}
