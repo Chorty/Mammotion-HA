@@ -35,3 +35,8 @@ scripts/firmware/
 # get_map_data service, and transient sweep output overwritten by every run.
 scripts/map.json
 scripts/sweep_results.json
+
+# Vendor tooling analysed locally, never committed (34MB Windows binary)
+LubaLogTools.exe
+LubaLogTools.zip
+RTKReferenceStationUpgradeTools/

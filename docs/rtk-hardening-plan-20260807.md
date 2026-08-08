@@ -158,10 +158,24 @@ Remaining ranked hypotheses, with what would distinguish each:
    whether the base has a clear sky view, and whether Float recurs at the same
    time of day (constellation geometry).
 
-None of these is reachable from the mower's telemetry, which is the honest
-limitation: **the integration cannot diagnose the base station.** The practical
-step is a recurrence log — date, duration, what cleared it — so a pattern can
-emerge. One episode cannot be root-caused.
+⚠️ **SUPERSEDED 2026-08-07 22:0x — the base station IS reachable.** This
+paragraph originally read "none of these is reachable from the mower's
+telemetry… the integration cannot diagnose the base station". That is wrong.
+See `docs/vendor-tool-analysis-20260807.md`.
+
+pymammotion ships `proto/basestation.proto` defining
+`request_basestation_info_t` / `response_basestation_info_t`, exposing
+`rtk_status`, `sats_num`, and a `base_score` block containing **`base_moved`**
+and **`base_moving`** — precisely the survey-hypothesis discriminator. This
+integration never requests any of it; `basestation_info` is only read for
+display. The base's GNSS receiver is also identified as a **Unicore UM980**,
+whose survey-in / fixed-position behaviour matches the observed signature
+exactly.
+
+So the next step is concrete rather than a waiting game: query the base
+read-only, log `base_score` alongside RTK state, and catch the next Float
+episode with both. A recurrence log is still worth keeping — date, duration,
+what cleared it — but it is no longer the only avenue.
 
 ### P4 — the operator runbook
 
