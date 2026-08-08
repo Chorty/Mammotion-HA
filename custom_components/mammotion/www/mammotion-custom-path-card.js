@@ -6,13 +6,19 @@ const MAX_REAL_SEGMENTS = 2;
 const MAX_NUDGE_METRES = 2.0;
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
-const CARD_VERSION = "0.6.4-beta29";
+const CARD_VERSION = "0.6.4-beta30";
 
 // The exact bounded execution profile that passed supervised LUBA acceptance
 // Gate 4 re-pass on 2026-08-05 (three-write zero stop, bounded straight segment,
 // active-session abort, 176 deg VIO regression, corrected two-leg L path;
 // see docs/gate4-repass-20260805.md). It remains bounded: three linear commands
 // per segment with NO loop-to-tolerance ceiling.
+//
+// `waypoint_tolerance` was raised 0.08 -> 0.15 on 2026-08-08 against its own
+// hardware evidence (docs/evidence-slow-tier-validation-20260808.json): three
+// 1.0 m segments landed 0.0882 / 0.1241 / 0.0317 m out, all UNDERSHOOTING, with
+// zero turn commands and no reverse-recovery. That is the only value in this
+// profile not sourced from the Gate 4 re-pass, hence the two dates in the label.
 //
 // This is the card's built-in default because it is the only Real Go profile
 // any hardware has actually executed. Overriding ANY key below in the card
@@ -33,7 +39,15 @@ const LUBA_ACCEPTANCE_PROFILE = Object.freeze({
   max_linear_pulse_ceiling: null,
   max_no_progress_pulses: 3,
   heading_tolerance_degrees: 18,
-  waypoint_tolerance: 0.08,
+  // 0.15, not 0.08, on hardware evidence from 2026-08-08: three 1.0 m segments
+  // landed 0.0882 / 0.1241 / 0.0317 m from target with ZERO turn commands and
+  // no reverse-recovery. Every one UNDERSHOT (travel ratio 0.88-0.98), whereas
+  // Gate 4 at 0.08 overshot at 2.19x and needed a U-turn back -- which beta22
+  // now refuses as `target_requires_reverse_recovery`. The position feed is
+  // ~1031 ms stale and the mower covers 30-47 cm in that time, so at 0.08 it
+  // cannot confirm arrival before it has already passed the point.
+  // See docs/evidence-slow-tier-validation-20260808.json.
+  waypoint_tolerance: 0.15,
   min_progress_distance: 0.0025,
   max_turn_translation_distance: 0.3,
   calibrated_forward_heading_offset_degrees: 102.4,
@@ -784,7 +798,7 @@ class MammotionCustomPathCard extends HTMLElement {
     const overrides = this._profileOverrides();
     return overrides.length
       ? `customised (not hardware-accepted): ${overrides.join(", ")}`
-      : "LUBA acceptance profile (Gate 4 re-pass, 2026-08-05)";
+      : "LUBA acceptance profile (Gate 4 re-pass 2026-08-05; tolerance 2026-08-08)";
   }
 
   // Straight-line nudge along trustworthy CURRENT orientation only. The old

@@ -146,7 +146,7 @@ test("default Real Go payload is the Gate 4 accepted profile", () => {
   assert.equal(payload.max_linear_commands, 3);
   assert.equal(payload.linear_pulse_duration_ms, 1300);
   assert.equal(payload.max_turn_translation_distance, 0.3);
-  assert.equal(payload.waypoint_tolerance, 0.08);
+  assert.equal(payload.waypoint_tolerance, 0.15);
   assert.equal(payload.min_progress_distance, 0.0025);
   assert.equal(payload.calibrated_forward_heading_offset_degrees, 102.4);
   assert.equal(payload.motion_refresh_interval_ms, 200);
@@ -173,7 +173,7 @@ test("profile label reports acceptance by default and names any override", () =>
 
   assert.match(element._profileLabel(), /LUBA acceptance profile/);
 
-  element._config.waypoint_tolerance = 0.15;
+  element._config.waypoint_tolerance = 0.25;
   element._config.ble_auto_recover = true;
 
   assert.deepEqual(element._profileOverrides(), [

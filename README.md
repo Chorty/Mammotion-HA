@@ -172,7 +172,7 @@ vio_turn_max_commands: 4
 max_linear_commands: 3
 max_no_progress_pulses: 3
 heading_tolerance_degrees: 18
-waypoint_tolerance: 0.08
+waypoint_tolerance: 0.15
 min_progress_distance: 0.0025
 calibrated_forward_heading_offset_degrees: 102.4
 turn_pulse_duration_ms: 1500
