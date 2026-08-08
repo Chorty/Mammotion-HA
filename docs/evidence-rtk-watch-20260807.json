@@ -1,0 +1,94 @@
+{
+  "title": "RTK watch -- quiet-period and reception characterisation",
+  "date": "2026-08-07",
+  "purpose": "Answer P2 of docs/rtk-hardening-plan-20260807.md: is legitimate RTK payload quiet bounded, and does reception drift before a Float transition?",
+  "method": {
+    "sampler": "polling HA REST for the RTK/position attributes, 30 s nominal cadence",
+    "note": "This is the SAMPLER cadence, not the device report rate. Payload-change timing is therefore resolved only to +/-30 s.",
+    "age_source": "coordinator.rtk_report_age_seconds -- time since the RTK payload fingerprint last changed",
+    "motion": "none commanded by the logger; the operator drove the mower to the dock with the app at ~21:19"
+  },
+  "logs": [
+    {
+      "log": "rtk_watch_yard_2001-2046.jsonl",
+      "records": 90,
+      "first_sample": "20:01:38",
+      "last_sample": "20:46:18",
+      "span_seconds": 2649.5,
+      "span_minutes": 44.2,
+      "rtk_states": {
+        "Fix": 89,
+        "null": 1
+      },
+      "pos_types": {
+        "null": 90
+      },
+      "degraded_records": 0,
+      "quiet_records": 0,
+      "age_seconds": {
+        "min": 26.565,
+        "max": 3573.472,
+        "median": 1351.3
+      },
+      "payload_changes": {
+        "count": 1,
+        "quiet_before_each_change_s": [
+          3573.472
+        ],
+        "max_observed_quiet_s": 3573.472
+      },
+      "satellites": {
+        "min": 23.0,
+        "max": 27.0,
+        "median": 27.0
+      },
+      "coviewed": {
+        "min": 21.0,
+        "max": 22.0,
+        "median": 22.0
+      }
+    },
+    {
+      "log": "rtk_watch2.jsonl",
+      "records": 154,
+      "first_sample": "20:51:59",
+      "last_sample": "22:08:47",
+      "span_seconds": 4607.6,
+      "span_minutes": 76.8,
+      "rtk_states": {
+        "Fix": 153,
+        "Float": 1
+      },
+      "pos_types": {
+        "AREA_INSIDE": 54,
+        "CHARGE_ON": 99,
+        "AREA_BORDER_ON": 1
+      },
+      "degraded_records": 1,
+      "quiet_records": 64,
+      "age_seconds": {
+        "min": 10.616,
+        "max": 3715.111,
+        "median": 1412.0
+      },
+      "payload_changes": {
+        "count": 1,
+        "quiet_before_each_change_s": [
+          1126.109
+        ],
+        "max_observed_quiet_s": 1126.109
+      },
+      "satellites": {
+        "min": 17.0,
+        "max": 32.0,
+        "median": 17.0
+      },
+      "coviewed": {
+        "min": 16.0,
+        "max": 27.0,
+        "median": 16.0
+      }
+    }
+  ],
+  "snapshot_note": "rtk_watch2 was still running when this summary was taken; figures are a snapshot to 22:07:47."
+}

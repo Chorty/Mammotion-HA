@@ -96,17 +96,45 @@ deployed, confirm on the host that a normal Fix run is unaffected and that
 exercised opportunistically — the next time RTK is genuinely Float, check that it
 refuses and that the override permits.
 
-### P2 — characterise, then decide whether freshness can ever be gated
+### P2 — ✅ ANSWERED 2026-08-07 22:09. Freshness stays advisory, permanently.
 
-The overnight watch (`scratchpad/rtk_watch.jsonl`, 6 h at 30 s) is collecting the
-quiet-period distribution. If it shows legitimate quiet is bounded well below the
-observed 3 h fault — say reliably under 90 min — a timeout becomes defensible at
-a much higher value. If quiet is unbounded or highly variable, **freshness stays
-advisory permanently** and that should be written down as settled, not revisited.
+Two watch logs, 90 + 152 samples at 30 s, spanning 44.2 min (undocked, in yard)
+and 75.8 min (yard then docked). Summary committed as
+`docs/evidence-rtk-watch-20260807.json`; raw JSONL was session-scratchpad only.
 
-Also worth extracting from that log: whether satellite count or signal quality
-drift *precedes* a Float transition, which is the only early-warning candidate
-identified so far.
+**The quiet distribution does not support a timeout.** Across both logs the RTK
+payload changed **once each**, and the maximum observed legitimate quiet was
+**3654.9 s (60.9 min)** docked and **3573.5 s (59.6 min)** in the yard, with
+median age ~1380 s. Every one of those samples was healthy `Fix` with the mower
+stationary. So legitimate quiet reliably reaches ~1 h against an observed fault
+of ~3 h — the same 3x separation as before, now from a much larger sample rather
+than one anecdote. That is nowhere near enough margin to site a timeout on.
+
+**This closes the question rather than deferring it.** Freshness is reported
+(`rtk_report_age_seconds`) and never blocks. It has now been set too low twice
+(300 s, 1800 s) and measured too close to legitimate behaviour a third time. Do
+not revisit it without a fundamentally new signal — an *active* probe that can
+distinguish a quiet channel from a dead one, which §2.1 established does not
+currently exist.
+
+**No early-warning signal was found.** Satellite count and L1 signal quality show
+no drift preceding any transition; they track sky view, not solution state.
+
+**Two incidental findings, both new:**
+
+1. **The dock roughly halves satellite visibility.** In the yard the mower sees a
+   median of **32** satellites / **25** co-viewed; docked, **17** / **16**. RTK
+   nonetheless holds `Fix` throughout at the lower count, so the dock's reduced
+   sky view is not by itself disqualifying — worth knowing before reading any
+   dock-side measurement as a fault.
+2. **A single `Float` sample was captured at 21:19:05 — and it is not a
+   recurrence.** ⚠️ It is precisely the sample in which `pos_type` flips
+   `AREA_INSIDE` → `CHARGE_ON`, position jumps ~8 m, and satellites drop 30 → 17:
+   the operator was driving the mower into the dock at that moment. A momentary
+   Float across a large sky-view change is ordinary RTK behaviour and looks
+   nothing like the 2026-08-07 fault (3 hours, stationary, reception unchanged).
+   Do **not** count it as a second episode. It does confirm the logger will catch
+   a degraded state when one occurs.
 
 ### P3 — root cause, substantially narrowed 2026-08-07 21:12
 
@@ -188,9 +216,15 @@ not.
 ## 5. What is deliberately not being done
 
 - **No attempt to gate on freshness with a tuned constant.** Two attempts, two
-  false-blocks. The signal does not support it.
-- **No base-station integration work.** Nothing in the mower's telemetry reaches
-  the base's internal state; building on that would be guesswork.
+  false-blocks, and P2 now measures legitimate quiet at ~1 h. Settled.
+- ⚠️ ~~**No base-station integration work.** Nothing in the mower's telemetry
+  reaches the base's internal state.~~ **Struck 2026-08-07.** This was wrong and
+  is the same error corrected in P3: `last_error` carries reference-station
+  events, and `basestation.proto` exposes a full query. The read-only
+  `basestation_info_probe` was built on it (`6093506c`). What remains out of
+  scope is *writing* base configuration — including the
+  `app_to_base_mqtt_rtk_t` NTRIP-caster fields — which is an operator decision,
+  not a diagnostic step.
 - **No change to `waypoint_tolerance`.** That decision belongs with the separate
   cadence finding (position updates ~1031 ms during motion, ~47 cm travelled
   between updates), not with RTK.
@@ -210,8 +244,18 @@ not.
 
 ## 7. Open questions
 
-- Is legitimate RTK quiet bounded? (P2 answers this.)
-- Is there any early-warning signal before a Float transition? (P2.)
-- Why did the base fail? (P3 — needs recurrence data; one episode is not enough.)
-- Does the mower ever report a latched **Fix** that has stopped being true? Never
-  observed. If it never appears, the freshness concern can be closed entirely.
+- ~~Is legitimate RTK quiet bounded?~~ **Answered (P2):** it reaches ~1 h, so no
+  usable threshold exists. Closed.
+- ~~Is there any early-warning signal before a Float transition?~~ **Answered
+  (P2):** none found; satellite count and signal quality track sky view, not
+  solution state. Closed.
+- Why did the base fail? (P3.) Still open, but no longer purely a waiting game —
+  the base-station firmware analysis in
+  `docs/vendor-tool-analysis-20260807.md` §6 found `setRTKBaseLocation`,
+  `rtk_position_reset` and a "basestation pos status" guard, so the base
+  **stores** a reference position rather than re-surveying each boot. That is a
+  concrete mechanism for corrections-against-a-wrong-reference, and
+  `base_moved` / `base_moving` may be that same guard surfaced to the app.
+  Needs the live query plus a recurrence.
+- Does the mower ever report a latched **Fix** that has stopped being true? Still
+  never observed.
