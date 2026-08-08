@@ -10,7 +10,42 @@ Updated **2026-08-07 late** after the beta29 deploy. This is the current handoff
 `0.6.4b29`). Gate **off**, no session, blades off, mower stationary and
 `area_inside`. Worktree clean, pushed to `Chorty`.
 
-### The one test that is queued and ready to run
+### ✅ 2026-08-08 — SLOW-TIER VALIDATION PASSED. The tolerance question is answered.
+
+Ran on beta29 in daylight. Evidence:
+`docs/evidence-slow-tier-validation-20260808.json`.
+
+| segment | landing error | travel ratio | linear cmds | turns |
+| --- | --- | --- | --- | --- |
+| 1 | **0.0882 m** | 0.917 | 3 | 0 |
+| 2 | **0.1241 m** | 0.880 | 2 | 0 |
+| 3 | **0.0317 m** | 0.978 | 2 | 0 |
+
+All three `target_reached`, **zero turn commands**, no errors, no reverse-recovery
+containment. **Max 0.1241 m, mean 0.081 m — every run inside 0.15 m.** The error
+budget predicted ~0.15 m and the hardware agreed.
+
+**The mechanism is now visible.** Every segment **undershot** (ratios 0.88–0.98).
+Gate 4 at 0.08 m overshot at **2.19×** and needed a U-turn recovery — same control
+law, same profile, only the tolerance differed. At 0.08 the mower cannot confirm
+arrival before it is already past the point; at 0.15 it stops on the first
+approach.
+
+⚠️ **0.08 m is marginal, not impossible** — 2 of 3 runs would have met it (0.0317,
+and 0.0882 just outside). Intermittent success is *worse* than reliable failure:
+it produces sporadic recovery maneuvers, which is exactly what the beta20/beta21
+Gate 4 passes did.
+
+**Operator decision now unblocked:** adopting `waypoint_tolerance: 0.15` has
+hardware evidence behind it. Changing it un-accepts the profile and obligates the
+§4 pinning work in `docs/gate4-repass-20260805.md` (card copy, `CARD_VERSION`
+bump to both serving paths, frontend pinning tests).
+
+**VIO warm-up confirmed working:** the forward heading pulse took `vio_state`
+0 → **2** with 80 tracked features, which is what let the `vio_active` gate pass
+in daylight where it refused at night.
+
+### (superseded) The test that was queued
 
 **Slow-tier landing validation.** Plan is written and was operator-authorized:
 `docs/plan-slow-tier-validation-20260807.md`. It was attempted on 2026-08-07

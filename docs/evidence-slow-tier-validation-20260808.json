@@ -1,0 +1,118 @@
+{
+  "title": "Slow-tier landing validation -- PREDICTION CONFIRMED",
+  "date": "2026-08-08",
+  "time_local": "11:5x EDT",
+  "build": "0.6.4-beta29",
+  "plan": "docs/plan-slow-tier-validation-20260807.md",
+  "result": "PASS. All 3 segments reached target inside the 0.15 m tolerance under test, with ZERO turn commands, zero errors, and no reverse-recovery containment.",
+  "tolerance_under_test": 0.15,
+  "segments": [
+    {
+      "segment": "1",
+      "start": [
+        4.9525,
+        -2.8184
+      ],
+      "target": [
+        5.0819,
+        -3.81
+      ],
+      "settled": [
+        5.1007,
+        -3.7238
+      ],
+      "landing_error_m": 0.0882,
+      "path_length_m": 1.0,
+      "net_travel_m": 0.9174,
+      "travel_ratio": 0.917,
+      "linear_commands": 3,
+      "turn_commands": 0,
+      "stop_reason": "target_reached",
+      "errors": []
+    },
+    {
+      "segment": "2",
+      "start": [
+        5.1007,
+        -3.7238
+      ],
+      "target": [
+        5.2622,
+        -4.7107
+      ],
+      "settled": [
+        5.2702,
+        -4.5869
+      ],
+      "landing_error_m": 0.1241,
+      "path_length_m": 1.0,
+      "net_travel_m": 0.8796,
+      "travel_ratio": 0.88,
+      "linear_commands": 2,
+      "turn_commands": 0,
+      "stop_reason": "target_reached",
+      "errors": []
+    },
+    {
+      "segment": "3",
+      "start": [
+        5.2702,
+        -4.5869
+      ],
+      "target": [
+        5.4629,
+        -5.5682
+      ],
+      "settled": [
+        5.4812,
+        -5.5423
+      ],
+      "landing_error_m": 0.0317,
+      "path_length_m": 1.0,
+      "net_travel_m": 0.9784,
+      "travel_ratio": 0.978,
+      "linear_commands": 2,
+      "turn_commands": 0,
+      "stop_reason": "target_reached",
+      "errors": []
+    }
+  ],
+  "summary": {
+    "n": 3,
+    "max_error_m": 0.1241,
+    "mean_error_m": 0.0813,
+    "min_error_m": 0.0317,
+    "all_within_0_15": true,
+    "all_within_0_08": false,
+    "travel_ratios": [
+      0.917,
+      0.88,
+      0.978
+    ],
+    "all_undershoot": true
+  },
+  "key_findings": [
+    "Prediction confirmed: the error budget (feed staleness ~10 cm + stop latency 2-5 cm at slow tier) predicted ~0.15 m and every run landed inside it.",
+    "EVERY segment UNDERSHOT (ratios 0.880-0.978). Gate 4 at 0.08 m overshot at 2.19x and required a U-turn recovery. Same control law, same profile -- only the tolerance changed. At 0.08 the mower cannot confirm arrival before passing the point; at 0.15 it stops on the first approach.",
+    "0.08 m is marginal rather than impossible: 2 of 3 runs would have met it (0.0317 and 0.0882 just outside). Intermittent success is worse than reliable failure because it produces sporadic recovery maneuvers -- which is exactly what the beta20/beta21 Gate 4 passes did.",
+    "Zero turn commands across all three segments, so this isolates LINEAR landing accuracy as intended."
+  ],
+  "conditions": {
+    "rtk": "Fix throughout",
+    "sats": 24,
+    "ble_rssi_dbm": -68,
+    "battery_pct": 47,
+    "vio_state": 2,
+    "vio_tracked_features": 80,
+    "brightness": "Light",
+    "pos_type": "area_inside",
+    "blades": "off throughout",
+    "base_mode": "rtk_over_internet"
+  },
+  "method": {
+    "heading": "Established by motion, not telemetry: one 0.372 m forward pulse gave map heading 277.433 deg; each subsequent segment re-derived heading from the previous segment displacement.",
+    "why": "toward is course-over-ground and reads frozen while stationary -- it was identical (172.1591) before and after an overnight gap.",
+    "measurement": "error = |settled_position - target| from the position feed after a 4 s settle; stationary noise under Fix is sub-cm."
+  },
+  "gate": "armed immediately before, disarmed immediately after; verified both times"
+}
