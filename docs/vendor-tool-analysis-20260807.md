@@ -124,14 +124,137 @@ are present and the procedure is documented, but a bricked base station ends all
 RTK work, and nothing so far suggests the firmware is at fault rather than its
 survey state.
 
-## 6. Caveats
+## 6. `LubaBaseStationUpgrade.app` v1.0.6 — a much newer tool, and the best
+   evidence yet for the survey hypothesis
 
-- Static analysis only; nothing executed. Both tools are Windows binaries and
-  this is macOS.
+Added 2026-08-07 later, from a third vendor tool the operator supplied: a
+**macOS** app bundle (arm64), unlike the two Windows tools above. PyInstaller
+onefile, Python 3.10 + PyQt6, `client.version = '1.0.6'`. Nothing was executed;
+the bundle was parsed and its embedded firmware read. It is `.gitignore`d.
+
+Extraction is easier to reproduce than the Windows tools: the CArchive cookie
+parses the same way, and because a matching **Python 3.10.18** interpreter exists
+on this machine, the PYZ code objects `marshal.loads` and disassemble properly
+rather than being read as string tables.
+
+### 6.1 The tool itself
+
+App-specific modules: `client` (`handler`, `worker`, `ui`, `version`,
+`reportbanken`), plus `msgbus` (shared with LubaLogTools), `esptool`,
+`intelhex`, and `pythonping`. It flashes over **USB serial** — the UI text
+instructs the operator to connect the base station to the computer with a
+Type-A-to-Type-C data cable, and it bundles a CH341 USB-serial driver it installs
+via `pnputil` on Windows.
+
+`BaseMcuUpgradeWorker` implements the flash: `upgrade_prepare` → `transmit_file`
+(chunked, Ack/Nak with retry, CRC16) → `upgrade_exit`, plus `get_mcu_version`,
+`get_conf` (reads `lora:` config) and `bridging_now`, whose log line is
+**`bridge e22 receive data:`**.
+
+⚠️ **Two things I initially got wrong here.** I first read the bundled
+`aiohttp`/`certifi`/`cryptography` as evidence the tool *downloads* firmware. It
+does not: the firmware is embedded as a Qt resource at
+`:/fw/res/luba_v087_base.bin`, and the only module that touches the network is
+`reportbanken`, an outbound error-telemetry uploader (it carries an app key and a
+`generate_sign` helper). There is **no Mammotion endpoint anywhere in the
+binary** — the only URLs present are certificate-authority URLs from the bundled
+driver's code-signing chain.
+
+### 6.2 The base station's architecture, now confirmed from its own firmware
+
+The embedded `luba_v087_base.bin` (note: **v087**, versus `v1.0.0.58` in the
+2023-era `RTKReferenceStationUpgradeTools`) carries its own symbol and format
+strings:
+
+- **GNSS receiver: Unicore, confirmed from the device side.** The firmware
+  probes it (`versionb`, `get version success!`) and matches a model table
+  containing `UM980`, `UM4B0`, `UM482`, `UB482`, `UT4B0` and others, logging
+  `version info, type:%u, model:%s, version:%s`. The earlier UM980 identification
+  came only from a package filename; this is independent corroboration of the
+  family, though the *specific* model this unit reports is still unread.
+- **Correction datalink: an Ebyte E22 LoRa radio.** `lfh_send_rtcm_data`,
+  `lfh_switch_channel`, `lfh_read_rssi_cmd`, `lfh_lbt_can_send`. This is what the
+  `lora_channel` / `lora_scan` / `lora_locid` / `lora_netid` fields in
+  `basestation.proto` describe.
+- Configured RTCM output includes **`RTCM1005`** (base antenna reference
+  position) alongside `1074/1084/1094/1124` MSM4 observations and `1033`, plus
+  `CONFIG PPS ENABLE2 GPS POSITIVE 500000 4000 0 0` and
+  `CONFIG RTCMB1CB2A ENABLE`.
+- An init state machine: `unicore_init_stage: RTK_INIT_STAGE_PREPRARE` →
+  `RTK_INIT_STAGE_SUCCESS`, with `rtk cur stage failed` on the error path.
+
+### 6.3 Why this matters for the 2026-08-07 Float episode
+
+The firmware contains, adjacent in its symbol table:
+
+```
+rtk_cfg_handler
+setRTKBaseLocation
+MODE BASE
+rtk_position_reset
+```
+
+and, in its format strings, both `MODE BASE` (bare) and `MODE BASE ` (trailing
+space — a prefix built up with arguments), together with:
+
+```
+pos_mgr_guard, basestation pos status is %d
+the basestation pos status is: %d
+lat: %.12lf, lon: %.12lf, alt: %.12lf
+SocUptime: %f, lon_num: %lf, lat_num: %lf, baseStationQual: %d
+```
+
+In the Unicore command set, bare `MODE BASE` is self-positioning, while
+`MODE BASE <args>` fixes the receiver to a supplied coordinate. The presence of
+**both forms**, an explicit `setRTKBaseLocation`, a `rtk_position_reset`, and a
+`pos_mgr_guard` tracking a "basestation pos status" says the base **stores and
+guards a reference position** rather than simply surveying afresh each boot.
+
+That supplies the missing *mechanism* for the leading hypothesis. A stored or
+guarded reference position that is wrong — or a `pos_mgr` state that never
+reaches valid — produces exactly the observed signature: well-formed corrections
+transmitted continuously, a rover with healthy reception that cannot resolve,
+`sync_rtk_and_dock` useless because the fault is not rover-side, and recovery
+only on a base power cycle that re-runs positioning.
+
+It also connects directly to the protobuf: **`base_moved` / `base_moving` are
+plausibly this same position-guard state surfaced to the app**, which is what
+`basestation_info_probe` will read.
+
+⚠️ Still inference, not proof. These are strings and symbol names in a firmware
+image; the control flow that uses them has not been disassembled, and nothing has
+been read from the live device.
+
+### 6.4 A workaround that exists but is not proposed
+
+`basestation.proto` also defines `app_to_base_mqtt_rtk_t` with `rtk_switch`,
+`rtk_url`, `rtk_port`, `rtk_username`, `rtk_password` — i.e. the base can be
+pointed at an **NTRIP caster** instead of relying on its own reference position.
+If the local base proves to be the fault, a network correction source is an
+escape hatch. **Not proposed and not attempted:** it is a write to base-station
+configuration, it depends on a subscription or public caster within baseline
+range, and it is a decision for the operator, not a diagnostic step.
+
+### 6.5 Does any of this help pull the *mower's* firmware? No.
+
+Asked directly, and the answer is no. This tool never downloads firmware — it
+carries one image for one target. That target is the **base station MCU**, not
+the mower, and delivery is **USB serial to the base**, not OTA. There is no
+firmware-distribution endpoint, no OTA manifest, and no download logic anywhere
+in it to reuse. The mower-side path remains the one in §2: `FILE_TYPE_RTKLOG` /
+`DrvUploadFileToAppReq`, which pulls *logs off* the mower and is unrelated to
+fetching firmware onto it.
+
+## 7. Caveats
+
+- Static analysis only; nothing executed, no firmware flashed. Two tools are
+  Windows binaries; the third is a macOS app bundle.
 - LubaLogTools is 2023 / Luba 1 era; protocol drift versus `Luba-VSPLV397` is
   unassessed.
 - It is **unverified** that this mower's base responds to
   `request_basestation_info_t` — the message exists in the library, which is not
   the same as the hardware answering it.
-- `UM980` is identified from a firmware package filename and embedded strings,
-  not from querying the device.
+- `UM980` specifically is identified from a firmware package filename and a model
+  table the firmware can match against; the model this unit actually reports has
+  not been read from the device.
+- §6.3 reasons from strings and symbol names, not from disassembled control flow.
