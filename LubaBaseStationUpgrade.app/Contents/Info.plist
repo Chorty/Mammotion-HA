@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>LubaBaseStationUpgrade</string>
+	<key>CFBundleExecutable</key>
+	<string>LubaBaseStationUpgrade</string>
+	<key>CFBundleIconFile</key>
+	<string>generated-f960318a22b31e68128342965c10c37f245ac627685ced58bcf4a511e784d54d.icns</string>
+	<key>CFBundleIdentifier</key>
+	<string>LubaBaseStationUpgrade</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>LubaBaseStationUpgrade</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.0.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+</dict>
+</plist>

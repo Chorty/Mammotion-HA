@@ -81,6 +81,7 @@ SERVICE_RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT = "raw_pymammotion_execute_multi_s
 SERVICE_FORWARD_TWO_PULSE_LATENCY_TEST = "forward_two_pulse_latency_test"
 SERVICE_POSITION_FEEDBACK_DIAGNOSTIC = "position_feedback_diagnostic"
 SERVICE_REPORT_STREAM_PROBE = "report_stream_probe"
+SERVICE_BASESTATION_INFO_PROBE = "basestation_info_probe"
 SERVICE_VIO_MOTION_PROBE = "vio_motion_probe"
 SERVICE_VIO_TURN_PROBE = "vio_turn_probe"
 SERVICE_VIO_TURN_TO_HEADING = "vio_turn_to_heading"
@@ -599,6 +600,19 @@ FORWARD_TWO_PULSE_LATENCY_TEST_SCHEMA = vol.Schema(
         vol.Optional("dry_run", default=True): cv.boolean,
         vol.Optional("confirm_blades_off", default=False): cv.boolean,
         vol.Optional("confirm_clear_area", default=False): cv.boolean,
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
+#: Read-only RTK base-station query. No movement parameters exist on purpose:
+#: this service cannot command motion. It sends one request_basestation_info_t
+#: and reads the reply.
+BASESTATION_INFO_PROBE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+        vol.Optional("wait_seconds", default=3.0): vol.All(
+            vol.Coerce(float), vol.Range(min=0.5, max=30.0)
+        ),
     },
     extra=vol.ALLOW_EXTRA,
 )
@@ -4100,6 +4114,102 @@ async def _observe_report_arrivals(
                 channel_last[name] = fingerprint
                 channel_arrivals[name].append(now)
     return arrivals, channel_arrivals
+
+
+def _basestation_snapshot(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> dict[str, Any]:
+    """Read whatever the mower currently holds about the RTK base station."""
+    info = getattr(
+        getattr(getattr(coordinator, "data", None), "report_data", None),
+        "basestation_info",
+        None,
+    )
+    if info is None:
+        return {"available": False}
+    score = getattr(info, "score_info", None)
+    return {
+        "available": True,
+        # Relayed base state. rtk_status here is the BASE's own view, which is
+        # not necessarily the rover's `position.rtk_status_label`.
+        "rtk_status": getattr(info, "rtk_status", None),
+        "sats_num": getattr(info, "sats_num", None),
+        "rtk_channel": getattr(info, "rtk_channel", None),
+        "rtk_switch": getattr(info, "rtk_switch", None),
+        "mqtt_rtk_status": getattr(info, "mqtt_rtk_status", None),
+        "lora_channel": getattr(info, "lora_channel", None),
+        "wifi_rssi": getattr(info, "wifi_rssi", None),
+        "app_connect_type": getattr(info, "app_connect_type", None),
+        "basestation_status": getattr(info, "basestation_status", None),
+        "connect_status_since_poweron": getattr(
+            info, "connect_status_since_poweron", None
+        ),
+        # The survey-hypothesis discriminator. base_moved / base_moving say
+        # whether the base believes its own position changed, which is what
+        # would trigger (or invalidate) a survey and leave it transmitting
+        # corrections against a wrong reference -- the leading explanation for
+        # the 2026-08-07 Float episode.
+        "score_info": None
+        if score is None
+        else {
+            "base_score": getattr(score, "base_score", None),
+            "base_leve": getattr(score, "base_leve", None),
+            "base_moved": getattr(score, "base_moved", None),
+            "base_moving": getattr(score, "base_moving", None),
+        },
+    }
+
+
+async def _basestation_info_probe(
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    wait_seconds: float,
+) -> dict[str, Any]:
+    """Ask the RTK base station to report its own status.
+
+    Read-only with respect to motion: this dispatches one ``basestation_info``
+    query (``BaseStation.to_dev = request_basestation_info_t(request_type=1)``)
+    and reads the reply pymammotion stores on
+    ``report_data.basestation_info``. No movement command is sent.
+
+    Why this exists: on 2026-08-07 RTK sat in Float for three hours while the
+    rover's own reception was healthy -- 24 co-viewed satellites, corrections
+    flowing, no reference-station error. Only power-cycling the base cleared it.
+    The leading explanation is a base transmitting well-formed corrections
+    against a **wrong reference position** (a survey that never converged), and
+    ``score_info.base_moved`` / ``base_moving`` is the field that would say so.
+    Nothing in this integration had ever asked the base anything.
+
+    ⚠️ It is **unverified** that this hardware answers the query. pymammotion
+    defines the message and reduces the response, but a message existing in the
+    library is not the hardware replying to it. ``responded`` reports which.
+    """
+    result: dict[str, Any] = {
+        "motion_commanded": False,
+        "wait_seconds": wait_seconds,
+        "command_sent": False,
+        "responded": False,
+        "before": _basestation_snapshot(coordinator),
+        "after": None,
+        "reason": None,
+    }
+    try:
+        sent = await coordinator.async_send_command("basestation_info")
+        result["command_sent"] = sent is not False
+        if not result["command_sent"]:
+            result["reason"] = "command_refused_device_offline_or_unavailable"
+            return result
+        await asyncio.sleep(max(wait_seconds, 0.0))
+        after = _basestation_snapshot(coordinator)
+        result["after"] = after
+        # A changed payload proves the base answered. An unchanged one is
+        # ambiguous -- it may be genuinely steady -- so it is reported as
+        # "unchanged", never as "the base is dead".
+        result["responded"] = after != result["before"]
+        result["reason"] = "completed" if result["responded"] else "no_change_observed"
+    except Exception as err:  # noqa: BLE001
+        result["reason"] = f"{type(err).__name__}: {err}"
+    return result
 
 
 def _summarise_channel_arrivals(
@@ -13900,6 +14010,16 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             active_route=active_route,
         )
 
+    async def handle_basestation_info_probe(call: ServiceCall) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        return await _basestation_info_probe(
+            mower.reporting_coordinator,
+            wait_seconds=call.data["wait_seconds"],
+        )
+
     async def handle_report_stream_probe(call: ServiceCall) -> dict[str, Any]:
         mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
         if mower is None:
@@ -14434,6 +14554,16 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         SERVICE_REPORT_STREAM_PROBE,
         handle_report_stream_probe,
         schema=REPORT_STREAM_PROBE_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    # Not wrapped in _wrap_exclusive_manual_motion for the same reason as the
+    # report probe: that wrapper claims the mower only for real motion runs, and
+    # this query commands none.
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_BASESTATION_INFO_PROBE,
+        handle_basestation_info_probe,
+        schema=BASESTATION_INFO_PROBE_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(

@@ -58,6 +58,7 @@ from custom_components.mammotion.services import (
     VIO_TURN_TO_HEADING_SCHEMA,
     _app_scale_speeds,
     _app_speed_scale_report,
+    _basestation_info_probe,
     _ble_connect_cooldown_active,
     _ble_link_liveness,
     _ble_ready_for_motion,
@@ -5913,6 +5914,111 @@ def _drive_report_probe_clock(
     monkeypatch.setattr(mammotion_services.time, "monotonic", lambda: clock["t"])
     monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
     return clock
+
+
+@pytest.mark.asyncio
+async def test_basestation_probe_reports_the_survey_discriminator() -> None:
+    """base_moved / base_moving must reach the caller.
+
+    These are the fields that would say whether the base believes its own
+    position changed -- the leading explanation for the 2026-08-07 Float
+    episode, where corrections flowed and the rover stayed healthy but could
+    never resolve.
+    """
+    coordinator = _pulse_coordinator()
+    info = SimpleNamespace(
+        rtk_status=1,
+        sats_num=28,
+        rtk_channel=3,
+        rtk_switch=1,
+        mqtt_rtk_status=0,
+        lora_channel=7,
+        wifi_rssi=-55,
+        app_connect_type=1,
+        basestation_status=2,
+        connect_status_since_poweron=99,
+        score_info=SimpleNamespace(
+            base_score=88, base_leve=2, base_moved=0, base_moving=0
+        ),
+    )
+    coordinator.data.report_data.basestation_info = info
+
+    async def send(command: str, **_kw: object) -> bool:
+        # Simulate the base answering by mutating the reduced state, which is
+        # what pymammotion's _update_base_data does on base.to_app.
+        assert command == "basestation_info"
+        info.score_info.base_moved = 1
+        return True
+
+    coordinator.async_send_command = send
+
+    result = await _basestation_info_probe(coordinator, wait_seconds=0.0)
+
+    assert result["command_sent"] is True
+    assert result["responded"] is True
+    assert result["reason"] == "completed"
+    assert result["motion_commanded"] is False
+    assert result["before"]["score_info"]["base_moved"] == 0
+    assert result["after"]["score_info"]["base_moved"] == 1
+    assert result["after"]["sats_num"] == 28
+
+
+@pytest.mark.asyncio
+async def test_basestation_probe_does_not_claim_the_base_is_dead() -> None:
+    """An unchanged payload is ambiguous and must be reported as such."""
+    coordinator = _pulse_coordinator()
+    coordinator.data.report_data.basestation_info = SimpleNamespace(
+        rtk_status=1, sats_num=28, score_info=None
+    )
+
+    async def send(command: str, **_kw: object) -> bool:
+        return True
+
+    coordinator.async_send_command = send
+
+    result = await _basestation_info_probe(coordinator, wait_seconds=0.0)
+
+    assert result["command_sent"] is True
+    assert result["responded"] is False
+    assert result["reason"] == "no_change_observed"
+
+
+@pytest.mark.asyncio
+async def test_basestation_probe_reports_a_refused_command() -> None:
+    """An offline device must not look like a silent base station."""
+    coordinator = _pulse_coordinator()
+
+    async def send(command: str, **_kw: object) -> bool:
+        return False
+
+    coordinator.async_send_command = send
+
+    result = await _basestation_info_probe(coordinator, wait_seconds=0.0)
+
+    assert result["command_sent"] is False
+    assert result["reason"] == "command_refused_device_offline_or_unavailable"
+    assert result["responded"] is False
+
+
+@pytest.mark.asyncio
+async def test_basestation_probe_commands_no_motion() -> None:
+    """The probe is read-only with respect to motion."""
+    coordinator = _pulse_coordinator()
+    sent: list[str] = []
+
+    async def send(command: str, **_kw: object) -> bool:
+        sent.append(command)
+        return True
+
+    coordinator.async_send_command = send
+
+    await _basestation_info_probe(coordinator, wait_seconds=0.0)
+
+    assert sent == ["basestation_info"]
+    coordinator.async_move_forward.assert_not_called()
+    coordinator.async_stop_manual_motion.assert_not_called()
+    handle = coordinator.manager.mower(coordinator.device_name)
+    handle.commands.send_movement.assert_not_called()
 
 
 @pytest.mark.asyncio
