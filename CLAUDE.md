@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Read `docs/CODEX-HANDOFF.md`, then `docs/NEXT-SESSION.md`, before continuing P0
 or click-to-go work. The host runs the still-unaccepted, motion-disabled
-`0.6.4-beta26` candidate and experimental motion is verified off. Gate 2 passed
+`0.6.4-beta29` candidate and experimental motion is verified off. Gate 2 passed
 on 2026-08-03, and Gate 4 — which
 failed on 2026-08-03 before its first linear command — was **re-passed on
 2026-08-05** and **reproduced on a second daylight geometry on 2026-08-06**.
@@ -44,24 +44,42 @@ acceptance: the card has driven the mower but has not completed a clean
 two-segment run. That is **Gate 5** in
 `docs/p0-beta-release.md`, and it is the one open release gate.
 
-The host and branch run the still-unaccepted `0.6.4-beta26` candidate. On top of
+The host and branch run the still-unaccepted `0.6.4-beta29` candidate. On top of
 beta22 it adds the read-only `report_stream_probe` diagnostic (beta23, now with
 per-channel attribution) and an **RTK quality gate**: non-Fix refuses with
 `rtk_not_precise` unless the caller passes `allow_degraded_rtk`, because Float
 produced a 13.9 cm stationary jump on 2026-08-07 against an 0.08 m tolerance.
 ⚠️ RTK payload **age is reported but never blocks** — two thresholds (300 s,
-1800 s) both false-blocked, a stationary mower is legitimately quiet for ~1 h,
-and a forced burst cannot distinguish quiet from dead either. Do not turn age
-back into a blocker; see `docs/rtk-hardening-plan-20260807.md`. A zero-command
+1800 s) both false-blocked, a stationary mower is legitimately quiet for **up to
+62.4 min measured**, and a forced burst cannot distinguish quiet from dead
+either. This is **closed, not deferred**: do not turn age back into a blocker
+without an active liveness probe, which does not exist. See
+`docs/rtk-hardening-plan-20260807.md`.
+
+beta27–29 add the read-only `basestation_info_probe`. It established that the
+base **does** answer `request_basestation_info_t` — but returns
+`score_info: null`, so **`base_moved` / `base_moving` are never populated on this
+hardware** and that diagnostic avenue is closed. It also established the
+correction chain: **internet source → base station (WiFi) → LoRa E22 → mower**
+(base reports `rtk_over_internet`, mower `rtk_over_datalink`), which demotes the
+"base survey never converged" hypothesis. ⚠️ Replies bearing the base's own
+`iot_id` reduce onto `RTKBaseStationDevice`, **not** the mower's
+`report_data.basestation_info` — reading only the mower will call a live base
+silent. `MammotionRTKCoordinator` already queries this every tick.
+
+⚠️ **Closed-loop segments cannot run after dark.** The `vio_active` gate keys off
+`turn_mode == "vio"` unconditionally, not off whether a turn is needed, and
+`_VIO_TURN_MODES` is `("vio", "legacy")` only. Plan real-motion tests for
+daylight. A zero-command
 live snapshot proved Mammotion exposes only frozen course-over-ground while
 stationary (`toward: -29.589`, VIO inactive/0, RTK yaw 0), so since beta19 the card stops
 drawing that last-travel projection as current mower orientation and blocks
 Nudge unless a trustworthy current orientation is explicitly available. `manifest.json`,
-`pyproject.toml`, `CARD_VERSION` and `uv.lock` (PEP 440 `0.6.4b26`) must always agree, and the
+`pyproject.toml`, `CARD_VERSION` and `uv.lock` (PEP 440 `0.6.4b29`) must always agree, and the
 `Beta Release` workflow verifies all four. The card is served from **two**
 paths, so deploy to both and bump the Lovelace resource key or the browser can
 silently load the stale card. The live Lovelace URL includes the unique build
-suffix `?v=0.6.4-beta26&build=<card md5 prefix>`. The misleading third-party-map
+suffix `?v=0.6.4-beta29&build=<card md5 prefix>`. The misleading third-party-map
 `card-mod` rotation was removed with verified config readback; its pre-change
 backup remains `/config/.storage/lovelace.dashboard_yard.bak.codex-20260802-213848`.
 

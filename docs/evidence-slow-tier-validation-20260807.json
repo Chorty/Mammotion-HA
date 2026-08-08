@@ -1,0 +1,91 @@
+{
+  "title": "Slow-tier validation attempt -- refused at night by the vio_active gate",
+  "date": "2026-08-07",
+  "build": "0.6.4-beta29",
+  "plan": "docs/plan-slow-tier-validation-20260807.md",
+  "outcome": "NOT RUN. The closed-loop segment was refused before any motion command. Gate armed and disarmed; mower ended stationary, blades off.",
+  "preconditions_verified": {
+    "rtk": "Fix",
+    "rtk_degraded": false,
+    "pos_type": "area_inside",
+    "position_valid_for_motion": true,
+    "sats": 24,
+    "l1_coview": 22,
+    "ble_rssi_dbm": -62,
+    "blade": "OFF rpm 0 not latched",
+    "active_session": null,
+    "backend_verified": true
+  },
+  "step1_first_pulse_refused": {
+    "real_pulse_completed": false,
+    "error": "RuntimeError: BLE link stopped being ready before motion dispatch: command_queue_backlogged",
+    "note": "Guard refused dispatch on a backlogged BLE command queue. A 24.5 cm position change in the same window was NOT ours (command never dispatched) and was not used as a heading -- most likely residual app-driven positioning."
+  },
+  "step2_heading_pulse": {
+    "real_pulse_completed": true,
+    "measured_delta": {
+      "distance": 0.4536179559938075,
+      "dx": 0.06989999999999963,
+      "dy": -0.44819999999999993,
+      "heading_change_degrees": 0.0
+    },
+    "speed_stick_fraction": 0.35,
+    "duration_ms": 3000,
+    "derived_speed_mps": 0.1512,
+    "map_heading_deg": 278.86,
+    "stop_result_ms": 163.986
+  },
+  "step3_dry_run": {
+    "valid": true,
+    "blockers": [],
+    "distance_m": 1.0000442090227815,
+    "initial_linear_command_selection": {
+      "command": "send_movement",
+      "linear_speed": 400,
+      "angular_speed": 0,
+      "distance_to_target": 1.000127611857607,
+      "speed_tier": "fast",
+      "slow_linear_threshold": 0.15,
+      "reason": "target_remaining"
+    },
+    "turn_commands_planned": 0,
+    "note": "angular_speed 0 -- a straight forward command. No turn planned."
+  },
+  "step4_real_run_refused": {
+    "stop_reason": "safety_gates_failed",
+    "linear_commands_sent": 0,
+    "turn_commands_sent": 0,
+    "failing_gate": "vio_active",
+    "detail": "VIO turn mode requires an active VIO track (vio_state == 2); saw 0. Scene is dark.",
+    "gates_passed": [
+      "stop_primitive_available",
+      "ble_transport_required",
+      "ble_link_live",
+      "operator_confirmed_blades_off",
+      "operator_confirmed_clear_area",
+      "mower_reports_blades_off",
+      "mower_ready",
+      "not_docked_or_charging",
+      "live_map_position_available",
+      "position_area_inside",
+      "map_position_nonzero"
+    ],
+    "analysis": "The gate keys off turn_mode == vio, not off whether a turn is actually needed. _VIO_TURN_MODES is (vio, legacy) only -- there is no night-safe turn mode. passed = dry_run or calibration_will_warm, and calibration_will_warm requires a bright scene. So a closed-loop segment cannot run after dark, by design."
+  },
+  "side_finding_heading_formula": {
+    "toward_reported": 172.1591,
+    "mirror_formula": "map_bearing = 90.13 - toward",
+    "mirror_prediction_deg": 277.97,
+    "measured_travel_heading_deg": 278.86,
+    "agreement_deg": 0.89,
+    "code_offset_constant": 116.5,
+    "code_offset_aim_error_deg": 9.8,
+    "conclusion": "Independent confirmation, from a clean attributable 0.45 m displacement, that the mirror relation is right and the additive offset constant is not. The 116.5 constant mis-aims by 9.8 deg here; the mirror agrees within 0.89 deg."
+  },
+  "final_state": {
+    "gate": "off",
+    "active_session": null,
+    "blades": "off",
+    "mower": "stationary, area_inside"
+  }
+}

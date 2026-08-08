@@ -1,8 +1,91 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
-Updated 2026-08-06 after the beta22 containment deploy. This is the current handoff;
+Updated **2026-08-07 late** after the beta29 deploy. This is the current handoff;
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
+
+## ☀️ START HERE 2026-08-08 — the daylight window has a queue; host runs beta29
+
+**Host and branch run `0.6.4-beta29`** (all four version sites agree,
+`0.6.4b29`). Gate **off**, no session, blades off, mower stationary and
+`area_inside`. Worktree clean, pushed to `Chorty`.
+
+### The one test that is queued and ready to run
+
+**Slow-tier landing validation.** Plan is written and was operator-authorized:
+`docs/plan-slow-tier-validation-20260807.md`. It was attempted on 2026-08-07
+night and **refused before any motion command** — see
+`docs/evidence-slow-tier-validation-20260807.json`.
+
+⚠️ **Why it failed, so it is not repeated:** the `vio_active` safety gate keys
+off `turn_mode == "vio"` **unconditionally**, not off whether a turn is actually
+needed. `_VIO_TURN_MODES` is `("vio", "legacy")` only — there is no night-safe
+mode — and the gate is `passed = dry_run or calibration_will_warm`, where
+warming requires a bright scene. **A closed-loop segment cannot run after dark,
+by design.** 11 of 12 gates passed; this was the 12th.
+
+In daylight it should simply run. The prediction under test: a waypoint approach
+whose final phase is slow-tier lands within **~0.15 m**. Everything else in the
+plan (bounds, abort conditions, parameters, what each outcome means) still
+stands unchanged.
+
+**Run the turn-quantum work in the same window** — VIO is alive only in daylight,
+and it is the other genuinely open empirical question.
+
+### 🔑 What tonight settled, so it is not re-litigated
+
+1. **RTK freshness is closed, permanently.** Two watch logs (90 + 152 samples at
+   30 s) put maximum *legitimate* quiet at **3745 s (62.4 min)**. Against a ~3 h
+   fault that is far too little separation. It has now been set too low twice
+   (300 s, 1800 s) and measured too close a third time. **Do not revisit without
+   an active probe** that can tell a quiet channel from a dead one — §2.1 of
+   `docs/rtk-hardening-plan-20260807.md` shows none exists.
+2. **The base station ANSWERS `request_basestation_info_t`.** An earlier "no
+   response" was a wrong-read-path artifact. Baseline under Fix: `rtk_status` 1,
+   28 sats, WiFi −72 dBm, own coordinates 34.0245718145 / −84.7698523612.
+3. **…but `score_info` is `null`.** `base_moved` / `base_moving` — the survey
+   discriminator — are **never populated by this hardware**. That avenue is
+   **closed**; do not plan work around it.
+4. **The correction chain is `internet source → base (WiFi) → LoRa E22 → mower`.**
+   The base reports `position_mode: rtk_over_internet`; the mower reports
+   `rtk_over_datalink`. The base does **not** primarily run on its own survey, so
+   the survey hypothesis is **demoted**. An upstream outage degrades what the
+   base relays while changing nothing the base reports about itself — exactly the
+   2026-08-07 signature, and why a rover-side resync did nothing but a power
+   cycle worked.
+5. **The stop-lead (`speed × latency`) work item should be dropped.** 60 committed
+   samples: median 229 ms, p90 461 ms, max 1393 ms, stdev 186 ms. An 18× spread —
+   **a constant cannot correct a variable**. More driving yields more samples of
+   a distribution already characterised.
+6. **The mirror heading relation is confirmed on fresh data.**
+   `map_bearing = 90.13 − toward` predicted 277.97° against a measured 278.86°
+   travel heading — **0.89° agreement** — while the code's additive constant
+   (116.5) mis-aimed by **9.80°**. Measured from a clean, attributable 0.45 m
+   displacement.
+
+### Tolerance: the analysis is done, the decision is the operator's
+
+Two independent routes both land on **~0.15 m**:
+
+| error source | fast tier (0.28 m/s) | slow tier (0.10 m/s) |
+| --- | --- | --- |
+| feed staleness (1031 ms median) | 21–33 cm | ~10 cm |
+| stop latency, median 229 ms | 6.4 cm | 2.3 cm |
+| stop latency, p90 461 ms | 12.9 cm | 4.6 cm |
+| **realistic total** | **~0.30 m** | **~0.15 m** |
+
+**0.08 m is arithmetically unreachable at the fast tier** — you cannot stop
+within 8 cm when position knowledge is 21–33 cm stale, and beta23 proved the
+device will not give a faster feed. Changing `waypoint_tolerance` un-accepts the
+profile and obligates the §4 pinning work in `docs/gate4-repass-20260805.md`.
+
+### Monitoring now running
+
+`scripts/rtk_watch.py` (shipped, tested) logs **both ends of the chain** in one
+record — mower fix state plus base `position_mode` / `wifi_rssi` / satellites /
+coordinates. Entity prefixes auto-discovered; failed fetches written as explicit
+gap records. It deliberately does **not** log `base_moved` (never populated; a
+column of zeros would read as "has not moved").
 
 ## 🚨 START HERE, 2026-08-07 night — RTK freshness is UNVERIFIABLE; quality is the guard (beta26)
 

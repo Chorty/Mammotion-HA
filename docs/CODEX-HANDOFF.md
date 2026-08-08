@@ -1,4 +1,52 @@
-# Handoff prompt — beta23; the faster-feed fix is refuted, tolerance is next
+# Handoff prompt — beta29; base station answers, slow-tier test queued for daylight
+
+## ☀️ 2026-08-07 late — READ FIRST. Host runs beta29; one test is queued.
+
+Gate **off**, no session, blades off, mower stationary and `area_inside`.
+Worktree clean and pushed to `Chorty`. All four version sites agree at
+`0.6.4-beta29` / `0.6.4b29`.
+
+**Queued and ready:** the slow-tier landing validation,
+`docs/plan-slow-tier-validation-20260807.md` (operator-authorized). It was
+attempted 2026-08-07 night and **refused before any motion command**.
+⚠️ The `vio_active` gate keys off `turn_mode == "vio"` **unconditionally**, not
+off whether a turn is needed; `_VIO_TURN_MODES` is `("vio", "legacy")` only and
+`passed = dry_run or calibration_will_warm` requires a bright scene. **Closed-loop
+segments cannot run after dark, by design.** 11 of 12 gates passed. Re-run it in
+daylight, together with the turn-quantum work (VIO is alive only then).
+
+**Settled tonight — do not re-litigate:**
+
+1. **RTK freshness: closed permanently.** Legitimate quiet reaches **3745 s
+   (62.4 min)** against a ~3 h fault. Set too low twice already. No active
+   liveness probe exists, so no threshold is sitable.
+2. **The base station ANSWERS** `request_basestation_info_t` — the earlier
+   negative was a wrong read path. Baseline under Fix: `rtk_status` 1, 28 sats,
+   WiFi −72 dBm, coordinates 34.0245718145 / −84.7698523612.
+3. **`score_info` is `null`** — `base_moved` / `base_moving` are never populated
+   by this hardware. **That avenue is closed.**
+4. **Chain is `internet → base (WiFi) → LoRa E22 → mower`.** Base reports
+   `rtk_over_internet`, mower `rtk_over_datalink`. The survey hypothesis is
+   **demoted**; an upstream outage matches the observed signature exactly.
+5. **Drop the stop-lead item.** 60 samples: median 229 ms, p90 461, max 1393,
+   stdev 186 — an 18× spread. A constant cannot correct a variable.
+6. **Mirror heading relation confirmed:** `map_bearing = 90.13 − toward` agreed
+   within **0.89°** with a measured 0.45 m displacement; the code's 116.5
+   constant mis-aimed by **9.80°**.
+
+**Tolerance:** two independent routes both give **~0.15 m**; **0.08 m is
+arithmetically unreachable at the fast tier** (21–33 cm feed staleness, and
+beta23 proved no faster feed is available). The decision is the operator's, and
+changing it un-accepts the profile.
+
+Evidence: `docs/evidence-slow-tier-validation-20260807.json`,
+`docs/evidence-basestation-query-20260807.json`,
+`docs/evidence-rtk-watch-20260807.json`,
+`docs/vendor-tool-analysis-20260807.md` §6.
+
+---
+
+# (earlier) Handoff prompt — beta23; the faster-feed fix is refuted, tolerance is next
 
 ## 🚨 2026-08-07 night — RTK freshness is UNVERIFIABLE (beta26); read before any RTK work
 
