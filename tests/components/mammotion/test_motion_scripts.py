@@ -16,6 +16,7 @@ import mammotion_forward_two_pulse_latency  # noqa: E402
 import mammotion_ha_helpers  # noqa: E402
 import mammotion_motion_suite  # noqa: E402
 import mammotion_preflight_gates  # noqa: E402
+import rtk_watch  # noqa: E402
 
 
 def test_preflight_refuses_a_stale_ble_entity_when_runtime_is_disconnected() -> None:
@@ -359,3 +360,78 @@ def test_click_go_smoke_preview_payload_shape() -> None:
         "blade_mode": "off",
         "area_hash": "1234",
     }
+
+
+def test_rtk_watch_discovers_both_ends_of_the_correction_chain() -> None:
+    """The watch must find the mower and the base station on its own.
+
+    Entity names are installation-specific, so hardcoding them would make the
+    watch useless anywhere but this yard.
+    """
+    states = [
+        {"entity_id": "lawn_mower.back_yard_clip_skywalker", "state": "docked"},
+        {
+            "entity_id": "sensor.rtkbna235279309_position_mode",
+            "state": "rtk_over_internet",
+        },
+        {"entity_id": "sensor.unrelated_thing", "state": "42"},
+    ]
+    mower_prefix, base_prefix = rtk_watch.discover(states)
+    assert mower_prefix == "sensor.back_yard_clip_skywalker"
+    assert base_prefix == "sensor.rtkbna235279309"
+
+
+def test_rtk_watch_records_base_state_beside_the_mower() -> None:
+    """One record must carry both ends, or a Float episode cannot be attributed.
+
+    The 2026-08-07 fault had a healthy-looking rover throughout; the base's own
+    position_mode and wifi_rssi are what distinguish an upstream correction
+    failure from a rover problem.
+    """
+    states = [
+        {"entity_id": "sensor.mow_rtk_position", "state": "float"},
+        {"entity_id": "sensor.mow_position_mode", "state": "rtk_over_datalink"},
+        {"entity_id": "sensor.mow_satellites_robot", "state": "21"},
+        {"entity_id": "sensor.base_position_mode", "state": "rtk_over_internet"},
+        {"entity_id": "sensor.base_wi_fi_rssi", "state": "-72"},
+        {"entity_id": "sensor.base_satellites", "state": "28"},
+    ]
+    record = rtk_watch.sample(states, "sensor.mow", "sensor.base")
+    assert record["rtk"] == "float"
+    assert record["mode"] == "rtk_over_datalink"
+    assert record["sats"] == "21"
+    assert record["base_mode"] == "rtk_over_internet"
+    assert record["base_rssi"] == "-72"
+    assert record["base_sats"] == "28"
+
+
+def test_rtk_watch_never_logs_the_unpopulated_survey_discriminator() -> None:
+    """base_moved / base_moving are null on this hardware -- do not log them.
+
+    The live query returned score_info: null, so a column of zeros would read as
+    "the base has not moved" when it actually means "the base never said".
+    """
+    logged = set(rtk_watch.MOWER_FIELDS) | set(rtk_watch.BASE_FIELDS)
+    assert not {"base_moved", "base_moving", "score_info"} & logged
+
+
+@pytest.mark.parametrize(
+    "raised",
+    [OSError("connection refused"), SystemExit(1), KeyboardInterrupt()],
+)
+def test_rtk_watch_survives_a_failed_fetch(
+    monkeypatch: pytest.MonkeyPatch, raised: BaseException
+) -> None:
+    """An HA restart mid-watch must not end a watch that exists to catch a rare event.
+
+    ``SystemExit`` is in the list deliberately: the shared ``post_service``
+    helper raises it on any HTTP error, and that -- being a BaseException, not
+    an Exception -- silently killed an earlier version of this watch on the
+    first restart it encountered.
+    """
+
+    def boom(*_args: object, **_kwargs: object) -> None:
+        raise raised
+
+    monkeypatch.setattr(rtk_watch.urllib.request, "urlopen", boom)
+    assert rtk_watch.fetch_states("http://example.invalid", "token", timeout=1) is None
