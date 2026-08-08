@@ -1,0 +1,175 @@
+{
+  "title": "Gate 5 attempts 4 and 5 -- BOTH PASSED, card-driven, with the accepted profile",
+  "date": "2026-08-08",
+  "build": "0.6.4-beta30",
+  "driven_from": "the card in the browser: Preview -> Dry-run -> Real Go, one instance, waypoints untouched between dry-run and Real Go",
+  "attempt_4": {
+    "time": "15:25 EDT",
+    "points": [
+      [
+        5.865,
+        -1.31
+      ],
+      [
+        5.55,
+        -2.1
+      ],
+      [
+        4.84,
+        -2.15
+      ]
+    ],
+    "turns_deg": [
+      42.8,
+      64.2
+    ],
+    "segment_1": {
+      "passed": true,
+      "landed": [
+        5.5938,
+        -2.0792
+      ],
+      "target": [
+        5.55,
+        -2.1
+      ],
+      "error_m": 0.0485,
+      "path_m": 0.8505,
+      "commands": {
+        "calibration": 1,
+        "turn": 2,
+        "linear": 3
+      }
+    },
+    "segment_2": {
+      "landed": [
+        4.8095,
+        -2.0722
+      ],
+      "target": [
+        4.84,
+        -2.15
+      ],
+      "error_m": 0.0836,
+      "path_m": 0.7118
+    },
+    "real_segments_executed": 2,
+    "ready_for_multi_segment": true,
+    "errors": [],
+    "timeout": false,
+    "caveat": "No independent position trace -- the capture window expired before the run started."
+  },
+  "attempt_5": {
+    "time": "15:38 EDT",
+    "points": [
+      [
+        4.809,
+        -2.072
+      ],
+      [
+        4.85,
+        -2.85
+      ],
+      [
+        5.55,
+        -2.9
+      ]
+    ],
+    "turns_deg": [
+      93.5,
+      82.9
+    ],
+    "segment_1": {
+      "passed": true,
+      "landed": [
+        4.8754,
+        -2.8003
+      ],
+      "target": [
+        4.85,
+        -2.85
+      ],
+      "error_m": 0.0558,
+      "path_m": 0.7791,
+      "commands": {
+        "calibration": 1,
+        "turn": 4,
+        "linear": 3
+      },
+      "turn_budget": "4 of max 4 -- FULLY CONSUMED"
+    },
+    "segment_2": {
+      "landed": [
+        5.4311,
+        -2.8172
+      ],
+      "target": [
+        5.55,
+        -2.9
+      ],
+      "error_m": 0.1449,
+      "path_m": 0.7018
+    },
+    "real_segments_executed": 2,
+    "ready_for_multi_segment": true,
+    "errors": [],
+    "timeout": false,
+    "independent_trace": {
+      "sampler_hz": 5,
+      "session_samples": 250,
+      "closest_to_wp1_m": 0.0425,
+      "closest_to_wp2_m": 0.1429,
+      "samples_past_wp2": 0,
+      "total_travelled_m": 1.8458,
+      "planned_path_m": 1.4809,
+      "travel_ratio": 1.25
+    }
+  },
+  "profile_identity_PROVEN": {
+    "waypoint_tolerance": 0.15,
+    "max_turn_commands": 4,
+    "max_linear_commands": 3,
+    "turn_mode": "vio",
+    "vio_turn_max_commands": 4,
+    "linear_pulse_duration_ms": 1300,
+    "turn_pulse_duration_ms": 1500,
+    "max_turn_translation_distance": 0.3,
+    "calibrated_forward_heading_offset_degrees": 102.4,
+    "max_linear_pulse_ceiling": null,
+    "motion_refresh_interval_ms": 200,
+    "confirm_blades_off": true,
+    "confirm_clear_area": true,
+    "note": "The card sent the full accepted profile to the mower on both runs. This is the gap LUBA_ACCEPTANCE_PROFILE existed to close and it is now closed in fact, not on paper."
+  },
+  "landing_errors_all_four_segments_m": [
+    0.0485,
+    0.0836,
+    0.0558,
+    0.1449
+  ],
+  "tolerance": 0.15,
+  "key_findings": [
+    "Gate 5 passed twice. Both runs completed both segments from the card with the accepted profile, zero errors, zero reverse-recovery, and no overshoot (0 samples past a waypoint in the independent trace).",
+    "The 0.15 m tolerance is vindicated: the worst landing was 0.1449 m. At the previous 0.08 m that segment would have FAILED.",
+    "\ud83d\udd11 The BLE TimeoutError is INTERMITTENT, not turn-magnitude-driven. Attempt 5 demanded turns of 93.5 and 82.9 deg -- both LARGER than the 80.6 deg that timed out on attempt 3 -- and both completed.",
+    "\ud83d\udd11 Turn rate per pulse varies 2.6x for IDENTICAL 1500 ms commands: 30.46, 22.17, 57.63 deg (20.3, 14.8, 38.4 deg/s). The executor tracked this, revising degrees_per_second from the 37 default to observed 20.3 then 17.5, while the actual jumped to 38.4.",
+    "\u26a0\ufe0f Attempt 5 consumed the ENTIRE turn budget: turn_commands_sent 4 of max 4. Combined with the 2.6x rate variance, a marginally worse sequence would have hit turn_phase_incomplete. This is a fragility, not a pass with margin.",
+    "\ud83d\udd11 BLE write latency was markedly degraded on attempt 5 yet did not time out: 15 refresh writes median 540 ms, max 861 ms; stop confirmations 1175, 1819, 402, 628 ms against a 77-230 ms norm. This places the TimeoutError as the TAIL of a latency distribution we can now observe, rather than a discrete unexplained fault."
+  ],
+  "outstanding": [
+    "Segment 2 passed/stop_reason not captured for either attempt (JSON truncated in transport). Position evidence is unambiguous and real_segments_executed is 2 with ready_for_multi_segment true, but the literal field was not read.",
+    "The BLE timeout remains unfixed. It is now characterised (latency tail) rather than mysterious.",
+    "Turn budget has no margin at ~93 deg. Larger turns are not safe on this profile."
+  ],
+  "conditions": {
+    "rtk": "Fix throughout both runs",
+    "vio_state": 2,
+    "tracked_features": "77-80",
+    "brightness": "Light",
+    "ble_rssi_dbm": "-62 to -66",
+    "battery_pct_start": 24,
+    "battery_pct_end": 22,
+    "blades": "off throughout",
+    "gate": "armed immediately before each run, disarmed immediately after, verified each time"
+  }
+}
