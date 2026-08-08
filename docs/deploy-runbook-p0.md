@@ -10,9 +10,9 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 |                         | Host                                                           | Branch         |
 | ----------------------- | -------------------------------------------------------------- | -------------- |
-| Integration version     | `0.6.4-beta25` staging candidate                               | `0.6.4-beta25` candidate |
+| Integration version     | `0.6.4-beta26` staging candidate                               | `0.6.4-beta26` candidate |
 | pymammotion pin         | `0.8.12.post1` fork wheel (container verified)                 | same           |
-| Card `CARD_VERSION`     | `0.6.4-beta25`; integration and HACS copies checksum-identical | `0.6.4-beta25` candidate |
+| Card `CARD_VERSION`     | `0.6.4-beta26`; integration and HACS copies checksum-identical | `0.6.4-beta26` candidate |
 | `manual_motion.py`      | present                                                        | present        |
 | `backend_capability.py` | present                                                        | present        |
 | `capabilities.py`       | present                                                        | present        |
@@ -33,6 +33,38 @@ reported `target_reached`. That is containment, not regression: the earlier
 passes were bought by driving past the waypoint and U-turning back. The next
 motion decision is whether to fix control quality (stop-latency lead, pulse
 sizing) or to accept overshoot-and-recovery — not a Gate 5 attempt.
+
+### beta26 RTK design inversion deploy — 2026-08-07 20:46-20:50 EDT
+
+`0.6.4-beta26` is deployed motion-disabled. Backup:
+`/config/mammotion-backup-20260807-2046-beta26.tgz`. All **46** files
+byte-identical (aggregate `18078de314c7c0b277dc121b504adf9c`), zero AppleDouble;
+both card copies `62bbaaddfbce341e9bc7172f5adb1bb6`. API back in **31 s**,
+entities in 120 s. Resource `?v=0.6.4-beta26&build=62bbaadd`. Backend verified
+`pymammotion 0.8.12.post1`. Gate off, no session, `MODE_READY`, blades 0.
+
+**Removes a live false-block and inverts the RTK design.** beta25 refused motion
+with `rtk_telemetry_stale` past 1800 s, and a healthy Fix-locked *stationary*
+mower was then measured reaching **3573 s** of unchanged RTK payload — so beta25
+would have refused legitimate runs after ~30 idle minutes.
+
+⚠️ **No age threshold can work, and an active probe cannot substitute.** The RTK
+payload changes ~hourly at rest while the one observed fault lasted ~3 h. Forcing
+a report burst on *healthy* RTK produced 49 messages and **zero** RTK channel
+updates with the age still climbing — indistinguishable from latched. So the
+earlier claim that a forced burst "caught" the latch is withdrawn.
+
+Now: `rtk_report_age_seconds` / `rtk_report_quiet` are **reported for auditing
+and never block**. The real guard is the **quality gate** — non-Fix refuses with
+`rtk_not_precise` unless `allow_degraded_rtk` is passed — which catches the fault
+actually observed (a latched *Float*). **Do not re-add an age blocker;**
+`_RTK_REPORT_QUIET_SECONDS` records both failed attempts. Reasoning:
+`docs/rtk-hardening-plan-20260807.md`.
+
+Verified live after deploy: `rtk_report_age_seconds: 30.663`,
+`rtk_report_quiet_threshold_seconds: 1800.0`, `rtk_report_quiet: false`,
+`rtk_telemetry_stale` **absent from the payload entirely**, `blockers: []`,
+`rtk_status_label: Fix`, `rtk_degraded: false`.
 
 ### beta25 RTK threshold correction deploy — 2026-08-07 19:22-19:26 EDT
 
