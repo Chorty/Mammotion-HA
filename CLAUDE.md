@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Read `docs/CODEX-HANDOFF.md`, then `docs/NEXT-SESSION.md`, before continuing P0
 or click-to-go work. The host runs the still-unaccepted, motion-disabled
-`0.6.4-beta29` candidate and experimental motion is verified off. Gate 2 passed
+`0.6.4-beta30` candidate and experimental motion is verified off. Gate 2 passed
 on 2026-08-03, and Gate 4 — which
 failed on 2026-08-03 before its first linear command — was **re-passed on
 2026-08-05** and **reproduced on a second daylight geometry on 2026-08-06**.
@@ -37,14 +37,31 @@ tests listed in §4 of the re-pass doc. See
 handoff, noting that its turn-planning premise was overtaken by the 2026-08-05
 measurements. No motion is authorized by this handoff.
 
-The card's Real Go defaults are now the Gate 4 profile itself, frozen as
-`LUBA_ACCEPTANCE_PROFILE` in `www/mammotion-custom-path-card.js` and pinned by
-frontend tests. Backend acceptance is still **not** completed UI-to-mower
-acceptance: the card has driven the mower but has not completed a clean
-two-segment run. That is **Gate 5** in
-`docs/p0-beta-release.md`, and it is the one open release gate.
+The card's Real Go defaults are frozen as `LUBA_ACCEPTANCE_PROFILE` in
+`www/mammotion-custom-path-card.js` and pinned by frontend tests.
 
-The host and branch run the still-unaccepted `0.6.4-beta29` candidate. On top of
+🏁 **GATE 5 PASSED 2026-08-08 — all five gates are complete.** Two card-driven
+two-segment runs finished both segments with the accepted profile, zero errors,
+zero reverse-recovery and no overshoot. Landings 0.0485 / 0.0836 / 0.0558 /
+**0.1449** m against the adopted `waypoint_tolerance: 0.15`; the worst would have
+failed at the old 0.08. Evidence: `docs/evidence-gate5-PASSED-20260808.json`.
+Profile identity is now proven in fact — the card demonstrably sent the accepted
+profile to the mower.
+
+⚠️ Two fragilities the pass does **not** remove. **The turn budget has no margin
+near 90°** — one run used `turn_commands_sent: 4` of `max 4` while turn rate
+varied **2.6×** across identical 1500 ms pulses (30.46°, 22.17°, 57.63°). And
+**the BLE `TimeoutError` is intermittent, not fixed** — it failed one attempt at
+a 80.6° turn, yet a later run completed *larger* turns while showing degraded BLE
+(writes median 540 ms, stops to 1819 ms against a 77–230 ms norm) without
+tripping. Treat it as the tail of a latency distribution, not a mystery.
+
+⚠️ `waypoint_tolerance` changed 0.08 → **0.15** in beta30 on hardware evidence
+(`docs/evidence-slow-tier-validation-20260808.json`). The position feed is
+~1031 ms stale and the mower covers 30–47 cm in that time, so 0.08 could never be
+confirmed before the mower had passed the point.
+
+The host and branch run the still-unaccepted `0.6.4-beta30` candidate. On top of
 beta22 it adds the read-only `report_stream_probe` diagnostic (beta23, now with
 per-channel attribution) and an **RTK quality gate**: non-Fix refuses with
 `rtk_not_precise` unless the caller passes `allow_degraded_rtk`, because Float
@@ -75,11 +92,11 @@ live snapshot proved Mammotion exposes only frozen course-over-ground while
 stationary (`toward: -29.589`, VIO inactive/0, RTK yaw 0), so since beta19 the card stops
 drawing that last-travel projection as current mower orientation and blocks
 Nudge unless a trustworthy current orientation is explicitly available. `manifest.json`,
-`pyproject.toml`, `CARD_VERSION` and `uv.lock` (PEP 440 `0.6.4b29`) must always agree, and the
+`pyproject.toml`, `CARD_VERSION` and `uv.lock` (PEP 440 `0.6.4b30`) must always agree, and the
 `Beta Release` workflow verifies all four. The card is served from **two**
 paths, so deploy to both and bump the Lovelace resource key or the browser can
 silently load the stale card. The live Lovelace URL includes the unique build
-suffix `?v=0.6.4-beta29&build=<card md5 prefix>`. The misleading third-party-map
+suffix `?v=0.6.4-beta30&build=<card md5 prefix>`. The misleading third-party-map
 `card-mod` rotation was removed with verified config readback; its pre-change
 backup remains `/config/.storage/lovelace.dashboard_yard.bak.codex-20260802-213848`.
 

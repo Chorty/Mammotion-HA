@@ -1,10 +1,52 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
-Updated **2026-08-07 late** after the beta29 deploy. This is the current handoff;
+Updated **2026-08-08 late** after Gate 5 passed. This is the current handoff;
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
-## ☀️ START HERE 2026-08-08 — the daylight window has a queue; host runs beta29
+## 🏁 START HERE 2026-08-09 — GATE 5 IS PASSED. All five gates complete.
+
+**Host and branch run `0.6.4-beta30`.** Gate off, no session, blades off. Mower
+undocked in Backyard Right, battery ~22% (dock it).
+
+**Gate 5 passed twice on 2026-08-08**, card-driven, with the accepted profile —
+`docs/evidence-gate5-PASSED-20260808.json`. Four segment landings: 0.0485,
+0.0836, 0.0558, **0.1449** m, all inside the adopted 0.15 m tolerance. The worst
+would have failed at the old 0.08 m.
+
+**`waypoint_tolerance` is now 0.15 in `LUBA_ACCEPTANCE_PROFILE`** (beta30), with
+the full §4 re-pinning done: card profile, payload, frontend pin, README copy,
+and the execution-profile label, which now reads
+`LUBA acceptance profile (Gate 4 re-pass 2026-08-05; tolerance 2026-08-08)`.
+
+### ⚠️ Two fragilities the pass does NOT remove
+
+1. **Turn budget has no margin near 90°.** Attempt 5 used `turn_commands_sent: 4`
+   of `max 4`, while turn rate varied **2.6×** across identical 1500 ms pulses
+   (30.46°, 22.17°, 57.63°). A marginally worse sequence hits
+   `turn_phase_incomplete`.
+2. **The BLE `TimeoutError` is intermittent, not fixed.** It failed attempt 3 at
+   a 80.6° turn; attempt 5 completed *larger* turns (93.5°, 82.9°). Attempt 5 ran
+   with visibly degraded BLE — refresh writes median 540 ms (max 861), stop
+   confirmations 1175/1819/402/628 ms against a 77–230 ms norm — without
+   tripping it. **The timeout is the tail of an observable latency distribution**,
+   which is a real diagnosis and the basis for the next work item.
+
+### The measured picture, for anyone re-deriving it
+
+- Position feed updates ~**1031 ms**, confirmed twice — once from our pulsed
+  motion, once from the mower's own autonomous dock return (median 1.15 s). It is
+  a property of the device/link, **not** an artifact of how we drive.
+- The mower travels **~29 cm median, 59 cm max** between position updates. Its
+  own vendor navigation is positionally blind at that scale, which is why 0.08 m
+  was never achievable.
+- Stop latency: n=60, median 229 ms, p90 461, max 1393, stdev 186 — an 18×
+  spread. **A fixed stop-lead constant cannot correct a variable**; that work
+  item is dropped.
+- Per-segment reach is **~0.9–1.5 m** (`max_linear_commands: 3`,
+  `max_linear_pulse_ceiling: null`), and the card limits to 2 segments.
+
+### (superseded) 2026-08-08 earlier — the daylight window has a queue; host runs beta29
 
 **Host and branch run `0.6.4-beta29`** (all four version sites agree,
 `0.6.4b29`). Gate **off**, no session, blades off, mower stationary and

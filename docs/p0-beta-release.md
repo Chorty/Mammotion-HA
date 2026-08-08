@@ -94,8 +94,47 @@ Run in order, stopping at the first failure. Preconditions, all required:
 | 4   | Two-segment L-path     | Both segments report `target_reached`; the second only starts after the first is marked passed                                                                                                                                                |
 | 5   | UI-to-mower Real Go    | The same bounded path driven **from the card**, not from a service call: preview and dry-run pass first, the card's execution-profile row reads the accepted profile, both segments report `target_reached`, and Abort remains effective       |
 
-Gates 1-4 are backend acceptance and are complete (2026-07-31). Gate 5 is the
-open one, and it exists because Gates 1-4 prove nothing about the card: every
+## ✅ GATE 5 PASSED 2026-08-08 -- all five gates are now complete
+
+Two consecutive card-driven two-segment runs on `0.6.4-beta30`, both completing
+both segments with zero errors, zero reverse-recovery and no overshoot. Evidence:
+`docs/evidence-gate5-PASSED-20260808.json`.
+
+| run | turns | segment 1 | segment 2 |
+| --- | --- | --- | --- |
+| attempt 4 | 42.8° / 64.2° | **0.0485 m** | **0.0836 m** |
+| attempt 5 | 93.5° / 82.9° | **0.0558 m** | **0.1449 m** |
+
+All four landings inside the adopted `waypoint_tolerance: 0.15`. The worst,
+0.1449 m, **would have failed at the previous 0.08 m** -- the clearest
+vindication of that change, on a real card-driven run.
+
+**Profile identity is proven rather than asserted.** The card sent
+`waypoint_tolerance: 0.15` and the full accepted profile to the mower on both
+runs, with both operator confirmations true and all 11 safety gates passing.
+That is exactly the gap `LUBA_ACCEPTANCE_PROFILE` was created to close, and
+Gates 1-4 could never demonstrate it because every one of them was a service
+call.
+
+⚠️ **Two fragilities the pass does not remove.** Attempt 5 consumed the *entire*
+turn budget (`turn_commands_sent: 4` of `max 4`) while turn rate varied **2.6x**
+across identical 1500 ms pulses (30.46°, 22.17°, 57.63°) -- so turns near 90°
+have no margin on this profile. And the BLE `TimeoutError` that failed attempt 3
+is **intermittent, not fixed**; attempt 5 ran with visibly degraded BLE (refresh
+writes median 540 ms, stop confirmations to 1819 ms against a 77-230 ms norm)
+without tripping it, which places the timeout as the tail of an observable
+latency distribution.
+
+⚠️ **Not captured:** segment 2's `passed` / `stop_reason` for either attempt --
+both JSON transfers truncated before that field. Position evidence is
+unambiguous (independent 5 Hz trace, zero samples past a waypoint) and
+`real_segments_executed` is 2 with `ready_for_multi_segment: true`, but the
+literal field was not read.
+
+---
+
+Gates 1-4 are backend acceptance and were complete on 2026-07-31. Gate 5 was the
+last open one, and it existed because Gates 1-4 prove nothing about the card: every
 one of them was a service call. The card has driven the mower in two failed-safe
 attempts, but has never completed both segments. Passing
 Gates 1-4 while the card emitted a *different* profile is exactly the gap that

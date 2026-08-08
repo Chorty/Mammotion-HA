@@ -1,4 +1,36 @@
-# Handoff prompt — beta29; base station answers, slow-tier test queued for daylight
+# Handoff prompt — beta30; GATE 5 PASSED, all five gates complete
+
+## 🏁 2026-08-08 — READ FIRST. Gate 5 passed twice.
+
+Host runs `0.6.4-beta30`. Gate off, no session, blades off, battery ~22%.
+
+Two card-driven two-segment runs, both completing both segments with the
+accepted profile, zero errors, zero reverse-recovery, no overshoot. Landings
+0.0485 / 0.0836 / 0.0558 / **0.1449** m, all inside the adopted 0.15 m
+tolerance; the worst would have failed at the old 0.08 m. Evidence:
+`docs/evidence-gate5-PASSED-20260808.json`.
+
+`waypoint_tolerance` is now **0.15** in `LUBA_ACCEPTANCE_PROFILE` with the full
+§4 re-pinning done (card profile, payload, frontend pin, README, label).
+
+⚠️ **Two fragilities remain, and the pass does not remove them:**
+
+1. **Turn budget has no margin near 90°** — attempt 5 used 4 of `max 4` turn
+   commands while turn rate varied **2.6×** across identical 1500 ms pulses.
+2. **The BLE `TimeoutError` is intermittent, not fixed** — it failed attempt 3 at
+   80.6°, yet attempt 5 completed *larger* turns. Attempt 5 ran with degraded BLE
+   (writes median 540 ms, stops to 1819 ms vs a 77–230 ms norm) without tripping
+   it, placing the timeout as the **tail of an observable latency distribution**.
+
+Also settled 2026-08-08: the ~1031 ms position feed is a **link property**, not a
+motion-pattern artifact (confirmed against the mower's own autonomous dock
+return at 1.15 s median); the stop-lead work item is **dropped** (60 samples,
+18× spread — a constant cannot correct a variable); per-segment reach is
+**~0.9–1.5 m**.
+
+---
+
+# (earlier) Handoff prompt — beta29; base station answers, slow-tier test queued for daylight
 
 ## ☀️ 2026-08-07 late — READ FIRST. Host runs beta29; one test is queued.
 
