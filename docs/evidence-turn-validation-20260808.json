@@ -1,0 +1,83 @@
+{
+  "title": "Turn-segment validation at waypoint_tolerance 0.15 -- PASSED",
+  "date": "2026-08-08",
+  "build": "0.6.4-beta30",
+  "tolerance": 0.15,
+  "purpose": "Close the gap left by the 2026-08-08 slow-tier validation, which was deliberately turn-free. Gate 5 is an L-path and REQUIRES a turn, and Gate 4 turns were the ones that overshot.",
+  "geometry": {
+    "start": [
+      4.877,
+      -1.5742
+    ],
+    "target": [
+      5.6657,
+      -1.4401
+    ],
+    "settled": [
+      5.6402,
+      -1.33
+    ],
+    "path_length_m": 0.8,
+    "turn_required_deg": 89.4,
+    "facing_before_deg": 99.09,
+    "target_map_heading_deg": 9.65
+  },
+  "result": {
+    "stop_reason": "target_reached",
+    "landing_error_m": 0.113,
+    "net_travel_m": 0.8013,
+    "travel_ratio": 1.002,
+    "turn_commands": 4,
+    "linear_commands": 2,
+    "errors": [],
+    "warnings": [],
+    "reverse_recovery_triggered": false
+  },
+  "realignments": [
+    {
+      "before_linear": true,
+      "facing_degrees": 19.075,
+      "bearing_degrees": 353.762,
+      "aim_error_degrees": -25.313,
+      "stop_reason": "target_heading_reached"
+    },
+    {
+      "after_linear_pulse": 1,
+      "facing_degrees": 7.796,
+      "bearing_degrees": 335.436,
+      "aim_error_degrees": -32.36,
+      "stop_reason": "target_heading_reached"
+    }
+  ],
+  "key_findings": [
+    "A segment requiring an 89.4 deg turn reached target within 0.1130 m -- inside the 0.15 m tolerance adopted in beta30. The turn path is now validated, not assumed.",
+    "Travel ratio 1.002 (0.8013 m for a 0.800 m path). The three pure-linear segments all UNDERSHOT (0.88-0.98); adding a turn brought it to essentially exact. Turning does not reintroduce the overshoot that 0.08 m caused.",
+    "Two realignments fired with aim errors of -25.3 and -32.4 deg, both resolving to target_heading_reached. Aim error GREW as the mower closed on the target (25 -> 32 deg), which is expected: a fixed cross-track offset subtends a larger angle at shorter range.",
+    "Both realignments stayed well under the 90 deg reverse-recovery threshold, so beta22 containment never fired. That is the designed behaviour, now observed rather than inferred.",
+    "VIO heading (99.09 deg) agreed with the independently measured travel heading (99.65 deg) to within 0.56 deg -- daylight VIO is trustworthy, and this is the VIO path, not the broken toward+offset path."
+  ],
+  "today_combined": {
+    "segments": 4,
+    "errors_m": [
+      0.0882,
+      0.1241,
+      0.0317,
+      0.113
+    ],
+    "max_m": 0.1241,
+    "mean_m": 0.0893,
+    "all_within_0_15": true,
+    "reverse_recovery_events": 0,
+    "note": "Three pure-linear plus one 89.4 deg turn segment. Every one inside tolerance."
+  },
+  "conditions": {
+    "rtk": "Fix",
+    "sats": 32,
+    "ble_rssi_self_report_dbm": -66,
+    "battery_pct": 35,
+    "vio_state": 2,
+    "pos_type": "area_inside",
+    "blades": "off throughout"
+  },
+  "gate": "armed immediately before, disarmed immediately after, verified both times"
+}
