@@ -4160,6 +4160,37 @@ def _basestation_snapshot(
     }
 
 
+#: Fields on ``report_data.basestation_info`` that **only** a
+#: ``response_basestation_info_t`` reply can populate. The report channel's
+#: ``rpt_basestation_info`` carries versions, ``basestation_status`` and
+#: ``connect_status_since_poweron`` and nothing else, so any of these going
+#: non-default is proof the base answered our query rather than the mower
+#: simply reporting.
+_BASESTATION_QUERY_ONLY_FIELDS = (
+    "sats_num",
+    "rtk_status",
+    "rtk_channel",
+    "rtk_switch",
+    "wifi_rssi",
+    "lora_channel",
+    "mqtt_rtk_status",
+    "app_connect_type",
+)
+
+
+def _basestation_has_query_fields(snapshot: dict[str, Any]) -> bool:
+    """Report whether *snapshot* carries data only a query reply could set."""
+    if not snapshot.get("available"):
+        return False
+    if any(snapshot.get(name) for name in _BASESTATION_QUERY_ONLY_FIELDS):
+        return True
+    score = snapshot.get("score_info") or {}
+    return any(
+        score.get(name)
+        for name in ("base_score", "base_leve", "base_moved", "base_moving")
+    )
+
+
 async def _basestation_info_probe(
     coordinator: MammotionReportUpdateCoordinator,
     *,
@@ -4182,15 +4213,40 @@ async def _basestation_info_probe(
 
     ⚠️ It is **unverified** that this hardware answers the query. pymammotion
     defines the message and reduces the response, but a message existing in the
-    library is not the hardware replying to it. ``responded`` reports which.
+    library is not the hardware replying to it. ``answered`` reports which.
+
+    ⚠️ **Why this samples instead of comparing before/after.** A first live run
+    on 2026-08-07 (beta27) returned ``no_change_observed`` -- which turned out to
+    be uninterpretable, because a single ``BasestationInfo`` dataclass holds
+    *both* field groups and the report channel **replaces the whole object**::
+
+        # pymammotion/data/model/report_info.py:646
+        if data.basestation_info is not None:
+            self.basestation_info = BasestationInfo.from_dict(...)
+
+    That ``from_dict`` is built from ``rpt_basestation_info``, which carries only
+    versions, ``basestation_status`` and ``connect_status_since_poweron``. Every
+    such report therefore resets ``sats_num`` / ``rtk_status`` / ``score_info``
+    to defaults -- **wiping any query reply that arrived first.** Comparing a
+    single ``after`` against ``before`` races that clobber and a longer wait
+    makes it *more* likely to lose, not less.
+
+    So this polls the struct through the wait window and keeps the
+    most-informative sample it ever sees. A reply is recognised by any
+    query-only field going non-default, which the report channel can never do.
     """
+    poll_interval = 0.15
     result: dict[str, Any] = {
         "motion_commanded": False,
         "wait_seconds": wait_seconds,
+        "poll_interval_seconds": poll_interval,
         "command_sent": False,
-        "responded": False,
+        "answered": False,
+        "samples": 0,
         "before": _basestation_snapshot(coordinator),
-        "after": None,
+        "best": None,
+        "final": None,
+        "clobbered_after_answer": False,
         "reason": None,
     }
     try:
@@ -4199,14 +4255,31 @@ async def _basestation_info_probe(
         if not result["command_sent"]:
             result["reason"] = "command_refused_device_offline_or_unavailable"
             return result
-        await asyncio.sleep(max(wait_seconds, 0.0))
-        after = _basestation_snapshot(coordinator)
-        result["after"] = after
-        # A changed payload proves the base answered. An unchanged one is
-        # ambiguous -- it may be genuinely steady -- so it is reported as
-        # "unchanged", never as "the base is dead".
-        result["responded"] = after != result["before"]
-        result["reason"] = "completed" if result["responded"] else "no_change_observed"
+
+        deadline = time.monotonic() + max(wait_seconds, 0.0)
+        best: dict[str, Any] | None = None
+        latest: dict[str, Any] = result["before"]
+        samples = 0
+        while True:
+            latest = _basestation_snapshot(coordinator)
+            samples += 1
+            if _basestation_has_query_fields(latest) and best is None:
+                best = latest
+            if time.monotonic() >= deadline:
+                break
+            await asyncio.sleep(poll_interval)
+
+        result["samples"] = samples
+        result["final"] = latest
+        result["best"] = best or latest
+        result["answered"] = best is not None
+        if best is not None:
+            result["clobbered_after_answer"] = not _basestation_has_query_fields(latest)
+            result["reason"] = "answered"
+        else:
+            # Never "the base is dead": a base that answers with all-default
+            # values is indistinguishable from one that never answered.
+            result["reason"] = "no_query_fields_observed"
     except Exception as err:  # noqa: BLE001
         result["reason"] = f"{type(err).__name__}: {err}"
     return result

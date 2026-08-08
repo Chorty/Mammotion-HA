@@ -5955,20 +5955,32 @@ async def test_basestation_probe_reports_the_survey_discriminator() -> None:
     result = await _basestation_info_probe(coordinator, wait_seconds=0.0)
 
     assert result["command_sent"] is True
-    assert result["responded"] is True
-    assert result["reason"] == "completed"
+    assert result["answered"] is True
+    assert result["reason"] == "answered"
     assert result["motion_commanded"] is False
     assert result["before"]["score_info"]["base_moved"] == 0
-    assert result["after"]["score_info"]["base_moved"] == 1
-    assert result["after"]["sats_num"] == 28
+    assert result["best"]["score_info"]["base_moved"] == 1
+    assert result["best"]["sats_num"] == 28
 
 
 @pytest.mark.asyncio
 async def test_basestation_probe_does_not_claim_the_base_is_dead() -> None:
-    """An unchanged payload is ambiguous and must be reported as such."""
+    """A payload with no query-only fields is ambiguous, not proof of death.
+
+    The struct is still ``available`` -- pymammotion default-constructs it --
+    and the report channel keeps ``connect_status_since_poweron`` populated, so
+    "we saw nothing from the base" must never be reported as "the base is dead".
+    """
     coordinator = _pulse_coordinator()
     coordinator.data.report_data.basestation_info = SimpleNamespace(
-        rtk_status=1, sats_num=28, score_info=None
+        # Report-channel fields only: exactly what rpt_basestation_info carries.
+        basestation_status=0,
+        connect_status_since_poweron=2,
+        rtk_status=0,
+        sats_num=0,
+        score_info=SimpleNamespace(
+            base_score=0, base_leve=0, base_moved=0, base_moving=0
+        ),
     )
 
     async def send(command: str, **_kw: object) -> bool:
@@ -5979,8 +5991,77 @@ async def test_basestation_probe_does_not_claim_the_base_is_dead() -> None:
     result = await _basestation_info_probe(coordinator, wait_seconds=0.0)
 
     assert result["command_sent"] is True
-    assert result["responded"] is False
-    assert result["reason"] == "no_change_observed"
+    assert result["answered"] is False
+    assert result["reason"] == "no_query_fields_observed"
+    # Still reports what it did see, rather than discarding it.
+    assert result["final"]["connect_status_since_poweron"] == 2
+
+
+@pytest.mark.asyncio
+async def test_basestation_probe_survives_the_report_channel_clobber() -> None:
+    """A reply that arrives and is then overwritten must still be captured.
+
+    ``report_info.py:646`` replaces ``report_data.basestation_info`` wholesale
+    from ``rpt_basestation_info``, which carries none of the query-only fields.
+    So every report resets ``sats_num`` / ``score_info`` to defaults and wipes a
+    reply that arrived first. The 2026-08-07 beta27 run hit exactly this and
+    returned an uninterpretable "no change". Polling must keep the reply.
+    """
+    coordinator = _pulse_coordinator()
+    answered = SimpleNamespace(
+        rtk_status=4,
+        sats_num=30,
+        rtk_channel=3,
+        rtk_switch=1,
+        mqtt_rtk_status=0,
+        lora_channel=7,
+        wifi_rssi=-55,
+        app_connect_type=1,
+        basestation_status=2,
+        connect_status_since_poweron=2,
+        score_info=SimpleNamespace(
+            base_score=91, base_leve=2, base_moved=0, base_moving=0
+        ),
+    )
+    clobbered = SimpleNamespace(
+        rtk_status=0,
+        sats_num=0,
+        rtk_channel=0,
+        rtk_switch=0,
+        mqtt_rtk_status=0,
+        lora_channel=0,
+        wifi_rssi=0,
+        app_connect_type=0,
+        basestation_status=0,
+        connect_status_since_poweron=2,
+        score_info=SimpleNamespace(
+            base_score=0, base_leve=0, base_moved=0, base_moving=0
+        ),
+    )
+    coordinator.data.report_data.basestation_info = answered
+
+    async def send(command: str, **_kw: object) -> bool:
+        return True
+
+    coordinator.async_send_command = send
+
+    async def clobber() -> None:
+        await asyncio.sleep(0.2)
+        coordinator.data.report_data.basestation_info = clobbered
+
+    task = asyncio.create_task(clobber())
+    result = await _basestation_info_probe(coordinator, wait_seconds=0.5)
+    await task
+
+    assert result["answered"] is True
+    assert result["reason"] == "answered"
+    assert result["best"]["sats_num"] == 30
+    assert result["best"]["score_info"]["base_score"] == 91
+    # The clobber is reported rather than hidden -- it is the reason a
+    # before/after comparison cannot be trusted here.
+    assert result["clobbered_after_answer"] is True
+    assert result["final"]["sats_num"] == 0
+    assert result["samples"] > 1
 
 
 @pytest.mark.asyncio
@@ -5997,7 +6078,7 @@ async def test_basestation_probe_reports_a_refused_command() -> None:
 
     assert result["command_sent"] is False
     assert result["reason"] == "command_refused_device_offline_or_unavailable"
-    assert result["responded"] is False
+    assert result["answered"] is False
 
 
 @pytest.mark.asyncio
