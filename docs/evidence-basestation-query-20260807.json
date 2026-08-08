@@ -105,5 +105,157 @@
     }
   },
   "float_onset_check": "No change recorded in base position_mode, satellites, latitude or longitude across the 15:40 EDT Float onset.",
-  "resolution_caveat": "RTK device telemetry is recorded only ~9 times in 12.5 h (roughly hourly). The negative at Float onset is therefore weakly resolved -- a transient well under an hour would not appear."
+  "resolution_caveat": "RTK device telemetry is recorded only ~9 times in 12.5 h (roughly hourly). The negative at Float onset is therefore weakly resolved -- a transient well under an hour would not appear.",
+  "second_run_beta29": {
+    "build": "0.6.4-beta29",
+    "motion_commanded": false,
+    "result": {
+      "motion_commanded": false,
+      "wait_seconds": 12.0,
+      "poll_interval_seconds": 0.15,
+      "command_sent": true,
+      "answered": true,
+      "answered_via": [
+        "rtk_device:RTKBNA235279309"
+      ],
+      "samples": 81,
+      "before": {
+        "available": true,
+        "rtk_status": 0,
+        "sats_num": 0,
+        "rtk_channel": 0,
+        "rtk_switch": 0,
+        "mqtt_rtk_status": 0,
+        "lora_channel": 0,
+        "wifi_rssi": 0,
+        "app_connect_type": 0,
+        "basestation_status": 0,
+        "connect_status_since_poweron": 2,
+        "score_info": {
+          "base_score": 0,
+          "base_leve": 0,
+          "base_moved": 0,
+          "base_moving": 0
+        }
+      },
+      "best": {
+        "available": true,
+        "rtk_status": 0,
+        "sats_num": 0,
+        "rtk_channel": 0,
+        "rtk_switch": 0,
+        "mqtt_rtk_status": 0,
+        "lora_channel": 0,
+        "wifi_rssi": 0,
+        "app_connect_type": 0,
+        "basestation_status": 0,
+        "connect_status_since_poweron": 2,
+        "score_info": {
+          "base_score": 0,
+          "base_leve": 0,
+          "base_moved": 0,
+          "base_moving": 0
+        }
+      },
+      "final": {
+        "available": true,
+        "rtk_status": 0,
+        "sats_num": 0,
+        "rtk_channel": 0,
+        "rtk_switch": 0,
+        "mqtt_rtk_status": 0,
+        "lora_channel": 0,
+        "wifi_rssi": 0,
+        "app_connect_type": 0,
+        "basestation_status": 0,
+        "connect_status_since_poweron": 2,
+        "score_info": {
+          "base_score": 0,
+          "base_leve": 0,
+          "base_moved": 0,
+          "base_moving": 0
+        }
+      },
+      "clobbered_after_answer": false,
+      "rtk_devices": [
+        {
+          "name": "RTKBNA235279309",
+          "answered": true,
+          "best": {
+            "available": true,
+            "sats_num": 28,
+            "rtk_status": 1,
+            "rtk_channel": 0,
+            "rtk_switch": 0,
+            "mqtt_rtk_status": 0,
+            "app_connect_type": 2,
+            "lora_channel": 0,
+            "lora_scan": 915,
+            "lora_locid": 0,
+            "lora_netid": 1222,
+            "lowpower_status": 0,
+            "ble_rssi": 0,
+            "wifi_rssi": -72,
+            "basestation_status": 0,
+            "connect_status_since_poweron": 0,
+            "lat": 0.5938408047442866,
+            "lon": -1.479513030131847,
+            "lora_version": "915.0.0.1222",
+            "online": true,
+            "score_info": null
+          },
+          "final": {
+            "available": true,
+            "sats_num": 28,
+            "rtk_status": 1,
+            "rtk_channel": 0,
+            "rtk_switch": 0,
+            "mqtt_rtk_status": 0,
+            "app_connect_type": 2,
+            "lora_channel": 0,
+            "lora_scan": 915,
+            "lora_locid": 0,
+            "lora_netid": 1222,
+            "lowpower_status": 0,
+            "ble_rssi": 0,
+            "wifi_rssi": -72,
+            "basestation_status": 0,
+            "connect_status_since_poweron": 0,
+            "lat": 0.5938408047442866,
+            "lon": -1.479513030131847,
+            "lora_version": "915.0.0.1222",
+            "online": true,
+            "score_info": null
+          }
+        }
+      ],
+      "reason": "answered"
+    },
+    "conclusion": "THE BASE ANSWERS. answered_via = rtk_device:RTKBNA235279309. The beta28 negative was purely a wrong-read-path artifact: the probe watched mower.report_data.basestation_info while base.to_app frames bearing the base own iot_id reduce onto RTKBaseStationDevice.",
+    "baseline_under_fix": {
+      "sats_num": 28,
+      "rtk_status": 1,
+      "wifi_rssi_dbm": -72,
+      "lat_deg": 34.0245718145,
+      "lon_deg": -84.7698523612,
+      "online": true,
+      "lora_scan": 915,
+      "lora_netid": 1222,
+      "lora_version": "915.0.0.1222",
+      "app_connect_type": 2
+    },
+    "score_info": null,
+    "score_info_conclusion": "\u26a0\ufe0f DECISIVE NEGATIVE: score_info is null. base_moved / base_moving -- the survey discriminator that motivated this entire probe -- are NOT populated by this hardware. That avenue is closed; do not plan further work around base_moved.",
+    "what_is_actually_available": [
+      "rtk_status",
+      "sats_num",
+      "wifi_rssi",
+      "lat",
+      "lon",
+      "online",
+      "lora_scan/netid/version",
+      "app_connect_type"
+    ],
+    "monitoring_recommendation": "Watch the base rtk_status, wifi_rssi and position_mode (rtk_over_internet) -- these exist and move. Do not watch base_moved; it is never populated."
+  }
 }

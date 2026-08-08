@@ -251,14 +251,45 @@ when it does. "Corrections wrong at the source, upstream of the base" is now
 `connect_status_since_poweron` are all readable per-tick rather than needing a
 query the hardware may not answer.
 
-**The probe also found a defect in itself.** `basestation_info_probe` sent the
-command and sampled 101 times at 150 ms over 15 s without ever seeing a
-query-only field, with no clobber detected — so the report-channel race is ruled
-out and it is a real negative *for that read path*. But the path may be wrong:
-the probe reads `mower.report_data.basestation_info`, while `base.to_app` frames
-carrying the RTK device's own `iot_id` are reduced by `RTKStateReducer` onto
-`RTKBaseStationDevice` instead. Before concluding the hardware ignores
-`request_basestation_info_t`, the probe must also read the RTK device's state.
+**The probe also found a defect in itself — and fixing it settled the question.**
+The beta28 run sampled 101 times over 15 s and saw nothing, but it was reading
+`mower.report_data.basestation_info` while `base.to_app` frames bearing the base
+station's own `iot_id` reduce onto `RTKBaseStationDevice`. beta29 watches both
+paths, and on the very first run:
+
+```
+answered: true    answered_via: ["rtk_device:RTKBNA235279309"]
+```
+
+**The base answers.** The earlier negative was entirely a wrong-read-path
+artifact. Healthy-`Fix` baseline, which is what this probe existed to capture:
+
+| field | value |
+| --- | --- |
+| `rtk_status` | **1** (Fix) |
+| `sats_num` | 28 |
+| `wifi_rssi` | −72 dBm |
+| `lat` / `lon` | 34.0245718145, −84.7698523612 (stored in radians) |
+| `lora_scan` / `netid` / version | 915 / 1222 / `915.0.0.1222` |
+| `online` | true |
+
+### 🔑 …and `score_info` is `null`. That closes the original avenue.
+
+**`base_moved` and `base_moving` — the survey discriminator this entire probe was
+built to read — are not populated by this hardware.** The field exists in the
+proto, pymammotion reduces it when present, and the base simply never sends it.
+
+So the plan's original P3 instrument does not exist on this installation. Do not
+schedule further work around `base_moved`. What *is* available and does move:
+`rtk_status`, `sats_num`, `wifi_rssi`, the base's own `lat`/`lon`, `online`, and
+`position_mode`. Combined with `rtk_over_internet` above, those are the
+monitoring targets.
+
+One practical note for whoever picks this up: `MammotionRTKCoordinator`
+**already** issues `async_send_and_wait("basestation_info", "to_app")` every
+tick, so on an installation with a separate RTK device this data is populated
+continuously without anyone asking. The probe is for confirming a reply on
+demand; routine monitoring should just read the coordinator.
 
 ### P4 — the operator runbook
 
