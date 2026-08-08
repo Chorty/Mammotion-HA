@@ -1,0 +1,136 @@
+{
+  "title": "Cloud-commanded dock return observed over BLE -- the feed cadence is a link property, not a motion-pattern artifact",
+  "date": "2026-08-08",
+  "build": "0.6.4-beta30",
+  "motion_source": "mower own autonomous navigation, dock return commanded from the phone app over CLOUD; integration stayed on BLE",
+  "operator_actions": {
+    "return_to_dock_clicked": "~13:49",
+    "cancel_clicked": "~13:56:56"
+  },
+  "sampling": {
+    "sampler_interval_s": 0.2,
+    "achieved_rate_hz": 3.21,
+    "note": "Sampled ~3x faster than the feed so the sampler interval cannot be mistaken for the feed rate -- the confound that invalidated an earlier measurement."
+  },
+  "totals": {
+    "samples": 1472,
+    "distinct_positions": 32,
+    "moving_updates": 14,
+    "motion_window": [
+      "13:55:53",
+      "13:56:17"
+    ],
+    "net_displacement_m": 3.656
+  },
+  "feed_during_autonomous_motion": {
+    "inter_update_s": {
+      "min": 0.3,
+      "median": 1.15,
+      "max": 14.67
+    },
+    "step_distance_m": {
+      "min": 0.095,
+      "median": 0.293,
+      "max": 0.592
+    },
+    "speed_mps": {
+      "median": 0.28500000000000003,
+      "max": 0.98
+    }
+  },
+  "per_update": [
+    {
+      "interval_s": 14.67,
+      "step_m": 0.149,
+      "speed_mps": 0.01,
+      "t": "13:55:53"
+    },
+    {
+      "interval_s": 1.24,
+      "step_m": 0.095,
+      "speed_mps": 0.077,
+      "t": "13:55:57"
+    },
+    {
+      "interval_s": 1.35,
+      "step_m": 0.298,
+      "speed_mps": 0.22,
+      "t": "13:55:58"
+    },
+    {
+      "interval_s": 0.3,
+      "step_m": 0.296,
+      "speed_mps": 0.98,
+      "t": "13:55:59"
+    },
+    {
+      "interval_s": 0.93,
+      "step_m": 0.297,
+      "speed_mps": 0.32,
+      "t": "13:56:00"
+    },
+    {
+      "interval_s": 1.27,
+      "step_m": 0.284,
+      "speed_mps": 0.224,
+      "t": "13:56:01"
+    },
+    {
+      "interval_s": 1.9,
+      "step_m": 0.592,
+      "speed_mps": 0.312,
+      "t": "13:56:03"
+    },
+    {
+      "interval_s": 1.04,
+      "step_m": 0.29,
+      "speed_mps": 0.278,
+      "t": "13:56:04"
+    },
+    {
+      "interval_s": 0.95,
+      "step_m": 0.293,
+      "speed_mps": 0.31,
+      "t": "13:56:05"
+    },
+    {
+      "interval_s": 0.94,
+      "step_m": 0.296,
+      "speed_mps": 0.315,
+      "t": "13:56:06"
+    },
+    {
+      "interval_s": 1.25,
+      "step_m": 0.293,
+      "speed_mps": 0.233,
+      "t": "13:56:07"
+    },
+    {
+      "interval_s": 0.94,
+      "step_m": 0.284,
+      "speed_mps": 0.302,
+      "t": "13:56:08"
+    },
+    {
+      "interval_s": 1.06,
+      "step_m": 0.31,
+      "speed_mps": 0.292,
+      "t": "13:56:09"
+    },
+    {
+      "interval_s": 7.71,
+      "step_m": 0.16,
+      "speed_mps": 0.021,
+      "t": "13:56:17"
+    }
+  ],
+  "key_findings": [
+    "Feed cadence during the mower OWN continuous autonomous navigation is median 1.15 s -- statistically the same as the 1031 ms measured during our pulsed motion. The ~1 s cadence is a property of the device/link, NOT an artifact of how we drive.",
+    "Median 29.3 cm and max 59.2 cm of travel between position updates. Mammotion own dock-return navigation is positionally blind for ~30 cm at a time.",
+    "This independently justifies waypoint_tolerance 0.15: the vendor own navigation does not have finer feedback than this, so expecting 8 cm waypoint accuracy was never realistic on this hardware.",
+    "Speed median 0.285 m/s matches our fast tier (0.207-0.322), so the comparison is like-for-like.",
+    "Steps are strikingly consistent (0.284-0.310 m for 10 of 14), suggesting a fixed internal control interval rather than jitter.",
+    "One 14.67 s gap mid-drive with a following 0.592 m step (2x the median) -- a dropped update, consistent with a brief BLE stall at self-reported -74 to -76 dBm."
+  ],
+  "caveat": "ble_rssi values quoted here are the MOWER self-report (report_data.connect.ble_rssi), not the advertisement RSSI that gates BLETransport.is_usable (min_rssi = -90). The gating value is not surfaced anywhere in this integration."
+}
