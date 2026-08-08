@@ -5738,33 +5738,32 @@ def _safety_telemetry() -> dict[str, object]:
     }
 
 
-def test_rtk_freshness_blocks_motion_only_once_the_payload_is_stale() -> None:
-    """A latched RTK reading must not pass as current.
+def test_rtk_payload_age_is_reported_but_never_blocks() -> None:
+    """Age is advisory. It must not gate motion at ANY value.
 
-    On 2026-08-07 the whole RTK group sat byte-identical for three hours while
-    `valid_for_motion` kept reporting True, so a precision run could have been
-    dispatched against a three-hour-old fix.
+    Two thresholds were tried and both false-blocked: 300 s (disproved by a
+    582 s legitimate quiet period) and 1800 s (disproved by 3573 s, measured on
+    a healthy Fix-locked stationary mower). A stationary mower's RTK payload
+    changes about hourly while the one observed fault lasted three hours, so no
+    threshold can separate quiet from dead. An active probe cannot either: a
+    forced burst on healthy RTK produced 49 messages and zero RTK updates.
     """
-    fresh = _runtime_motion_safety_summary(
-        _safety_telemetry(), rtk_report_age_seconds=12.0
-    )
-    assert "rtk_telemetry_stale" not in fresh["blockers"]
-    assert fresh["rtk_telemetry_stale"] is False
-    assert fresh["rtk_report_age_seconds"] == 12.0
+    for age in (12.0, 600.0, 3573.0, 3 * 60 * 60.0, 24 * 60 * 60.0):
+        summary = _runtime_motion_safety_summary(
+            _safety_telemetry(), rtk_report_age_seconds=age
+        )
+        assert "rtk_telemetry_stale" not in summary["blockers"], age
+        assert summary["blockers"] == [], age
+        assert summary["allowed_for_manual_motion"] is True, age
+        assert summary["rtk_report_age_seconds"] == age
 
-    # A healthy Fix-locked but STATIONARY mower was measured going 582 s without
-    # a payload change on 2026-08-07. That must not be called stale -- the first
-    # threshold tried (300 s) would have blocked motion with nothing wrong.
+    # Still annotated past the advisory threshold, so a suspicious run can be
+    # audited against it -- it simply carries no authority to refuse.
     quiet = _runtime_motion_safety_summary(
-        _safety_telemetry(), rtk_report_age_seconds=600.0
+        _safety_telemetry(), rtk_report_age_seconds=4000.0
     )
-    assert "rtk_telemetry_stale" not in quiet["blockers"]
-
-    stale = _runtime_motion_safety_summary(
-        _safety_telemetry(), rtk_report_age_seconds=3 * 60 * 60.0
-    )
-    assert "rtk_telemetry_stale" in stale["blockers"]
-    assert stale["allowed_for_manual_motion"] is False
+    assert quiet["rtk_report_quiet"] is True
+    assert quiet["allowed_for_manual_motion"] is True
 
 
 def _rtk_telemetry(label: str | None) -> dict[str, object]:

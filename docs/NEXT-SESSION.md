@@ -4,6 +4,39 @@ Updated 2026-08-06 after the beta22 containment deploy. This is the current hand
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
+## 🚨 START HERE, 2026-08-07 night — RTK freshness is UNVERIFIABLE; quality is the guard (beta26)
+
+Two of the same day's conclusions were **refuted by measurement that evening**.
+Read this before touching anything RTK. Full reasoning:
+`docs/rtk-hardening-plan-20260807.md`.
+
+**1. A forced report burst cannot detect a latch.** Repeating the afternoon's
+test with RTK verifiably healthy and `Fix` gave 49 messages, **zero** RTK /
+position / VIO channel updates, and the age still climbing 570.9 s → 601.1 s —
+identical to the latched case. The afternoon's inference from that test was
+invalid; there is **no positive liveness probe**.
+
+**2. No staleness threshold works, and 1800 s was live in beta25.** A healthy
+Fix-locked stationary mower reached **3573 s (59.5 min)** of unchanged RTK
+payload. The payload changes ~hourly at rest while the one observed fault lasted
+~3 h — a 3x separation from one sample each. 300 s and 1800 s both false-blocked.
+
+**So the design inverted (beta26):** RTK payload age is **reported for auditing
+and never blocks**. The real guard is the **quality gate** — non-Fix refuses with
+`rtk_not_precise` unless `allow_degraded_rtk` is passed. That directly catches
+the fault actually observed (a latched *Float*); freshness only ever addressed a
+latched *Fix*, never seen on this hardware. **Do not turn age back into a
+blocker** — the constant's comment records why.
+
+**Good news, verified:** mining every evidence file found **534** recorded `Fix`
+states and **zero** prior `Float`/`Single`. 2026-08-07 was the first episode, so
+**past gate results are not tainted**. (265 `None` records are the dead
+`mowing_state` candidate, not real states.)
+
+**Still unknown:** why the base station failed. A power cycle is a remedy, not a
+diagnosis, and nothing in the mower's telemetry reaches the base's internal
+state. Ranked hypotheses and a recurrence-log plan are in §P3 of the plan doc.
+
 ## ✅ MEASURED, 2026-08-07 19:30 EDT — the position feed updates ~1x/second during motion
 
 **The number the direction review needed now exists, measured soundly.** Sampled

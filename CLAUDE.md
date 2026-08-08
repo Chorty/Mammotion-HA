@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Read `docs/CODEX-HANDOFF.md`, then `docs/NEXT-SESSION.md`, before continuing P0
 or click-to-go work. The host runs the still-unaccepted, motion-disabled
-`0.6.4-beta25` candidate and experimental motion is verified off. Gate 2 passed
+`0.6.4-beta26` candidate and experimental motion is verified off. Gate 2 passed
 on 2026-08-03, and Gate 4 — which
 failed on 2026-08-03 before its first linear command — was **re-passed on
 2026-08-05** and **reproduced on a second daylight geometry on 2026-08-06**.
@@ -44,24 +44,24 @@ acceptance: the card has driven the mower but has not completed a clean
 two-segment run. That is **Gate 5** in
 `docs/p0-beta-release.md`, and it is the one open release gate.
 
-The host and branch run the still-unaccepted `0.6.4-beta25` candidate. On top of
+The host and branch run the still-unaccepted `0.6.4-beta26` candidate. On top of
 beta22 it adds the read-only `report_stream_probe` diagnostic (beta23, now with
-per-channel attribution) and an **RTK freshness guard** — the motion gate refuses
-with `rtk_telemetry_stale` when the RTK payload has not changed for **1800 s**,
-after a three-hour-old fix presented as current on 2026-08-07. (300 s was tried
-first and measured wrong the same evening: a healthy stationary mower goes 10+
-minutes without an RTK payload change, so it would have false-blocked. The bound
-is under-characterised — raise it rather than assume a latch.) It does **not**
-require RTK to read Fix; that threshold is an open operator decision. A zero-command
+per-channel attribution) and an **RTK quality gate**: non-Fix refuses with
+`rtk_not_precise` unless the caller passes `allow_degraded_rtk`, because Float
+produced a 13.9 cm stationary jump on 2026-08-07 against an 0.08 m tolerance.
+⚠️ RTK payload **age is reported but never blocks** — two thresholds (300 s,
+1800 s) both false-blocked, a stationary mower is legitimately quiet for ~1 h,
+and a forced burst cannot distinguish quiet from dead either. Do not turn age
+back into a blocker; see `docs/rtk-hardening-plan-20260807.md`. A zero-command
 live snapshot proved Mammotion exposes only frozen course-over-ground while
 stationary (`toward: -29.589`, VIO inactive/0, RTK yaw 0), so since beta19 the card stops
 drawing that last-travel projection as current mower orientation and blocks
 Nudge unless a trustworthy current orientation is explicitly available. `manifest.json`,
-`pyproject.toml`, `CARD_VERSION` and `uv.lock` (PEP 440 `0.6.4b25`) must always agree, and the
+`pyproject.toml`, `CARD_VERSION` and `uv.lock` (PEP 440 `0.6.4b26`) must always agree, and the
 `Beta Release` workflow verifies all four. The card is served from **two**
 paths, so deploy to both and bump the Lovelace resource key or the browser can
 silently load the stale card. The live Lovelace URL includes the unique build
-suffix `?v=0.6.4-beta25&build=<card md5 prefix>`. The misleading third-party-map
+suffix `?v=0.6.4-beta26&build=<card md5 prefix>`. The misleading third-party-map
 `card-mod` rotation was removed with verified config readback; its pre-change
 backup remains `/config/.storage/lovelace.dashboard_yard.bak.codex-20260802-213848`.
 

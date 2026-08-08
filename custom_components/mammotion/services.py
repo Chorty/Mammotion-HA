@@ -1885,30 +1885,36 @@ def blade_rpm_stale_register(
     return _blade_rpm_stale_verdict(history[-_BLADE_RPM_RECONFIRM_POLLS:])
 
 
-#: How long the RTK report payload may go unchanged before it is treated as
-#: stale rather than steady.
+#: Age past which the RTK payload is *annotated* as suspiciously quiet. This is
+#: **advisory only and must stay that way** -- see below before making it gate
+#: anything again.
 #:
-#: The failure this guards against was not marginal: on 2026-08-07 the whole RTK
-#: group sat byte-identical for **three hours** (15:40-18:39) while
-#: `valid_for_motion` kept reporting True, so a real precision run could have
-#: been dispatched against a three-hour-old fix.
+#: ⚠️ DO NOT turn this back into a blocker. Two attempts, two false-blocks:
 #:
-#: ⚠️ The first value tried here was 300 s, justified as "far longer than any
-#: plausible quiet period on a live link". That was wrong, and measuring it the
-#: same evening disproved it: on a healthy Fix-locked **stationary** mower the
-#: payload went unchanged for over 10 minutes straight (age climbed 256 s ->
-#: 582 s with no reset), which 300 s would have reported as stale, blocking
-#: motion with nothing actually wrong. A stationary mower's RTK simply has
-#: little to report.
+#: * 300 s, justified as "far longer than any plausible quiet period", was
+#:   disproved within the hour -- a healthy Fix-locked stationary mower went
+#:   582 s without a payload change.
+#: * 1800 s, chosen as ~3x that, was disproved the same evening -- the same
+#:   mower reached **3573 s (59.5 min)** of unchanged payload while `Fix` and
+#:   demonstrably healthy. Shipped in beta25, it would have refused motion after
+#:   roughly 30 idle minutes with nothing wrong.
 #:
-#: 1800 s sits between the two: ~3x the longest legitimate quiet period observed
-#: and 6x shorter than the real failure. It is **under-characterised** -- the
-#: upper bound on legitimate quiet is unknown, only that it exceeds 10 minutes --
-#: so if a future run is refused with `rtk_telemetry_stale` while RTK is
-#: demonstrably healthy, raise this rather than assuming a latch. Measuring
-#: quiet during *motion*, where the channel should be active, would allow a much
-#: tighter bound; that measurement needs a moving mower.
-_RTK_REPORT_STALE_SECONDS = 1800.0
+#: The reason no value works: a stationary mower's RTK payload changes only
+#: about once an hour, and the one observed genuine fault lasted three hours.
+#: A 3x separation, from a single sample of each, cannot site a threshold.
+#:
+#: An *active* probe does not rescue it either. Forcing a report burst while RTK
+#: was verifiably healthy produced 49 messages and **zero** RTK channel updates,
+#: with the age still climbing -- indistinguishable from the latched case. So
+#: neither a passive timeout nor an on-demand probe can tell "quiet" from "dead".
+#:
+#: What actually protects a precision run is `_RTK_PRECISE_STATUS_LABELS` below:
+#: the fault observed on 2026-08-07 was a latched *Float*, which the quality gate
+#: refuses outright without needing any freshness reasoning. Freshness only ever
+#: addressed a latched *Fix* that silently stops being true, which has never been
+#: observed on this hardware. Reporting the age is still worth it -- a run that
+#: later looks wrong can be audited against it -- but it must not gate.
+_RTK_REPORT_QUIET_SECONDS = 1800.0
 
 #: RTK solution types precise enough for a run whose result depends on position.
 #: Only a resolved carrier-phase fix qualifies. Measured 2026-08-07 on this
@@ -1943,10 +1949,10 @@ def _runtime_motion_safety_summary(
     """Return conservative safety summary for diagnostics and future motion gates.
 
     ``rtk_report_age_seconds`` is seconds since the RTK payload last changed, or
-    ``None`` when the caller could not measure it. ``None`` does **not** block:
-    diagnostic and test callers legitimately have no coordinator to ask, and
-    refusing on "unmeasured" would break every one of them. The motion path
-    supplies it, which is where it matters.
+    ``None`` when the caller could not measure it. It is reported for auditing
+    and **never blocks** -- a stationary mower goes ~an hour between RTK payload
+    changes, so age cannot distinguish a quiet feed from a dead one. See
+    ``_RTK_REPORT_QUIET_SECONDS``.
 
     ``allow_degraded_rtk`` opts a run out of the Fix requirement. It exists
     because both cases occurred on 2026-08-07: a 1.6 m relocation on Float was
@@ -1972,12 +1978,12 @@ def _runtime_motion_safety_summary(
         blockers.append("active_route_detected")
     if not position_valid:
         blockers.append("position_not_valid_for_motion")
-    rtk_stale = (
+    # Advisory only -- deliberately NOT appended to blockers. See
+    # _RTK_REPORT_QUIET_SECONDS for why no threshold can gate on this.
+    rtk_quiet = (
         rtk_report_age_seconds is not None
-        and rtk_report_age_seconds > _RTK_REPORT_STALE_SECONDS
+        and rtk_report_age_seconds > _RTK_REPORT_QUIET_SECONDS
     )
-    if rtk_stale:
-        blockers.append("rtk_telemetry_stale")
 
     rtk_label = (telemetry.get("position") or {}).get("rtk_status_label")
     # Unknown status does not block, matching the freshness rule: many diagnostic
@@ -1997,8 +2003,10 @@ def _runtime_motion_safety_summary(
         # Diagnostic regardless of the verdict: a run that later looks wrong
         # can be checked against how fresh its positioning actually was.
         "rtk_report_age_seconds": rtk_report_age_seconds,
-        "rtk_report_stale_threshold_seconds": _RTK_REPORT_STALE_SECONDS,
-        "rtk_telemetry_stale": rtk_stale,
+        "rtk_report_quiet_threshold_seconds": _RTK_REPORT_QUIET_SECONDS,
+        # Advisory annotation, never a blocker: a stationary mower is legitimately
+        # quiet for an hour at a time, so this cannot distinguish quiet from dead.
+        "rtk_report_quiet": rtk_quiet,
         # Recorded whether or not it blocked, so a run's positioning quality is
         # always attributable after the fact.
         "rtk_status_label": rtk_label,

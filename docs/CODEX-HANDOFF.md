@@ -1,5 +1,25 @@
 # Handoff prompt — beta23; the faster-feed fix is refuted, tolerance is next
 
+## 🚨 2026-08-07 night — RTK freshness is UNVERIFIABLE (beta26); read before any RTK work
+
+Two conclusions from earlier the same day were **refuted by measurement**:
+
+1. **The forced report burst cannot detect a latch.** Repeated with RTK healthy
+   and `Fix`: 49 messages, **zero** RTK channel updates, age still climbing —
+   indistinguishable from latched. No positive liveness probe exists.
+2. **No staleness threshold works.** A healthy Fix-locked stationary mower went
+   **3573 s** without an RTK payload change; it updates ~hourly at rest while the
+   observed fault lasted ~3 h. Both 300 s and 1800 s false-blocked, and 1800 s
+   shipped live in beta25.
+
+**beta26 inverts it:** age is reported for auditing and **never blocks**; the
+**quality gate** (`rtk_not_precise`, non-Fix, override `allow_degraded_rtk`) is
+the real guard and catches the fault actually seen — a latched *Float*.
+**Do not re-add an age blocker.** Reasoning: `docs/rtk-hardening-plan-20260807.md`.
+
+**Verified:** 534 recorded `Fix` states, zero prior `Float`/`Single` — 2026-08-07
+was the first episode, so **past gate results are not tainted**.
+
 ## ✅ 2026-08-07 18:39 EDT — RTK RESTORED TO FIX by a base-station power cycle
 
 RTK read `Float` from 15:40 until the operator power-cycled the dock and RTK
