@@ -191,6 +191,18 @@ the same `_turn_final_approach_pulse_ms` the turn loop calls. A 90° junction re
 **The validation run keeps every junction in the 45–70° band** — maximum exposure
 to the ceiling (it binds below 72°) while clear of the contested 86–100° band.
 
+**DEPLOYED 2026-08-09 01:16–01:22 EDT, motion-disabled.** The host now runs
+`0.6.4-beta32` (it skipped beta31 entirely); all 46 files byte-identical, both
+card paths at `16d883fa`, resource `?v=0.6.4-beta32&build=16d883fa`,
+`real_motion_allowed: false` read back. A zero-motion dry run confirms the new
+preflight executes on the host (`command_count_model:
+"executor_pulse_policy_replay"`, ladder `[1300.0, 942.5, 683.3]` for a 60°
+junction — pulse 1 already ceiling-bound at 1300 ms instead of 1500). Evidence:
+`docs/evidence-beta32-deploy-dryrun-20260809.json`; deploy record in
+`docs/deploy-runbook-p0.md`. **No motion has run on beta31 or beta32.** The
+4-segment validation run is pending daylight, a charged battery (mower is docked
+at `CHARGE_ON`) and per-run authorization.
+
 `pre-commit run --all-files` is green as of 2026-07-31 and is now a usable
 gate. Its hook pins must move with `requirements_test.txt`: the Ruff and mypy
 hook revs are pinned to the same versions CI installs, and skew between them is

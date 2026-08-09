@@ -10,9 +10,9 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 |                         | Host                                                           | Branch         |
 | ----------------------- | -------------------------------------------------------------- | -------------- |
-| Integration version     | `0.6.4-beta26` staging candidate                               | `0.6.4-beta26` candidate |
+| Integration version     | `0.6.4-beta32` staging candidate (deployed 2026-08-09, motion-disabled) | `0.6.4-beta32` candidate |
 | pymammotion pin         | `0.8.12.post1` fork wheel (container verified)                 | same           |
-| Card `CARD_VERSION`     | `0.6.4-beta26`; integration and HACS copies checksum-identical | `0.6.4-beta26` candidate |
+| Card `CARD_VERSION`     | `0.6.4-beta32`; integration and HACS copies checksum-identical | `0.6.4-beta32` candidate |
 | `manual_motion.py`      | present                                                        | present        |
 | `backend_capability.py` | present                                                        | present        |
 | `capabilities.py`       | present                                                        | present        |
@@ -33,6 +33,44 @@ reported `target_reached`. That is containment, not regression: the earlier
 passes were bought by driving past the waypoint and U-turning back. The next
 motion decision is whether to fix control quality (stop-latency lead, pulse
 sizing) or to accept overshoot-and-recovery — not a Gate 5 attempt.
+
+### beta32 preflight-model correction deploy — 2026-08-09 01:16-01:22 EDT
+
+`0.6.4-beta32` is deployed motion-disabled. Backup:
+`/config/mammotion-backup-20260809-0116-beta32.tgz`. All **46** files
+byte-identical to the tree (aggregate `634abef928fa5dcd4c53f5dfafe4cbae`), zero
+AppleDouble; both card copies `16d883faa32fc8aa5d399038245474cf`. API back in
+**40 s**, 128 entities in 133 s. Resource read back as
+`?v=0.6.4-beta32&build=16d883fa` (was `beta30&build=8ec0fb01` — the host skipped
+beta31 entirely). Backend verified `pymammotion 0.8.12.post1`. Gate off,
+`real_motion_allowed: false`, no session, `MODE_READY`, RTK **Fix**, BLE −48.
+
+**This is the first deploy of the beta31 reach work, and it carries a fix beta31
+needed.** beta31 was adversarially reviewed before deployment and did not clear;
+beta32 is beta31 plus one refusal-side correction — the turn feasibility preflight
+now models the overshoot ceiling instead of assuming full-length pulses. See
+`docs/HANDOVER-beta31-20260809.md` §2.6 for the four findings, three of which
+remain **open**.
+
+⚠️ **Four open findings ride along on this build.** The ceiling costs ~18° of turn
+capability (a 90° junction completes on beta30 and exhausts the 4-command budget
+on beta31/32 at the rates Gate 5 actually measured); its guarantee is written in
+commanded rather than delivered milliseconds; `16.5 °/s` is no longer a rate
+floor; and the ceiling biases turn landings into a tighter post-turn gate. **The
+validation run therefore keeps every junction in the 45–70° band.**
+
+Verified live after deploy, zero motion: `real_click_to_go_segment_limit: 4`, and
+a dry-run 4-segment path with 60° junctions inside `Backyard Right` returns
+`command_count_model: "executor_pulse_policy_replay"` with the ceiling-shortened
+ladder `[1300.0, 942.5, 683.3]` — **pulse 1 is already ceiling-bound at 1300 ms
+rather than the configured 1500**, which is the ceiling binding below 72° exactly
+as designed, and 3 of 4 commands needed leaves one of margin. Evidence:
+`docs/evidence-beta32-deploy-dryrun-20260809.json`.
+
+Motion preconditions were **not** met at deploy time and no motion was attempted:
+night (`initial_vio_feed.live: false`, `tracked_features: 0`, brightness `Dark`),
+mower docked at `CHARGE_ON`, `position_not_valid_for_motion`. The 4-segment
+validation run waits for daylight, a charged battery and fresh authorization.
 
 ### beta26 RTK design inversion deploy — 2026-08-07 20:46-20:50 EDT
 
