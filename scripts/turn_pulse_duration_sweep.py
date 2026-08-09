@@ -67,7 +67,21 @@ TOLERANCE_DEGREES = 18.0
 #: Commanded durations. Weighted toward the short end, which is where the
 #: constant-offset hypothesis and the real actuation floor both live.
 DURATIONS_MS = (200, 250, 300, 400, 500, 700, 1000, 1500)
-REPEATS = 2
+REPEATS = 1
+#: Each direction is swept as a CONTIGUOUS BLOCK, not alternated.
+#:
+#: The first sweep alternated the sign every call, which confounds turn direction
+#: with call parity: whichever sign leads is also always the first of its pair.
+#: It measured one direction rotating further in 8 pairs of 8, and could not say
+#: whether that was direction or order. A second run with the opposite lead
+#: settled it -- the same direction won from the second position, so the effect
+#: is DIRECTIONAL, 1.44x at matched 200 ms windows
+#: (docs/evidence-turn-direction-vs-order-20260809T234653Z.json).
+#:
+#: Blocks remove the confound entirely: every duration is measured at one sign
+#: before the sign changes, so a per-direction fit is clean and the additive term
+#: can be separated from the slope instead of being an artefact of interleaving.
+SIGN_BLOCKS = (1, -1)
 #: Generous, so the feasibility preflight never refuses. The turn stops on
 #: tolerance long before this, so it does not change what is measured.
 MAX_COMMANDS = 8
@@ -154,62 +168,95 @@ def _fit(points: list[tuple[float, float]]) -> tuple[float, float] | None:
     return slope, mean_y - slope * mean_x
 
 
-def analyse(samples: list[dict[str, Any]]) -> None:
-    """Report the two competing models against the delivered windows."""
+def _report_group(label: str, samples: list[dict[str, Any]]) -> None:
+    """Fit one direction and say which model its own data supports."""
     usable = [s for s in samples if s.get("window_ms") and not s.get("cadence_broken")]
     excluded = len(samples) - len(usable)
-    print("\n== RESULT ==")
+    print(f"\n  --- {label} ---")
     print(f"  {'cmd ms':>7} {'window ms':>10} {'rotation':>9} {'apparent':>9}  flags")
     for s in sorted(samples, key=lambda s: s.get("window_ms") or 0):
         window, rotation = s.get("window_ms"), s.get("rotation_degrees")
         rate = (
             f"{rotation / (window / 1000):8.2f}" if window and rotation else "     n/a"
         )
-        flags = "CADENCE-BROKEN" if s.get("cadence_broken") else ""
         print(
             f"  {s['commanded_ms']:7d} {window or 0:10.1f} {rotation or 0:9.3f} "
-            f"{rate}  {flags}"
+            f"{rate}  {'CADENCE-BROKEN' if s.get('cadence_broken') else ''}"
         )
     if excluded:
-        print(f"\n  {excluded} sample(s) excluded from the fit as cadence-broken")
-
+        print(f"  ({excluded} excluded as cadence-broken)")
     points = [(s["window_ms"] / 1000.0, s["rotation_degrees"]) for s in usable]
     fit = _fit(points)
     if fit is None:
         print("  too few usable samples to fit")
         return
     slope, intercept = fit
-    #: A two-point "fit" has zero residual by construction. The whole reason for
-    #: this sweep is that three points were not enough to carry the conclusion,
-    #: so it must not announce one from fewer.
-    min_points_for_a_verdict = 5
     through_origin = sum(y for _, y in points) / sum(x for x, _ in points)
-    print(f"\n  proportional model : rotation = {through_origin:.2f} deg/s * window")
-    print(
-        f"  offset model       : rotation = {slope:.2f} deg/s * window "
-        f"{intercept:+.2f} deg"
-    )
     resid_prop = sum((y - through_origin * x) ** 2 for x, y in points)
     resid_off = sum((y - (slope * x + intercept)) ** 2 for x, y in points)
     print(
-        f"  sum of squared residuals: proportional {resid_prop:.3f}, "
-        f"offset {resid_off:.3f}"
+        f"  proportional : {through_origin:6.2f} deg/s * window"
+        f"                 residual {resid_prop:8.3f}"
     )
-    if len(points) < min_points_for_a_verdict:
-        print(
-            f"\n  >>> NO VERDICT: {len(points)} usable sample(s), need "
-            f"{min_points_for_a_verdict}. The numbers above are indicative only."
-        )
+    print(
+        f"  offset       : {slope:6.2f} deg/s * window {intercept:+6.2f} deg"
+        f"   residual {resid_off:8.3f}"
+    )
+    # A two-point "fit" has zero residual by construction, and the whole reason
+    # this sweep exists is that three points could not carry a conclusion.
+    if len(points) < 5:
+        print(f"  >>> NO VERDICT for {label}: {len(points)} usable sample(s), need 5")
         return
-    verdict = (
-        "OFFSET MODEL WINS -- rotation is NOT proportional to duration"
-        if resid_off < resid_prop * 0.5
-        else "proportional model is adequate -- the offset hypothesis is not supported"
-    )
-    print(f"\n  >>> {verdict}")
     if resid_off < resid_prop * 0.5:
         print(
-            f"  >>> a pulse cannot land closer than ~{intercept:.1f} deg, however short"
+            f"  >>> {label}: OFFSET model wins -- a constant "
+            f"{intercept:+.2f} deg per pulse"
+        )
+    else:
+        print(f"  >>> {label}: proportional model is adequate")
+
+
+def analyse(samples: list[dict[str, Any]]) -> None:
+    """Fit each turn direction separately, then compare them.
+
+    Pooling the two directions is what made the first sweep unreadable: the
+    asymmetry is directional and 1.44x at matched windows, so a pooled fit
+    averages two different behaviours and its residuals hide both.
+    """
+    print("\n== RESULT ==")
+    groups = {
+        sign: [s for s in samples if s.get("sign") == sign]
+        for sign in ("+", "-")
+        if any(s.get("sign") == sign for s in samples)
+    }
+    if not groups:
+        _report_group("all samples", samples)
+        return
+    for sign, group in groups.items():
+        _report_group(f"sign {sign}", group)
+
+    print("\n  --- direction comparison, at matched commanded durations ---")
+    by_duration: dict[int, dict[str, float]] = {}
+    for s in samples:
+        if s.get("rotation_degrees") and not s.get("cadence_broken"):
+            by_duration.setdefault(s["commanded_ms"], {})[s.get("sign", "?")] = s[
+                "rotation_degrees"
+            ]
+    ratios = []
+    for duration in sorted(by_duration):
+        pair = by_duration[duration]
+        if "+" in pair and "-" in pair and pair["-"]:
+            ratio = pair["+"] / pair["-"]
+            ratios.append(ratio)
+            print(
+                f"  {duration:5d} ms  + {pair['+']:7.3f}  - {pair['-']:7.3f}  "
+                f"ratio {ratio:5.2f}"
+            )
+    if ratios:
+        print(
+            f"\n  '+' rotated further in {sum(1 for r in ratios if r > 1)}"
+            f"/{len(ratios)} matched pairs, ratio "
+            f"{min(ratios):.2f}-{max(ratios):.2f}"
         )
 
 
@@ -224,8 +271,14 @@ def main() -> int:  # noqa: C901
             raise SystemExit(f"{required} missing -- `set -a && source .env && set +a`")
 
     failed = preflight()
-    plan = [(d, i) for d in DURATIONS_MS for i in range(REPEATS)]
+    plan = [
+        (d, sign, i)
+        for sign in SIGN_BLOCKS
+        for d in DURATIONS_MS
+        for i in range(REPEATS)
+    ]
     print(f"\n== PLAN ==  {len(plan)} calls, in-place turns, blades off")
+    print(f"  {len(DURATIONS_MS) * REPEATS} calls at sign +, then the same at sign -")
     for duration_ms in DURATIONS_MS:
         print(
             f"  {duration_ms:5d} ms  x{REPEATS}  heading error "
@@ -264,14 +317,15 @@ def main() -> int:  # noqa: C901
             return 1
         armed = True
 
-        for index, (duration_ms, repeat) in enumerate(plan):
+        for index, (duration_ms, sign, repeat) in enumerate(plan):
             heading = _state("sensor.back_yard_clip_skywalker_vio_heading")
             if heading is None:
                 print("  vio_heading unreadable -- stopping early")
                 break
-            # Alternate the sign so the mower oscillates about its start heading
-            # instead of walking a full circle over sixteen calls.
-            error = _heading_error_for(duration_ms) * (1 if index % 2 == 0 else -1)
+            # Fixed sign within a block. The mower therefore walks around its
+            # own heading over a block instead of oscillating, which is the
+            # point: interleaving is what made the first sweep unreadable.
+            error = _heading_error_for(duration_ms) * sign
             response = _call(
                 "vio_turn_to_heading",
                 {
@@ -295,6 +349,8 @@ def main() -> int:  # noqa: C901
             sample = {
                 "commanded_ms": duration_ms,
                 "repeat": repeat,
+                "sign": "+" if sign > 0 else "-",
+                "block_position": index,
                 "heading_error_degrees": error,
                 "delivered_pulse_ms": command.get("pulse_duration_ms"),
                 "final_approach_reason": (command.get("final_approach") or {}).get(
@@ -311,7 +367,8 @@ def main() -> int:  # noqa: C901
             samples.append(sample)
             out.write_text(json.dumps(samples, indent=1))  # save before parsing
             print(
-                f"  [{index + 1:2d}/{len(plan)}] {duration_ms:5d} ms -> "
+                f"  [{index + 1:2d}/{len(plan)}] sign {'+' if sign > 0 else '-'} "
+                f"{duration_ms:5d} ms -> "
                 f"window {sample['window_ms']} ms, "
                 f"rotation {sample['rotation_degrees']} deg"
                 + ("  CADENCE-BROKEN" if sample["cadence_broken"] else "")
