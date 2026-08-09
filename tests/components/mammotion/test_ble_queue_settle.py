@@ -204,3 +204,54 @@ async def test_a_dry_run_segment_never_waits_on_the_queue(monkeypatch) -> None:
 
     assert called == []
     assert result["queue_settle"] is None
+
+
+@pytest.mark.asyncio
+async def test_refresh_cadence_absorbs_a_slow_write_instead_of_adding_to_it(
+    monkeypatch,
+) -> None:
+    """Refreshes must fire on a fixed cadence, not one interval after each write.
+
+    Motion continues only while refresh writes keep arriving, so the gap between
+    commands REACHING the mower is what matters. Sleeping a full interval after
+    awaiting each write makes that gap `interval + write_duration`.
+
+    That is not academic on this link. Across all 98 refresh writes of the five
+    real runs of 2026-08-09 the latency was p50 225.6 / p95 1029.2 / max 2014.0
+    ms, with 59% of writes over the 200 ms interval -- so sleep-then-await put a
+    median ~426 ms between commands against a 200 ms design, and the tail
+    starved the device watchdog outright (a 1303.972 ms write consumed an entire
+    1303.7 ms pulse).
+
+    Simulated here with a write that costs a full interval: on a fixed schedule
+    the second fire is already due when the first write returns, so the wait is
+    zero and the cadence holds. The old behaviour would have slept another full
+    interval on top.
+    """
+    clock = {"t": 0.0}
+    interval, write_cost = 0.2, 0.2
+    fires: list[float] = []
+
+    async def fake_sleep(_coordinator: Any, seconds: float) -> None:
+        clock["t"] += seconds
+
+    async def fake_resend() -> None:
+        fires.append(clock["t"])
+        clock["t"] += write_cost
+
+    monkeypatch.setattr(services.time, "monotonic", lambda: clock["t"])
+    monkeypatch.setattr(services, "_motion_open_sleep", fake_sleep)
+
+    report = await services._motion_refresh_window(  # noqa: SLF001
+        object(),
+        resend=fake_resend,
+        duration_seconds=1.0,
+        refresh_interval_ms=int(interval * 1000),
+    )
+
+    assert report["refresh_commands_sent"] == len(fires)
+    assert fires, "no refresh ever fired"
+    # Fires track the fixed schedule (0.2, 0.4, ...) rather than drifting out by
+    # the write cost each time (which would give 0.2, 0.6, 1.0, ...).
+    for index, fired_at in enumerate(fires):
+        assert fired_at == pytest.approx(interval * (index + 1), abs=1e-6)

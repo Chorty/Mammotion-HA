@@ -4910,7 +4910,33 @@ async def _motion_refresh_window(
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             break
-        await _motion_open_sleep(coordinator, min(interval_seconds, remaining))
+        # Fire on a FIXED cadence measured from the window start, not one
+        # interval after the previous write *finished*. The app schedules on a
+        # timer (`timer.schedule(task, 0L, 200)`) and does not await delivery;
+        # sleeping a full interval after each await instead makes the real
+        # cadence `interval + write_duration`.
+        #
+        # That is not a rounding error on this link. Across all 98 refresh
+        # writes of the five real runs of 2026-08-09 the write latency was
+        # p50 225.6 / p90 572.0 / p95 1029.2 / max 2014.0 ms, and 59% of writes
+        # exceeded the 200 ms interval outright. Sleep-then-await therefore put
+        # a MEDIAN of ~426 ms between commands reaching the mower against a
+        # 200 ms design, and ~1229 ms at p95 -- long enough for the device-side
+        # watchdog to stop the motor mid-pulse. That is the measured mechanism
+        # behind the dead-time pulses (a 1303.972 ms write that starved a whole
+        # 1303.7 ms pulse) and the +112%/+117% delivered-window overruns.
+        #
+        # Catching up is bounded and cannot burst: `max_refreshes` still caps
+        # the count, the loop still awaits each write so only one is ever in
+        # flight, and a write slower than the interval simply yields a zero
+        # sleep rather than a queue. Behaviour is unchanged whenever writes are
+        # faster than the interval, which is the case this was designed for.
+        next_fire = (
+            window_started + (report["refresh_commands_sent"] + 1) * interval_seconds
+        )
+        await _motion_open_sleep(
+            coordinator, min(max(0.0, next_fire - time.monotonic()), remaining)
+        )
         if time.monotonic() >= deadline:
             break
         resend_started = time.monotonic()
