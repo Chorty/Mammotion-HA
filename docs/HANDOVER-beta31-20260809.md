@@ -20,6 +20,17 @@ and no §4 re-pinning is owed.
 manifest.json · pyproject.toml · CARD_VERSION · uv.lock  — all 0.6.4-beta31 / 0.6.4b31
 ```
 
+> **Superseded 2026-08-09 by `0.6.4-beta32`.** beta31 was adversarially reviewed
+> before deployment and **not** cleared as-is; see §2.6. beta32 is beta31 plus one
+> fix — the turn feasibility preflight now models the overshoot ceiling instead of
+> assuming full-length pulses — and nothing else. It is refusal-side only: it can
+> refuse a turn earlier, it cannot make the mower do anything beta31 would not.
+> Still no `LUBA_ACCEPTANCE_PROFILE` key touched. `541 pytest · 20 frontend ·
+> ruff · mypy · pre-commit` green; all four version files at
+> `0.6.4-beta32` / `0.6.4b32`. The §2.2 overshoot-allowance fix is deliberately
+> **not** in beta32, so the validation run measures reach against turn dynamics
+> that have not just been rewritten.
+
 ## 2. Attack these first
 
 ### 2.1 The overshoot ceiling has never touched hardware
@@ -52,9 +63,36 @@ This was a deliberate trade (a bound that does not depend on the estimator being
 right) but it has a cost: pulses are systematically shorter, so a slow turn needs
 more of them against a 4-command budget. Worked example, Gate 5 geometry at the
 rates actually observed: still 3 pulses. At a uniformly slow 14.5 °/s: 5 pulses,
-which exceeds the budget — **though that geometry also fails without the ceiling**
-(97° at 21.75°/pulse is 4.5 pulses). The ceiling makes an existing failure mode
-slightly more likely; it does not create one.
+which exceeds the budget.
+
+> ⚠️ **CORRECTED 2026-08-09.** This section previously excused that with "though
+> that geometry also fails without the ceiling (97° at 21.75°/pulse is 4.5
+> pulses)". **That was wrong.** It counted pulses to *zero* error; the loop
+> returns at `abs(error) <= heading_tolerance_degrees`, so it needs
+> `(97 − 18) / 21.75 = 3.6` → **4 pulses, which beta30 completes.** The ceiling
+> does not make an existing failure mode "slightly more likely" — it *creates*
+> one in this band. Replayed through the shipped `_turn_final_approach_pulse_ms`,
+> max completable junction turn within the 4-command budget at zero write
+> overrun:
+>
+> | true rate | beta30 | beta31 | lost |
+> | --------- | ------ | ------ | ---- |
+> | 14.49 °/s | 104.9° | 86.2°  | 18.7° |
+> | 14.90 °/s | 107.3° | 89.1°  | 18.2° |
+> | 21.20 °/s | 145.1° | 131.6° | 13.5° |
+>
+> 14.49 and 14.90 °/s are pulses 1 and 2 of Gate 5 attempt 5 on elapsed time —
+> not a hypothetical slow tier. **A 90° junction completes on beta30 and exhausts
+> the budget on beta31 at those rates.** BLE write overrun partly masks it: at the
+> ~260 ms median overrun of that run, beta31 clears 110°. So the outcome now
+> depends on BLE latency, which is not a property anyone controls.
+>
+> The lever is the overshoot allowance `K`, hard-coded as `K = tolerance` — the
+> strictest possible choice. `K = 2 × tolerance` costs only ~4.5° of capability
+> instead of ~18°, lands the Gate 5 incident pulse at +0.52° instead of +10.34°,
+> and still bounds the worst case at 49.56 °/s to 4° outside tolerance — one
+> recovery pulse, far from the 90° reverse-recovery wall. **Not yet implemented**;
+> it is the open item.
 
 **If you want to attack the value:** lowering C weakens the guard and widens
 margin-to-overshoot; raising it strengthens the guard and costs pulses. The two
@@ -91,6 +129,61 @@ check without sending a command — burning a realignment slot for nothing. beta
 skips it. Mower behaviour is unchanged, but the **effective trigger is now the
 tolerance**, and the threshold parameter is dead in the gap between them. To make
 it live again, lower the tolerance below it.
+
+### 2.6 Found in adversarial review, 2026-08-09 — three more
+
+Attacking the branch before deploying it turned up four things §2.1–2.5 missed.
+One is fixed in beta32; the rest are open.
+
+1. **FIXED in beta32 — the preflight did not model the ceiling.**
+   `_vio_turn_budget_feasibility` assumed every command ran a full
+   `turn_pulse_duration_ms`, so it admitted turns beta31's shortened pulses
+   cannot finish: at a 4-command budget the two models disagree over
+   **100–117°**, and the guard's documented fail-closed property — the whole
+   reason it exists after Gate 4 — was broken from the planning side. It now
+   replays the executor's own policy by calling the same
+   `_turn_final_approach_pulse_ms` the turn loop calls, so the two cannot drift
+   again. A 90° junction reads 4 commands, not 3: feasible at **exactly** the
+   budget, with no margin left.
+
+2. **OPEN — the ceiling's guarantee is written in commanded milliseconds, but the
+   mower rotates for the delivered window.** This is the same
+   commanded-vs-delivered error item 3 fixes in the estimator, left unfixed in
+   the ceiling ten lines away. `ceiling_ms` becomes `duration_seconds` for
+   `_motion_refresh_window`, whose `elapsed_ms` overran nominal by
+   +30 / +260 / +543 ms on the three Gate 5 pulses (+975 ms in the beta19
+   characterization). For the pulse-3 geometry the guarantee then holds only to
+   58.3 / 48.0 / 39.4 °/s — and **48.0 and 39.4 are below the 49.56 °/s the
+   hardware has actually produced.** Two of the three pulses on the run that
+   motivated the ceiling were already past that point. The stated 21% margin is
+   not there.
+
+3. **OPEN — `_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND = 16.5` is no longer a
+   floor.** Gate 5 attempt 5 measured 14.905 and 14.490 °/s against delivered
+   windows, ~12% below it; they were invisible on the old denominator. It has
+   deliberately **not** been lowered: at 14.4 °/s the ceiling-aware model needs 5
+   commands for a 90° junction against a budget of 4, so **a truthful rate floor
+   and L-path junctions cannot both hold at the current `vio_turn_max_commands`.**
+   That is a capability decision, not a constant edit. Pinned by
+   `test_conservative_rate_floor_is_known_optimistic`. Fixing §2.2's `K` resolves
+   it: at `K = 2 × tolerance` a 90° junction completes at 14.49 °/s.
+
+4. **OPEN — the ceiling changes where turns land, into a tighter gate.** It
+   converges from above and stops on first entry into tolerance, so landing error
+   clusters just inside 18° instead of near 0 (replay: mean |landing| ~13° vs
+   ~6°). The post-turn alignment gate is
+   `min(heading_tolerance, vio_realign_threshold)` = **15**, tighter than the
+   turn's own tolerance, so expect materially more post-turn corrections — each
+   spending one of three realignment slots, with `post_turn_realign_incomplete`
+   aborting the segment. A larger residual heading error entering each linear leg
+   also means more cross-track error, on exactly the axis §2.4 says to measure.
+   **The two beta31 changes work against each other here.**
+
+Also, minor: §2.5 says "mower behaviour is unchanged". True of motion, not of
+gating — those skipped dispatches also re-verified blade-safe, `work_mode`, VIO
+feed liveness and BLE transport before returning. And no test covers multi-pulse
+convergence against `vio_turn_max_commands`; every ceiling test is single-pulse
+arithmetic, which is why item 1 above survived 538 green tests.
 
 ## 3. What changed, with citations
 
@@ -161,6 +254,14 @@ daylight (the `vio_active` gate keys off `turn_mode == "vio"` unconditionally, s
 closed-loop segment cannot run after dark), RTK Fix, `tracked_features` ≳ 70,
 blades off, and a charged battery — the mower was left at ~22% and needs docking
 first. Arm immediately before, disarm immediately after, verify both.
+
+**Junction angles: keep every turn in the 45–70° band.** This is a deliberate
+constraint from §2.2/§2.6, not caution for its own sake. Below 72° the ceiling is
+the active bound from the first pulse of every turn, so the path gives *maximum*
+exposure to the new code — `bounded_by_max_rate_ceiling` on essentially every
+turn pulse — while staying clear of the 86–100° band where the budget and the
+rate floor are in doubt. A 90° L-path is the geometry you eventually want and is
+**not** the geometry to debut on; it sits exactly on the contested edge.
 
 Run a **4-segment path with a turn at each junction**, and record:
 

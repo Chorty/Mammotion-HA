@@ -7619,9 +7619,108 @@ def _turn_final_approach_pulse_ms(
 #:   It remains a refresh-regime figure -- no single-shot per-degree evidence
 #:   exists -- so without refresh the translation criterion is still left to
 #:   the runtime displacement cap instead of estimated.
+#:
+#: ⚠️ 16.5 IS NO LONGER A FLOOR, and deliberately has not been moved. Gate 5
+#: attempt 5 measured 30.460 deg over a 2043.622 ms delivered window (14.905
+#: deg/s) and 22.174 deg over 1530.326 ms (14.490 deg/s) -- both BELOW this
+#: constant, which claims to be the minimum ever observed. They were invisible
+#: until beta31 started dividing by the delivered window instead of the
+#: commanded one; on the old denominator the second reads 14.78 and the first
+#: 20.31. Evidence:
+#: docs/evidence-gate5-attempt5-segment1-raw-20260808.json.
+#:
+#: Lowering it to 14.4 is NOT a free correction: at that rate the ceiling-aware
+#: model below needs 5 commands for a 90 deg junction against a 4-command
+#: budget, so a truthful floor and L-path junctions are mutually exclusive at
+#: the current `vio_turn_max_commands`. Resolving that is a capability decision
+#: (widen the turn overshoot allowance, or raise the budget -- a
+#: `LUBA_ACCEPTANCE_PROFILE` key), not a constant edit, and it is tracked in
+#: docs/HANDOVER-beta31-20260809.md. Until then this guard is fail-closed with
+#: respect to the PULSE POLICY (modelled exactly, below) and ~12% optimistic
+#: with respect to the RATE, so the admitted band 86-100 deg is approximate.
+#: `test_conservative_rate_floor_is_known_optimistic` pins the gap so it cannot
+#: be forgotten.
 _VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND = 16.5
+#: The lowest rotation rate ever measured against a delivered window. Not used
+#: to plan anything -- it exists so the staleness of the constant above is a
+#: tested fact rather than a comment.
+_VIO_TURN_MEASURED_MINIMUM_DEGREES_PER_SECOND = 14.490
 _VIO_TURN_SINGLE_SHOT_DEGREES_PER_COMMAND = 8.0
 _VIO_TURN_CONSERVATIVE_TRANSLATION_M_PER_DEGREE = 0.0026
+
+
+def _vio_turn_commands_at_rate(
+    *,
+    initial_error_degrees: float,
+    heading_tolerance_degrees: float,
+    degrees_per_second: float,
+    turn_degrees_per_second: float,
+    pulse_duration_ms: float,
+    slow_pulse_duration_ms: float,
+    slow_threshold_degrees: float,
+    refresh_interval_ms: int,
+    command_ceiling: int = 64,
+) -> tuple[int | None, list[float]]:
+    """Count the commands a turn needs if the mower rotates at a fixed rate.
+
+    Replays the executor's OWN pulse-length policy by calling the same
+    `_turn_final_approach_pulse_ms` the turn loop calls, so the planning model
+    cannot drift away from the thing it predicts. That drift is exactly what
+    beta31 introduced: the ceiling shortens pulses as the error closes, while
+    the old closed-form `ceil(required / (rate * full_pulse))` still assumed
+    every command ran the full `pulse_duration_ms`. It therefore under-counted
+    commands and admitted turns the executor could not finish -- the failure the
+    guard exists to prevent, reintroduced from the other side.
+
+    Two rates, and they are not the same thing:
+
+    * ``degrees_per_second`` is what the MOWER is assumed to do physically. Pass
+      the conservative floor; it is the pessimistic input.
+    * ``turn_degrees_per_second`` is what the executor's ESTIMATOR believes
+      before it has measured anything (the configured rate, 37 by default). It
+      must be the configured value, not the floor: substituting the floor makes
+      the modelled `needed_ms` larger, which biases pulses LONGER and the
+      command count LOWER, i.e. fail-open.
+
+    Returns ``(commands, pulse_durations)``; ``commands`` is None when the turn
+    does not converge within ``command_ceiling``.
+    """
+    error = abs(float(initial_error_degrees))
+    observed_rotation_degrees = 0.0
+    observed_rotation_ms = 0.0
+    pulses: list[float] = []
+    for command in range(1, command_ceiling + 1):
+        if error <= heading_tolerance_degrees:
+            return command - 1, pulses
+        # Mirrors the turn loop's own base-duration choice. The no-progress /
+        # blind-feed slow cap is NOT modelled: it only shortens pulses, so
+        # omitting it under-states the command count in the fail-open
+        # direction -- but it fires on telemetry conditions no preflight can
+        # know, and modelling it as always-on would refuse nearly everything.
+        base_ms = (
+            slow_pulse_duration_ms
+            if error <= slow_threshold_degrees
+            else pulse_duration_ms
+        )
+        pulse_ms = float(
+            _turn_final_approach_pulse_ms(
+                heading_error_degrees=error,
+                heading_tolerance_degrees=heading_tolerance_degrees,
+                observed_rotation_degrees=observed_rotation_degrees,
+                observed_rotation_ms=observed_rotation_ms,
+                default_degrees_per_second=turn_degrees_per_second,
+                pulse_duration_ms=base_ms,
+                refresh_interval_ms=refresh_interval_ms,
+            )["pulse_duration_ms"]
+        )
+        swept = degrees_per_second * (pulse_ms / 1000)
+        pulses.append(round(pulse_ms, 1))
+        observed_rotation_degrees += swept
+        observed_rotation_ms += pulse_ms
+        error -= swept
+        if error <= heading_tolerance_degrees:
+            return command, pulses
+    return None, pulses
 
 
 def _vio_turn_budget_feasibility(
@@ -7632,6 +7731,9 @@ def _vio_turn_budget_feasibility(
     pulse_duration_ms: float,
     motion_refresh_interval_ms: int,
     max_displacement_m: float,
+    turn_degrees_per_second: float = _DEFAULT_TURN_DEGREES_PER_SECOND,
+    slow_pulse_duration_ms: float = 700.0,
+    slow_threshold_degrees: float = 15.0,
 ) -> dict[str, Any]:
     """Judge whether a VIO turn can finish inside its configured budget.
 
@@ -7648,6 +7750,17 @@ def _vio_turn_budget_feasibility(
     it refuses the failed Gate 4 segment and admits all four turns of the
     2026-08-04 daylight characterization, which succeeded at +45/-90/+135/-170
     degrees.
+
+    Under refresh the command count REPLAYS THE EXECUTOR'S OWN PULSE POLICY
+    (`_vio_turn_commands_at_rate`) rather than assuming every command runs the
+    full `pulse_duration_ms`. beta31's overshoot ceiling shortens pulses as the
+    error closes, so the closed-form count silently under-estimated: a 90 deg
+    junction reads 4 commands, not 3, and the admitted band narrows from ~117
+    to ~100 deg. Without refresh, rotation is a duration-independent quantum
+    rather than a rate, the ceiling is inert, and the closed form still applies.
+
+    Still only as good as `_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND`, which is
+    known to be ~12% optimistic -- see that constant.
     """
     pulse_seconds = float(pulse_duration_ms) / 1000
     translation_per_degree: float | None
@@ -7680,6 +7793,8 @@ def _vio_turn_budget_feasibility(
         "translation_bound_source": translation_bound_source,
         "estimated_translation_m": 0.0 if translation_per_degree is not None else None,
         "max_displacement_m": max_displacement_m,
+        "command_count_model": None,
+        "modelled_pulse_durations_ms": None,
     }
     required = info["required_rotation_degrees"]
     if required <= 0:
@@ -7689,7 +7804,26 @@ def _vio_turn_budget_feasibility(
         info["feasible"] = False
         info["reason"] = "turn_budget"
         return info
-    needed = math.ceil(required / per_command_rotation)
+    if motion_refresh_interval_ms > 0:
+        # Replay the real pulse policy, ceiling included.
+        modelled, pulses = _vio_turn_commands_at_rate(
+            initial_error_degrees=initial_error_degrees,
+            heading_tolerance_degrees=heading_tolerance_degrees,
+            degrees_per_second=_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND,
+            turn_degrees_per_second=turn_degrees_per_second,
+            pulse_duration_ms=pulse_duration_ms,
+            slow_pulse_duration_ms=slow_pulse_duration_ms,
+            slow_threshold_degrees=slow_threshold_degrees,
+            refresh_interval_ms=motion_refresh_interval_ms,
+        )
+        info["command_count_model"] = "executor_pulse_policy_replay"
+        info["modelled_pulse_durations_ms"] = pulses
+        # Non-convergence within the replay ceiling is refusal, not a fallback:
+        # a turn the policy cannot close is exactly what this guard is for.
+        needed = modelled if modelled is not None else max_commands + 1
+    else:
+        info["command_count_model"] = "single_shot_quantum_closed_form"
+        needed = math.ceil(required / per_command_rotation)
     info["estimated_commands_needed"] = needed
     estimated_translation: float | None = None
     if translation_per_degree is not None:
@@ -7925,6 +8059,11 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
             pulse_duration_ms=float(pulse_duration_ms),
             motion_refresh_interval_ms=motion_refresh_interval_ms,
             max_displacement_m=max_displacement_m,
+            # This loop's own pulse-policy inputs, so the model replays what
+            # this call will actually do rather than the helper's defaults.
+            turn_degrees_per_second=turn_degrees_per_second,
+            slow_pulse_duration_ms=float(slow_pulse_duration_ms),
+            slow_threshold_degrees=float(slow_threshold_degrees),
         )
     if dry_run:
         result["stop_reason"] = "dry_run"
@@ -11784,6 +11923,10 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
                         pulse_duration_ms=float(turn_pulse_duration_ms),
                         motion_refresh_interval_ms=motion_refresh_interval_ms,
                         max_displacement_m=max_turn_translation_distance,
+                        # The segment executor lets the turn primitive default
+                        # its slow-pulse pair, so the model must too; only the
+                        # configured rate is forwarded.
+                        turn_degrees_per_second=turn_degrees_per_second,
                     ),
                 }
             )

@@ -24,6 +24,7 @@ the guard must admit all four and still refuse Gate 4.
 from __future__ import annotations
 
 import json
+import math
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -32,10 +33,13 @@ import pytest
 
 from custom_components.mammotion import services as mammotion_services
 from custom_components.mammotion.services import (
+    _VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND,
     _VIO_TURN_CONSERVATIVE_TRANSLATION_M_PER_DEGREE,
+    _VIO_TURN_MEASURED_MINIMUM_DEGREES_PER_SECOND,
     _raw_pymammotion_execute_multi_segment,
     _raw_pymammotion_execute_vector_segment,
     _vio_turn_budget_feasibility,
+    _vio_turn_commands_at_rate,
     _vio_turn_to_heading,
 )
 
@@ -93,11 +97,22 @@ def test_helper_keeps_a_90_degree_junction_turn_feasible() -> None:
 
     assert feasibility["feasible"] is True
     assert feasibility["reason"] == "within_budget"
-    # ceil(72 / 24.75) = 3 commands; 90 deg * 0.0026 m/deg = 0.234 m stays under
-    # the 0.25 m cap. This headroom is what bounds the per-degree constant from
-    # above: anything over 0.25/90 = 0.002778 would refuse an L-path junction,
-    # which is the exact geometry Gate 4 needs.
-    assert feasibility["estimated_commands_needed"] == 3
+    # 4 commands, not the 3 the pre-beta32 closed form reported. The closed form
+    # assumed every command ran the full 1500 ms; the beta31 overshoot ceiling
+    # shortens them to 1500/1394/1048/787 ms as the error closes, and the model
+    # now replays that. The verdict is unchanged but the margin is gone: an
+    # L-path junction is feasible at EXACTLY the 4-command budget, so any further
+    # shortening -- or any rate below the 16.5 deg/s floor, which
+    # `test_conservative_rate_floor_is_known_optimistic` shows has already been
+    # measured -- makes the canonical junction infeasible.
+    assert feasibility["estimated_commands_needed"] == 4
+    assert feasibility["max_commands"] == 4
+    assert feasibility["command_count_model"] == "executor_pulse_policy_replay"
+    assert feasibility["modelled_pulse_durations_ms"] == [1500.0, 1387.5, 1005.9, 729.3]
+    # 90 deg * 0.0026 m/deg = 0.234 m stays under the 0.25 m cap. This headroom
+    # is what bounds the per-degree constant from above: anything over
+    # 0.25/90 = 0.002778 would refuse an L-path junction, which is the exact
+    # geometry Gate 4 needs.
     assert feasibility["estimated_translation_m"] == pytest.approx(0.234, abs=0.001)
 
 
@@ -112,12 +127,131 @@ def test_helper_refuses_when_estimated_translation_exceeds_the_cap() -> None:
         max_displacement_m=0.25,
     )
 
-    # ceil(112 / 24.75) = 5 commands fit the budget, but sweeping 130 deg at
+    # 6 ceiling-aware commands fit the 8-command budget, but sweeping 130 deg at
     # 0.0026 m/deg = 0.338 m would exceed the 0.25 m cap the run enforces anyway.
+    # The two criteria are independent and the budget one must not mask this.
     assert feasibility["feasible"] is False
     assert feasibility["reason"] == "translation_cap"
-    assert feasibility["estimated_commands_needed"] == 5
+    assert feasibility["estimated_commands_needed"] == 6
     assert feasibility["estimated_translation_m"] == pytest.approx(0.338, abs=0.001)
+
+
+def test_feasibility_model_replays_the_executors_own_pulse_policy() -> None:
+    """The planning model and the executor must not be able to disagree.
+
+    beta31 added an overshoot ceiling that shortens turn pulses as the error
+    closes, but left the preflight assuming every command ran the full pulse.
+    The preflight therefore promised turns the executor could not finish -- the
+    Gate 4 failure mode, reintroduced from the planning side. The model now
+    calls the same `_turn_final_approach_pulse_ms` the turn loop calls, so the
+    two cannot drift again.
+
+    The regression guard: at the accepted 4-command budget the two models
+    disagree over 100-117 deg. A closed form over full-length pulses says
+    ceil((105 - 18) / 24.75) = 4 commands and admits the turn; the real policy
+    needs 5, because the ceiling shortens every pulse after the first. Anything
+    in that band would have been dispatched and then aborted mid-turn after four
+    pulses and real translation. 117 deg is where the closed form itself gives
+    up, so the whole band was previously invisible.
+    """
+    error = 105.0
+    closed_form = math.ceil(
+        (error - 18.0) / (_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND * 1.5)
+    )
+    modelled, pulses = _vio_turn_commands_at_rate(
+        initial_error_degrees=error,
+        heading_tolerance_degrees=18.0,
+        degrees_per_second=_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND,
+        turn_degrees_per_second=37.0,
+        pulse_duration_ms=1500.0,
+        slow_pulse_duration_ms=700.0,
+        slow_threshold_degrees=15.0,
+        refresh_interval_ms=200,
+    )
+
+    assert closed_form == 4
+    assert modelled == 5
+    # Full pulses while the error is above the 72 deg binding threshold, then
+    # monotonically shorter ones once the ceiling takes over. It is the tail the
+    # closed form cannot see.
+    assert pulses == [1500.0, 1500.0, 1225.0, 888.1, 643.9]
+    assert pulses == sorted(pulses, reverse=True)
+
+    # And the guard now refuses it at the accepted 4-command budget instead of
+    # dispatching it.
+    feasibility = _vio_turn_budget_feasibility(
+        initial_error_degrees=error,
+        heading_tolerance_degrees=18.0,
+        max_commands=4,
+        pulse_duration_ms=1500.0,
+        motion_refresh_interval_ms=200,
+        max_displacement_m=0.3,
+    )
+
+    assert feasibility["feasible"] is False
+    assert feasibility["reason"] == "turn_budget"
+    assert feasibility["command_count_model"] == "executor_pulse_policy_replay"
+
+
+def test_feasibility_estimator_seed_must_be_the_configured_rate() -> None:
+    """Seeding the model's estimator with the floor would bias it fail-OPEN.
+
+    `_vio_turn_commands_at_rate` takes two rates: what the mower does
+    physically (the conservative floor) and what the executor's estimator
+    believes before it has measured anything (the configured rate). Passing the
+    floor for both looks harmless and is not -- a lower believed rate makes the
+    modelled `needed_ms` larger, which keeps pulses on the full-length
+    "cruising" branch and yields a LOWER command count, i.e. the model would
+    under-count exactly the way the closed form did.
+    """
+    kwargs = {
+        "initial_error_degrees": 60.0,
+        "heading_tolerance_degrees": 18.0,
+        "degrees_per_second": _VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND,
+        "pulse_duration_ms": 1500.0,
+        "slow_pulse_duration_ms": 700.0,
+        "slow_threshold_degrees": 15.0,
+        "refresh_interval_ms": 200,
+    }
+    correct, _ = _vio_turn_commands_at_rate(turn_degrees_per_second=37.0, **kwargs)
+    seeded_with_floor, _ = _vio_turn_commands_at_rate(
+        turn_degrees_per_second=_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND, **kwargs
+    )
+
+    assert correct is not None and seeded_with_floor is not None
+    assert seeded_with_floor <= correct
+
+
+def test_conservative_rate_floor_is_known_optimistic() -> None:
+    """Pins a live inaccuracy so it cannot quietly become load-bearing.
+
+    `_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND` claims to be the minimum
+    rotation rate ever observed. It is not, and has not been moved: Gate 5
+    attempt 5 measured 14.490 deg/s against a delivered window, ~12% below it.
+    Lowering the constant is not a free correction -- at 14.4 deg/s a 90 deg
+    junction needs 5 commands against the accepted budget of 4, so a truthful
+    floor and L-path junctions cannot both hold at the current
+    `vio_turn_max_commands`. This test exists so that trade is a decision
+    somebody makes, not a comment somebody misses.
+    """
+    assert (
+        _VIO_TURN_MEASURED_MINIMUM_DEGREES_PER_SECOND
+        < _VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND
+    )
+
+    at_measured_minimum, _ = _vio_turn_commands_at_rate(
+        initial_error_degrees=90.0,
+        heading_tolerance_degrees=18.0,
+        degrees_per_second=_VIO_TURN_MEASURED_MINIMUM_DEGREES_PER_SECOND,
+        turn_degrees_per_second=37.0,
+        pulse_duration_ms=1500.0,
+        slow_pulse_duration_ms=700.0,
+        slow_threshold_degrees=15.0,
+        refresh_interval_ms=200,
+    )
+
+    assert at_measured_minimum == 5
+    assert at_measured_minimum > 4
 
 
 def test_helper_uses_the_single_shot_quantum_without_refresh() -> None:

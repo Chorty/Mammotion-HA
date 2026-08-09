@@ -156,6 +156,41 @@ accepted and no §4 re-pinning is owed.
 Handover, open attacks and the validation-run design:
 `docs/HANDOVER-beta31-20260809.md`.
 
+## beta32 (undeployed) — beta31 reviewed, one fix, NOT cleared as-is
+
+beta31 was adversarially reviewed on 2026-08-09 before any deployment and **did
+not clear**. beta32 = beta31 + one refusal-side fix. Read
+`docs/HANDOVER-beta31-20260809.md` §2.6 before touching turn code.
+
+**Fixed:** `_vio_turn_budget_feasibility` assumed every turn command ran a full
+`turn_pulse_duration_ms`, while beta31's ceiling shortens them — so the preflight
+admitted turns the executor cannot finish (the two models disagree over
+**100–117°** at a 4-command budget). It now replays the executor's own policy via
+the same `_turn_final_approach_pulse_ms` the turn loop calls. A 90° junction reads
+4 commands, not 3: feasible at **exactly** the budget, no margin.
+
+**Open, and blocking a 90° L-path:**
+1. ⚠️ **The ceiling costs ~18° of turn capability.** Replayed through the shipped
+   code: a 90° junction completes on beta30 and **exhausts the 4-command budget on
+   beta31** at 14.49/14.90 °/s — the rates Gate 5 attempt 5 actually measured. The
+   handover's excuse for this was arithmetic that counted pulses to zero error
+   instead of to tolerance; it is corrected in §2.2. Fix is to widen the overshoot
+   allowance from `K = tolerance` to `K = 2 × tolerance` (~4.5° cost instead of
+   ~18°). Not implemented.
+2. ⚠️ **The ceiling's guarantee is in commanded ms; the mower rotates for the
+   delivered window.** At the +260/+543 ms overruns already on record it holds only
+   to 48.0/39.4 °/s — below the 49.56 °/s the hardware has produced.
+3. ⚠️ **`_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND = 16.5` is not a floor** —
+   14.490 °/s measured. Deliberately not lowered: at 14.4 a 90° junction needs 5
+   commands against a budget of 4, so a truthful floor and L-path junctions are
+   mutually exclusive until item 1 is fixed.
+4. The ceiling biases turn landings toward the tolerance edge, feeding a *tighter*
+   post-turn gate (15 vs 18) — expect more post-turn corrections and more
+   cross-track error, working against the reach change.
+
+**The validation run keeps every junction in the 45–70° band** — maximum exposure
+to the ceiling (it binds below 72°) while clear of the contested 86–100° band.
+
 `pre-commit run --all-files` is green as of 2026-07-31 and is now a usable
 gate. Its hook pins must move with `requirements_test.txt`: the Ruff and mypy
 hook revs are pinned to the same versions CI installs, and skew between them is
