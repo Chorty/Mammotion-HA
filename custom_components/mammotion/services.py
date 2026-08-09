@@ -10281,6 +10281,48 @@ _DEFAULT_REFRESH_COMMANDS_PER_LINEAR_PULSE = 10
 _MAX_FORWARD_REALIGNMENT_DEGREES = 90.0
 
 
+def _realign_bearing_is_ill_conditioned(
+    *,
+    distance_to_target_m: float,
+    waypoint_tolerance: float,
+    trigger_degrees: float,
+) -> bool:
+    """Return true when a mid-drive re-aim would be chasing numerical noise.
+
+    The bearing to the target is ``atan2(target - current)``, which is singular
+    AT the target: as the mower closes in, a lateral offset it cannot correct --
+    and is not required to correct, because landing inside ``waypoint_tolerance``
+    ends the segment -- swings the bearing arbitrarily far. Re-aiming on that
+    swing does not reduce the miss distance; it spends turn commands and adds
+    turn translation while the target sits inside the tolerance disc the whole
+    time.
+
+    Live 2026-08-09 (docs/evidence-beta32-4segment-20260809T210241Z.json,
+    segment 3): the bearing swung 298.135 -> 277.835 deg across two linear pulses
+    as the mower closed on the waypoint, and the second re-aim fired with roughly
+    0.21 m still to run. It overshot twice (-23.3 -> +20.2 -> -15.1), burned five
+    turn commands and two realignment slots, and the segment then stopped on
+    `max_linear_commands_reached` 0.164 m out -- 1.4 cm outside tolerance.
+
+    The threshold is derived, not tuned: a lateral offset the size of the
+    tolerance subtends ``atan(tolerance / distance)``, so re-aiming is only
+    meaningful while that angle stays below the trigger that would fire it.
+    Solving for distance gives ``tolerance / tan(trigger)`` -- 0.46 m at the
+    accepted profile's 0.15 m tolerance and 18 deg effective trigger. Inside
+    that radius the trigger cannot distinguish a real aim error from the
+    geometry, so it must not fire.
+    """
+    if distance_to_target_m <= 0 or waypoint_tolerance <= 0:
+        return False
+    # A degenerate trigger has no meaningful radius; fail open so the guard can
+    # never silently disable re-aim.
+    if not 0.0 < trigger_degrees < 90.0:
+        return False
+    return distance_to_target_m < waypoint_tolerance / math.tan(
+        math.radians(trigger_degrees)
+    )
+
+
 def _requires_reverse_recovery(aim_error_degrees: float) -> bool:
     """Return whether reaching the target now requires a non-forward recovery."""
     return abs(float(aim_error_degrees)) >= _MAX_FORWARD_REALIGNMENT_DEGREES
@@ -11612,10 +11654,44 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                 # never sent a command), but the run record no longer shows a
                 # realignment entry for them and the remaining budget is larger.
                 # To make the threshold live again, lower the tolerance below it.
-                if (
+                #
+                # Near the waypoint the bearing is numerically ill-conditioned
+                # and the trigger above cannot tell a real aim error from the
+                # geometry, so it is suppressed inside that radius. Recorded
+                # rather than silent: a suppressed re-aim is a decision worth
+                # seeing in the run record.
+                effective_trigger = max(
+                    float(vio_realign_threshold_degrees),
+                    float(heading_tolerance_degrees),
+                )
+                distance_to_target = math.hypot(
+                    float(target["x"]) - float(current_now["x"]),
+                    float(target["y"]) - float(current_now["y"]),
+                )
+                near_waypoint = _realign_bearing_is_ill_conditioned(
+                    distance_to_target_m=distance_to_target,
+                    waypoint_tolerance=waypoint_tolerance,
+                    trigger_degrees=effective_trigger,
+                )
+                needs_correction = (
                     abs(aim_error) > vio_realign_threshold_degrees
                     and abs(aim_error) > heading_tolerance_degrees
-                ):
+                )
+                if needs_correction and near_waypoint:
+                    result.setdefault("realignments_suppressed", []).append(
+                        {
+                            "after_linear_pulse": command_index,
+                            "aim_error_degrees": round(aim_error, 3),
+                            "distance_to_target_m": round(distance_to_target, 4),
+                            "min_distance_m": round(
+                                waypoint_tolerance
+                                / math.tan(math.radians(effective_trigger)),
+                                4,
+                            ),
+                            "reason": "bearing_ill_conditioned_near_waypoint",
+                        }
+                    )
+                if needs_correction and not near_waypoint:
                     if realignments_used >= vio_max_realignments:
                         result["stop_reason"] = "vio_realign_budget_exhausted"
                         return result
