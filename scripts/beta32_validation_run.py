@@ -164,13 +164,19 @@ def _load_area_polygons() -> dict[str, list[tuple[float, float]]]:
 
 
 def build_path(
-    start: tuple[float, float], polygons: dict[str, list[tuple[float, float]]]
+    start: tuple[float, float],
+    polygons: dict[str, list[tuple[float, float]]],
+    pattern: tuple[float, ...] = JUNCTION_PATTERN,
 ) -> tuple[list[dict[str, float]], str, float]:
     """Lay a 4-segment path from ``start`` that stays inside one mapped area.
 
     Sweeps the initial heading and keeps the first orientation whose five points
     all sit inside the same polygon, with a margin check on the midpoints too so
     a leg cannot clip a concave boundary between its endpoints.
+
+    ``pattern`` is the signed turn at each junction. It alternates so the path
+    stays compact and both rotation directions get exercised; a same-signed
+    pattern would spiral out of the area.
     """
     containing = [
         (name, poly)
@@ -202,8 +208,8 @@ def build_path(
             x += LEG_METRES * math.cos(math.radians(heading))
             y += LEG_METRES * math.sin(math.radians(heading))
             points.append({"x": round(x, 4), "y": round(y, 4)})
-            if index < len(JUNCTION_PATTERN):
-                heading += JUNCTION_PATTERN[index]
+            if index < len(pattern):
+                heading += pattern[index]
         if all(_point_in_polygon(px, py, poly) for px, py in samples):
             return points, area_name, float(initial)
 
@@ -443,6 +449,17 @@ def main() -> int:  # noqa: C901
         ),
     )
     parser.add_argument(
+        "--junction",
+        type=float,
+        default=None,
+        help=(
+            "junction turn magnitude in degrees (default 60). Use 90 to test "
+            "whether an L-path junction completes: at the rates actually "
+            "measured the shipped ceiling reaches 169 deg, so the 45-70 deg "
+            "band may be needlessly conservative -- a measurement, not a fix"
+        ),
+    )
+    parser.add_argument(
         "--heading",
         type=float,
         default=None,
@@ -494,13 +511,28 @@ def main() -> int:  # noqa: C901
         )
         print(f"  net displacement {net:.2f} m at bearing {bearing:.0f} deg")
     else:
-        points, area_name, initial_heading = build_path(start, polygons)
+        if args.junction is None:
+            pattern = JUNCTION_PATTERN
+            band = "all inside the validated 45-70 deg band"
+        else:
+            magnitude = abs(args.junction)
+            # Alternate the sign: a same-signed pattern spirals out of the area.
+            pattern = tuple(
+                magnitude * (-1.0) ** index for index in range(len(JUNCTION_PATTERN))
+            )
+            band = (
+                "inside the validated band"
+                if JUNCTION_MIN_DEGREES <= magnitude <= JUNCTION_MAX_DEGREES
+                else f"OUTSIDE the validated {JUNCTION_MIN_DEGREES:.0f}-"
+                f"{JUNCTION_MAX_DEGREES:.0f} deg band -- this IS the experiment"
+            )
+        points, area_name, initial_heading = build_path(start, polygons, pattern)
         print(
             f"\n== PATH ==  area={area_name}  initial heading={initial_heading:.0f} deg"
         )
         for index, point in enumerate(points):
             print(f"    p{index}: ({point['x']:.3f}, {point['y']:.3f})")
-        print(f"  junction pattern: {JUNCTION_PATTERN} (all inside 45-70 deg band)")
+        print(f"  junction pattern: {pattern} ({band})")
 
     payload = {
         "points": points,
