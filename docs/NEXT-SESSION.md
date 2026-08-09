@@ -4,7 +4,71 @@ Updated **2026-08-08 late** after Gate 5 passed. This is the current handoff;
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
-## 🏁 START HERE 2026-08-09 — GATE 5 IS PASSED. All five gates complete.
+## 🏁 START HERE 2026-08-09 **evening** — REACH GOAL MET. Four segments ran.
+
+Supersedes the Gate 5 block below, which is now evidence rather than
+instructions. **Host runs `0.6.4-beta33`; branch is at `0.6.4-beta34`, built and
+CI-green but never deployed and never run.** Gate off, `real_motion_allowed:
+false` verified. Mower idle in Backyard Right around (6.889, −1.122), battery
+~45%, blades off.
+
+Three real runs today, all armed and disarmed with both states verified:
+
+1. `docs/evidence-beta32-4segment-20260809T170941Z.json` — segment 1 reached
+   (0.0916 m), segment 2 refused pre-dispatch on a BLE queue backlog.
+2. `docs/evidence-beta32-4segment-20260809T183129Z.json` — **all four segments
+   reached target.** Landings 0.0819 / 0.0662 / 0.1452 / 0.0990 m.
+3. `docs/evidence-beta33-reposition-20260809T184618Z.json` — a 180° U-turn built
+   from three 60° junctions; the final 2.0 m leg stopped on
+   `max_linear_commands_reached`, which was a planning error, not a defect.
+
+**Settled today, so do not re-derive:**
+
+- **Landing error does NOT compound with segment index** (seg4−seg1 slope
+  +0.017 m). Handover §2.4's central worry is unsupported.
+- **The overshoot ceiling works.** Three junction turns closed in one command
+  each at −5.1 / −2.4 / −0.3°, against Gate 5's 13.258° overshoot.
+- **Per-CLICK reach is 4 segments; per-SEGMENT reach is ~1 m** (`max_linear_
+  commands: 3` × ~0.35–0.42 m/pulse). A 2.0 m leg is not dispatchable.
+- **A single 180° turn is refused pre-dispatch** — 8 commands needed against a
+  budget of 4, and 0.468 m of estimated drift against a 0.30 m cap. Largest
+  dispatchable single turn is ~114°. Use chained junctions instead.
+- ⚠️ **The rotation-rate variance is largely a BLE artefact.** See
+  `docs/HANDOVER-beta31-20260809.md` §2.7 before touching any turn constant. A
+  pulse that sent one of six refreshes, on a write that blocked 1303.972 ms,
+  reported "9.23 °/s". Cadence-intact pulses measured 23–43 °/s. This
+  substantially explains the Gate 5 overshoot, and means
+  `_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND = 16.5` is probably **not**
+  falsified. Two recommendations are **withdrawn** there: "K = 2 × tolerance
+  unlocks 90° L-paths" and the delivered-window shave.
+
+### The queue, in priority order
+
+1. **BLE write latency — the highest-leverage open item, and now doubly
+   attested.** The 2026-08-08 block below already called the intermittent
+   `TimeoutError` "the tail of an observable latency distribution … the basis for
+   the next work item"; today's stall finding arrived at the same place
+   independently. One 1304 ms GATT write manufactured a phantom rotation rate; a
+   linear pulse ran +112% long (2757 ms against 1300). It degrades the rate
+   estimate, the ceiling's guarantee, along-track accuracy and segment gating at
+   once. Prior art: `docs/pymammotion-ble-slot-leak-bug.md`.
+2. **The ~0.145 m landing-error ceiling.** Gate 5's worst was 0.1449 m; today's
+   was 0.1452 m — 0.3 mm apart across independent runs, against a 0.15 m
+   tolerance. That is a systematic mode, not noise. Linear-phase question, and
+   plausibly the same BLE root cause.
+3. **Test a 90° junction directly.** At the real rates (≥23 °/s) the shipped
+   ceiling completes 169°, so the 45–70° band may be unnecessarily conservative.
+   This is a measurement, not a code change — cheaper than any of the K work.
+4. **Deploy beta34 and confirm `refresh_cadence_broken` fires** on a run with a
+   stalled write. Built and green, never run.
+5. **Extending per-segment reach past ~1 m** means enabling loop-to-tolerance
+   (`max_linear_pulse_ceiling`). ⚠️ **Prerequisite:** the mid-drive re-aim guard
+   tests `command_index < max_linear_commands` rather than
+   `effective_linear_ceiling` (handover §5). Harmless while the ceiling is null;
+   it must be fixed **first**, or cross-track correction silently stops after
+   pulse 3 while the mower keeps driving.
+
+## (superseded) START HERE 2026-08-09 morning — GATE 5 IS PASSED. All five gates complete.
 
 ⚠️ **Host and branch have diverged as of 2026-08-08.** The **host** runs the
 deployed `0.6.4-beta30`. The **branch** is at `0.6.4-beta31`, which is built,
