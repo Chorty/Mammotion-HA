@@ -167,6 +167,7 @@ def build_path(
     start: tuple[float, float],
     polygons: dict[str, list[tuple[float, float]]],
     pattern: tuple[float, ...] = JUNCTION_PATTERN,
+    prefer_heading: float | None = None,
 ) -> tuple[list[dict[str, float]], str, float]:
     """Lay a 4-segment path from ``start`` that stays inside one mapped area.
 
@@ -177,6 +178,21 @@ def build_path(
     ``pattern`` is the signed turn at each junction. It alternates so the path
     stays compact and both rotation directions get exercised; a same-signed
     pattern would spiral out of the area.
+
+    ``prefer_heading`` orders that sweep by angular distance from where the mower
+    is already pointing, instead of always starting at 0 deg. Segment 1's turn is
+    NOT a junction -- it runs from the mower's real facing to the first leg's
+    bearing, and nothing in the junction preflight covers it. Ignoring the
+    current facing let this script demand a pivot the profile refuses: live
+    2026-08-09 the mower was left facing ~225 deg after a U-turn, the sweep
+    picked 0 deg because it always did, and segment 1 needed **135.017 deg** --
+    6 commands against a budget of 4, and 0.351 m of drift against a 0.30 m cap.
+    It was refused pre-dispatch (correctly) and the three 90 deg junctions under
+    test, all admitted, never ran. Evidence:
+    docs/evidence-beta32-4segment-20260809T192923Z.json.
+
+    Containment still wins: a preferred heading that leaves the area is skipped,
+    exactly as before. This only reorders which candidate is tried first.
     """
     containing = [
         (name, poly)
@@ -190,7 +206,10 @@ def build_path(
         )
     area_name, poly = containing[0]
 
-    for initial in range(0, 360, 5):
+    candidates = [float(d) for d in range(0, 360, 5)]
+    if prefer_heading is not None:
+        candidates.sort(key=lambda d: abs((d - prefer_heading + 180) % 360 - 180))
+    for initial in candidates:
         heading = float(initial)
         x, y = start
         points = [{"x": round(x, 4), "y": round(y, 4)}]
@@ -238,25 +257,43 @@ def last_travel_heading() -> float | None:
     # last leg the mower is actually sitting on. Sorted by mtime, not by name --
     # the two filename prefixes differ, so a name sort would group by prefix and
     # silently return an older run's heading.
+    #
+    # ⚠️ Only segments that actually DROVE count. Reading the newest file's last
+    # segment unconditionally returns the PLANNED bearing of a leg that may never
+    # have executed: live 2026-08-09 the 90 deg attempt was refused pre-dispatch
+    # with zero linear commands, and this function duly reported the mower facing
+    # 0 deg -- the direction of the leg it had just declined to drive -- when it
+    # was really facing ~225 deg. `linear_commands_sent > 0` is the test, because
+    # a segment that sent no linear command cannot have changed which way the
+    # mower points.
     files = sorted(
         [
             *Path(REPO / "docs").glob("evidence-beta32-4segment-*.json"),
             *Path(REPO / "docs").glob("evidence-beta33-reposition-*.json"),
         ],
         key=lambda p: p.stat().st_mtime,
+        reverse=True,
     )
-    if not files:
-        return None
-    try:
-        segments = json.loads(files[-1].read_text())["segments"]
-        last = segments[-1]["result"]
-        start, target = last["true_start"], last["target"]
-    except KeyError, IndexError, ValueError:
-        return None
-    return (
-        math.degrees(math.atan2(target["y"] - start["y"], target["x"] - start["x"]))
-        % 360
-    )
+    for path in files:
+        try:
+            segments = json.loads(path.read_text())["segments"]
+        except KeyError, ValueError:
+            continue
+        for segment in reversed(segments):
+            result = segment.get("result") or {}
+            if int(result.get("linear_commands_sent") or 0) <= 0:
+                continue
+            try:
+                start, target = result["true_start"], result["target"]
+            except KeyError:
+                continue
+            return (
+                math.degrees(
+                    math.atan2(target["y"] - start["y"], target["x"] - start["x"])
+                )
+                % 360
+            )
+    return None
 
 
 def build_reposition_path(
@@ -526,10 +563,19 @@ def main() -> int:  # noqa: C901
                 else f"OUTSIDE the validated {JUNCTION_MIN_DEGREES:.0f}-"
                 f"{JUNCTION_MAX_DEGREES:.0f} deg band -- this IS the experiment"
             )
-        points, area_name, initial_heading = build_path(start, polygons, pattern)
+        facing = args.heading if args.heading is not None else last_travel_heading()
+        points, area_name, initial_heading = build_path(
+            start, polygons, pattern, prefer_heading=facing
+        )
         print(
             f"\n== PATH ==  area={area_name}  initial heading={initial_heading:.0f} deg"
         )
+        if facing is not None:
+            opening = abs((initial_heading - facing + 180) % 360 - 180)
+            print(
+                f"  mower faces ~{facing:.0f} deg, so segment 1's opening turn is "
+                f"~{opening:.0f} deg (must stay under ~114 to dispatch)"
+            )
         for index, point in enumerate(points):
             print(f"    p{index}: ({point['x']:.3f}, {point['y']:.3f})")
         print(f"  junction pattern: {pattern} ({band})")
