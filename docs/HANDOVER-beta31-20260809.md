@@ -255,6 +255,45 @@ closed-loop segment cannot run after dark), RTK Fix, `tracked_features` ≳ 70,
 blades off, and a charged battery — the mower was left at ~22% and needs docking
 first. Arm immediately before, disarm immediately after, verify both.
 
+### The run is scripted — `scripts/beta32_validation_run.py`
+
+Prepared and rehearsed 2026-08-09 against the live host. **Safe by default:**
+without `--arm` it never opens the motion gate and never sends a movement
+command, so preview it as often as you like.
+
+```sh
+set -a && source .env && set +a
+.venv/bin/python scripts/beta32_validation_run.py          # preflight + dry run
+.venv/bin/python scripts/beta32_validation_run.py --arm    # the real run
+```
+
+It does, in order: preflight (8 hard gates, printed pass/fail) → build a
+4-segment path from the **live** position that stays inside the mapped polygon →
+dry-run validate and print junction feasibility → **arm and verify
+`real_motion_allowed: true`** → execute → **write the complete response JSON to
+`docs/evidence-beta32-4segment-<stamp>.json` before parsing a single field** →
+print the §6 record → **disarm in a `finally` and verify it closed.** A crash, a
+timeout or a Ctrl-C cannot leave the gate open. If preflight fails it refuses to
+arm.
+
+Rehearsed off-mower: the path builder finds a valid in-polygon path from **all
+203** grid start points inside Backyard Right; the full acceptance profile is
+schema-accepted and echoes back key-for-key identical; all three 60° junctions
+preflight feasible at 3 of 4 commands.
+
+**Morning gate order** — the three that were failing overnight are the only ones
+outstanding: daylight (`tracked_features ≥ 70`; it was 0 and brightness `dark`),
+`position_valid_for_motion` (mower was docked at `CHARGE_ON`), and
+`work_mode` in `{MODE_READY, MODE_PAUSE}`.
+
+⚠️ **Watch the work mode before arming.** Between 01:15 and 01:30 EDT the mower
+cycled `mode_returning` ↔ `mode_ready` ten times while sitting on the dock, with
+position shifting a few cm. `mode_returning` is not an allowed motion mode and
+the executor re-checks it *between* commands, so a mower still doing this will
+abort a segment with `aborted_unsafe_mode` partway through. Confirm it has
+settled before arming. (Battery is fine and was never the problem — 58% and
+rising; the overnight swings were two real mow cycles, not telemetry noise.)
+
 **Junction angles: keep every turn in the 45–70° band.** This is a deliberate
 constraint from §2.2/§2.6, not caution for its own sake. Below 72° the ceiling is
 the active bound from the first pulse of every turn, so the path gives *maximum*
