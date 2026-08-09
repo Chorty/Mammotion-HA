@@ -10564,6 +10564,26 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         if target_heading is not None
         else None
     )
+    # Let the BLE command queue drain before gating on it. This executor
+    # enqueues commands of its own before it evaluates `ble_link_live`, which
+    # demands `queue_depth == 0` -- so without this it can fail a fail-closed
+    # gate on a command it queued itself. In a MULTI-SEGMENT run the offending
+    # command is the previous segment's trailing stop, still draining when the
+    # next segment begins: live 2026-08-09, segment 2 of the first four-segment
+    # run was refused with `command_queue_backlogged` and `queue_depth: 1` just
+    # 1.5 s after segment 1's last send, on a link that was connected, usable,
+    # uncooled and dispatching (docs/evidence-beta32-4segment-20260809T170941Z.json).
+    # Segments 3 and 4 never ran, so the run answered nothing.
+    #
+    # Five other executors already do exactly this; this one was missed, and the
+    # 2-segment reach limit made it rare enough to go unnoticed until the limit
+    # was raised to 4. `_settle_ble_command_queue` only ever WAITS -- it never
+    # lowers the depth limit or overrides a verdict, and it returns the last
+    # report unchanged on timeout, so a genuine backlog still fails the gate.
+    # Skipped on a dry run, which enqueues nothing and must stay instant.
+    queue_settle: dict[str, Any] | None = None
+    if not dry_run:
+        queue_settle = await _settle_ble_command_queue(coordinator)
     gates = _manual_velocity_pulse_gates(
         coordinator,
         initial_telemetry,
@@ -10767,6 +10787,11 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         "initial_telemetry": initial_telemetry,
         "final_telemetry": initial_telemetry,
         "runtime_safety": runtime_safety,
+        # The liveness report the gate below actually judged, AFTER waiting for
+        # the queue to drain. Recorded so a refusal can be told apart from a
+        # settle that timed out -- without it, `command_queue_backlogged` looks
+        # identical whether the run waited 6 s or never waited at all.
+        "queue_settle": queue_settle,
         "safety_gates": gates,
         "blockers": blockers,
         "commands_sent": 0,
