@@ -1,0 +1,3876 @@
+[
+ {
+  "commanded_ms": 200,
+  "repeat": 0,
+  "heading_error_degrees": 22.0,
+  "delivered_pulse_ms": 200.0,
+  "final_approach_reason": "cruising_full_pulse_fits",
+  "window_ms": 200.271,
+  "rotation_degrees": 15.198,
+  "cadence_broken": false,
+  "longest_write_ms": null,
+  "stop_reason": "target_heading_reached",
+  "response": {
+   "service": "vio_turn_to_heading",
+   "mode": "real_vio_turn_to_heading",
+   "dry_run": false,
+   "real_execution_scope": "vio_turn_to_heading_only",
+   "path_execution_allowed": false,
+   "target_vision_heading": 297.1171595073864,
+   "heading_tolerance_degrees": 18.0,
+   "angular_speed": 500,
+   "pulse_duration_ms": 200,
+   "slow_pulse_duration_ms": 700,
+   "slow_threshold_degrees": 1.0,
+   "refresh_wait_seconds": 2.0,
+   "effective_poll_interval_seconds": 2.0,
+   "fresh_heading_timeout_seconds": 8.0,
+   "max_commands": 8,
+   "min_progress_degrees": 2.0,
+   "max_no_progress_pulses": 2,
+   "max_displacement_m": 0.5,
+   "invert_direction": false,
+   "motion_refresh_interval_ms": 200,
+   "motion_refresh_commands_sent": 0,
+   "refresh_cadence_broken_pulses": 0,
+   "prefer_ble": true,
+   "confirm_blades_off": true,
+   "confirm_clear_area": true,
+   "active_transport": "ble",
+   "initial_vision_heading": -84.88284049261364,
+   "initial_vio_state": 2,
+   "initial_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "initial_heading_error_degrees": 22.0,
+   "safety_gates": [
+    {
+     "name": "stop_primitive_available",
+     "passed": true,
+     "detail": "Coordinator must expose async_stop_manual_motion()."
+    },
+    {
+     "name": "ble_transport_required",
+     "passed": true,
+     "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+    },
+    {
+     "name": "ble_link_live",
+     "passed": true,
+     "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+     "diagnostics": {
+      "live": true,
+      "reason": null,
+      "is_connected": true,
+      "is_usable": true,
+      "cooldown_active": false,
+      "cooldown_remaining_seconds": 0.0,
+      "last_send_age_seconds": 3.7,
+      "queue_depth": 0,
+      "queue_dispatch_paused": false,
+      "saga_active": false,
+      "stall_threshold_seconds": 15.0,
+      "queue_depth_limit": 0
+     }
+    },
+    {
+     "name": "operator_confirmed_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires confirm_blades_off=true."
+    },
+    {
+     "name": "operator_confirmed_clear_area",
+     "passed": true,
+     "detail": "Real pulse requires confirm_clear_area=true."
+    },
+    {
+     "name": "mower_reports_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires blade state off and cutter RPM zero/unknown."
+    },
+    {
+     "name": "mower_ready",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+    },
+    {
+     "name": "not_docked_or_charging",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be off the dock and not charging."
+    },
+    {
+     "name": "live_map_position_available",
+     "passed": true,
+     "detail": "Real pulse requires live map-local mower position."
+    },
+    {
+     "name": "position_area_inside",
+     "passed": true,
+     "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+    },
+    {
+     "name": "map_position_nonzero",
+     "passed": true,
+     "detail": "Real pulse requires nonzero map-local x/y coordinates."
+    }
+   ],
+   "runtime_safety": {
+    "allowed_for_manual_motion": true,
+    "blockers": [],
+    "blade_safe_for_motion": true,
+    "active_mowing_detected": false,
+    "active_route_detected": false,
+    "active_route_status": {
+     "route_present": false,
+     "progress_present": false,
+     "progress_is_active": false,
+     "blocks_motion": false,
+     "reason": "no_route",
+     "ha_state": "paused",
+     "work_mode_label": "MODE_READY"
+    },
+    "position_valid_for_motion": true,
+    "rtk_report_age_seconds": null,
+    "rtk_report_quiet_threshold_seconds": 1800.0,
+    "rtk_report_quiet": false,
+    "rtk_status_label": "Fix",
+    "rtk_degraded": false,
+    "rtk_degraded_override": false
+   },
+   "blockers": [],
+   "would_send": true,
+   "planned_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 0,
+     "angular_speed": -500
+    }
+   },
+   "commands_sent": 1,
+   "command_results": [
+    {
+     "index": 1,
+     "angular_speed": -500,
+     "pulse_duration_ms": 200.0,
+     "before_vision_heading": -84.88284049261364,
+     "heading_error_before": 22.0,
+     "command": "send_movement",
+     "sent_at_utc": "2026-08-09T23:42:28.823949+00:00",
+     "ok": true,
+     "error": null,
+     "stop_ack": {
+      "movement_ok": true
+     },
+     "after_vision_heading": -69.68450197594952,
+     "measured_change_degrees": 15.198,
+     "heading_error_after": 6.802,
+     "progress_degrees": 15.198,
+     "displacement_m": 0.01565407295243001,
+     "heading_poll_seconds": 2.0,
+     "heading_went_fresh": true,
+     "motion_refresh": {
+      "refresh_enabled": true,
+      "refresh_interval_ms": 200,
+      "refresh_commands_sent": 0,
+      "refresh_command_limit": null,
+      "refresh_write_durations_ms": [],
+      "max_refresh_commands": 1,
+      "elapsed_ms": 200.271
+     },
+     "final_approach": {
+      "applied": false,
+      "reason": "cruising_full_pulse_fits",
+      "heading_error_degrees": 22.0,
+      "heading_tolerance_degrees": 18.0,
+      "degrees_per_second": 1.0,
+      "degrees_per_second_source": "default",
+      "max_rate_ceiling_degrees_per_second": 60.0,
+      "max_allowed_sweep_degrees": 40.0,
+      "ceiling_pulse_duration_ms": 666.7,
+      "pulse_duration_ms": 200.0,
+      "ceiling_below_actuation_floor": false
+     },
+     "heading_poll_count": 1,
+     "heading_poll_feed_alive": true,
+     "longest_refresh_write_ms": null,
+     "refresh_cadence_broken": false
+    }
+   ],
+   "final_vision_heading": -69.68450197594952,
+   "final_heading_error_degrees": 6.802,
+   "final_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "final_displacement_m": 0.01565407295243001,
+   "turn_degrees_per_second": 1.0,
+   "turn_feasibility": {
+    "feasible": true,
+    "reason": "within_budget",
+    "initial_error_degrees": 22.0,
+    "heading_tolerance_degrees": 18.0,
+    "required_rotation_degrees": 4.0,
+    "per_command_rotation_bound_degrees": 3.3,
+    "rotation_bound_source": "conservative_observed_rate_with_refresh",
+    "estimated_commands_needed": 2,
+    "max_commands": 8,
+    "translation_bound_m_per_degree": 0.0026,
+    "translation_bound_source": "conservative_observed_translation_per_degree",
+    "estimated_translation_m": 0.057,
+    "max_displacement_m": 0.5,
+    "command_count_model": "executor_pulse_policy_replay",
+    "modelled_pulse_durations_ms": [
+     200.0,
+     200.0
+    ]
+   },
+   "stop_reason": "target_heading_reached"
+  }
+ },
+ {
+  "commanded_ms": 200,
+  "repeat": 1,
+  "heading_error_degrees": -22.0,
+  "delivered_pulse_ms": 200.0,
+  "final_approach_reason": "cruising_full_pulse_fits",
+  "window_ms": 200.546,
+  "rotation_degrees": 7.006,
+  "cadence_broken": false,
+  "longest_write_ms": null,
+  "stop_reason": "target_heading_reached",
+  "response": {
+   "service": "vio_turn_to_heading",
+   "mode": "real_vio_turn_to_heading",
+   "dry_run": false,
+   "real_execution_scope": "vio_turn_to_heading_only",
+   "path_execution_allowed": false,
+   "target_vision_heading": 268.3154980240505,
+   "heading_tolerance_degrees": 18.0,
+   "angular_speed": 500,
+   "pulse_duration_ms": 200,
+   "slow_pulse_duration_ms": 700,
+   "slow_threshold_degrees": 1.0,
+   "refresh_wait_seconds": 2.0,
+   "effective_poll_interval_seconds": 2.0,
+   "fresh_heading_timeout_seconds": 8.0,
+   "max_commands": 8,
+   "min_progress_degrees": 2.0,
+   "max_no_progress_pulses": 2,
+   "max_displacement_m": 0.5,
+   "invert_direction": false,
+   "motion_refresh_interval_ms": 200,
+   "motion_refresh_commands_sent": 0,
+   "refresh_cadence_broken_pulses": 0,
+   "prefer_ble": true,
+   "confirm_blades_off": true,
+   "confirm_clear_area": true,
+   "active_transport": "ble",
+   "initial_vision_heading": -69.68450197594952,
+   "initial_vio_state": 2,
+   "initial_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "initial_heading_error_degrees": -22.0,
+   "safety_gates": [
+    {
+     "name": "stop_primitive_available",
+     "passed": true,
+     "detail": "Coordinator must expose async_stop_manual_motion()."
+    },
+    {
+     "name": "ble_transport_required",
+     "passed": true,
+     "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+    },
+    {
+     "name": "ble_link_live",
+     "passed": true,
+     "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+     "diagnostics": {
+      "live": true,
+      "reason": null,
+      "is_connected": true,
+      "is_usable": true,
+      "cooldown_active": false,
+      "cooldown_remaining_seconds": 0.0,
+      "last_send_age_seconds": 1.8,
+      "queue_depth": 0,
+      "queue_dispatch_paused": false,
+      "saga_active": false,
+      "stall_threshold_seconds": 15.0,
+      "queue_depth_limit": 0
+     }
+    },
+    {
+     "name": "operator_confirmed_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires confirm_blades_off=true."
+    },
+    {
+     "name": "operator_confirmed_clear_area",
+     "passed": true,
+     "detail": "Real pulse requires confirm_clear_area=true."
+    },
+    {
+     "name": "mower_reports_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires blade state off and cutter RPM zero/unknown."
+    },
+    {
+     "name": "mower_ready",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+    },
+    {
+     "name": "not_docked_or_charging",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be off the dock and not charging."
+    },
+    {
+     "name": "live_map_position_available",
+     "passed": true,
+     "detail": "Real pulse requires live map-local mower position."
+    },
+    {
+     "name": "position_area_inside",
+     "passed": true,
+     "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+    },
+    {
+     "name": "map_position_nonzero",
+     "passed": true,
+     "detail": "Real pulse requires nonzero map-local x/y coordinates."
+    }
+   ],
+   "runtime_safety": {
+    "allowed_for_manual_motion": true,
+    "blockers": [],
+    "blade_safe_for_motion": true,
+    "active_mowing_detected": false,
+    "active_route_detected": false,
+    "active_route_status": {
+     "route_present": false,
+     "progress_present": false,
+     "progress_is_active": false,
+     "blocks_motion": false,
+     "reason": "no_route",
+     "ha_state": "paused",
+     "work_mode_label": "MODE_READY"
+    },
+    "position_valid_for_motion": true,
+    "rtk_report_age_seconds": null,
+    "rtk_report_quiet_threshold_seconds": 1800.0,
+    "rtk_report_quiet": false,
+    "rtk_status_label": "Fix",
+    "rtk_degraded": false,
+    "rtk_degraded_override": false
+   },
+   "blockers": [],
+   "would_send": true,
+   "planned_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 0,
+     "angular_speed": 500
+    }
+   },
+   "commands_sent": 1,
+   "command_results": [
+    {
+     "index": 1,
+     "angular_speed": 500,
+     "pulse_duration_ms": 200.0,
+     "before_vision_heading": -69.68450197594952,
+     "heading_error_before": -22.0,
+     "command": "send_movement",
+     "sent_at_utc": "2026-08-09T23:42:32.074336+00:00",
+     "ok": true,
+     "error": null,
+     "stop_ack": {
+      "movement_ok": true
+     },
+     "after_vision_heading": -76.69039655263649,
+     "measured_change_degrees": -7.006,
+     "heading_error_after": -14.994,
+     "progress_degrees": 7.006,
+     "displacement_m": 0.015384407690905842,
+     "heading_poll_seconds": 2.0,
+     "heading_went_fresh": true,
+     "motion_refresh": {
+      "refresh_enabled": true,
+      "refresh_interval_ms": 200,
+      "refresh_commands_sent": 0,
+      "refresh_command_limit": null,
+      "refresh_write_durations_ms": [],
+      "max_refresh_commands": 1,
+      "elapsed_ms": 200.546
+     },
+     "final_approach": {
+      "applied": false,
+      "reason": "cruising_full_pulse_fits",
+      "heading_error_degrees": -22.0,
+      "heading_tolerance_degrees": 18.0,
+      "degrees_per_second": 1.0,
+      "degrees_per_second_source": "default",
+      "max_rate_ceiling_degrees_per_second": 60.0,
+      "max_allowed_sweep_degrees": 40.0,
+      "ceiling_pulse_duration_ms": 666.7,
+      "pulse_duration_ms": 200.0,
+      "ceiling_below_actuation_floor": false
+     },
+     "heading_poll_count": 1,
+     "heading_poll_feed_alive": true,
+     "longest_refresh_write_ms": null,
+     "refresh_cadence_broken": false
+    }
+   ],
+   "final_vision_heading": -76.69039655263649,
+   "final_heading_error_degrees": -14.994,
+   "final_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "final_displacement_m": 0.015384407690905842,
+   "turn_degrees_per_second": 1.0,
+   "turn_feasibility": {
+    "feasible": true,
+    "reason": "within_budget",
+    "initial_error_degrees": 22.0,
+    "heading_tolerance_degrees": 18.0,
+    "required_rotation_degrees": 4.0,
+    "per_command_rotation_bound_degrees": 3.3,
+    "rotation_bound_source": "conservative_observed_rate_with_refresh",
+    "estimated_commands_needed": 2,
+    "max_commands": 8,
+    "translation_bound_m_per_degree": 0.0026,
+    "translation_bound_source": "conservative_observed_translation_per_degree",
+    "estimated_translation_m": 0.057,
+    "max_displacement_m": 0.5,
+    "command_count_model": "executor_pulse_policy_replay",
+    "modelled_pulse_durations_ms": [
+     200.0,
+     200.0
+    ]
+   },
+   "stop_reason": "target_heading_reached"
+  }
+ },
+ {
+  "commanded_ms": 250,
+  "repeat": 0,
+  "heading_error_degrees": 22.0,
+  "delivered_pulse_ms": 250.0,
+  "final_approach_reason": "cruising_full_pulse_fits",
+  "window_ms": 369.212,
+  "rotation_degrees": 16.325,
+  "cadence_broken": false,
+  "longest_write_ms": 168.367,
+  "stop_reason": "target_heading_reached",
+  "response": {
+   "service": "vio_turn_to_heading",
+   "mode": "real_vio_turn_to_heading",
+   "dry_run": false,
+   "real_execution_scope": "vio_turn_to_heading_only",
+   "path_execution_allowed": false,
+   "target_vision_heading": 305.3096034473635,
+   "heading_tolerance_degrees": 18.0,
+   "angular_speed": 500,
+   "pulse_duration_ms": 250,
+   "slow_pulse_duration_ms": 700,
+   "slow_threshold_degrees": 1.0,
+   "refresh_wait_seconds": 2.0,
+   "effective_poll_interval_seconds": 2.0,
+   "fresh_heading_timeout_seconds": 8.0,
+   "max_commands": 8,
+   "min_progress_degrees": 2.0,
+   "max_no_progress_pulses": 2,
+   "max_displacement_m": 0.5,
+   "invert_direction": false,
+   "motion_refresh_interval_ms": 200,
+   "motion_refresh_commands_sent": 1,
+   "refresh_cadence_broken_pulses": 0,
+   "prefer_ble": true,
+   "confirm_blades_off": true,
+   "confirm_clear_area": true,
+   "active_transport": "ble",
+   "initial_vision_heading": -76.69039655263649,
+   "initial_vio_state": 2,
+   "initial_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "initial_heading_error_degrees": 22.0,
+   "safety_gates": [
+    {
+     "name": "stop_primitive_available",
+     "passed": true,
+     "detail": "Coordinator must expose async_stop_manual_motion()."
+    },
+    {
+     "name": "ble_transport_required",
+     "passed": true,
+     "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+    },
+    {
+     "name": "ble_link_live",
+     "passed": true,
+     "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+     "diagnostics": {
+      "live": true,
+      "reason": null,
+      "is_connected": true,
+      "is_usable": true,
+      "cooldown_active": false,
+      "cooldown_remaining_seconds": 0.0,
+      "last_send_age_seconds": 2.2,
+      "queue_depth": 0,
+      "queue_dispatch_paused": false,
+      "saga_active": false,
+      "stall_threshold_seconds": 15.0,
+      "queue_depth_limit": 0
+     }
+    },
+    {
+     "name": "operator_confirmed_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires confirm_blades_off=true."
+    },
+    {
+     "name": "operator_confirmed_clear_area",
+     "passed": true,
+     "detail": "Real pulse requires confirm_clear_area=true."
+    },
+    {
+     "name": "mower_reports_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires blade state off and cutter RPM zero/unknown."
+    },
+    {
+     "name": "mower_ready",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+    },
+    {
+     "name": "not_docked_or_charging",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be off the dock and not charging."
+    },
+    {
+     "name": "live_map_position_available",
+     "passed": true,
+     "detail": "Real pulse requires live map-local mower position."
+    },
+    {
+     "name": "position_area_inside",
+     "passed": true,
+     "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+    },
+    {
+     "name": "map_position_nonzero",
+     "passed": true,
+     "detail": "Real pulse requires nonzero map-local x/y coordinates."
+    }
+   ],
+   "runtime_safety": {
+    "allowed_for_manual_motion": true,
+    "blockers": [],
+    "blade_safe_for_motion": true,
+    "active_mowing_detected": false,
+    "active_route_detected": false,
+    "active_route_status": {
+     "route_present": false,
+     "progress_present": false,
+     "progress_is_active": false,
+     "blocks_motion": false,
+     "reason": "no_route",
+     "ha_state": "paused",
+     "work_mode_label": "MODE_READY"
+    },
+    "position_valid_for_motion": true,
+    "rtk_report_age_seconds": null,
+    "rtk_report_quiet_threshold_seconds": 1800.0,
+    "rtk_report_quiet": false,
+    "rtk_status_label": "Fix",
+    "rtk_degraded": false,
+    "rtk_degraded_override": false
+   },
+   "blockers": [],
+   "would_send": true,
+   "planned_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 0,
+     "angular_speed": -500
+    }
+   },
+   "commands_sent": 1,
+   "command_results": [
+    {
+     "index": 1,
+     "angular_speed": -500,
+     "pulse_duration_ms": 250.0,
+     "before_vision_heading": -76.69039655263649,
+     "heading_error_before": 22.0,
+     "command": "send_movement",
+     "sent_at_utc": "2026-08-09T23:42:35.171465+00:00",
+     "ok": true,
+     "error": null,
+     "stop_ack": {
+      "movement_ok": true
+     },
+     "after_vision_heading": -60.36560973344326,
+     "measured_change_degrees": 16.325,
+     "heading_error_after": 5.675,
+     "progress_degrees": 16.325,
+     "displacement_m": 0.008434453153583146,
+     "heading_poll_seconds": 2.0,
+     "heading_went_fresh": true,
+     "motion_refresh": {
+      "refresh_enabled": true,
+      "refresh_interval_ms": 200,
+      "refresh_commands_sent": 1,
+      "refresh_command_limit": null,
+      "refresh_write_durations_ms": [
+       168.367
+      ],
+      "max_refresh_commands": 1,
+      "elapsed_ms": 369.212
+     },
+     "final_approach": {
+      "applied": false,
+      "reason": "cruising_full_pulse_fits",
+      "heading_error_degrees": 22.0,
+      "heading_tolerance_degrees": 18.0,
+      "degrees_per_second": 1.0,
+      "degrees_per_second_source": "default",
+      "max_rate_ceiling_degrees_per_second": 60.0,
+      "max_allowed_sweep_degrees": 40.0,
+      "ceiling_pulse_duration_ms": 666.7,
+      "pulse_duration_ms": 250.0,
+      "ceiling_below_actuation_floor": false
+     },
+     "heading_poll_count": 1,
+     "heading_poll_feed_alive": true,
+     "longest_refresh_write_ms": 168.367,
+     "refresh_cadence_broken": false
+    }
+   ],
+   "final_vision_heading": -60.36560973344326,
+   "final_heading_error_degrees": 5.675,
+   "final_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "final_displacement_m": 0.008434453153583146,
+   "turn_degrees_per_second": 1.0,
+   "turn_feasibility": {
+    "feasible": true,
+    "reason": "within_budget",
+    "initial_error_degrees": 22.0,
+    "heading_tolerance_degrees": 18.0,
+    "required_rotation_degrees": 4.0,
+    "per_command_rotation_bound_degrees": 4.125,
+    "rotation_bound_source": "conservative_observed_rate_with_refresh",
+    "estimated_commands_needed": 1,
+    "max_commands": 8,
+    "translation_bound_m_per_degree": 0.0026,
+    "translation_bound_source": "conservative_observed_translation_per_degree",
+    "estimated_translation_m": 0.057,
+    "max_displacement_m": 0.5,
+    "command_count_model": "executor_pulse_policy_replay",
+    "modelled_pulse_durations_ms": [
+     250.0
+    ]
+   },
+   "stop_reason": "target_heading_reached"
+  }
+ },
+ {
+  "commanded_ms": 250,
+  "repeat": 1,
+  "heading_error_degrees": -22.0,
+  "delivered_pulse_ms": 250.0,
+  "final_approach_reason": "cruising_full_pulse_fits",
+  "window_ms": 309.133,
+  "rotation_degrees": 9.923,
+  "cadence_broken": false,
+  "longest_write_ms": 108.545,
+  "stop_reason": "target_heading_reached",
+  "response": {
+   "service": "vio_turn_to_heading",
+   "mode": "real_vio_turn_to_heading",
+   "dry_run": false,
+   "real_execution_scope": "vio_turn_to_heading_only",
+   "path_execution_allowed": false,
+   "target_vision_heading": 277.6343902665567,
+   "heading_tolerance_degrees": 18.0,
+   "angular_speed": 500,
+   "pulse_duration_ms": 250,
+   "slow_pulse_duration_ms": 700,
+   "slow_threshold_degrees": 1.0,
+   "refresh_wait_seconds": 2.0,
+   "effective_poll_interval_seconds": 2.0,
+   "fresh_heading_timeout_seconds": 8.0,
+   "max_commands": 8,
+   "min_progress_degrees": 2.0,
+   "max_no_progress_pulses": 2,
+   "max_displacement_m": 0.5,
+   "invert_direction": false,
+   "motion_refresh_interval_ms": 200,
+   "motion_refresh_commands_sent": 1,
+   "refresh_cadence_broken_pulses": 0,
+   "prefer_ble": true,
+   "confirm_blades_off": true,
+   "confirm_clear_area": true,
+   "active_transport": "ble",
+   "initial_vision_heading": -60.36560973344326,
+   "initial_vio_state": 2,
+   "initial_vio_feed": {
+    "live": true,
+    "tracked_features": 74,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "initial_heading_error_degrees": -22.0,
+   "safety_gates": [
+    {
+     "name": "stop_primitive_available",
+     "passed": true,
+     "detail": "Coordinator must expose async_stop_manual_motion()."
+    },
+    {
+     "name": "ble_transport_required",
+     "passed": true,
+     "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+    },
+    {
+     "name": "ble_link_live",
+     "passed": true,
+     "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+     "diagnostics": {
+      "live": true,
+      "reason": null,
+      "is_connected": true,
+      "is_usable": true,
+      "cooldown_active": false,
+      "cooldown_remaining_seconds": 0.0,
+      "last_send_age_seconds": 1.8,
+      "queue_depth": 0,
+      "queue_dispatch_paused": false,
+      "saga_active": false,
+      "stall_threshold_seconds": 15.0,
+      "queue_depth_limit": 0
+     }
+    },
+    {
+     "name": "operator_confirmed_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires confirm_blades_off=true."
+    },
+    {
+     "name": "operator_confirmed_clear_area",
+     "passed": true,
+     "detail": "Real pulse requires confirm_clear_area=true."
+    },
+    {
+     "name": "mower_reports_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires blade state off and cutter RPM zero/unknown."
+    },
+    {
+     "name": "mower_ready",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+    },
+    {
+     "name": "not_docked_or_charging",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be off the dock and not charging."
+    },
+    {
+     "name": "live_map_position_available",
+     "passed": true,
+     "detail": "Real pulse requires live map-local mower position."
+    },
+    {
+     "name": "position_area_inside",
+     "passed": true,
+     "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+    },
+    {
+     "name": "map_position_nonzero",
+     "passed": true,
+     "detail": "Real pulse requires nonzero map-local x/y coordinates."
+    }
+   ],
+   "runtime_safety": {
+    "allowed_for_manual_motion": true,
+    "blockers": [],
+    "blade_safe_for_motion": true,
+    "active_mowing_detected": false,
+    "active_route_detected": false,
+    "active_route_status": {
+     "route_present": false,
+     "progress_present": false,
+     "progress_is_active": false,
+     "blocks_motion": false,
+     "reason": "no_route",
+     "ha_state": "paused",
+     "work_mode_label": "MODE_READY"
+    },
+    "position_valid_for_motion": true,
+    "rtk_report_age_seconds": null,
+    "rtk_report_quiet_threshold_seconds": 1800.0,
+    "rtk_report_quiet": false,
+    "rtk_status_label": "Fix",
+    "rtk_degraded": false,
+    "rtk_degraded_override": false
+   },
+   "blockers": [],
+   "would_send": true,
+   "planned_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 0,
+     "angular_speed": 500
+    }
+   },
+   "commands_sent": 1,
+   "command_results": [
+    {
+     "index": 1,
+     "angular_speed": 500,
+     "pulse_duration_ms": 250.0,
+     "before_vision_heading": -60.36560973344326,
+     "heading_error_before": -22.0,
+     "command": "send_movement",
+     "sent_at_utc": "2026-08-09T23:42:38.157426+00:00",
+     "ok": true,
+     "error": null,
+     "stop_ack": {
+      "movement_ok": true
+     },
+     "after_vision_heading": -70.28812164125893,
+     "measured_change_degrees": -9.923,
+     "heading_error_after": -12.077,
+     "progress_degrees": 9.923,
+     "displacement_m": 0.016282505949637503,
+     "heading_poll_seconds": 2.0,
+     "heading_went_fresh": true,
+     "motion_refresh": {
+      "refresh_enabled": true,
+      "refresh_interval_ms": 200,
+      "refresh_commands_sent": 1,
+      "refresh_command_limit": null,
+      "refresh_write_durations_ms": [
+       108.545
+      ],
+      "max_refresh_commands": 1,
+      "elapsed_ms": 309.133
+     },
+     "final_approach": {
+      "applied": false,
+      "reason": "cruising_full_pulse_fits",
+      "heading_error_degrees": -22.0,
+      "heading_tolerance_degrees": 18.0,
+      "degrees_per_second": 1.0,
+      "degrees_per_second_source": "default",
+      "max_rate_ceiling_degrees_per_second": 60.0,
+      "max_allowed_sweep_degrees": 40.0,
+      "ceiling_pulse_duration_ms": 666.7,
+      "pulse_duration_ms": 250.0,
+      "ceiling_below_actuation_floor": false
+     },
+     "heading_poll_count": 1,
+     "heading_poll_feed_alive": true,
+     "longest_refresh_write_ms": 108.545,
+     "refresh_cadence_broken": false
+    }
+   ],
+   "final_vision_heading": -70.28812164125893,
+   "final_heading_error_degrees": -12.077,
+   "final_vio_feed": {
+    "live": true,
+    "tracked_features": 74,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "final_displacement_m": 0.016282505949637503,
+   "turn_degrees_per_second": 1.0,
+   "turn_feasibility": {
+    "feasible": true,
+    "reason": "within_budget",
+    "initial_error_degrees": 22.0,
+    "heading_tolerance_degrees": 18.0,
+    "required_rotation_degrees": 4.0,
+    "per_command_rotation_bound_degrees": 4.125,
+    "rotation_bound_source": "conservative_observed_rate_with_refresh",
+    "estimated_commands_needed": 1,
+    "max_commands": 8,
+    "translation_bound_m_per_degree": 0.0026,
+    "translation_bound_source": "conservative_observed_translation_per_degree",
+    "estimated_translation_m": 0.057,
+    "max_displacement_m": 0.5,
+    "command_count_model": "executor_pulse_policy_replay",
+    "modelled_pulse_durations_ms": [
+     250.0
+    ]
+   },
+   "stop_reason": "target_heading_reached"
+  }
+ },
+ {
+  "commanded_ms": 300,
+  "repeat": 0,
+  "heading_error_degrees": 22.0,
+  "delivered_pulse_ms": 300.0,
+  "final_approach_reason": "cruising_full_pulse_fits",
+  "window_ms": 389.299,
+  "rotation_degrees": 24.66,
+  "cadence_broken": false,
+  "longest_write_ms": 188.931,
+  "stop_reason": "target_heading_reached",
+  "response": {
+   "service": "vio_turn_to_heading",
+   "mode": "real_vio_turn_to_heading",
+   "dry_run": false,
+   "real_execution_scope": "vio_turn_to_heading_only",
+   "path_execution_allowed": false,
+   "target_vision_heading": 311.7118783587411,
+   "heading_tolerance_degrees": 18.0,
+   "angular_speed": 500,
+   "pulse_duration_ms": 300,
+   "slow_pulse_duration_ms": 700,
+   "slow_threshold_degrees": 1.0,
+   "refresh_wait_seconds": 2.0,
+   "effective_poll_interval_seconds": 2.0,
+   "fresh_heading_timeout_seconds": 8.0,
+   "max_commands": 8,
+   "min_progress_degrees": 2.0,
+   "max_no_progress_pulses": 2,
+   "max_displacement_m": 0.5,
+   "invert_direction": false,
+   "motion_refresh_interval_ms": 200,
+   "motion_refresh_commands_sent": 1,
+   "refresh_cadence_broken_pulses": 0,
+   "prefer_ble": true,
+   "confirm_blades_off": true,
+   "confirm_clear_area": true,
+   "active_transport": "ble",
+   "initial_vision_heading": -70.28812164125893,
+   "initial_vio_state": 2,
+   "initial_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "initial_heading_error_degrees": 22.0,
+   "safety_gates": [
+    {
+     "name": "stop_primitive_available",
+     "passed": true,
+     "detail": "Coordinator must expose async_stop_manual_motion()."
+    },
+    {
+     "name": "ble_transport_required",
+     "passed": true,
+     "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+    },
+    {
+     "name": "ble_link_live",
+     "passed": true,
+     "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+     "diagnostics": {
+      "live": true,
+      "reason": null,
+      "is_connected": true,
+      "is_usable": true,
+      "cooldown_active": false,
+      "cooldown_remaining_seconds": 0.0,
+      "last_send_age_seconds": 2.2,
+      "queue_depth": 0,
+      "queue_dispatch_paused": false,
+      "saga_active": false,
+      "stall_threshold_seconds": 15.0,
+      "queue_depth_limit": 0
+     }
+    },
+    {
+     "name": "operator_confirmed_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires confirm_blades_off=true."
+    },
+    {
+     "name": "operator_confirmed_clear_area",
+     "passed": true,
+     "detail": "Real pulse requires confirm_clear_area=true."
+    },
+    {
+     "name": "mower_reports_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires blade state off and cutter RPM zero/unknown."
+    },
+    {
+     "name": "mower_ready",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+    },
+    {
+     "name": "not_docked_or_charging",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be off the dock and not charging."
+    },
+    {
+     "name": "live_map_position_available",
+     "passed": true,
+     "detail": "Real pulse requires live map-local mower position."
+    },
+    {
+     "name": "position_area_inside",
+     "passed": true,
+     "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+    },
+    {
+     "name": "map_position_nonzero",
+     "passed": true,
+     "detail": "Real pulse requires nonzero map-local x/y coordinates."
+    }
+   ],
+   "runtime_safety": {
+    "allowed_for_manual_motion": true,
+    "blockers": [],
+    "blade_safe_for_motion": true,
+    "active_mowing_detected": false,
+    "active_route_detected": false,
+    "active_route_status": {
+     "route_present": false,
+     "progress_present": false,
+     "progress_is_active": false,
+     "blocks_motion": false,
+     "reason": "no_route",
+     "ha_state": "paused",
+     "work_mode_label": "MODE_READY"
+    },
+    "position_valid_for_motion": true,
+    "rtk_report_age_seconds": null,
+    "rtk_report_quiet_threshold_seconds": 1800.0,
+    "rtk_report_quiet": false,
+    "rtk_status_label": "Fix",
+    "rtk_degraded": false,
+    "rtk_degraded_override": false
+   },
+   "blockers": [],
+   "would_send": true,
+   "planned_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 0,
+     "angular_speed": -500
+    }
+   },
+   "commands_sent": 1,
+   "command_results": [
+    {
+     "index": 1,
+     "angular_speed": -500,
+     "pulse_duration_ms": 300.0,
+     "before_vision_heading": -70.28812164125893,
+     "heading_error_before": 22.0,
+     "command": "send_movement",
+     "sent_at_utc": "2026-08-09T23:42:41.228593+00:00",
+     "ok": true,
+     "error": null,
+     "stop_ack": {
+      "movement_ok": true
+     },
+     "after_vision_heading": -45.62857328309121,
+     "measured_change_degrees": 24.66,
+     "heading_error_after": -2.66,
+     "progress_degrees": 19.34,
+     "displacement_m": 0.010904127658827072,
+     "heading_poll_seconds": 2.0,
+     "heading_went_fresh": true,
+     "motion_refresh": {
+      "refresh_enabled": true,
+      "refresh_interval_ms": 200,
+      "refresh_commands_sent": 1,
+      "refresh_command_limit": null,
+      "refresh_write_durations_ms": [
+       188.931
+      ],
+      "max_refresh_commands": 1,
+      "elapsed_ms": 389.299
+     },
+     "final_approach": {
+      "applied": false,
+      "reason": "cruising_full_pulse_fits",
+      "heading_error_degrees": 22.0,
+      "heading_tolerance_degrees": 18.0,
+      "degrees_per_second": 1.0,
+      "degrees_per_second_source": "default",
+      "max_rate_ceiling_degrees_per_second": 60.0,
+      "max_allowed_sweep_degrees": 40.0,
+      "ceiling_pulse_duration_ms": 666.7,
+      "pulse_duration_ms": 300.0,
+      "ceiling_below_actuation_floor": false
+     },
+     "heading_poll_count": 1,
+     "heading_poll_feed_alive": true,
+     "longest_refresh_write_ms": 188.931,
+     "refresh_cadence_broken": false
+    }
+   ],
+   "final_vision_heading": -45.62857328309121,
+   "final_heading_error_degrees": -2.66,
+   "final_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "final_displacement_m": 0.010904127658827072,
+   "turn_degrees_per_second": 1.0,
+   "turn_feasibility": {
+    "feasible": true,
+    "reason": "within_budget",
+    "initial_error_degrees": 22.0,
+    "heading_tolerance_degrees": 18.0,
+    "required_rotation_degrees": 4.0,
+    "per_command_rotation_bound_degrees": 4.95,
+    "rotation_bound_source": "conservative_observed_rate_with_refresh",
+    "estimated_commands_needed": 1,
+    "max_commands": 8,
+    "translation_bound_m_per_degree": 0.0026,
+    "translation_bound_source": "conservative_observed_translation_per_degree",
+    "estimated_translation_m": 0.057,
+    "max_displacement_m": 0.5,
+    "command_count_model": "executor_pulse_policy_replay",
+    "modelled_pulse_durations_ms": [
+     300.0
+    ]
+   },
+   "stop_reason": "target_heading_reached"
+  }
+ },
+ {
+  "commanded_ms": 300,
+  "repeat": 1,
+  "heading_error_degrees": -22.0,
+  "delivered_pulse_ms": 300.0,
+  "final_approach_reason": "cruising_full_pulse_fits",
+  "window_ms": 528.677,
+  "rotation_degrees": 15.092,
+  "cadence_broken": true,
+  "longest_write_ms": 328.44,
+  "stop_reason": "target_heading_reached",
+  "response": {
+   "service": "vio_turn_to_heading",
+   "mode": "real_vio_turn_to_heading",
+   "dry_run": false,
+   "real_execution_scope": "vio_turn_to_heading_only",
+   "path_execution_allowed": false,
+   "target_vision_heading": 292.3714267169088,
+   "heading_tolerance_degrees": 18.0,
+   "angular_speed": 500,
+   "pulse_duration_ms": 300,
+   "slow_pulse_duration_ms": 700,
+   "slow_threshold_degrees": 1.0,
+   "refresh_wait_seconds": 2.0,
+   "effective_poll_interval_seconds": 2.0,
+   "fresh_heading_timeout_seconds": 8.0,
+   "max_commands": 8,
+   "min_progress_degrees": 2.0,
+   "max_no_progress_pulses": 2,
+   "max_displacement_m": 0.5,
+   "invert_direction": false,
+   "motion_refresh_interval_ms": 200,
+   "motion_refresh_commands_sent": 1,
+   "refresh_cadence_broken_pulses": 1,
+   "prefer_ble": true,
+   "confirm_blades_off": true,
+   "confirm_clear_area": true,
+   "active_transport": "ble",
+   "initial_vision_heading": -45.62857328309121,
+   "initial_vio_state": 2,
+   "initial_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "initial_heading_error_degrees": -22.0,
+   "safety_gates": [
+    {
+     "name": "stop_primitive_available",
+     "passed": true,
+     "detail": "Coordinator must expose async_stop_manual_motion()."
+    },
+    {
+     "name": "ble_transport_required",
+     "passed": true,
+     "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+    },
+    {
+     "name": "ble_link_live",
+     "passed": true,
+     "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+     "diagnostics": {
+      "live": true,
+      "reason": null,
+      "is_connected": true,
+      "is_usable": true,
+      "cooldown_active": false,
+      "cooldown_remaining_seconds": 0.0,
+      "last_send_age_seconds": 2.2,
+      "queue_depth": 0,
+      "queue_dispatch_paused": false,
+      "saga_active": false,
+      "stall_threshold_seconds": 15.0,
+      "queue_depth_limit": 0
+     }
+    },
+    {
+     "name": "operator_confirmed_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires confirm_blades_off=true."
+    },
+    {
+     "name": "operator_confirmed_clear_area",
+     "passed": true,
+     "detail": "Real pulse requires confirm_clear_area=true."
+    },
+    {
+     "name": "mower_reports_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires blade state off and cutter RPM zero/unknown."
+    },
+    {
+     "name": "mower_ready",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+    },
+    {
+     "name": "not_docked_or_charging",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be off the dock and not charging."
+    },
+    {
+     "name": "live_map_position_available",
+     "passed": true,
+     "detail": "Real pulse requires live map-local mower position."
+    },
+    {
+     "name": "position_area_inside",
+     "passed": true,
+     "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+    },
+    {
+     "name": "map_position_nonzero",
+     "passed": true,
+     "detail": "Real pulse requires nonzero map-local x/y coordinates."
+    }
+   ],
+   "runtime_safety": {
+    "allowed_for_manual_motion": true,
+    "blockers": [],
+    "blade_safe_for_motion": true,
+    "active_mowing_detected": false,
+    "active_route_detected": false,
+    "active_route_status": {
+     "route_present": false,
+     "progress_present": false,
+     "progress_is_active": false,
+     "blocks_motion": false,
+     "reason": "no_route",
+     "ha_state": "paused",
+     "work_mode_label": "MODE_READY"
+    },
+    "position_valid_for_motion": true,
+    "rtk_report_age_seconds": null,
+    "rtk_report_quiet_threshold_seconds": 1800.0,
+    "rtk_report_quiet": false,
+    "rtk_status_label": "Fix",
+    "rtk_degraded": false,
+    "rtk_degraded_override": false
+   },
+   "blockers": [],
+   "would_send": true,
+   "planned_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 0,
+     "angular_speed": 500
+    }
+   },
+   "commands_sent": 1,
+   "command_results": [
+    {
+     "index": 1,
+     "angular_speed": 500,
+     "pulse_duration_ms": 300.0,
+     "before_vision_heading": -45.62857328309121,
+     "heading_error_before": -22.0,
+     "command": "send_movement",
+     "sent_at_utc": "2026-08-09T23:42:44.670252+00:00",
+     "ok": true,
+     "error": null,
+     "stop_ack": {
+      "movement_ok": true
+     },
+     "after_vision_heading": -60.72012754876621,
+     "measured_change_degrees": -15.092,
+     "heading_error_after": -6.908,
+     "progress_degrees": 15.092,
+     "displacement_m": 0.02006888138387416,
+     "heading_poll_seconds": 2.0,
+     "heading_went_fresh": true,
+     "motion_refresh": {
+      "refresh_enabled": true,
+      "refresh_interval_ms": 200,
+      "refresh_commands_sent": 1,
+      "refresh_command_limit": null,
+      "refresh_write_durations_ms": [
+       328.44
+      ],
+      "max_refresh_commands": 1,
+      "elapsed_ms": 528.677
+     },
+     "final_approach": {
+      "applied": false,
+      "reason": "cruising_full_pulse_fits",
+      "heading_error_degrees": -22.0,
+      "heading_tolerance_degrees": 18.0,
+      "degrees_per_second": 1.0,
+      "degrees_per_second_source": "default",
+      "max_rate_ceiling_degrees_per_second": 60.0,
+      "max_allowed_sweep_degrees": 40.0,
+      "ceiling_pulse_duration_ms": 666.7,
+      "pulse_duration_ms": 300.0,
+      "ceiling_below_actuation_floor": false
+     },
+     "heading_poll_count": 1,
+     "heading_poll_feed_alive": true,
+     "longest_refresh_write_ms": 328.44,
+     "refresh_cadence_broken": true
+    }
+   ],
+   "final_vision_heading": -60.72012754876621,
+   "final_heading_error_degrees": -6.908,
+   "final_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "final_displacement_m": 0.02006888138387416,
+   "turn_degrees_per_second": 1.0,
+   "turn_feasibility": {
+    "feasible": true,
+    "reason": "within_budget",
+    "initial_error_degrees": 22.0,
+    "heading_tolerance_degrees": 18.0,
+    "required_rotation_degrees": 4.0,
+    "per_command_rotation_bound_degrees": 4.95,
+    "rotation_bound_source": "conservative_observed_rate_with_refresh",
+    "estimated_commands_needed": 1,
+    "max_commands": 8,
+    "translation_bound_m_per_degree": 0.0026,
+    "translation_bound_source": "conservative_observed_translation_per_degree",
+    "estimated_translation_m": 0.057,
+    "max_displacement_m": 0.5,
+    "command_count_model": "executor_pulse_policy_replay",
+    "modelled_pulse_durations_ms": [
+     300.0
+    ]
+   },
+   "stop_reason": "target_heading_reached"
+  }
+ },
+ {
+  "commanded_ms": 400,
+  "repeat": 0,
+  "heading_error_degrees": 22.0,
+  "delivered_pulse_ms": 400.0,
+  "final_approach_reason": "cruising_full_pulse_fits",
+  "window_ms": 520.835,
+  "rotation_degrees": 23.404,
+  "cadence_broken": false,
+  "longest_write_ms": 320.468,
+  "stop_reason": "target_heading_reached",
+  "response": {
+   "service": "vio_turn_to_heading",
+   "mode": "real_vio_turn_to_heading",
+   "dry_run": false,
+   "real_execution_scope": "vio_turn_to_heading_only",
+   "path_execution_allowed": false,
+   "target_vision_heading": 321.2798724512338,
+   "heading_tolerance_degrees": 18.0,
+   "angular_speed": 500,
+   "pulse_duration_ms": 400,
+   "slow_pulse_duration_ms": 700,
+   "slow_threshold_degrees": 1.0,
+   "refresh_wait_seconds": 2.0,
+   "effective_poll_interval_seconds": 2.0,
+   "fresh_heading_timeout_seconds": 8.0,
+   "max_commands": 8,
+   "min_progress_degrees": 2.0,
+   "max_no_progress_pulses": 2,
+   "max_displacement_m": 0.5,
+   "invert_direction": false,
+   "motion_refresh_interval_ms": 200,
+   "motion_refresh_commands_sent": 1,
+   "refresh_cadence_broken_pulses": 0,
+   "prefer_ble": true,
+   "confirm_blades_off": true,
+   "confirm_clear_area": true,
+   "active_transport": "ble",
+   "initial_vision_heading": -60.72012754876621,
+   "initial_vio_state": 2,
+   "initial_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "initial_heading_error_degrees": 22.0,
+   "safety_gates": [
+    {
+     "name": "stop_primitive_available",
+     "passed": true,
+     "detail": "Coordinator must expose async_stop_manual_motion()."
+    },
+    {
+     "name": "ble_transport_required",
+     "passed": true,
+     "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+    },
+    {
+     "name": "ble_link_live",
+     "passed": true,
+     "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+     "diagnostics": {
+      "live": true,
+      "reason": null,
+      "is_connected": true,
+      "is_usable": true,
+      "cooldown_active": false,
+      "cooldown_remaining_seconds": 0.0,
+      "last_send_age_seconds": 1.0,
+      "queue_depth": 0,
+      "queue_dispatch_paused": false,
+      "saga_active": false,
+      "stall_threshold_seconds": 15.0,
+      "queue_depth_limit": 0
+     }
+    },
+    {
+     "name": "operator_confirmed_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires confirm_blades_off=true."
+    },
+    {
+     "name": "operator_confirmed_clear_area",
+     "passed": true,
+     "detail": "Real pulse requires confirm_clear_area=true."
+    },
+    {
+     "name": "mower_reports_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires blade state off and cutter RPM zero/unknown."
+    },
+    {
+     "name": "mower_ready",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+    },
+    {
+     "name": "not_docked_or_charging",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be off the dock and not charging."
+    },
+    {
+     "name": "live_map_position_available",
+     "passed": true,
+     "detail": "Real pulse requires live map-local mower position."
+    },
+    {
+     "name": "position_area_inside",
+     "passed": true,
+     "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+    },
+    {
+     "name": "map_position_nonzero",
+     "passed": true,
+     "detail": "Real pulse requires nonzero map-local x/y coordinates."
+    }
+   ],
+   "runtime_safety": {
+    "allowed_for_manual_motion": true,
+    "blockers": [],
+    "blade_safe_for_motion": true,
+    "active_mowing_detected": false,
+    "active_route_detected": false,
+    "active_route_status": {
+     "route_present": false,
+     "progress_present": false,
+     "progress_is_active": false,
+     "blocks_motion": false,
+     "reason": "no_route",
+     "ha_state": "paused",
+     "work_mode_label": "MODE_READY"
+    },
+    "position_valid_for_motion": true,
+    "rtk_report_age_seconds": null,
+    "rtk_report_quiet_threshold_seconds": 1800.0,
+    "rtk_report_quiet": false,
+    "rtk_status_label": "Fix",
+    "rtk_degraded": false,
+    "rtk_degraded_override": false
+   },
+   "blockers": [],
+   "would_send": true,
+   "planned_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 0,
+     "angular_speed": -500
+    }
+   },
+   "commands_sent": 1,
+   "command_results": [
+    {
+     "index": 1,
+     "angular_speed": -500,
+     "pulse_duration_ms": 400.0,
+     "before_vision_heading": -60.72012754876621,
+     "heading_error_before": 22.0,
+     "command": "send_movement",
+     "sent_at_utc": "2026-08-09T23:42:47.996613+00:00",
+     "ok": true,
+     "error": null,
+     "stop_ack": {
+      "movement_ok": true
+     },
+     "after_vision_heading": -37.31609410565009,
+     "measured_change_degrees": 23.404,
+     "heading_error_after": -1.404,
+     "progress_degrees": 20.596,
+     "displacement_m": 0.010791200118615174,
+     "heading_poll_seconds": 2.0,
+     "heading_went_fresh": true,
+     "motion_refresh": {
+      "refresh_enabled": true,
+      "refresh_interval_ms": 200,
+      "refresh_commands_sent": 1,
+      "refresh_command_limit": null,
+      "refresh_write_durations_ms": [
+       320.468
+      ],
+      "max_refresh_commands": 2,
+      "elapsed_ms": 520.835
+     },
+     "final_approach": {
+      "applied": false,
+      "reason": "cruising_full_pulse_fits",
+      "heading_error_degrees": 22.0,
+      "heading_tolerance_degrees": 18.0,
+      "degrees_per_second": 1.0,
+      "degrees_per_second_source": "default",
+      "max_rate_ceiling_degrees_per_second": 60.0,
+      "max_allowed_sweep_degrees": 40.0,
+      "ceiling_pulse_duration_ms": 666.7,
+      "pulse_duration_ms": 400.0,
+      "ceiling_below_actuation_floor": false
+     },
+     "heading_poll_count": 1,
+     "heading_poll_feed_alive": true,
+     "longest_refresh_write_ms": 320.468,
+     "refresh_cadence_broken": false
+    }
+   ],
+   "final_vision_heading": -37.31609410565009,
+   "final_heading_error_degrees": -1.404,
+   "final_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "final_displacement_m": 0.010791200118615174,
+   "turn_degrees_per_second": 1.0,
+   "turn_feasibility": {
+    "feasible": true,
+    "reason": "within_budget",
+    "initial_error_degrees": 22.0,
+    "heading_tolerance_degrees": 18.0,
+    "required_rotation_degrees": 4.0,
+    "per_command_rotation_bound_degrees": 6.6,
+    "rotation_bound_source": "conservative_observed_rate_with_refresh",
+    "estimated_commands_needed": 1,
+    "max_commands": 8,
+    "translation_bound_m_per_degree": 0.0026,
+    "translation_bound_source": "conservative_observed_translation_per_degree",
+    "estimated_translation_m": 0.057,
+    "max_displacement_m": 0.5,
+    "command_count_model": "executor_pulse_policy_replay",
+    "modelled_pulse_durations_ms": [
+     400.0
+    ]
+   },
+   "stop_reason": "target_heading_reached"
+  }
+ },
+ {
+  "commanded_ms": 400,
+  "repeat": 1,
+  "heading_error_degrees": -22.0,
+  "delivered_pulse_ms": 400.0,
+  "final_approach_reason": "cruising_full_pulse_fits",
+  "window_ms": 494.401,
+  "rotation_degrees": 15.639,
+  "cadence_broken": false,
+  "longest_write_ms": 293.31,
+  "stop_reason": "target_heading_reached",
+  "response": {
+   "service": "vio_turn_to_heading",
+   "mode": "real_vio_turn_to_heading",
+   "dry_run": false,
+   "real_execution_scope": "vio_turn_to_heading_only",
+   "path_execution_allowed": false,
+   "target_vision_heading": 300.6839058943499,
+   "heading_tolerance_degrees": 18.0,
+   "angular_speed": 500,
+   "pulse_duration_ms": 400,
+   "slow_pulse_duration_ms": 700,
+   "slow_threshold_degrees": 1.0,
+   "refresh_wait_seconds": 2.0,
+   "effective_poll_interval_seconds": 2.0,
+   "fresh_heading_timeout_seconds": 8.0,
+   "max_commands": 8,
+   "min_progress_degrees": 2.0,
+   "max_no_progress_pulses": 2,
+   "max_displacement_m": 0.5,
+   "invert_direction": false,
+   "motion_refresh_interval_ms": 200,
+   "motion_refresh_commands_sent": 1,
+   "refresh_cadence_broken_pulses": 0,
+   "prefer_ble": true,
+   "confirm_blades_off": true,
+   "confirm_clear_area": true,
+   "active_transport": "ble",
+   "initial_vision_heading": -37.31609410565009,
+   "initial_vio_state": 2,
+   "initial_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "initial_heading_error_degrees": -22.0,
+   "safety_gates": [
+    {
+     "name": "stop_primitive_available",
+     "passed": true,
+     "detail": "Coordinator must expose async_stop_manual_motion()."
+    },
+    {
+     "name": "ble_transport_required",
+     "passed": true,
+     "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+    },
+    {
+     "name": "ble_link_live",
+     "passed": true,
+     "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+     "diagnostics": {
+      "live": true,
+      "reason": null,
+      "is_connected": true,
+      "is_usable": true,
+      "cooldown_active": false,
+      "cooldown_remaining_seconds": 0.0,
+      "last_send_age_seconds": 2.2,
+      "queue_depth": 0,
+      "queue_dispatch_paused": false,
+      "saga_active": false,
+      "stall_threshold_seconds": 15.0,
+      "queue_depth_limit": 0
+     }
+    },
+    {
+     "name": "operator_confirmed_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires confirm_blades_off=true."
+    },
+    {
+     "name": "operator_confirmed_clear_area",
+     "passed": true,
+     "detail": "Real pulse requires confirm_clear_area=true."
+    },
+    {
+     "name": "mower_reports_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires blade state off and cutter RPM zero/unknown."
+    },
+    {
+     "name": "mower_ready",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+    },
+    {
+     "name": "not_docked_or_charging",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be off the dock and not charging."
+    },
+    {
+     "name": "live_map_position_available",
+     "passed": true,
+     "detail": "Real pulse requires live map-local mower position."
+    },
+    {
+     "name": "position_area_inside",
+     "passed": true,
+     "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+    },
+    {
+     "name": "map_position_nonzero",
+     "passed": true,
+     "detail": "Real pulse requires nonzero map-local x/y coordinates."
+    }
+   ],
+   "runtime_safety": {
+    "allowed_for_manual_motion": true,
+    "blockers": [],
+    "blade_safe_for_motion": true,
+    "active_mowing_detected": false,
+    "active_route_detected": false,
+    "active_route_status": {
+     "route_present": false,
+     "progress_present": false,
+     "progress_is_active": false,
+     "blocks_motion": false,
+     "reason": "no_route",
+     "ha_state": "paused",
+     "work_mode_label": "MODE_READY"
+    },
+    "position_valid_for_motion": true,
+    "rtk_report_age_seconds": null,
+    "rtk_report_quiet_threshold_seconds": 1800.0,
+    "rtk_report_quiet": false,
+    "rtk_status_label": "Fix",
+    "rtk_degraded": false,
+    "rtk_degraded_override": false
+   },
+   "blockers": [],
+   "would_send": true,
+   "planned_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 0,
+     "angular_speed": 500
+    }
+   },
+   "commands_sent": 1,
+   "command_results": [
+    {
+     "index": 1,
+     "angular_speed": 500,
+     "pulse_duration_ms": 400.0,
+     "before_vision_heading": -37.31609410565009,
+     "heading_error_before": -22.0,
+     "command": "send_movement",
+     "sent_at_utc": "2026-08-09T23:42:51.365360+00:00",
+     "ok": true,
+     "error": null,
+     "stop_ack": {
+      "movement_ok": true
+     },
+     "after_vision_heading": -52.95552742616908,
+     "measured_change_degrees": -15.639,
+     "heading_error_after": -6.361,
+     "progress_degrees": 15.639,
+     "displacement_m": 0.022294618184664616,
+     "heading_poll_seconds": 2.0,
+     "heading_went_fresh": true,
+     "motion_refresh": {
+      "refresh_enabled": true,
+      "refresh_interval_ms": 200,
+      "refresh_commands_sent": 1,
+      "refresh_command_limit": null,
+      "refresh_write_durations_ms": [
+       293.31
+      ],
+      "max_refresh_commands": 2,
+      "elapsed_ms": 494.401
+     },
+     "final_approach": {
+      "applied": false,
+      "reason": "cruising_full_pulse_fits",
+      "heading_error_degrees": -22.0,
+      "heading_tolerance_degrees": 18.0,
+      "degrees_per_second": 1.0,
+      "degrees_per_second_source": "default",
+      "max_rate_ceiling_degrees_per_second": 60.0,
+      "max_allowed_sweep_degrees": 40.0,
+      "ceiling_pulse_duration_ms": 666.7,
+      "pulse_duration_ms": 400.0,
+      "ceiling_below_actuation_floor": false
+     },
+     "heading_poll_count": 1,
+     "heading_poll_feed_alive": true,
+     "longest_refresh_write_ms": 293.31,
+     "refresh_cadence_broken": false
+    }
+   ],
+   "final_vision_heading": -52.95552742616908,
+   "final_heading_error_degrees": -6.361,
+   "final_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "final_displacement_m": 0.022294618184664616,
+   "turn_degrees_per_second": 1.0,
+   "turn_feasibility": {
+    "feasible": true,
+    "reason": "within_budget",
+    "initial_error_degrees": 22.0,
+    "heading_tolerance_degrees": 18.0,
+    "required_rotation_degrees": 4.0,
+    "per_command_rotation_bound_degrees": 6.6,
+    "rotation_bound_source": "conservative_observed_rate_with_refresh",
+    "estimated_commands_needed": 1,
+    "max_commands": 8,
+    "translation_bound_m_per_degree": 0.0026,
+    "translation_bound_source": "conservative_observed_translation_per_degree",
+    "estimated_translation_m": 0.057,
+    "max_displacement_m": 0.5,
+    "command_count_model": "executor_pulse_policy_replay",
+    "modelled_pulse_durations_ms": [
+     400.0
+    ]
+   },
+   "stop_reason": "target_heading_reached"
+  }
+ },
+ {
+  "commanded_ms": 500,
+  "repeat": 0,
+  "heading_error_degrees": 22.0,
+  "delivered_pulse_ms": 500.0,
+  "final_approach_reason": "cruising_full_pulse_fits",
+  "window_ms": 616.144,
+  "rotation_degrees": 33.325,
+  "cadence_broken": false,
+  "longest_write_ms": 211.598,
+  "stop_reason": "target_heading_reached",
+  "response": {
+   "service": "vio_turn_to_heading",
+   "mode": "real_vio_turn_to_heading",
+   "dry_run": false,
+   "real_execution_scope": "vio_turn_to_heading_only",
+   "path_execution_allowed": false,
+   "target_vision_heading": 329.0444725738309,
+   "heading_tolerance_degrees": 18.0,
+   "angular_speed": 500,
+   "pulse_duration_ms": 500,
+   "slow_pulse_duration_ms": 700,
+   "slow_threshold_degrees": 1.0,
+   "refresh_wait_seconds": 2.0,
+   "effective_poll_interval_seconds": 2.0,
+   "fresh_heading_timeout_seconds": 8.0,
+   "max_commands": 8,
+   "min_progress_degrees": 2.0,
+   "max_no_progress_pulses": 2,
+   "max_displacement_m": 0.5,
+   "invert_direction": false,
+   "motion_refresh_interval_ms": 200,
+   "motion_refresh_commands_sent": 2,
+   "refresh_cadence_broken_pulses": 0,
+   "prefer_ble": true,
+   "confirm_blades_off": true,
+   "confirm_clear_area": true,
+   "active_transport": "ble",
+   "initial_vision_heading": -52.95552742616908,
+   "initial_vio_state": 2,
+   "initial_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "initial_heading_error_degrees": 22.0,
+   "safety_gates": [
+    {
+     "name": "stop_primitive_available",
+     "passed": true,
+     "detail": "Coordinator must expose async_stop_manual_motion()."
+    },
+    {
+     "name": "ble_transport_required",
+     "passed": true,
+     "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+    },
+    {
+     "name": "ble_link_live",
+     "passed": true,
+     "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+     "diagnostics": {
+      "live": true,
+      "reason": null,
+      "is_connected": true,
+      "is_usable": true,
+      "cooldown_active": false,
+      "cooldown_remaining_seconds": 0.0,
+      "last_send_age_seconds": 2.2,
+      "queue_depth": 0,
+      "queue_dispatch_paused": false,
+      "saga_active": false,
+      "stall_threshold_seconds": 15.0,
+      "queue_depth_limit": 0
+     }
+    },
+    {
+     "name": "operator_confirmed_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires confirm_blades_off=true."
+    },
+    {
+     "name": "operator_confirmed_clear_area",
+     "passed": true,
+     "detail": "Real pulse requires confirm_clear_area=true."
+    },
+    {
+     "name": "mower_reports_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires blade state off and cutter RPM zero/unknown."
+    },
+    {
+     "name": "mower_ready",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+    },
+    {
+     "name": "not_docked_or_charging",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be off the dock and not charging."
+    },
+    {
+     "name": "live_map_position_available",
+     "passed": true,
+     "detail": "Real pulse requires live map-local mower position."
+    },
+    {
+     "name": "position_area_inside",
+     "passed": true,
+     "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+    },
+    {
+     "name": "map_position_nonzero",
+     "passed": true,
+     "detail": "Real pulse requires nonzero map-local x/y coordinates."
+    }
+   ],
+   "runtime_safety": {
+    "allowed_for_manual_motion": true,
+    "blockers": [],
+    "blade_safe_for_motion": true,
+    "active_mowing_detected": false,
+    "active_route_detected": false,
+    "active_route_status": {
+     "route_present": false,
+     "progress_present": false,
+     "progress_is_active": false,
+     "blocks_motion": false,
+     "reason": "no_route",
+     "ha_state": "paused",
+     "work_mode_label": "MODE_READY"
+    },
+    "position_valid_for_motion": true,
+    "rtk_report_age_seconds": null,
+    "rtk_report_quiet_threshold_seconds": 1800.0,
+    "rtk_report_quiet": false,
+    "rtk_status_label": "Fix",
+    "rtk_degraded": false,
+    "rtk_degraded_override": false
+   },
+   "blockers": [],
+   "would_send": true,
+   "planned_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 0,
+     "angular_speed": -500
+    }
+   },
+   "commands_sent": 1,
+   "command_results": [
+    {
+     "index": 1,
+     "angular_speed": -500,
+     "pulse_duration_ms": 500.0,
+     "before_vision_heading": -52.95552742616908,
+     "heading_error_before": 22.0,
+     "command": "send_movement",
+     "sent_at_utc": "2026-08-09T23:42:55.117332+00:00",
+     "ok": true,
+     "error": null,
+     "stop_ack": {
+      "movement_ok": true
+     },
+     "after_vision_heading": -19.630149653516316,
+     "measured_change_degrees": 33.325,
+     "heading_error_after": -11.325,
+     "progress_degrees": 10.675,
+     "displacement_m": 0.014317122615945033,
+     "heading_poll_seconds": 2.0,
+     "heading_went_fresh": true,
+     "motion_refresh": {
+      "refresh_enabled": true,
+      "refresh_interval_ms": 200,
+      "refresh_commands_sent": 2,
+      "refresh_command_limit": null,
+      "refresh_write_durations_ms": [
+       211.598,
+       203.9
+      ],
+      "max_refresh_commands": 2,
+      "elapsed_ms": 616.144
+     },
+     "final_approach": {
+      "applied": false,
+      "reason": "cruising_full_pulse_fits",
+      "heading_error_degrees": 22.0,
+      "heading_tolerance_degrees": 18.0,
+      "degrees_per_second": 1.0,
+      "degrees_per_second_source": "default",
+      "max_rate_ceiling_degrees_per_second": 60.0,
+      "max_allowed_sweep_degrees": 40.0,
+      "ceiling_pulse_duration_ms": 666.7,
+      "pulse_duration_ms": 500.0,
+      "ceiling_below_actuation_floor": false
+     },
+     "heading_poll_count": 1,
+     "heading_poll_feed_alive": true,
+     "longest_refresh_write_ms": 211.598,
+     "refresh_cadence_broken": false
+    }
+   ],
+   "final_vision_heading": -19.630149653516316,
+   "final_heading_error_degrees": -11.325,
+   "final_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "final_displacement_m": 0.014317122615945033,
+   "turn_degrees_per_second": 1.0,
+   "turn_feasibility": {
+    "feasible": true,
+    "reason": "within_budget",
+    "initial_error_degrees": 22.0,
+    "heading_tolerance_degrees": 18.0,
+    "required_rotation_degrees": 4.0,
+    "per_command_rotation_bound_degrees": 8.25,
+    "rotation_bound_source": "conservative_observed_rate_with_refresh",
+    "estimated_commands_needed": 1,
+    "max_commands": 8,
+    "translation_bound_m_per_degree": 0.0026,
+    "translation_bound_source": "conservative_observed_translation_per_degree",
+    "estimated_translation_m": 0.057,
+    "max_displacement_m": 0.5,
+    "command_count_model": "executor_pulse_policy_replay",
+    "modelled_pulse_durations_ms": [
+     500.0
+    ]
+   },
+   "stop_reason": "target_heading_reached"
+  }
+ },
+ {
+  "commanded_ms": 500,
+  "repeat": 1,
+  "heading_error_degrees": -22.0,
+  "delivered_pulse_ms": 500.0,
+  "final_approach_reason": "cruising_full_pulse_fits",
+  "window_ms": 765.493,
+  "rotation_degrees": 14.489,
+  "cadence_broken": true,
+  "longest_write_ms": 565.273,
+  "stop_reason": "target_heading_reached",
+  "response": {
+   "service": "vio_turn_to_heading",
+   "mode": "real_vio_turn_to_heading",
+   "dry_run": false,
+   "real_execution_scope": "vio_turn_to_heading_only",
+   "path_execution_allowed": false,
+   "target_vision_heading": 318.3698503464837,
+   "heading_tolerance_degrees": 18.0,
+   "angular_speed": 500,
+   "pulse_duration_ms": 500,
+   "slow_pulse_duration_ms": 700,
+   "slow_threshold_degrees": 1.0,
+   "refresh_wait_seconds": 2.0,
+   "effective_poll_interval_seconds": 2.0,
+   "fresh_heading_timeout_seconds": 8.0,
+   "max_commands": 8,
+   "min_progress_degrees": 2.0,
+   "max_no_progress_pulses": 2,
+   "max_displacement_m": 0.5,
+   "invert_direction": false,
+   "motion_refresh_interval_ms": 200,
+   "motion_refresh_commands_sent": 1,
+   "refresh_cadence_broken_pulses": 1,
+   "prefer_ble": true,
+   "confirm_blades_off": true,
+   "confirm_clear_area": true,
+   "active_transport": "ble",
+   "initial_vision_heading": -19.630149653516316,
+   "initial_vio_state": 2,
+   "initial_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "initial_heading_error_degrees": -22.0,
+   "safety_gates": [
+    {
+     "name": "stop_primitive_available",
+     "passed": true,
+     "detail": "Coordinator must expose async_stop_manual_motion()."
+    },
+    {
+     "name": "ble_transport_required",
+     "passed": true,
+     "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+    },
+    {
+     "name": "ble_link_live",
+     "passed": true,
+     "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+     "diagnostics": {
+      "live": true,
+      "reason": null,
+      "is_connected": true,
+      "is_usable": true,
+      "cooldown_active": false,
+      "cooldown_remaining_seconds": 0.0,
+      "last_send_age_seconds": 1.1,
+      "queue_depth": 0,
+      "queue_dispatch_paused": false,
+      "saga_active": false,
+      "stall_threshold_seconds": 15.0,
+      "queue_depth_limit": 0
+     }
+    },
+    {
+     "name": "operator_confirmed_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires confirm_blades_off=true."
+    },
+    {
+     "name": "operator_confirmed_clear_area",
+     "passed": true,
+     "detail": "Real pulse requires confirm_clear_area=true."
+    },
+    {
+     "name": "mower_reports_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires blade state off and cutter RPM zero/unknown."
+    },
+    {
+     "name": "mower_ready",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+    },
+    {
+     "name": "not_docked_or_charging",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be off the dock and not charging."
+    },
+    {
+     "name": "live_map_position_available",
+     "passed": true,
+     "detail": "Real pulse requires live map-local mower position."
+    },
+    {
+     "name": "position_area_inside",
+     "passed": true,
+     "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+    },
+    {
+     "name": "map_position_nonzero",
+     "passed": true,
+     "detail": "Real pulse requires nonzero map-local x/y coordinates."
+    }
+   ],
+   "runtime_safety": {
+    "allowed_for_manual_motion": true,
+    "blockers": [],
+    "blade_safe_for_motion": true,
+    "active_mowing_detected": false,
+    "active_route_detected": false,
+    "active_route_status": {
+     "route_present": false,
+     "progress_present": false,
+     "progress_is_active": false,
+     "blocks_motion": false,
+     "reason": "no_route",
+     "ha_state": "paused",
+     "work_mode_label": "MODE_READY"
+    },
+    "position_valid_for_motion": true,
+    "rtk_report_age_seconds": null,
+    "rtk_report_quiet_threshold_seconds": 1800.0,
+    "rtk_report_quiet": false,
+    "rtk_status_label": "Fix",
+    "rtk_degraded": false,
+    "rtk_degraded_override": false
+   },
+   "blockers": [],
+   "would_send": true,
+   "planned_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 0,
+     "angular_speed": 500
+    }
+   },
+   "commands_sent": 1,
+   "command_results": [
+    {
+     "index": 1,
+     "angular_speed": 500,
+     "pulse_duration_ms": 500.0,
+     "before_vision_heading": -19.630149653516316,
+     "heading_error_before": -22.0,
+     "command": "send_movement",
+     "sent_at_utc": "2026-08-09T23:42:58.663863+00:00",
+     "ok": true,
+     "error": null,
+     "stop_ack": {
+      "movement_ok": true
+     },
+     "after_vision_heading": -34.11907953474385,
+     "measured_change_degrees": -14.489,
+     "heading_error_after": -7.511,
+     "progress_degrees": 14.489,
+     "displacement_m": 0.023634931774810998,
+     "heading_poll_seconds": 2.0,
+     "heading_went_fresh": true,
+     "motion_refresh": {
+      "refresh_enabled": true,
+      "refresh_interval_ms": 200,
+      "refresh_commands_sent": 1,
+      "refresh_command_limit": null,
+      "refresh_write_durations_ms": [
+       565.273
+      ],
+      "max_refresh_commands": 2,
+      "elapsed_ms": 765.493
+     },
+     "final_approach": {
+      "applied": false,
+      "reason": "cruising_full_pulse_fits",
+      "heading_error_degrees": -22.0,
+      "heading_tolerance_degrees": 18.0,
+      "degrees_per_second": 1.0,
+      "degrees_per_second_source": "default",
+      "max_rate_ceiling_degrees_per_second": 60.0,
+      "max_allowed_sweep_degrees": 40.0,
+      "ceiling_pulse_duration_ms": 666.7,
+      "pulse_duration_ms": 500.0,
+      "ceiling_below_actuation_floor": false
+     },
+     "heading_poll_count": 1,
+     "heading_poll_feed_alive": true,
+     "longest_refresh_write_ms": 565.273,
+     "refresh_cadence_broken": true
+    }
+   ],
+   "final_vision_heading": -34.11907953474385,
+   "final_heading_error_degrees": -7.511,
+   "final_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "final_displacement_m": 0.023634931774810998,
+   "turn_degrees_per_second": 1.0,
+   "turn_feasibility": {
+    "feasible": true,
+    "reason": "within_budget",
+    "initial_error_degrees": 22.0,
+    "heading_tolerance_degrees": 18.0,
+    "required_rotation_degrees": 4.0,
+    "per_command_rotation_bound_degrees": 8.25,
+    "rotation_bound_source": "conservative_observed_rate_with_refresh",
+    "estimated_commands_needed": 1,
+    "max_commands": 8,
+    "translation_bound_m_per_degree": 0.0026,
+    "translation_bound_source": "conservative_observed_translation_per_degree",
+    "estimated_translation_m": 0.057,
+    "max_displacement_m": 0.5,
+    "command_count_model": "executor_pulse_policy_replay",
+    "modelled_pulse_durations_ms": [
+     500.0
+    ]
+   },
+   "stop_reason": "target_heading_reached"
+  }
+ },
+ {
+  "commanded_ms": 700,
+  "repeat": 0,
+  "heading_error_degrees": 30.0,
+  "delivered_pulse_ms": 700.0,
+  "final_approach_reason": "cruising_full_pulse_fits",
+  "window_ms": 1254.516,
+  "rotation_degrees": 45.109,
+  "cadence_broken": true,
+  "longest_write_ms": 744.638,
+  "stop_reason": "target_heading_reached",
+  "response": {
+   "service": "vio_turn_to_heading",
+   "mode": "real_vio_turn_to_heading",
+   "dry_run": false,
+   "real_execution_scope": "vio_turn_to_heading_only",
+   "path_execution_allowed": false,
+   "target_vision_heading": 355.8809204652562,
+   "heading_tolerance_degrees": 18.0,
+   "angular_speed": 500,
+   "pulse_duration_ms": 700,
+   "slow_pulse_duration_ms": 700,
+   "slow_threshold_degrees": 1.0,
+   "refresh_wait_seconds": 2.0,
+   "effective_poll_interval_seconds": 2.0,
+   "fresh_heading_timeout_seconds": 8.0,
+   "max_commands": 8,
+   "min_progress_degrees": 2.0,
+   "max_no_progress_pulses": 2,
+   "max_displacement_m": 0.5,
+   "invert_direction": false,
+   "motion_refresh_interval_ms": 200,
+   "motion_refresh_commands_sent": 2,
+   "refresh_cadence_broken_pulses": 1,
+   "prefer_ble": true,
+   "confirm_blades_off": true,
+   "confirm_clear_area": true,
+   "active_transport": "ble",
+   "initial_vision_heading": -34.11907953474385,
+   "initial_vio_state": 2,
+   "initial_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "initial_heading_error_degrees": 30.0,
+   "safety_gates": [
+    {
+     "name": "stop_primitive_available",
+     "passed": true,
+     "detail": "Coordinator must expose async_stop_manual_motion()."
+    },
+    {
+     "name": "ble_transport_required",
+     "passed": true,
+     "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+    },
+    {
+     "name": "ble_link_live",
+     "passed": true,
+     "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+     "diagnostics": {
+      "live": true,
+      "reason": null,
+      "is_connected": true,
+      "is_usable": true,
+      "cooldown_active": false,
+      "cooldown_remaining_seconds": 0.0,
+      "last_send_age_seconds": 2.2,
+      "queue_depth": 0,
+      "queue_dispatch_paused": false,
+      "saga_active": false,
+      "stall_threshold_seconds": 15.0,
+      "queue_depth_limit": 0
+     }
+    },
+    {
+     "name": "operator_confirmed_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires confirm_blades_off=true."
+    },
+    {
+     "name": "operator_confirmed_clear_area",
+     "passed": true,
+     "detail": "Real pulse requires confirm_clear_area=true."
+    },
+    {
+     "name": "mower_reports_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires blade state off and cutter RPM zero/unknown."
+    },
+    {
+     "name": "mower_ready",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+    },
+    {
+     "name": "not_docked_or_charging",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be off the dock and not charging."
+    },
+    {
+     "name": "live_map_position_available",
+     "passed": true,
+     "detail": "Real pulse requires live map-local mower position."
+    },
+    {
+     "name": "position_area_inside",
+     "passed": true,
+     "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+    },
+    {
+     "name": "map_position_nonzero",
+     "passed": true,
+     "detail": "Real pulse requires nonzero map-local x/y coordinates."
+    }
+   ],
+   "runtime_safety": {
+    "allowed_for_manual_motion": true,
+    "blockers": [],
+    "blade_safe_for_motion": true,
+    "active_mowing_detected": false,
+    "active_route_detected": false,
+    "active_route_status": {
+     "route_present": false,
+     "progress_present": false,
+     "progress_is_active": false,
+     "blocks_motion": false,
+     "reason": "no_route",
+     "ha_state": "paused",
+     "work_mode_label": "MODE_READY"
+    },
+    "position_valid_for_motion": true,
+    "rtk_report_age_seconds": null,
+    "rtk_report_quiet_threshold_seconds": 1800.0,
+    "rtk_report_quiet": false,
+    "rtk_status_label": "Fix",
+    "rtk_degraded": false,
+    "rtk_degraded_override": false
+   },
+   "blockers": [],
+   "would_send": true,
+   "planned_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 0,
+     "angular_speed": -500
+    }
+   },
+   "commands_sent": 1,
+   "command_results": [
+    {
+     "index": 1,
+     "angular_speed": -500,
+     "pulse_duration_ms": 700.0,
+     "before_vision_heading": -34.11907953474385,
+     "heading_error_before": 30.0,
+     "command": "send_movement",
+     "sent_at_utc": "2026-08-09T23:43:02.535024+00:00",
+     "ok": true,
+     "error": null,
+     "stop_ack": {
+      "movement_ok": true
+     },
+     "after_vision_heading": 10.989487486876513,
+     "measured_change_degrees": 45.109,
+     "heading_error_after": -15.109,
+     "progress_degrees": 14.891,
+     "displacement_m": 0.026848649872945333,
+     "heading_poll_seconds": 2.0,
+     "heading_went_fresh": true,
+     "motion_refresh": {
+      "refresh_enabled": true,
+      "refresh_interval_ms": 200,
+      "refresh_commands_sent": 2,
+      "refresh_command_limit": null,
+      "refresh_write_durations_ms": [
+       309.431,
+       744.638
+      ],
+      "max_refresh_commands": 3,
+      "elapsed_ms": 1254.516
+     },
+     "final_approach": {
+      "applied": false,
+      "reason": "cruising_full_pulse_fits",
+      "heading_error_degrees": 30.0,
+      "heading_tolerance_degrees": 18.0,
+      "degrees_per_second": 1.0,
+      "degrees_per_second_source": "default",
+      "max_rate_ceiling_degrees_per_second": 60.0,
+      "max_allowed_sweep_degrees": 48.0,
+      "ceiling_pulse_duration_ms": 800.0,
+      "pulse_duration_ms": 700.0,
+      "ceiling_below_actuation_floor": false
+     },
+     "heading_poll_count": 1,
+     "heading_poll_feed_alive": true,
+     "longest_refresh_write_ms": 744.638,
+     "refresh_cadence_broken": true
+    }
+   ],
+   "final_vision_heading": 10.989487486876513,
+   "final_heading_error_degrees": -15.109,
+   "final_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "final_displacement_m": 0.026848649872945333,
+   "turn_degrees_per_second": 1.0,
+   "turn_feasibility": {
+    "feasible": true,
+    "reason": "within_budget",
+    "initial_error_degrees": 30.0,
+    "heading_tolerance_degrees": 18.0,
+    "required_rotation_degrees": 12.0,
+    "per_command_rotation_bound_degrees": 11.55,
+    "rotation_bound_source": "conservative_observed_rate_with_refresh",
+    "estimated_commands_needed": 2,
+    "max_commands": 8,
+    "translation_bound_m_per_degree": 0.0026,
+    "translation_bound_source": "conservative_observed_translation_per_degree",
+    "estimated_translation_m": 0.078,
+    "max_displacement_m": 0.5,
+    "command_count_model": "executor_pulse_policy_replay",
+    "modelled_pulse_durations_ms": [
+     700.0,
+     607.5
+    ]
+   },
+   "stop_reason": "target_heading_reached"
+  }
+ },
+ {
+  "commanded_ms": 700,
+  "repeat": 1,
+  "heading_error_degrees": -30.0,
+  "delivered_pulse_ms": 700.0,
+  "final_approach_reason": "cruising_full_pulse_fits",
+  "window_ms": 862.491,
+  "rotation_degrees": 29.994,
+  "cadence_broken": false,
+  "longest_write_ms": 319.391,
+  "stop_reason": "target_heading_reached",
+  "response": {
+   "service": "vio_turn_to_heading",
+   "mode": "real_vio_turn_to_heading",
+   "dry_run": false,
+   "real_execution_scope": "vio_turn_to_heading_only",
+   "path_execution_allowed": false,
+   "target_vision_heading": 340.9894874868765,
+   "heading_tolerance_degrees": 18.0,
+   "angular_speed": 500,
+   "pulse_duration_ms": 700,
+   "slow_pulse_duration_ms": 700,
+   "slow_threshold_degrees": 1.0,
+   "refresh_wait_seconds": 2.0,
+   "effective_poll_interval_seconds": 2.0,
+   "fresh_heading_timeout_seconds": 8.0,
+   "max_commands": 8,
+   "min_progress_degrees": 2.0,
+   "max_no_progress_pulses": 2,
+   "max_displacement_m": 0.5,
+   "invert_direction": false,
+   "motion_refresh_interval_ms": 200,
+   "motion_refresh_commands_sent": 3,
+   "refresh_cadence_broken_pulses": 0,
+   "prefer_ble": true,
+   "confirm_blades_off": true,
+   "confirm_clear_area": true,
+   "active_transport": "ble",
+   "initial_vision_heading": 10.989487486876513,
+   "initial_vio_state": 2,
+   "initial_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "initial_heading_error_degrees": -30.0,
+   "safety_gates": [
+    {
+     "name": "stop_primitive_available",
+     "passed": true,
+     "detail": "Coordinator must expose async_stop_manual_motion()."
+    },
+    {
+     "name": "ble_transport_required",
+     "passed": true,
+     "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+    },
+    {
+     "name": "ble_link_live",
+     "passed": true,
+     "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+     "diagnostics": {
+      "live": true,
+      "reason": null,
+      "is_connected": true,
+      "is_usable": true,
+      "cooldown_active": false,
+      "cooldown_remaining_seconds": 0.0,
+      "last_send_age_seconds": 2.2,
+      "queue_depth": 0,
+      "queue_dispatch_paused": false,
+      "saga_active": false,
+      "stall_threshold_seconds": 15.0,
+      "queue_depth_limit": 0
+     }
+    },
+    {
+     "name": "operator_confirmed_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires confirm_blades_off=true."
+    },
+    {
+     "name": "operator_confirmed_clear_area",
+     "passed": true,
+     "detail": "Real pulse requires confirm_clear_area=true."
+    },
+    {
+     "name": "mower_reports_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires blade state off and cutter RPM zero/unknown."
+    },
+    {
+     "name": "mower_ready",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+    },
+    {
+     "name": "not_docked_or_charging",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be off the dock and not charging."
+    },
+    {
+     "name": "live_map_position_available",
+     "passed": true,
+     "detail": "Real pulse requires live map-local mower position."
+    },
+    {
+     "name": "position_area_inside",
+     "passed": true,
+     "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+    },
+    {
+     "name": "map_position_nonzero",
+     "passed": true,
+     "detail": "Real pulse requires nonzero map-local x/y coordinates."
+    }
+   ],
+   "runtime_safety": {
+    "allowed_for_manual_motion": true,
+    "blockers": [],
+    "blade_safe_for_motion": true,
+    "active_mowing_detected": false,
+    "active_route_detected": false,
+    "active_route_status": {
+     "route_present": false,
+     "progress_present": false,
+     "progress_is_active": false,
+     "blocks_motion": false,
+     "reason": "no_route",
+     "ha_state": "paused",
+     "work_mode_label": "MODE_READY"
+    },
+    "position_valid_for_motion": true,
+    "rtk_report_age_seconds": null,
+    "rtk_report_quiet_threshold_seconds": 1800.0,
+    "rtk_report_quiet": false,
+    "rtk_status_label": "Fix",
+    "rtk_degraded": false,
+    "rtk_degraded_override": false
+   },
+   "blockers": [],
+   "would_send": true,
+   "planned_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 0,
+     "angular_speed": 500
+    }
+   },
+   "commands_sent": 1,
+   "command_results": [
+    {
+     "index": 1,
+     "angular_speed": 500,
+     "pulse_duration_ms": 700.0,
+     "before_vision_heading": 10.989487486876513,
+     "heading_error_before": -30.0,
+     "command": "send_movement",
+     "sent_at_utc": "2026-08-09T23:43:06.525894+00:00",
+     "ok": true,
+     "error": null,
+     "stop_ack": {
+      "movement_ok": true
+     },
+     "after_vision_heading": -19.004758689393825,
+     "measured_change_degrees": -29.994,
+     "heading_error_after": -0.006,
+     "progress_degrees": 29.994,
+     "displacement_m": 0.051533484260236066,
+     "heading_poll_seconds": 2.0,
+     "heading_went_fresh": true,
+     "motion_refresh": {
+      "refresh_enabled": true,
+      "refresh_interval_ms": 200,
+      "refresh_commands_sent": 3,
+      "refresh_command_limit": null,
+      "refresh_write_durations_ms": [
+       319.391,
+       97.333,
+       244.849
+      ],
+      "max_refresh_commands": 3,
+      "elapsed_ms": 862.491
+     },
+     "final_approach": {
+      "applied": false,
+      "reason": "cruising_full_pulse_fits",
+      "heading_error_degrees": -30.0,
+      "heading_tolerance_degrees": 18.0,
+      "degrees_per_second": 1.0,
+      "degrees_per_second_source": "default",
+      "max_rate_ceiling_degrees_per_second": 60.0,
+      "max_allowed_sweep_degrees": 48.0,
+      "ceiling_pulse_duration_ms": 800.0,
+      "pulse_duration_ms": 700.0,
+      "ceiling_below_actuation_floor": false
+     },
+     "heading_poll_count": 1,
+     "heading_poll_feed_alive": true,
+     "longest_refresh_write_ms": 319.391,
+     "refresh_cadence_broken": false
+    }
+   ],
+   "final_vision_heading": -19.004758689393825,
+   "final_heading_error_degrees": -0.006,
+   "final_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "final_displacement_m": 0.051533484260236066,
+   "turn_degrees_per_second": 1.0,
+   "turn_feasibility": {
+    "feasible": true,
+    "reason": "within_budget",
+    "initial_error_degrees": 30.0,
+    "heading_tolerance_degrees": 18.0,
+    "required_rotation_degrees": 12.0,
+    "per_command_rotation_bound_degrees": 11.55,
+    "rotation_bound_source": "conservative_observed_rate_with_refresh",
+    "estimated_commands_needed": 2,
+    "max_commands": 8,
+    "translation_bound_m_per_degree": 0.0026,
+    "translation_bound_source": "conservative_observed_translation_per_degree",
+    "estimated_translation_m": 0.078,
+    "max_displacement_m": 0.5,
+    "command_count_model": "executor_pulse_policy_replay",
+    "modelled_pulse_durations_ms": [
+     700.0,
+     607.5
+    ]
+   },
+   "stop_reason": "target_heading_reached"
+  }
+ },
+ {
+  "commanded_ms": 1000,
+  "repeat": 0,
+  "heading_error_degrees": 48.0,
+  "delivered_pulse_ms": 1000.0,
+  "final_approach_reason": "cruising_full_pulse_fits",
+  "window_ms": 1153.728,
+  "rotation_degrees": 51.589,
+  "cadence_broken": false,
+  "longest_write_ms": 552.678,
+  "stop_reason": "target_heading_reached",
+  "response": {
+   "service": "vio_turn_to_heading",
+   "mode": "real_vio_turn_to_heading",
+   "dry_run": false,
+   "real_execution_scope": "vio_turn_to_heading_only",
+   "path_execution_allowed": false,
+   "target_vision_heading": 28.9952413106062,
+   "heading_tolerance_degrees": 18.0,
+   "angular_speed": 500,
+   "pulse_duration_ms": 1000,
+   "slow_pulse_duration_ms": 700,
+   "slow_threshold_degrees": 1.0,
+   "refresh_wait_seconds": 2.0,
+   "effective_poll_interval_seconds": 2.0,
+   "fresh_heading_timeout_seconds": 8.0,
+   "max_commands": 8,
+   "min_progress_degrees": 2.0,
+   "max_no_progress_pulses": 2,
+   "max_displacement_m": 0.5,
+   "invert_direction": false,
+   "motion_refresh_interval_ms": 200,
+   "motion_refresh_commands_sent": 3,
+   "refresh_cadence_broken_pulses": 0,
+   "prefer_ble": true,
+   "confirm_blades_off": true,
+   "confirm_clear_area": true,
+   "active_transport": "ble",
+   "initial_vision_heading": -19.004758689393825,
+   "initial_vio_state": 2,
+   "initial_vio_feed": {
+    "live": true,
+    "tracked_features": 75,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "initial_heading_error_degrees": 48.0,
+   "safety_gates": [
+    {
+     "name": "stop_primitive_available",
+     "passed": true,
+     "detail": "Coordinator must expose async_stop_manual_motion()."
+    },
+    {
+     "name": "ble_transport_required",
+     "passed": true,
+     "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+    },
+    {
+     "name": "ble_link_live",
+     "passed": true,
+     "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+     "diagnostics": {
+      "live": true,
+      "reason": null,
+      "is_connected": true,
+      "is_usable": true,
+      "cooldown_active": false,
+      "cooldown_remaining_seconds": 0.0,
+      "last_send_age_seconds": 1.8,
+      "queue_depth": 0,
+      "queue_dispatch_paused": false,
+      "saga_active": false,
+      "stall_threshold_seconds": 15.0,
+      "queue_depth_limit": 0
+     }
+    },
+    {
+     "name": "operator_confirmed_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires confirm_blades_off=true."
+    },
+    {
+     "name": "operator_confirmed_clear_area",
+     "passed": true,
+     "detail": "Real pulse requires confirm_clear_area=true."
+    },
+    {
+     "name": "mower_reports_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires blade state off and cutter RPM zero/unknown."
+    },
+    {
+     "name": "mower_ready",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+    },
+    {
+     "name": "not_docked_or_charging",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be off the dock and not charging."
+    },
+    {
+     "name": "live_map_position_available",
+     "passed": true,
+     "detail": "Real pulse requires live map-local mower position."
+    },
+    {
+     "name": "position_area_inside",
+     "passed": true,
+     "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+    },
+    {
+     "name": "map_position_nonzero",
+     "passed": true,
+     "detail": "Real pulse requires nonzero map-local x/y coordinates."
+    }
+   ],
+   "runtime_safety": {
+    "allowed_for_manual_motion": true,
+    "blockers": [],
+    "blade_safe_for_motion": true,
+    "active_mowing_detected": false,
+    "active_route_detected": false,
+    "active_route_status": {
+     "route_present": false,
+     "progress_present": false,
+     "progress_is_active": false,
+     "blocks_motion": false,
+     "reason": "no_route",
+     "ha_state": "paused",
+     "work_mode_label": "MODE_READY"
+    },
+    "position_valid_for_motion": true,
+    "rtk_report_age_seconds": null,
+    "rtk_report_quiet_threshold_seconds": 1800.0,
+    "rtk_report_quiet": false,
+    "rtk_status_label": "Fix",
+    "rtk_degraded": false,
+    "rtk_degraded_override": false
+   },
+   "blockers": [],
+   "would_send": true,
+   "planned_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 0,
+     "angular_speed": -500
+    }
+   },
+   "commands_sent": 1,
+   "command_results": [
+    {
+     "index": 1,
+     "angular_speed": -500,
+     "pulse_duration_ms": 1000.0,
+     "before_vision_heading": -19.004758689393825,
+     "heading_error_before": 48.0,
+     "command": "send_movement",
+     "sent_at_utc": "2026-08-09T23:43:10.971007+00:00",
+     "ok": true,
+     "error": null,
+     "stop_ack": {
+      "movement_ok": true
+     },
+     "after_vision_heading": 32.58443581163493,
+     "measured_change_degrees": 51.589,
+     "heading_error_after": -3.589,
+     "progress_degrees": 44.411,
+     "displacement_m": 0.0350051424793555,
+     "heading_poll_seconds": 2.0,
+     "heading_went_fresh": true,
+     "motion_refresh": {
+      "refresh_enabled": true,
+      "refresh_interval_ms": 200,
+      "refresh_commands_sent": 3,
+      "refresh_command_limit": null,
+      "refresh_write_durations_ms": [
+       89.328,
+       137.289,
+       552.678
+      ],
+      "max_refresh_commands": 5,
+      "elapsed_ms": 1153.728
+     },
+     "final_approach": {
+      "applied": false,
+      "reason": "cruising_full_pulse_fits",
+      "heading_error_degrees": 48.0,
+      "heading_tolerance_degrees": 18.0,
+      "degrees_per_second": 1.0,
+      "degrees_per_second_source": "default",
+      "max_rate_ceiling_degrees_per_second": 60.0,
+      "max_allowed_sweep_degrees": 66.0,
+      "ceiling_pulse_duration_ms": 1100.0,
+      "pulse_duration_ms": 1000.0,
+      "ceiling_below_actuation_floor": false
+     },
+     "heading_poll_count": 1,
+     "heading_poll_feed_alive": true,
+     "longest_refresh_write_ms": 552.678,
+     "refresh_cadence_broken": false
+    }
+   ],
+   "final_vision_heading": 32.58443581163493,
+   "final_heading_error_degrees": -3.589,
+   "final_vio_feed": {
+    "live": true,
+    "tracked_features": 75,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "final_displacement_m": 0.0350051424793555,
+   "turn_degrees_per_second": 1.0,
+   "turn_feasibility": {
+    "feasible": true,
+    "reason": "within_budget",
+    "initial_error_degrees": 48.0,
+    "heading_tolerance_degrees": 18.0,
+    "required_rotation_degrees": 30.0,
+    "per_command_rotation_bound_degrees": 16.5,
+    "rotation_bound_source": "conservative_observed_rate_with_refresh",
+    "estimated_commands_needed": 2,
+    "max_commands": 8,
+    "translation_bound_m_per_degree": 0.0026,
+    "translation_bound_source": "conservative_observed_translation_per_degree",
+    "estimated_translation_m": 0.125,
+    "max_displacement_m": 0.5,
+    "command_count_model": "executor_pulse_policy_replay",
+    "modelled_pulse_durations_ms": [
+     1000.0,
+     825.0
+    ]
+   },
+   "stop_reason": "target_heading_reached"
+  }
+ },
+ {
+  "commanded_ms": 1000,
+  "repeat": 1,
+  "heading_error_degrees": -48.0,
+  "delivered_pulse_ms": 1000.0,
+  "final_approach_reason": "cruising_full_pulse_fits",
+  "window_ms": 1000.204,
+  "rotation_degrees": 38.149,
+  "cadence_broken": false,
+  "longest_write_ms": 228.836,
+  "stop_reason": "target_heading_reached",
+  "response": {
+   "service": "vio_turn_to_heading",
+   "mode": "real_vio_turn_to_heading",
+   "dry_run": false,
+   "real_execution_scope": "vio_turn_to_heading_only",
+   "path_execution_allowed": false,
+   "target_vision_heading": 344.5844358116349,
+   "heading_tolerance_degrees": 18.0,
+   "angular_speed": 500,
+   "pulse_duration_ms": 1000,
+   "slow_pulse_duration_ms": 700,
+   "slow_threshold_degrees": 1.0,
+   "refresh_wait_seconds": 2.0,
+   "effective_poll_interval_seconds": 2.0,
+   "fresh_heading_timeout_seconds": 8.0,
+   "max_commands": 8,
+   "min_progress_degrees": 2.0,
+   "max_no_progress_pulses": 2,
+   "max_displacement_m": 0.5,
+   "invert_direction": false,
+   "motion_refresh_interval_ms": 200,
+   "motion_refresh_commands_sent": 4,
+   "refresh_cadence_broken_pulses": 0,
+   "prefer_ble": true,
+   "confirm_blades_off": true,
+   "confirm_clear_area": true,
+   "active_transport": "ble",
+   "initial_vision_heading": 32.58213241915769,
+   "initial_vio_state": 2,
+   "initial_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "initial_heading_error_degrees": -47.998,
+   "safety_gates": [
+    {
+     "name": "stop_primitive_available",
+     "passed": true,
+     "detail": "Coordinator must expose async_stop_manual_motion()."
+    },
+    {
+     "name": "ble_transport_required",
+     "passed": true,
+     "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+    },
+    {
+     "name": "ble_link_live",
+     "passed": true,
+     "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+     "diagnostics": {
+      "live": true,
+      "reason": null,
+      "is_connected": true,
+      "is_usable": true,
+      "cooldown_active": false,
+      "cooldown_remaining_seconds": 0.0,
+      "last_send_age_seconds": 0.7,
+      "queue_depth": 0,
+      "queue_dispatch_paused": false,
+      "saga_active": false,
+      "stall_threshold_seconds": 15.0,
+      "queue_depth_limit": 0
+     }
+    },
+    {
+     "name": "operator_confirmed_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires confirm_blades_off=true."
+    },
+    {
+     "name": "operator_confirmed_clear_area",
+     "passed": true,
+     "detail": "Real pulse requires confirm_clear_area=true."
+    },
+    {
+     "name": "mower_reports_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires blade state off and cutter RPM zero/unknown."
+    },
+    {
+     "name": "mower_ready",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+    },
+    {
+     "name": "not_docked_or_charging",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be off the dock and not charging."
+    },
+    {
+     "name": "live_map_position_available",
+     "passed": true,
+     "detail": "Real pulse requires live map-local mower position."
+    },
+    {
+     "name": "position_area_inside",
+     "passed": true,
+     "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+    },
+    {
+     "name": "map_position_nonzero",
+     "passed": true,
+     "detail": "Real pulse requires nonzero map-local x/y coordinates."
+    }
+   ],
+   "runtime_safety": {
+    "allowed_for_manual_motion": true,
+    "blockers": [],
+    "blade_safe_for_motion": true,
+    "active_mowing_detected": false,
+    "active_route_detected": false,
+    "active_route_status": {
+     "route_present": false,
+     "progress_present": false,
+     "progress_is_active": false,
+     "blocks_motion": false,
+     "reason": "no_route",
+     "ha_state": "paused",
+     "work_mode_label": "MODE_READY"
+    },
+    "position_valid_for_motion": true,
+    "rtk_report_age_seconds": null,
+    "rtk_report_quiet_threshold_seconds": 1800.0,
+    "rtk_report_quiet": false,
+    "rtk_status_label": "Fix",
+    "rtk_degraded": false,
+    "rtk_degraded_override": false
+   },
+   "blockers": [],
+   "would_send": true,
+   "planned_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 0,
+     "angular_speed": 500
+    }
+   },
+   "commands_sent": 1,
+   "command_results": [
+    {
+     "index": 1,
+     "angular_speed": 500,
+     "pulse_duration_ms": 1000.0,
+     "before_vision_heading": 32.58213241915769,
+     "heading_error_before": -47.998,
+     "command": "send_movement",
+     "sent_at_utc": "2026-08-09T23:43:15.462675+00:00",
+     "ok": true,
+     "error": null,
+     "stop_ack": {
+      "movement_ok": true
+     },
+     "after_vision_heading": -5.566982183401852,
+     "measured_change_degrees": -38.149,
+     "heading_error_after": -9.849,
+     "progress_degrees": 38.149,
+     "displacement_m": 0.03917818270415313,
+     "heading_poll_seconds": 2.0,
+     "heading_went_fresh": true,
+     "motion_refresh": {
+      "refresh_enabled": true,
+      "refresh_interval_ms": 200,
+      "refresh_commands_sent": 4,
+      "refresh_command_limit": null,
+      "refresh_write_durations_ms": [
+       216.455,
+       197.255,
+       228.836,
+       112.173
+      ],
+      "max_refresh_commands": 5,
+      "elapsed_ms": 1000.204
+     },
+     "final_approach": {
+      "applied": false,
+      "reason": "cruising_full_pulse_fits",
+      "heading_error_degrees": -47.99769660752281,
+      "heading_tolerance_degrees": 18.0,
+      "degrees_per_second": 1.0,
+      "degrees_per_second_source": "default",
+      "max_rate_ceiling_degrees_per_second": 60.0,
+      "max_allowed_sweep_degrees": 65.998,
+      "ceiling_pulse_duration_ms": 1100.0,
+      "pulse_duration_ms": 1000.0,
+      "ceiling_below_actuation_floor": false
+     },
+     "heading_poll_count": 1,
+     "heading_poll_feed_alive": true,
+     "longest_refresh_write_ms": 228.836,
+     "refresh_cadence_broken": false
+    }
+   ],
+   "final_vision_heading": -5.566982183401852,
+   "final_heading_error_degrees": -9.849,
+   "final_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "final_displacement_m": 0.03917818270415313,
+   "turn_degrees_per_second": 1.0,
+   "turn_feasibility": {
+    "feasible": true,
+    "reason": "within_budget",
+    "initial_error_degrees": 47.998,
+    "heading_tolerance_degrees": 18.0,
+    "required_rotation_degrees": 29.998,
+    "per_command_rotation_bound_degrees": 16.5,
+    "rotation_bound_source": "conservative_observed_rate_with_refresh",
+    "estimated_commands_needed": 2,
+    "max_commands": 8,
+    "translation_bound_m_per_degree": 0.0026,
+    "translation_bound_source": "conservative_observed_translation_per_degree",
+    "estimated_translation_m": 0.125,
+    "max_displacement_m": 0.5,
+    "command_count_model": "executor_pulse_policy_replay",
+    "modelled_pulse_durations_ms": [
+     1000.0,
+     825.0
+    ]
+   },
+   "stop_reason": "target_heading_reached"
+  }
+ },
+ {
+  "commanded_ms": 1500,
+  "repeat": 0,
+  "heading_error_degrees": 78.0,
+  "delivered_pulse_ms": 1500.0,
+  "final_approach_reason": "cruising_full_pulse_fits",
+  "window_ms": 1535.518,
+  "rotation_degrees": 60.577,
+  "cadence_broken": false,
+  "longest_write_ms": 287.262,
+  "stop_reason": "target_heading_reached",
+  "response": {
+   "service": "vio_turn_to_heading",
+   "mode": "real_vio_turn_to_heading",
+   "dry_run": false,
+   "real_execution_scope": "vio_turn_to_heading_only",
+   "path_execution_allowed": false,
+   "target_vision_heading": 72.43301781659815,
+   "heading_tolerance_degrees": 18.0,
+   "angular_speed": 500,
+   "pulse_duration_ms": 1500,
+   "slow_pulse_duration_ms": 700,
+   "slow_threshold_degrees": 1.0,
+   "refresh_wait_seconds": 2.0,
+   "effective_poll_interval_seconds": 2.0,
+   "fresh_heading_timeout_seconds": 8.0,
+   "max_commands": 8,
+   "min_progress_degrees": 2.0,
+   "max_no_progress_pulses": 2,
+   "max_displacement_m": 0.5,
+   "invert_direction": false,
+   "motion_refresh_interval_ms": 200,
+   "motion_refresh_commands_sent": 7,
+   "refresh_cadence_broken_pulses": 0,
+   "prefer_ble": true,
+   "confirm_blades_off": true,
+   "confirm_clear_area": true,
+   "active_transport": "ble",
+   "initial_vision_heading": -5.539000176835809,
+   "initial_vio_state": 2,
+   "initial_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "initial_heading_error_degrees": 77.972,
+   "safety_gates": [
+    {
+     "name": "stop_primitive_available",
+     "passed": true,
+     "detail": "Coordinator must expose async_stop_manual_motion()."
+    },
+    {
+     "name": "ble_transport_required",
+     "passed": true,
+     "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+    },
+    {
+     "name": "ble_link_live",
+     "passed": true,
+     "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+     "diagnostics": {
+      "live": true,
+      "reason": null,
+      "is_connected": true,
+      "is_usable": true,
+      "cooldown_active": false,
+      "cooldown_remaining_seconds": 0.0,
+      "last_send_age_seconds": 2.3,
+      "queue_depth": 0,
+      "queue_dispatch_paused": false,
+      "saga_active": false,
+      "stall_threshold_seconds": 15.0,
+      "queue_depth_limit": 0
+     }
+    },
+    {
+     "name": "operator_confirmed_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires confirm_blades_off=true."
+    },
+    {
+     "name": "operator_confirmed_clear_area",
+     "passed": true,
+     "detail": "Real pulse requires confirm_clear_area=true."
+    },
+    {
+     "name": "mower_reports_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires blade state off and cutter RPM zero/unknown."
+    },
+    {
+     "name": "mower_ready",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+    },
+    {
+     "name": "not_docked_or_charging",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be off the dock and not charging."
+    },
+    {
+     "name": "live_map_position_available",
+     "passed": true,
+     "detail": "Real pulse requires live map-local mower position."
+    },
+    {
+     "name": "position_area_inside",
+     "passed": true,
+     "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+    },
+    {
+     "name": "map_position_nonzero",
+     "passed": true,
+     "detail": "Real pulse requires nonzero map-local x/y coordinates."
+    }
+   ],
+   "runtime_safety": {
+    "allowed_for_manual_motion": true,
+    "blockers": [],
+    "blade_safe_for_motion": true,
+    "active_mowing_detected": false,
+    "active_route_detected": false,
+    "active_route_status": {
+     "route_present": false,
+     "progress_present": false,
+     "progress_is_active": false,
+     "blocks_motion": false,
+     "reason": "no_route",
+     "ha_state": "paused",
+     "work_mode_label": "MODE_READY"
+    },
+    "position_valid_for_motion": true,
+    "rtk_report_age_seconds": null,
+    "rtk_report_quiet_threshold_seconds": 1800.0,
+    "rtk_report_quiet": false,
+    "rtk_status_label": "Fix",
+    "rtk_degraded": false,
+    "rtk_degraded_override": false
+   },
+   "blockers": [],
+   "would_send": true,
+   "planned_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 0,
+     "angular_speed": -500
+    }
+   },
+   "commands_sent": 1,
+   "command_results": [
+    {
+     "index": 1,
+     "angular_speed": -500,
+     "pulse_duration_ms": 1500.0,
+     "before_vision_heading": -5.539000176835809,
+     "heading_error_before": 77.972,
+     "command": "send_movement",
+     "sent_at_utc": "2026-08-09T23:43:19.141595+00:00",
+     "ok": true,
+     "error": null,
+     "stop_ack": {
+      "movement_ok": true
+     },
+     "after_vision_heading": 55.03817265885681,
+     "measured_change_degrees": 60.577,
+     "heading_error_after": 17.395,
+     "progress_degrees": 60.577,
+     "displacement_m": 0.03938489558193558,
+     "heading_poll_seconds": 2.0,
+     "heading_went_fresh": true,
+     "motion_refresh": {
+      "refresh_enabled": true,
+      "refresh_interval_ms": 200,
+      "refresh_commands_sent": 7,
+      "refresh_command_limit": null,
+      "refresh_write_durations_ms": [
+       206.381,
+       287.262,
+       223.928,
+       209.368,
+       215.971,
+       85.344,
+       106.109
+      ],
+      "max_refresh_commands": 7,
+      "elapsed_ms": 1535.518
+     },
+     "final_approach": {
+      "applied": false,
+      "reason": "cruising_full_pulse_fits",
+      "heading_error_degrees": 77.97201799343395,
+      "heading_tolerance_degrees": 18.0,
+      "degrees_per_second": 1.0,
+      "degrees_per_second_source": "default",
+      "max_rate_ceiling_degrees_per_second": 60.0,
+      "max_allowed_sweep_degrees": 95.972,
+      "ceiling_pulse_duration_ms": 1599.5,
+      "pulse_duration_ms": 1500.0,
+      "ceiling_below_actuation_floor": false
+     },
+     "heading_poll_count": 1,
+     "heading_poll_feed_alive": true,
+     "longest_refresh_write_ms": 287.262,
+     "refresh_cadence_broken": false
+    }
+   ],
+   "final_vision_heading": 55.03817265885681,
+   "final_heading_error_degrees": 17.395,
+   "final_vio_feed": {
+    "live": true,
+    "tracked_features": 80,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "final_displacement_m": 0.03938489558193558,
+   "turn_degrees_per_second": 1.0,
+   "turn_feasibility": {
+    "feasible": true,
+    "reason": "within_budget",
+    "initial_error_degrees": 77.972,
+    "heading_tolerance_degrees": 18.0,
+    "required_rotation_degrees": 59.972,
+    "per_command_rotation_bound_degrees": 24.75,
+    "rotation_bound_source": "conservative_observed_rate_with_refresh",
+    "estimated_commands_needed": 4,
+    "max_commands": 8,
+    "translation_bound_m_per_degree": 0.0026,
+    "translation_bound_source": "conservative_observed_translation_per_degree",
+    "estimated_translation_m": 0.203,
+    "max_displacement_m": 0.5,
+    "command_count_model": "executor_pulse_policy_replay",
+    "modelled_pulse_durations_ms": [
+     1500.0,
+     1187.0,
+     860.6,
+     623.9
+    ]
+   },
+   "stop_reason": "target_heading_reached"
+  }
+ },
+ {
+  "commanded_ms": 1500,
+  "repeat": 1,
+  "heading_error_degrees": -78.0,
+  "delivered_pulse_ms": 1500.0,
+  "final_approach_reason": "cruising_full_pulse_fits",
+  "window_ms": 1711.227,
+  "rotation_degrees": 57.382,
+  "cadence_broken": false,
+  "longest_write_ms": 510.372,
+  "stop_reason": "no_heading_progress",
+  "response": {
+   "service": "vio_turn_to_heading",
+   "mode": "real_vio_turn_to_heading",
+   "dry_run": false,
+   "real_execution_scope": "vio_turn_to_heading_only",
+   "path_execution_allowed": false,
+   "target_vision_heading": 337.0381726588568,
+   "heading_tolerance_degrees": 18.0,
+   "angular_speed": 500,
+   "pulse_duration_ms": 1500,
+   "slow_pulse_duration_ms": 700,
+   "slow_threshold_degrees": 1.0,
+   "refresh_wait_seconds": 2.0,
+   "effective_poll_interval_seconds": 2.0,
+   "fresh_heading_timeout_seconds": 8.0,
+   "max_commands": 8,
+   "min_progress_degrees": 2.0,
+   "max_no_progress_pulses": 2,
+   "max_displacement_m": 0.5,
+   "invert_direction": false,
+   "motion_refresh_interval_ms": 200,
+   "motion_refresh_commands_sent": 10,
+   "refresh_cadence_broken_pulses": 0,
+   "prefer_ble": true,
+   "confirm_blades_off": true,
+   "confirm_clear_area": true,
+   "active_transport": "ble",
+   "initial_vision_heading": 55.03817265885681,
+   "initial_vio_state": 2,
+   "initial_vio_feed": {
+    "live": true,
+    "tracked_features": 74,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "initial_heading_error_degrees": -78.0,
+   "safety_gates": [
+    {
+     "name": "stop_primitive_available",
+     "passed": true,
+     "detail": "Coordinator must expose async_stop_manual_motion()."
+    },
+    {
+     "name": "ble_transport_required",
+     "passed": true,
+     "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+    },
+    {
+     "name": "ble_link_live",
+     "passed": true,
+     "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+     "diagnostics": {
+      "live": true,
+      "reason": null,
+      "is_connected": true,
+      "is_usable": true,
+      "cooldown_active": false,
+      "cooldown_remaining_seconds": 0.0,
+      "last_send_age_seconds": 2.2,
+      "queue_depth": 0,
+      "queue_dispatch_paused": false,
+      "saga_active": false,
+      "stall_threshold_seconds": 15.0,
+      "queue_depth_limit": 0
+     }
+    },
+    {
+     "name": "operator_confirmed_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires confirm_blades_off=true."
+    },
+    {
+     "name": "operator_confirmed_clear_area",
+     "passed": true,
+     "detail": "Real pulse requires confirm_clear_area=true."
+    },
+    {
+     "name": "mower_reports_blades_off",
+     "passed": true,
+     "detail": "Real pulse requires blade state off and cutter RPM zero/unknown."
+    },
+    {
+     "name": "mower_ready",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+    },
+    {
+     "name": "not_docked_or_charging",
+     "passed": true,
+     "detail": "Real pulse requires the mower to be off the dock and not charging."
+    },
+    {
+     "name": "live_map_position_available",
+     "passed": true,
+     "detail": "Real pulse requires live map-local mower position."
+    },
+    {
+     "name": "position_area_inside",
+     "passed": true,
+     "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+    },
+    {
+     "name": "map_position_nonzero",
+     "passed": true,
+     "detail": "Real pulse requires nonzero map-local x/y coordinates."
+    }
+   ],
+   "runtime_safety": {
+    "allowed_for_manual_motion": true,
+    "blockers": [],
+    "blade_safe_for_motion": true,
+    "active_mowing_detected": false,
+    "active_route_detected": false,
+    "active_route_status": {
+     "route_present": false,
+     "progress_present": false,
+     "progress_is_active": false,
+     "blocks_motion": false,
+     "reason": "no_route",
+     "ha_state": "paused",
+     "work_mode_label": "MODE_READY"
+    },
+    "position_valid_for_motion": true,
+    "rtk_report_age_seconds": null,
+    "rtk_report_quiet_threshold_seconds": 1800.0,
+    "rtk_report_quiet": false,
+    "rtk_status_label": "Fix",
+    "rtk_degraded": false,
+    "rtk_degraded_override": false
+   },
+   "blockers": [],
+   "would_send": true,
+   "planned_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 0,
+     "angular_speed": 500
+    }
+   },
+   "commands_sent": 3,
+   "command_results": [
+    {
+     "index": 1,
+     "angular_speed": 500,
+     "pulse_duration_ms": 1500.0,
+     "before_vision_heading": 55.03817265885681,
+     "heading_error_before": -78.0,
+     "command": "send_movement",
+     "sent_at_utc": "2026-08-09T23:43:24.051599+00:00",
+     "ok": true,
+     "error": null,
+     "stop_ack": {
+      "movement_ok": true
+     },
+     "after_vision_heading": -2.343400459329983,
+     "measured_change_degrees": -57.382,
+     "heading_error_after": -20.618,
+     "progress_degrees": 57.382,
+     "displacement_m": 0.05610436703145313,
+     "heading_poll_seconds": 2.0,
+     "heading_went_fresh": true,
+     "motion_refresh": {
+      "refresh_enabled": true,
+      "refresh_interval_ms": 200,
+      "refresh_commands_sent": 4,
+      "refresh_command_limit": null,
+      "refresh_write_durations_ms": [
+       53.153,
+       364.263,
+       510.372,
+       435.672
+      ],
+      "max_refresh_commands": 7,
+      "elapsed_ms": 1711.227
+     },
+     "final_approach": {
+      "applied": false,
+      "reason": "cruising_full_pulse_fits",
+      "heading_error_degrees": -78.0,
+      "heading_tolerance_degrees": 18.0,
+      "degrees_per_second": 1.0,
+      "degrees_per_second_source": "default",
+      "max_rate_ceiling_degrees_per_second": 60.0,
+      "max_allowed_sweep_degrees": 96.0,
+      "ceiling_pulse_duration_ms": 1600.0,
+      "pulse_duration_ms": 1500.0,
+      "ceiling_below_actuation_floor": false
+     },
+     "heading_poll_count": 1,
+     "heading_poll_feed_alive": true,
+     "longest_refresh_write_ms": 510.372,
+     "refresh_cadence_broken": false
+    },
+    {
+     "index": 2,
+     "angular_speed": 500,
+     "pulse_duration_ms": 614.9,
+     "before_vision_heading": -2.343400459329983,
+     "heading_error_before": -20.618,
+     "command": "send_movement",
+     "sent_at_utc": "2026-08-09T23:43:27.982479+00:00",
+     "ok": true,
+     "error": null,
+     "stop_ack": {
+      "movement_ok": true
+     },
+     "after_vision_heading": -46.810171600063114,
+     "measured_change_degrees": -44.467,
+     "heading_error_after": 23.848,
+     "progress_degrees": -3.23,
+     "displacement_m": 0.1006678697499854,
+     "heading_poll_seconds": 2.0,
+     "heading_went_fresh": true,
+     "motion_refresh": {
+      "refresh_enabled": true,
+      "refresh_interval_ms": 200,
+      "refresh_commands_sent": 3,
+      "refresh_command_limit": null,
+      "refresh_write_durations_ms": [
+       184.24,
+       204.932,
+       597.592
+      ],
+      "max_refresh_commands": 3,
+      "elapsed_ms": 1202.882
+     },
+     "final_approach": {
+      "applied": true,
+      "reason": "final_approach_scaled_to_remaining_angle",
+      "heading_error_degrees": -20.618426881813207,
+      "heading_tolerance_degrees": 18.0,
+      "degrees_per_second": 33.5324,
+      "degrees_per_second_source": "observed",
+      "max_rate_ceiling_degrees_per_second": 60.0,
+      "max_allowed_sweep_degrees": 38.618,
+      "ceiling_pulse_duration_ms": 643.6,
+      "pulse_duration_ms": 614.9,
+      "ceiling_below_actuation_floor": false
+     },
+     "heading_poll_count": 1,
+     "heading_poll_feed_alive": true,
+     "longest_refresh_write_ms": 597.592,
+     "refresh_cadence_broken": false,
+     "consecutive_no_progress": 1
+    },
+    {
+     "index": 3,
+     "angular_speed": -500,
+     "pulse_duration_ms": 682.4,
+     "before_vision_heading": -46.810171600063114,
+     "heading_error_before": 23.848,
+     "command": "send_movement",
+     "sent_at_utc": "2026-08-09T23:43:31.971005+00:00",
+     "ok": true,
+     "error": null,
+     "stop_ack": {
+      "movement_ok": true
+     },
+     "after_vision_heading": 4.5784620041625175,
+     "measured_change_degrees": 51.389,
+     "heading_error_after": -27.54,
+     "progress_degrees": -3.692,
+     "displacement_m": 0.07448771710825897,
+     "heading_poll_seconds": 2.0,
+     "heading_went_fresh": true,
+     "motion_refresh": {
+      "refresh_enabled": true,
+      "refresh_interval_ms": 200,
+      "refresh_commands_sent": 3,
+      "refresh_command_limit": null,
+      "refresh_write_durations_ms": [
+       164.11,
+       221.946,
+       586.77
+      ],
+      "max_refresh_commands": 3,
+      "elapsed_ms": 1209.323
+     },
+     "final_approach": {
+      "applied": true,
+      "reason": "final_approach_scaled_to_remaining_angle",
+      "heading_error_degrees": 23.84834425891995,
+      "heading_tolerance_degrees": 18.0,
+      "degrees_per_second": 34.9501,
+      "degrees_per_second_source": "observed",
+      "max_rate_ceiling_degrees_per_second": 60.0,
+      "max_allowed_sweep_degrees": 41.848,
+      "ceiling_pulse_duration_ms": 697.5,
+      "pulse_duration_ms": 682.4,
+      "ceiling_below_actuation_floor": false
+     },
+     "heading_poll_count": 1,
+     "heading_poll_feed_alive": true,
+     "longest_refresh_write_ms": 586.77,
+     "refresh_cadence_broken": false,
+     "consecutive_no_progress": 2
+    }
+   ],
+   "final_vision_heading": 4.5784620041625175,
+   "final_heading_error_degrees": -27.54,
+   "final_vio_feed": {
+    "live": true,
+    "tracked_features": 74,
+    "brightness_raw": 1,
+    "brightness_label": "Light"
+   },
+   "final_displacement_m": 0.07448771710825897,
+   "turn_degrees_per_second": 1.0,
+   "turn_feasibility": {
+    "feasible": true,
+    "reason": "within_budget",
+    "initial_error_degrees": 78.0,
+    "heading_tolerance_degrees": 18.0,
+    "required_rotation_degrees": 60.0,
+    "per_command_rotation_bound_degrees": 24.75,
+    "rotation_bound_source": "conservative_observed_rate_with_refresh",
+    "estimated_commands_needed": 4,
+    "max_commands": 8,
+    "translation_bound_m_per_degree": 0.0026,
+    "translation_bound_source": "conservative_observed_translation_per_degree",
+    "estimated_translation_m": 0.203,
+    "max_displacement_m": 0.5,
+    "command_count_model": "executor_pulse_policy_replay",
+    "modelled_pulse_durations_ms": [
+     1500.0,
+     1187.5,
+     860.9,
+     624.2
+    ]
+   },
+   "stop_reason": "no_heading_progress"
+  }
+ }
+]
