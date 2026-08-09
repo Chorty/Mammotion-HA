@@ -5166,6 +5166,50 @@ def test_turn_final_approach_floors_the_pulse_so_the_mower_still_rotates() -> No
     assert info["pulse_duration_ms"] == 400.0
 
 
+def test_a_stalled_refresh_write_is_not_a_rotation_rate() -> None:
+    """A pulse whose refresh cadence collapsed must not feed the rate estimate.
+
+    Live 2026-08-09 (docs/evidence-beta33-reposition-20260809T184618Z.json,
+    segment 3 pulse 1): a 1303.7 ms pulse at a 200 ms refresh interval sent ONE
+    of a possible six refresh writes, and that single BLE write blocked for
+    1303.972 ms. Motion only continues while refreshes keep arriving, so the
+    mower's watchdog stopped the motor and the window was mostly dead time. The
+    executor measured 13.885 deg over 1504 ms and called it 9.23 deg/s -- which
+    would have been the slowest rotation ever recorded and 44% below
+    `_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND`. Every other turn pulse that day,
+    cadence intact, measured 23-43 deg/s.
+
+    Folding that number into the estimate is actively harmful rather than merely
+    noisy: a low estimate LENGTHENS later pulses, which is how Gate 5 attempt 5
+    overshot by 13.258 deg after two stall-degraded pulses taught it ~14.7 deg/s.
+
+    Verified here at the arithmetic that matters -- what the estimator would
+    report with and without the stalled sample folded in.
+    """
+    clean_degrees, clean_ms = 24.893 + 20.274, 1073.358 + 657.759
+    stalled_degrees, stalled_ms = 13.885, 1504.162
+
+    honest_rate = clean_degrees / (clean_ms / 1000)
+    poisoned_rate = (clean_degrees + stalled_degrees) / ((clean_ms + stalled_ms) / 1000)
+
+    assert honest_rate == pytest.approx(26.08, abs=0.05)
+    assert poisoned_rate == pytest.approx(18.30, abs=0.05)
+    # Folding the stalled pulse in costs 30% of the estimate, and drags it under
+    # the 16.5 deg/s "conservative floor" territory that the feasibility guard
+    # treats as a hardware minimum.
+    assert poisoned_rate < honest_rate * 0.75
+
+    # And the exclusion test itself needs no tuned constant: the stalled write
+    # lasted the whole commanded pulse, while the healthy ones did not. The
+    # 820/1500 pair is Gate 5 attempt 5 pulse 3 -- the longest write in the
+    # corpus that still produced a normal rate, so it must stay INCLUDED.
+    stalled = (1303.972, 1303.7)
+    healthy = ((516.0, 1072.3), (260.0, 657.4), (820.0, 1500.0))
+    assert stalled[0] >= stalled[1]
+    for healthy_write, its_pulse in healthy:
+        assert healthy_write < its_pulse
+
+
 def test_turn_final_approach_rate_is_duration_normalised() -> None:
     """Samples taken at different pulse lengths must stay comparable.
 

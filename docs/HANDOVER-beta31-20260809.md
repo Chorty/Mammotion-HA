@@ -130,6 +130,58 @@ skips it. Mower behaviour is unchanged, but the **effective trigger is now the
 tolerance**, and the threshold parameter is dead in the gap between them. To make
 it live again, lower the tolerance below it.
 
+### 2.7 ⚠️ READ THIS BEFORE §2.6 — the rate variance is largely an artefact
+
+Established 2026-08-09 from three hardware runs. **It withdraws two
+recommendations this document previously made, and re-frames §2.1.**
+
+A turn pulse only rotates while refresh writes keep arriving — that is why the
+app re-sends every 200 ms and why `_motion_refresh_window` exists. When a BLE
+write blocks, no refresh reaches the mower, its watchdog stops the motor, and the
+rest of the window is dead time the executor still divides by.
+
+`docs/evidence-beta33-reposition-20260809T184618Z.json`, segment 3 pulse 1: a
+1303.7 ms pulse at a 200 ms interval sent **one of a possible six** refreshes,
+and that write took **1303.972 ms**. It measured 13.885° over 1504 ms — "9.23
+°/s", which would have been the slowest rotation ever recorded and 44% under
+`_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND`. **It is not a rotation rate.** Every
+other turn pulse that day, cadence intact, measured **23–43 °/s**.
+
+Consequences:
+
+- **§2.1's "unexplained outlier" is substantially explained.** A low estimate
+  *lengthens* later pulses — the estimator learns "slow", takes
+  `cruising_full_pulse_fits`, and a pulse with a healthy cadence then rotates at
+  the true rate and overshoots. Gate 5 attempt 5 is exactly that: two
+  stall-degraded pulses at ~14.7 (writes of 543/337/558 and 310/543 ms) followed
+  by a clean one at 32.74 that overshot by 13.258°. The ceiling contains a
+  symptom whose cause is BLE write latency.
+- **`_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND = 16.5` is probably NOT falsified**
+  after all. §2.6 item 3 called it stale on the strength of 14.49/14.90 °/s
+  readings — both from pulses with multi-hundred-millisecond writes. Do not lower
+  it on that evidence.
+- **WITHDRAWN: "K = 2 × tolerance unlocks 90° L-path junctions."** Replayed at a
+  *sustained* slow rate no `K` achieves this, because the budget itself is the
+  limit: 4 commands × 1.5 s × 9.23 °/s ≈ 55° of possible rotation, ceiling or no
+  ceiling. At the real rates (≥23 °/s) the shipped `K = tolerance` already
+  completes 169°, so it is not costing capability where it matters. `K = 2 ×
+  tolerance` remains defensible on budget-headroom grounds but has lost its
+  headline justification; it is **not** implemented.
+- **WITHDRAWN: the delivered-window "correction".** Shaving an expected overrun
+  off the ceiling pulse strictly *worsens* the binding constraint — replayed on
+  the real slow turn it moves the residual error 22.1° → 25.0° → 27.9° → 30.9°
+  for 100/200/300 ms of shave — and the overrun it would tune against ranges from
+  +0.03% to +112%. That is tuning against noise in the harmful direction.
+
+**Shipped instead:** pulses whose refresh cadence collapsed are excluded from the
+rate estimate, and surfaced as `refresh_cadence_broken` per pulse plus
+`refresh_cadence_broken_pulses` per turn. The test is free of tuned constants —
+one write lasting the entire commanded pulse means the cadence definitionally did
+not exist. Writes of 78–820 ms coexist with normal rates and stay included.
+
+**The real open lead is BLE write latency**, not turn tuning. A 1304 ms GATT write
+is the thing to chase.
+
 ### 2.6 Found in adversarial review, 2026-08-09 — three more
 
 Attacking the branch before deploying it turned up four things §2.1–2.5 missed.

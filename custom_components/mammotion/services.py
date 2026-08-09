@@ -8006,6 +8006,11 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # overshooting a deadband that is now far too wide.
         "motion_refresh_interval_ms": motion_refresh_interval_ms,
         "motion_refresh_commands_sent": 0,
+        # Pulses whose refresh cadence collapsed, so they were EXCLUDED from the
+        # rotation-rate estimate. A nonzero count means BLE write latency, not
+        # the mower, is shaping this turn -- read it before concluding anything
+        # about rotation speed from the run.
+        "refresh_cadence_broken_pulses": 0,
         "prefer_ble": prefer_ble,
         "confirm_blades_off": confirm_blades_off,
         "confirm_clear_area": confirm_clear_area,
@@ -8331,12 +8336,55 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         command_result["heading_error_after"] = round(new_error, 3)
         command_result["progress_degrees"] = round(progress, 3)
         command_result["displacement_m"] = displacement
+        # A pulse whose refresh cadence collapsed did not rotate for the window
+        # it was billed for, so it cannot be used to measure a rotation RATE.
+        #
+        # Motion continues only while refresh writes keep arriving -- that is the
+        # entire reason the app re-sends every 200 ms and the reason
+        # `_motion_refresh_window` exists. When a single BLE write blocks for as
+        # long as the whole commanded pulse, no refresh reached the mower for
+        # that span, its device-side watchdog stopped the motor, and the window
+        # is mostly dead time.
+        #
+        # Live 2026-08-09 (docs/evidence-beta33-reposition-20260809T184618Z.json,
+        # segment 3 pulse 1): a 1303.7 ms pulse at a 200 ms interval sent ONE of
+        # a possible six refreshes, and that write took 1303.972 ms. It measured
+        # 13.885 deg over a 1504 ms window -- "9.23 deg/s", which would have been
+        # the slowest rotation ever recorded and 44% under
+        # `_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND`. It is not a rotation rate
+        # at all. Every other turn pulse that day, with an intact cadence,
+        # measured 23-43 deg/s.
+        #
+        # This matters beyond one number, because a low estimate LENGTHENS later
+        # pulses: the estimator learns "slow", judges that a full pulse cannot
+        # reach the target, takes the `cruising_full_pulse_fits` branch, and then
+        # a pulse with a healthy cadence rotates at the true rate and overshoots.
+        # That is precisely the Gate 5 attempt 5 sequence -- two stall-degraded
+        # pulses at ~14.7 followed by a clean one at 32.74 that overshot by
+        # 13.258 deg -- so the outlier the overshoot ceiling was built to contain
+        # is substantially an artefact of this accounting.
+        #
+        # The test is deliberately free of a tuned constant: one write lasting
+        # the entire commanded pulse means the cadence definitionally did not
+        # exist. Writes of 78-820 ms coexist with perfectly normal rates and are
+        # NOT excluded. Narrow is the right bias -- discarding a good sample
+        # shrinks an already small estimator population.
+        refresh_report = command_result.get("motion_refresh") or {}
+        write_durations = refresh_report.get("refresh_write_durations_ms") or []
+        longest_write_ms = max(write_durations) if write_durations else None
+        refresh_cadence_broken = (
+            longest_write_ms is not None and longest_write_ms >= pulse_ms
+        )
+        command_result["longest_refresh_write_ms"] = longest_write_ms
+        command_result["refresh_cadence_broken"] = refresh_cadence_broken
+        if refresh_cadence_broken:
+            result["refresh_cadence_broken_pulses"] += 1
         # Feed the rate estimate, but only from a pulse whose heading reading
         # actually went fresh. A stale/latched sample measures ~0 deg of rotation
         # for a pulse that really turned, and folding that in would collapse the
         # rate and over-lengthen every later pulse -- the exact failure the
         # scaling exists to prevent.
-        if heading_went_fresh:
+        if heading_went_fresh and not refresh_cadence_broken:
             observed_rotation_degrees += abs(measured_change)
             # Accumulate the DELIVERED window, not the commanded one. BLE write
             # latency routinely runs a nominal 1500 ms pulse long -- live

@@ -191,6 +191,36 @@ the same `_turn_final_approach_pulse_ms` the turn loop calls. A 90° junction re
 **The validation run keeps every junction in the 45–70° band** — maximum exposure
 to the ceiling (it binds below 72°) while clear of the contested 86–100° band.
 
+🏁 **REACH GOAL MET 2026-08-09 — four segments executed on beta33.** Landings
+0.0819 / 0.0662 / 0.1452 / 0.0990 m against `waypoint_tolerance: 0.15`, zero
+reverse-recovery, zero realignments. **Error does NOT compound with segment
+index** (seg4−seg1 slope +0.017 m), so the §2.4 worry is unsupported. Evidence:
+`docs/evidence-beta32-4segment-20260809T183129Z.json`. The overshoot ceiling
+works: three junction turns closed in **one command each**, landing −5.1 / −2.4 /
+−0.3°, against Gate 5's 13.258° overshoot.
+
+⚠️ **THE ROTATION-RATE VARIANCE IS LARGELY A BLE ARTEFACT — read
+`docs/HANDOVER-beta31-20260809.md` §2.7 before touching any turn constant.** A
+pulse rotates only while refresh writes arrive; when a write blocks, the mower's
+watchdog stops the motor and the executor still divides by the whole window. A
+1303.7 ms pulse that sent **one of six** refreshes, on a write that took
+**1303.972 ms**, measured "9.23 °/s". Cadence-intact pulses that day measured
+**23–43 °/s**. This substantially explains the Gate 5 overshoot the ceiling was
+built for (a low estimate *lengthens* later pulses), and means
+`_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND = 16.5` is probably **not** falsified —
+do not lower it on the 14.49/14.90 readings, which are stall-degraded.
+
+beta33 excludes such pulses from the rate estimate (`refresh_cadence_broken`,
+`refresh_cadence_broken_pulses`). **Two earlier recommendations are WITHDRAWN:**
+"K = 2 × tolerance unlocks 90° L-paths" (at a sustained slow rate no K helps — the
+4-command budget caps rotation at ~55°), and the delivered-window shave (it
+strictly worsens the binding constraint and would tune against a +0.03%–112%
+spread). **The real open lead is BLE write latency, not turn tuning.**
+
+Per-**click** reach is 4 segments; per-**segment** reach is ~1 m
+(`max_linear_commands: 3` × ~0.35–0.42 m/pulse). A 2.0 m leg is not dispatchable
+and stops on `max_linear_commands_reached`.
+
 **DEPLOYED 2026-08-09 01:16–01:22 EDT, motion-disabled.** The host now runs
 `0.6.4-beta32` (it skipped beta31 entirely); all 46 files byte-identical, both
 card paths at `16d883fa`, resource `?v=0.6.4-beta32&build=16d883fa`,
