@@ -104,7 +104,7 @@ Useful options:
 
 Click-to-go is an operator-supervised experiment, not an autonomous navigation
 feature. Preview and dry-run support up to seven destinations. Real execution
-is limited to two segments and is disabled unless every backend safety gate
+is limited to four segments and is disabled unless every backend safety gate
 passes.
 
 The bounded backend re-passed the two-leg Gate 4 path on 2026-08-05. The card's

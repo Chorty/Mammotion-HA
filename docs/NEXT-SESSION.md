@@ -6,7 +6,13 @@ Updated **2026-08-08 late** after Gate 5 passed. This is the current handoff;
 
 ## 🏁 START HERE 2026-08-09 — GATE 5 IS PASSED. All five gates complete.
 
-**Host and branch run `0.6.4-beta30`.** Gate off, no session, blades off. Mower
+⚠️ **Host and branch have diverged as of 2026-08-08.** The **host** runs the
+deployed `0.6.4-beta30`. The **branch** is at `0.6.4-beta31`, which is built,
+fully green on CI, and **never deployed or run on hardware**. Read
+`docs/HANDOVER-beta31-20260809.md` before touching anything — it carries the
+changes, the open attacks against them, and the validation-run design.
+
+Gate off, no session, blades off. Mower
 undocked in Backyard Right, battery ~22% (dock it).
 
 **Gate 5 passed twice on 2026-08-08**, card-driven, with the accepted profile —
@@ -21,16 +27,41 @@ and the execution-profile label, which now reads
 
 ### ⚠️ Two fragilities the pass does NOT remove
 
-1. **Turn budget has no margin near 90°.** Attempt 5 used `turn_commands_sent: 4`
-   of `max 4`, while turn rate varied **2.6×** across identical 1500 ms pulses
-   (30.46°, 22.17°, 57.63°). A marginally worse sequence hits
-   `turn_phase_incomplete`.
+**Both were rewritten on 2026-08-08 after the raw per-command record was
+recovered** from the card's response pane and committed as
+`docs/evidence-gate5-attempt5-segment1-raw-20260808.json`. The earlier wording,
+written from the prose summary, asserted a turn-budget exhaustion that **did not
+happen**. Read that file before re-deriving anything here.
+
+1. **The turn phase lands on tolerance with little margin — the budget is not the
+   problem.** ~~Attempt 5 used `turn_commands_sent: 4` of `max 4`.~~ **REFUTED.**
+   That 4 is three turn-phase pulses **plus one mid-drive realignment on a
+   separate budget**; the turn phase itself stopped at `target_heading_reached`
+   on command **3 of 4**, with a command in hand. `turn_commands_sent` is
+   reporting-only — nothing in `services.py` ever reads it in a comparison — and
+   the true per-segment ceiling is **14**, not 4.
+   The real fragility is **overshoot against tolerance**: pulse 3 rotated 57.630°
+   when 44.372° remained, overshooting the target heading by **13.258°** against
+   `heading_tolerance_degrees: 18`. The clean finish depended on the outlier
+   overshooting by less than the tolerance — **4.74° of margin**.
+   On the 2.6× rate variance: it is partly an accounting artifact. Against
+   *nominal* duration the pulses read 20.31 / 14.78 / 38.42 °/s; against
+   *measured* elapsed they read 14.91 / 14.49 / 32.74, so pulses 1 and 2 agree to
+   ~3% and **only pulse 3 is anomalous**. The artifact is proven:
+   `services.py:8091` accumulates `observed_rotation_ms += pulse_ms`, the nominal
+   duration, never the measured `elapsed_ms`. Pulse 3's rotation is nonetheless
+   **real, not a measurement error** — see the five-step argument in the evidence
+   file. Why it rotated 2.6× per delivered write is unexplained and is not
+   observable from telemetry.
 2. **The BLE `TimeoutError` is intermittent, not fixed.** It failed attempt 3 at
    a 80.6° turn; attempt 5 completed *larger* turns (93.5°, 82.9°). Attempt 5 ran
-   with visibly degraded BLE — refresh writes median 540 ms (max 861), stop
-   confirmations 1175/1819/402/628 ms against a 77–230 ms norm — without
+   with visibly degraded BLE — refresh writes median 540 ms (max 861) — without
    tripping it. **The timeout is the tail of an observable latency distribution**,
    which is a real diagnosis and the basis for the next work item.
+   ⚠️ **Attribution corrected:** the stop confirmations 1175/1819/402/628 ms are
+   the **calibration drive stop plus the three linear stops**, not turn stops.
+   Turn pulses record no stop duration at all (`services.py:3321-3333`), so no
+   rate table may add stop latency to turn-pulse elapsed time.
 
 ### The measured picture, for anyone re-deriving it
 

@@ -1,0 +1,294 @@
+{
+  "title": "Gate 5 attempt 5, segment 1 -- RECOVERED per-command record",
+  "date": "2026-08-08",
+  "recovered": "2026-08-08, from the card's response pane. This is the raw JSON behind docs/evidence-gate5-PASSED-20260808.json, which had only prose. It is what every turn-variance conclusion had been missing.",
+  "build": "0.6.4-beta30",
+  "provenance": "Operator-pasted service response. Segment 2 and the trailing telemetry samples were TRUNCATED in transport; segment 1's command_results arrived complete and are transcribed verbatim below.",
+  "revision": "v2, 2026-08-08. v1's derived section contained four substantive errors caught by an adversarial arithmetic audit: a tautological 'independent control', a back-solved free parameter hiding a model failure on pulse 2, several last-digit rounding errors, and a headline fragility that was the wrong one. All are corrected here and the corrections are named explicitly under `v1_errors_corrected`.",
+  "service": "raw_pymammotion_execute_multi_segment",
+
+  "profile_echoed": {
+    "turn_mode": "vio",
+    "max_turn_commands": 4,
+    "vio_turn_max_commands": 4,
+    "max_linear_commands": 3,
+    "max_linear_pulse_ceiling": null,
+    "waypoint_tolerance": 0.15,
+    "heading_tolerance_degrees": 18,
+    "turn_pulse_duration_ms": 1500,
+    "linear_pulse_duration_ms": 1300,
+    "motion_refresh_interval_ms": 200,
+    "final_approach_metres_per_pulse": 1.06,
+    "turn_degrees_per_second": 37,
+    "max_turn_translation_distance": 0.3,
+    "vio_angular_speed": 500,
+    "linear_speed_fast": 400,
+    "max_real_segments": 2
+  },
+
+  "segment_1": {
+    "advisory_start": [4.809, -2.072],
+    "true_start": [4.8095, -2.0722],
+    "target": [4.85, -2.85],
+    "landed": [4.8754, -2.8003],
+    "landing_error_m": 0.0558,
+    "leg_m_from_advisory_start": 0.7790795851516069,
+    "leg_m_from_true_start": 0.7788537025655,
+    "leg_note": "The record's `distance` field (0.77907958...) is computed from the card's ADVISORY start, not from the mower's true position. The executor's own initial_linear_command_selection.distance_to_target uses true_start and reads 0.7788537025655076. The two differ by 0.23 mm; do not treat them as the same quantity.",
+    "passed": true,
+    "commands_sent": 8,
+    "turn_commands_sent": 4,
+    "linear_commands_sent": 3,
+    "calibration_commands_sent": 1,
+    "motion_refresh_commands_sent": 6,
+    "initial_vio_state": 2,
+    "tracked_features": 77,
+    "rtk_status_label": "Fix",
+    "ble_rssi": -62
+  },
+
+  "KEY_FINDINGS": {
+    "1_turn_budget_was_NOT_consumed": "turn_commands_sent 4 = THREE turn-phase pulses + ONE mid-drive realignment. The turn phase stopped at target_heading_reached on command 3 of max 4 (services.py:8107-8109; |-13.258| <= tolerance 18). The realignment ran later under its own budget of min(6, vio_turn_max_commands) = 4 (services.py:11243) and used 1. Corroborated four ways: the realignment pulse carries index 1 while the turn pulses carry 1/2/3 (the loop counter at services.py:7845 is local to each call); its angular_speed is +500 against the turn's -500; its pulse_duration_ms is 639.7, not 1500; and its max_refresh_commands is 3, not 7. The counter itself is REPORTING-ONLY -- nothing in services.py ever reads turn_commands_sent in a comparison.",
+    "2_the_REAL_fragility_is_overshoot_not_budget": "Pulse 3 rotated 57.630 deg when only 44.372 deg remained, OVERSHOOTING the target heading by 13.258 deg. heading_tolerance_degrees is 18, so the run finished cleanly with just 4.74 deg of margin. The clean finish depended on the outlier overshooting by LESS than the tolerance. That is a better-evidenced fragility than the budget-consumption story, and it is the one that should be recorded.",
+    "3_the_110_degree_contradiction_is_resolved": "The initial VIO-frame heading error was 97.006 deg, not the 93.5 deg geometric turn quoted in the summary. 97.006 - 110.264 = -13.258, matching the recorded heading_error_after on pulse 3 to three decimal places. There was never a contradiction; the summary quoted a different quantity. NOTE this resolution is arithmetic self-consistency only -- it has NOT been checked against the map/VIO frame geometry.",
+    "4_the_four_stop_latencies_are_not_turn_stops": "1175.271 / 1819.083 / 401.526 / 627.844 ms are the CALIBRATION drive stop plus the THREE LINEAR stops. Turn pulses record stop_ack {movement_ok: true} with no duration field at all (services.py:3321-3333). Any rate table built by adding stop latency to turn-pulse elapsed time is invalid."
+  },
+
+  "turn_phase_pulses": [
+    {
+      "index": 1,
+      "angular_speed": -500,
+      "pulse_duration_ms": 1500,
+      "before_vision_heading": 177.09915079291486,
+      "heading_error_before": 97.006,
+      "after_vision_heading": -152.44044861325102,
+      "measured_change_degrees": 30.46,
+      "exact_wrapped_delta_degrees": 30.46040059,
+      "heading_error_after": 66.546,
+      "progress_degrees": 30.46,
+      "displacement_m_CUMULATIVE": 0.05047385461800972,
+      "heading_poll_seconds": 2.0,
+      "heading_poll_count": 1,
+      "heading_went_fresh": true,
+      "refresh_commands_sent": 3,
+      "refresh_write_durations_ms": [543.794, 337.445, 558.712],
+      "max_refresh_commands": 7,
+      "elapsed_ms": 2043.622,
+      "final_approach": {"applied": false, "reason": "cruising_full_pulse_fits", "degrees_per_second": 37, "source": "default"},
+      "sent_at_utc": "2026-08-08T19:38:11.070234+00:00"
+    },
+    {
+      "index": 2,
+      "angular_speed": -500,
+      "pulse_duration_ms": 1500,
+      "before_vision_heading": -152.44044861325102,
+      "heading_error_before": 66.546,
+      "after_vision_heading": -130.26690241455688,
+      "measured_change_degrees": 22.174,
+      "exact_wrapped_delta_degrees": 22.1735462,
+      "heading_error_after": 44.372,
+      "progress_degrees": 22.174,
+      "displacement_m_CUMULATIVE": 0.07259931129149898,
+      "heading_poll_seconds": 2.01,
+      "heading_poll_count": 1,
+      "heading_went_fresh": true,
+      "refresh_commands_sent": 2,
+      "refresh_write_durations_ms": [310.598, 543.537],
+      "max_refresh_commands": 7,
+      "elapsed_ms": 1530.326,
+      "final_approach": {"applied": false, "reason": "cruising_full_pulse_fits", "degrees_per_second": 20.3069, "source": "observed"},
+      "sent_at_utc": "2026-08-08T19:38:15.488389+00:00",
+      "note": "ANOMALOUS IN THE REFRESH LOOP -- see refresh_window_model_validation. A third write should have fired and did not."
+    },
+    {
+      "index": 3,
+      "angular_speed": -500,
+      "pulse_duration_ms": 1500,
+      "before_vision_heading": -130.26690241455688,
+      "heading_error_before": 44.372,
+      "after_vision_heading": -72.63694695579554,
+      "measured_change_degrees": 57.63,
+      "exact_wrapped_delta_degrees": 57.62995546,
+      "heading_error_after": -13.258,
+      "progress_degrees": 31.114,
+      "displacement_m_CUMULATIVE": 0.11223925338311892,
+      "heading_poll_seconds": 2.0,
+      "heading_poll_count": 1,
+      "heading_went_fresh": true,
+      "refresh_commands_sent": 2,
+      "refresh_write_durations_ms": [540.066, 819.98],
+      "max_refresh_commands": 7,
+      "elapsed_ms": 1760.436,
+      "final_approach": {"applied": false, "reason": "cruising_full_pulse_fits", "degrees_per_second": 17.5446, "source": "observed"},
+      "sent_at_utc": "2026-08-08T19:38:20.283145+00:00",
+      "note": "THE ROTATION OUTLIER, AND THE ONLY OVERSHOOT. progress_degrees 31.114 < measured_change 57.630 because the executor credits only the error actually closed; the extra 13.258 deg went past the target heading."
+    }
+  ],
+
+  "mid_drive_realignment": {
+    "after_linear_pulse": 2,
+    "facing_degrees": 289.092,
+    "bearing_degrees": 265.422,
+    "aim_error_degrees": -23.67,
+    "stop_reason": "target_heading_reached",
+    "pulse": {
+      "index": 1,
+      "angular_speed": 500,
+      "pulse_duration_ms": 639.7,
+      "before_vision_heading": -72.14451531414969,
+      "after_vision_heading": -100.93180710904886,
+      "measured_change_degrees": -28.787,
+      "heading_error_after": 5.117,
+      "displacement_m": 0.05383688326788636,
+      "heading_poll_seconds": 2.0,
+      "heading_poll_count": 1,
+      "refresh_commands_sent": 2,
+      "refresh_write_durations_ms": [145.107, 113.424],
+      "max_refresh_commands": 3,
+      "elapsed_ms": 660.043,
+      "final_approach": {"applied": true, "reason": "final_approach_scaled_to_remaining_angle", "degrees_per_second": 37, "source": "default", "pulse_duration_ms": 639.7},
+      "sent_at_utc": "2026-08-08T19:38:45.130707+00:00"
+    },
+    "scaling_check": "23.67 / 37 * 1000 = 639.7297 ms against a recorded 639.7 -- the formula at services.py:7458-7463 reproduces to 0.03 ms.",
+    "rate_check": "It then turned 28.787 deg where 23.67 was wanted. Real rate 45.00 deg/s on the nominal duration, 43.61 deg/s on the measured elapsed 660.043 ms. Either way the 37 deg/s default UNDER-estimated by ~18-22%, which is why it overshot."
+  },
+
+  "linear_pulses": [
+    {
+      "index": 1, "linear_speed": 400, "pulse_duration_ms": 1300,
+      "distance_to_target": 0.8943569142126649,
+      "measured_distance_m": 0.30169786210710886,
+      "refresh_commands_sent": 2, "nonzero_writes": 3,
+      "refresh_write_durations_ms": [861.438, 449.623],
+      "refresh_command_limit": 9, "max_refresh_commands": 6,
+      "elapsed_ms": 1712.86, "stop_duration_ms": 1819.083,
+      "normalised_metres_per_eleven_writes": 1.1062,
+      "metres_per_pulse_source": "default",
+      "sent_at_utc": "2026-08-08T19:38:25.322244+00:00"
+    },
+    {
+      "index": 2, "linear_speed": 400, "pulse_duration_ms": 1300,
+      "distance_to_target": 0.5980275996975392,
+      "measured_distance_m": 0.2675146538042355,
+      "refresh_commands_sent": 2, "nonzero_writes": 3,
+      "refresh_write_durations_ms": [633.829, 140.794],
+      "refresh_command_limit": 5, "max_refresh_commands": 5,
+      "elapsed_ms": 1354.03, "stop_duration_ms": 401.526,
+      "normalised_metres_per_eleven_writes": 0.9809,
+      "metres_per_pulse_source": "observed",
+      "sent_at_utc": "2026-08-08T19:38:36.782895+00:00"
+    },
+    {
+      "index": 3, "linear_speed": 400, "pulse_duration_ms": 1300,
+      "distance_to_target": 0.3612380517055204,
+      "measured_distance_m": 0.30744147410523537,
+      "refresh_commands_sent": 2, "nonzero_writes": 3,
+      "refresh_write_durations_ms": [214.334, 560.405],
+      "refresh_command_limit": 3, "max_refresh_commands": 3,
+      "elapsed_ms": 1344.965, "stop_duration_ms": 627.844,
+      "normalised_metres_per_eleven_writes": 1.1273,
+      "metres_per_pulse_source": "default_conservative_floor",
+      "sent_at_utc": "2026-08-08T19:38:48.559240+00:00"
+    }
+  ],
+
+  "calibration_drive": {
+    "passed": true,
+    "offset_degrees": 4.531078154827327,
+    "distance_m": 0.077331300260632,
+    "pulses_sent": 1,
+    "stop_duration_ms": 1175.271,
+    "vision_heading": 177.09915079291486,
+    "tracked_features": 80,
+    "sent_at_utc": "2026-08-08T19:38:00.852746+00:00"
+  },
+
+  "aggregate_cross_checks": {
+    "refresh_writes_total": 15,
+    "refresh_writes_sorted_ms": [113.424, 140.794, 145.107, 214.334, 310.598, 337.445, 449.623, 540.066, 543.537, 543.794, 558.712, 560.405, 633.829, 819.98, 861.438],
+    "median_ms": 540.066,
+    "max_ms": 861.438,
+    "note": "Reproduces the operator's reported '15 refresh writes, median 540 ms, max 861 ms' exactly, which authenticates this record against the summary."
+  },
+
+  "derived_rates_turn": {
+    "note": "Computed from the EXACT wrapped heading deltas, not the 3-dp measured_change_degrees. Nonzero writes = refresh_commands_sent + 1; the initial command is the caller's, outside the refresh window (services.py:4875-4877, and the +1 convention codified for linear at :10029).",
+    "per_nominal_second": {"pulse_1": 20.307, "pulse_2": 14.782, "pulse_3": 38.42, "realign": 45.001, "spread_p1_p2_pct": 37.4},
+    "per_elapsed_second": {"pulse_1": 14.905, "pulse_2": 14.489, "pulse_3": 32.736, "realign": 43.614, "spread_p1_p2_pct": 2.9},
+    "per_nonzero_write": {"pulse_1": 7.615, "pulse_2": 7.391, "pulse_3": 19.21, "realign": 9.596, "spread_p1_p2_pct": 3.0},
+    "interpretation": "Pulses 1 and 2 differ by 37.4% against NOMINAL duration and by ~3% against either measure of delivered actuation. Elapsed-time and write-count are INDISTINGUISHABLE on this data -- pulses 2 and 3 have the same write count, so per-write cannot separate them, and pulses 1 and 2 happen to have elapsed times proportional to their write counts. What is established is only that NOMINAL duration is the worst of the three denominators."
+  },
+
+  "derived_rates_linear": {
+    "measured_distance_m": [0.30169786, 0.26751465, 0.30744147],
+    "nonzero_writes": [3, 3, 3],
+    "metres_per_nonzero_write": [0.10057, 0.08917, 0.10248],
+    "metres_per_elapsed_second": [0.17614, 0.19757, 0.22859],
+    "distance_spread_pct": 14.9,
+    "metres_per_second_spread_pct": 29.8,
+    "elapsed_ms_spread_pct": 27.4,
+    "⚠️_THIS_IS_NOT_A_CONTROL": "v1 claimed these three pulses showed distance tracking write count 'roughly twice as tightly' as elapsed time. THAT WAS A TAUTOLOGY AND IS WITHDRAWN. All three linear pulses have exactly 3 nonzero writes, so metres_per_nonzero_write is the raw distance list divided by a constant; its spread is identical to the raw distance spread by construction and carries zero explanatory variance. The linear pulses show only that distance varied 14.9% while nominal duration was constant at 1300 ms. They say nothing about write count versus elapsed time as competing predictors."
+  },
+
+  "refresh_window_model_validation": {
+    "model": "elapsed_ms == (200 ms sleep per refresh) + (sum of write durations), per services.py:4909-4946, with the deadline checked only BEFORE resend() at :4914-4918.",
+    "pulse_1": {"sleeps_ms": 600, "writes_ms": 1439.951, "predicted_ms": 2039.951, "actual_ms": 2043.622, "error_ms": 3.7, "verdict": "CONFIRMED"},
+    "pulse_2": {"sleeps_ms": 400, "writes_ms": 854.135, "predicted_ms": 1254.135, "actual_ms": 1530.326, "error_ms": 276.191, "verdict": "MODEL FAILS"},
+    "pulse_3": {"sleeps_ms": 400, "writes_ms": 1360.046, "predicted_ms": 1760.046, "actual_ms": 1760.436, "error_ms": 0.4, "verdict": "CONFIRMED"},
+    "⚠️_pulse_2_is_an_open_anomaly": "v1 closed this gap with a fabricated '245.9 ms truncated final sleep'. That term appears nowhere in the record, was back-solved to make the prediction land on 1500 ms, and CONTRADICTS the cited code: services.py:4913 sleeps min(interval_seconds, remaining), so a final sleep can never exceed 200 ms. It is withdrawn. Worse, the code predicts pulse 2 should have made a THIRD write: after two writes t = 1254.135 ms, sleep 200 -> t = 1454.135 < the 1500 ms deadline, so :4914-4918 would not break and resend() would fire. refresh_commands_sent is 2 and no refresh_error is recorded. Roughly 276 ms of wall time is unaccounted for and one expected write is missing. UNEXPLAINED.",
+    "conclusion": "The loop model is confirmed to within 4 ms on pulses 1 and 3, and fails on pulse 2. The overrun mechanism itself is sound and verified in code -- elapsed_ms exceeds the deadline whenever the final write straddles it -- but it does not explain pulse 2, where no third write exists to straddle anything."
+  },
+
+  "stop_latency_does_NOT_extend_turn_motion": {
+    "note": "Stop-plus-overhead inferred from consecutive sent_at_utc minus elapsed_ms minus heading_poll_seconds. All four timestamps are in this record, so every figure is reproducible.",
+    "pulse_1_to_2_s": 4.418, "pulse_1_stop_overhead_s": 0.375,
+    "pulse_2_to_3_s": 4.795, "pulse_2_stop_overhead_s": 1.254,
+    "pulse_3_to_linear_1_s": 5.039, "pulse_3_stop_overhead_s": 1.279,
+    "test": "If the mower kept turning through stop delivery, adding stop overhead to elapsed should TIGHTEN the rates. It does the opposite: 12.60 / 7.96 / 18.96 deg/s, a 2.38x spread, worse than elapsed alone at 2.26x.",
+    "conclusion": "Motion ends promptly after the last delivered command, not when the stop confirms. Consistent with a short device-side watchdog, whose value exists nowhere in this repo or in vendored pymammotion. NOTE this is a negative result on the TURN path only. Turn stops use Priority.NORMAL (services.py:5719-5720) while linear stops use Priority.EMERGENCY (:3307), and the project holds a committed live observation that a normal-priority stop took 1392.7 ms while the mower continued past its target (:3301-3306)."
+  },
+
+  "was_pulse_3_real_rotation_or_measurement": {
+    "verdict": "REAL ROTATION.",
+    "argument": [
+      "1. The partition is exact and contiguous: before_vision_heading of pulse N+1 is bit-identical to after_vision_heading of pulse N (-152.44044861325102 and -130.26690241455688 each appear twice). The exact wrapped deltas sum to 110.26390225, which equals the direct wrap from 177.09915079 to -72.63694696. No rotation is lost or double-counted; only BOUNDARY PLACEMENT can be wrong.",
+      "2. Every pulse broke at heading_poll_count 1, heading_poll_seconds 2.00/2.01/2.00. The boundary lag is uniform, so a constant truncation telescopes out of the per-pulse deltas.",
+      "3. Pulse 1's before-reading came from the calibration drive ~10 s earlier and is well settled. If pulse 1's boundary had been truncated, pulse 2 would have over-read. It did not (7.615 vs 7.391 deg/write).",
+      "4. Pulse 3's after-reading is confirmed settled: the realignment 25 s later, after two forward linear pulses, read -72.145 against -72.637 -- 0.49 deg apart.",
+      "5. Explaining pulse 3 as inherited catch-up would require pulse 2's reading to have been truncated by ~33 of ~55 deg (60%) at the same 2.0 s post-stop timing where pulses 1 and 3 were accurate."
+    ],
+    "residual_doubt": "Pulse 2 is independently anomalous in the refresh loop (276 ms and one write unaccounted for). A single pulse being odd in two different ways at once is worth noting before treating argument 3 as airtight.",
+    "what_is_still_unexplained": "WHY pulse 3 rotated at 19.21 deg/write against 7.6 / 7.4 / 9.6 for the other three. Nothing distinguishes it in the record except that its second write was the longest of the turn (819.98 ms). No terrain, slope, motor-current or battery-voltage field exists anywhere in this codebase, so the physical cause is not observable from telemetry."
+  },
+
+  "further_defects_this_record_exposes": {
+    "motion_refresh_commands_sent_under_reports": "segment_1.motion_refresh_commands_sent is 6, but this segment made 15 refresh writes across 7 refreshing commands. The counter is accumulated at exactly ONE site, services.py:11044, inside the LINEAR loop; the turn phase's 3+2+2=7 and the realignment's 2 are silently dropped (the turn primitive keeps its own counter at :7978, and neither :10699 nor :11259 folds it up). Under-reports by 9 here.",
+    "realignment_can_burn_a_slot_on_a_no_op": "The mid-drive realignment TRIGGERS at abs(aim_error) > vio_realign_threshold_degrees = 15 (services.py:11230) but is CALLED with heading_tolerance_degrees = 18 (:11241). For any aim error in (15, 18] the turn primitive returns target_heading_reached immediately at its entry check (:7807) without sending a command -- consuming a realignment slot for nothing. Not hit on this run (aim error was -23.67).",
+    "turn_pulse_duration_ms_is_inert_on_the_vio_path": "The call at services.py:10647-10667 passes no pulse_duration_ms, so the executed turn pulse length is _vio_turn_to_heading's own default of 1500 (:7614), not the profile value. The profile key is not wholly inert: at :11631 it IS fed to _vio_turn_budget_feasibility for the multi-segment junction preflight. Changing it would move the preflight without moving execution.",
+    "turn_phase_has_no_settle_requirement": "The turn poll breaks on the FIRST sample past a 0.1 deg epsilon (services.py:8049-8054, epsilon at :7158), whereas _settle_linear_position_feed requires two consecutive agreeing samples (:8318-8321). This run happened to be uniform at poll_count 1; nothing guarantees that."
+  },
+
+  "true_turn_command_ceiling": {
+    "value": 14,
+    "breakdown": "Turn phase up to 4 (services.py:10652); post-turn alignment correction up to min(2, 4) = 2 (:10816), which also consumes realignment slot 1; then mid-drive realignments on the remaining slots at min(6, 4) = 4 each, bounded by vio_max_realignments = 3 (:10230, a default -- not a card profile key).",
+    "note": "Against this, a reported turn_commands_sent of 4 is nowhere near any cap."
+  },
+
+  "conclusions": [
+    "The 2.6x figure is partly an accounting artifact and partly one real outlier. Against NOMINAL duration the three pulses read 20.31 / 14.78 / 38.42 deg/s; against delivered actuation pulses 1 and 2 agree to ~3%, and only pulse 3 is anomalous.",
+    "The accounting artifact is proven, not inferred: services.py:8091 accumulates observed_rotation_ms += pulse_ms, the NOMINAL duration, never the measured elapsed_ms. Using the exact wrapped deltas this reproduces the recorded revisions to the digit -- 30.46040059/1.5 = 20.30693 against a recorded 20.3069, and (30.46040059+22.17354620)/3.0 = 17.54465 against a recorded 17.5446.",
+    "Fixing the denominator touches no LUBA_ACCEPTANCE_PROFILE key.",
+    "The turn-budget fragility recorded in docs/NEXT-SESSION.md:24-27 is refuted -- the turn phase finished with a command in hand. The fragility that IS supported is pulse 3's 13.258 deg overshoot against an 18 deg tolerance: 4.74 deg of margin.",
+    "Elapsed-time and write-count cannot be separated as actuation units by this data. Only the inadequacy of nominal duration is established."
+  ],
+
+  "v1_errors_corrected": [
+    "The linear pulses were presented as an 'independent control' proving write count beats elapsed time. All three had 3 writes; the comparison was a tautology. WITHDRAWN.",
+    "refresh_window_model_validation claimed confirmation 'within 30 ms on all three pulses' via a 245.9 ms 'truncated final sleep' on pulse 2. That term was back-solved, appears nowhere in the record, and contradicts the 200 ms cap at services.py:4913. The model FAILS on pulse 2 by 276.191 ms, and a third write that the code requires is missing. WITHDRAWN.",
+    "The headline fragility was the turn-budget count. The better-evidenced one is pulse 3's overshoot leaving 4.74 deg of tolerance margin. REPLACED.",
+    "Rounding errors: per_elapsed_second pulse_3 32.737 -> 32.736; realign 43.617 -> 43.614; metres_per_elapsed_second [0.17615, 0.19757, 0.22858] -> [0.17614, 0.19757, 0.22859]; pulse_2_stop_overhead 1.255 -> 1.254; realignment scaling 639.65 -> 639.7297.",
+    "planned_leg_m 0.7790795851516069 was attributed to true_start; it is computed from the card's advisory start. From true_start the leg is 0.7788537025655.",
+    "'Exactly' was used for identities that hold only to three decimal places, because measured_change_degrees is a 3-dp rounding. The exact wrapped deltas (30.46040059 / 22.1735462 / 57.62995546) are now carried alongside.",
+    "The true turn-command ceiling was stated as 18; it is 14 -- the post-turn alignment correction consumes a realignment slot."
+  ]
+}

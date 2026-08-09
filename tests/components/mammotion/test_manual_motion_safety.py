@@ -178,7 +178,7 @@ def test_status_is_fail_closed_and_reports_actionable_blockers(
         "command_queue_backlogged",
         "blade_reported_on",
     ]
-    assert status["real_click_to_go_segment_limit"] == 2
+    assert status["real_click_to_go_segment_limit"] == 4
     assert status["backend_capabilities"]["verified"] is False
 
 

@@ -114,7 +114,7 @@ test("precise coordinate edits reject invalid values and active sessions", () =>
   assert.deepEqual(element._waypoints, [{ x: 2, y: 3 }]);
 });
 
-test("seven-point dry-run is retained but real payload is capped at two", () => {
+test("seven-point dry-run is retained but real payload is capped at the limit", () => {
   const element = card();
   element._waypoints = Array.from({ length: 7 }, (_, index) => ({
     x: index + 2,
@@ -421,13 +421,14 @@ test("nudge is blocked when the backend will refuse it", () => {
   );
 });
 
-test("backend blockers and the two-segment limit lock Real Go", () => {
+test("backend blockers and the real-segment limit lock Real Go", () => {
   const element = card();
-  element._waypoints = [
-    { x: 2, y: 2 },
-    { x: 3, y: 3 },
-    { x: 4, y: 4 },
-  ];
+  // One past the limit, derived from the constant so this test follows a future
+  // change instead of pinning a stale literal (it pinned 2 until beta31).
+  element._waypoints = Array.from(
+    { length: MAX_REAL_SEGMENTS + 1 },
+    (_unused, index) => ({ x: index + 2, y: index + 2 }),
+  );
   element._runtimeState.experimental_motion = {
     real_motion_allowed: false,
     blockers: ["pymammotion_backend_unverified"],
@@ -436,8 +437,30 @@ test("backend blockers and the two-segment limit lock Real Go", () => {
   const preflight = element._preflight();
 
   assert.equal(preflight.safe, false);
-  assert.ok(preflight.blockers.includes("real_segment_limit_2"));
+  assert.ok(
+    preflight.blockers.includes(`real_segment_limit_${MAX_REAL_SEGMENTS}`),
+  );
   assert.ok(preflight.blockers.includes("pymammotion_backend_unverified"));
+});
+
+test("a path exactly at the real-segment limit is not blocked for it", () => {
+  const element = card();
+  element._waypoints = Array.from(
+    { length: MAX_REAL_SEGMENTS },
+    (_unused, index) => ({ x: index + 2, y: index + 2 }),
+  );
+  element._runtimeState.experimental_motion = {
+    real_motion_allowed: true,
+    blockers: [],
+  };
+
+  const preflight = element._preflight();
+
+  assert.ok(
+    !preflight.blockers.some((blocker) =>
+      blocker.startsWith("real_segment_limit_"),
+    ),
+  );
 });
 
 test("active backend session prevents editing and duplicate runs", async () => {

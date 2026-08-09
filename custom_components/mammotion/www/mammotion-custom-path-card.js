@@ -1,12 +1,15 @@
 const MAX_WAYPOINTS = 7;
-const MAX_REAL_SEGMENTS = 2;
+// Raised 2 -> 4 in beta31 to extend per-click reach. Mirrors the backend's
+// REAL_CLICK_TO_GO_SEGMENT_LIMIT (manual_motion.py); keep the two in step or the
+// card will offer a run the backend refuses. NOT a LUBA_ACCEPTANCE_PROFILE key.
+const MAX_REAL_SEGMENTS = 4;
 // Nudge is capped so a mistake is bounded by geometry. It is available only
 // with trustworthy, map-aligned current orientation; frozen course-over-ground
 // must never authorize it.
 const MAX_NUDGE_METRES = 2.0;
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
-const CARD_VERSION = "0.6.4-beta30";
+const CARD_VERSION = "0.6.4-beta31";
 
 // The exact bounded execution profile that passed supervised LUBA acceptance
 // Gate 4 re-pass on 2026-08-05 (three-write zero stop, bounded straight segment,
@@ -86,7 +89,7 @@ class MammotionCustomPathCard extends HTMLElement {
     this._draggingIndex = null;
     this._height = 520;
     this._status =
-      "Load map/runtime, then click up to 7 destinations. Real Go is experimental and limited to two segments.";
+      "Load map/runtime, then click up to 7 destinations. Real Go is experimental and limited to four segments.";
     this._validation = null;
     this._dryRun = null;
     this._realRun = null;
@@ -1712,7 +1715,7 @@ if (typeof window !== "undefined") {
     type: "mammotion-custom-path-card",
     name: "Mammotion Click/Go (Guarded)",
     description:
-      "Preview or dry-run up to seven destinations; guarded Real Go is limited to two segments.",
+      "Preview or dry-run up to seven destinations; guarded Real Go is limited to four segments.",
   });
 }
 

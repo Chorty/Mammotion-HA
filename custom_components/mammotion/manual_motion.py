@@ -21,7 +21,24 @@ from .const import CONF_ENABLE_EXPERIMENTAL_MOTION
 # version number can be produced with or without them (a fork, a rebuild, or a
 # future upstream release). See ``backend_capability.py`` for the probes.
 MINIMUM_AUDITED_PYMAMMOTION_BASE_VERSION = "0.8.12"
-REAL_CLICK_TO_GO_SEGMENT_LIMIT = 2
+#: How many segments of a multi-point path a real (non-dry-run) run may execute.
+#:
+#: Raised 2 -> 4 in beta31. Two segments reach only ~1-2 m per click (measured:
+#: deadline-limited 1300 ms pulses travel 0.3496-0.4192 m, and committed 3-pulse
+#: segment sums run 0.522-0.975 m), which is far short of the click-anywhere goal.
+#: Each segment re-establishes ground truth against `waypoint_tolerance` at its
+#: waypoint, so extra segments compose the same per-segment control law Gate 5
+#: validated four times rather than extending any single open-loop leg.
+#:
+#: NOT a `LUBA_ACCEPTANCE_PROFILE` key -- raising it does not un-accept the
+#: profile. It bounds both the schema Range and the runtime re-check in
+#: `services.py`, so both follow automatically.
+#:
+#: Still unmeasured beyond segment 2: the VIO forward-heading offset is refreshed
+#: only from linear travel and never re-derived across a turn, so cumulative
+#: cross-track error over 3+ segments has never been observed. Watch landing error
+#: against segment index on the first 4-segment run.
+REAL_CLICK_TO_GO_SEGMENT_LIMIT = 4
 
 
 class ManualMotionCancelledError(RuntimeError):

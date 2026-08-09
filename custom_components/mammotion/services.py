@@ -7397,11 +7397,58 @@ _DEFAULT_TURN_DEGREES_PER_SECOND = 37.0
 #: stepped down 700 -> 500 -> 400 -> 300 and find where measured rotation stops
 #: tracking duration.
 _MIN_SCALED_TURN_PULSE_MS = 400.0
+#: Upper bound on rotation rate, used ONLY to cap how long a turn pulse may run.
+#:
+#: This is the SYMMETRIC COUNTERPART to
+#: `_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND = 16.5`, and the two are supposed to
+#: disagree -- do not "reconcile" them. The floor is fail-closed for BUDGET
+#: (under-estimate rotation, so the feasibility guard refuses turns it cannot
+#: finish). This ceiling is fail-closed for OVERSHOOT (over-estimate rotation, so
+#: the pulse is cut short). Raising this value is the SAFE direction; lowering it
+#: weakens the guard.
+#:
+#: Why it exists: on 2026-08-08 Gate 5 attempt 5, turn pulse 3 rotated 57.630 deg
+#: with 44.372 deg remaining -- overshooting the target heading by 13.258 deg
+#: against an 18 deg tolerance, i.e. the run finished cleanly on 4.74 deg of
+#: margin. No rate ESTIMATE could have prevented it: the mower turned at 32.74
+#: deg/s on elapsed time while every sample available to the estimator said ~14.7
+#: deg/s, so the pulse was correctly judged "cruising" and ran full length. Only a
+#: hard ceiling bounds a 2.2x outlier.
+#: Evidence: docs/evidence-gate5-attempt5-segment1-raw-20260808.json.
+#:
+#: WHY 60 AND NOT THE OBSERVED MAXIMUM. The highest rate ever recorded is
+#: 49.5649 deg/s (2026-08-04 characterization run 3,
+#: docs/evidence-turnchar-beta19-analysis-20260804.json:117). Anchoring the
+#: constant there would leave under 1% of margin against a single run's maximum,
+#: while this file's convention for the comparable translation bound is +7.9%
+#: with both walls documented. It is also the wrong statistic: the whole reason
+#: this guard exists is an outlier nobody can explain, so "the largest value seen
+#: so far" is a weak bound on what the hardware can do. 60 keeps ~21%.
+#:
+#: THE TRADE-OFF, stated so it is not rediscovered as a bug. A ceiling binds when
+#: (|error| + tolerance) / ceiling < pulse_duration, and it beats the estimate
+#: when the estimated rate is below ceiling * |error| / (|error| + tolerance). At
+#: 60 that threshold is 34.1 deg/s for the Gate 5 geometry, so the ceiling is no
+#: longer a rare backstop -- it routinely becomes the active bound on final
+#: approach, and pulses are systematically a little shorter. That costs at most an
+#: extra short pulse against a 4-command turn budget (attempt 5 used 3), and it
+#: buys a bound that does not depend on the estimator being right. The 2026-07-27
+#: replay case moves 738.4 -> 695.7 ms, a 6% shortening.
+#:
+#: COUPLING TO A PROFILE KEY. This bound reads `heading_tolerance_degrees`, which
+#: IS a frozen `LUBA_ACCEPTANCE_PROFILE` key (18 on the accepted profile). Turn
+#: dynamics therefore now depend on the tolerance, which was not true before
+#: beta31: raising the tolerance lengthens the permitted pulse. Below ~10 deg of
+#: tolerance the ceiling falls under `_MIN_SCALED_TURN_PULSE_MS` and the floor
+#: wins, so the anti-overshoot guarantee does NOT hold there -- see
+#: `_turn_final_approach_pulse_ms` and its parametrised test.
+_VIO_TURN_CONSERVATIVE_MAX_DEGREES_PER_SECOND = 60.0
 
 
 def _turn_final_approach_pulse_ms(
     *,
     heading_error_degrees: float | None,
+    heading_tolerance_degrees: float,
     observed_rotation_degrees: float,
     observed_rotation_ms: float,
     default_degrees_per_second: float,
@@ -7426,14 +7473,34 @@ def _turn_final_approach_pulse_ms(
     Self-calibrating on a *rate* rather than a per-pulse figure, so samples taken
     at different pulse lengths stay comparable -- and so a scaled pulse is still a
     valid sample, unlike the linear case where short-by-design pulses had to be
-    excluded from a per-pulse average.
+    excluded from a per-pulse average. The rate is measured against each pulse's
+    *delivered* window (``motion_refresh.elapsed_ms``), not its commanded duration:
+    live 2026-08-08 those differed by up to 36% on a nominal 1500 ms pulse, and
+    dividing by the commanded figure alone made the estimator read 20.31 deg/s for
+    a pulse that really ran at 14.91.
+
+    Two independent bounds apply, and they pull in opposite directions on purpose:
+
+    * the *estimated* rate shortens the pulse to the angle that remains, which is
+      an accuracy optimisation and can be wrong in either direction;
+    * ``_VIO_TURN_CONSERVATIVE_MAX_DEGREES_PER_SECOND`` caps the pulse so that even
+      if the mower turns at the fastest rate ever observed, it cannot sweep past
+      the far edge of tolerance. That is a safety bound, it only ever shortens, and
+      it applies even when the estimate says a full pulse fits -- which is exactly
+      the case that overshot on 2026-08-08.
     """
     info: dict[str, Any] = {
         "applied": False,
         "reason": None,
         "heading_error_degrees": heading_error_degrees,
+        "heading_tolerance_degrees": heading_tolerance_degrees,
         "degrees_per_second": None,
         "degrees_per_second_source": None,
+        "max_rate_ceiling_degrees_per_second": (
+            _VIO_TURN_CONSERVATIVE_MAX_DEGREES_PER_SECOND
+        ),
+        "max_allowed_sweep_degrees": None,
+        "ceiling_pulse_duration_ms": None,
         "pulse_duration_ms": pulse_duration_ms,
     }
     if refresh_interval_ms <= 0:
@@ -7455,16 +7522,59 @@ def _turn_final_approach_pulse_ms(
         info["reason"] = "no_usable_rotation_rate"
         return info
 
+    # Safety ceiling, independent of the estimate: even at the fastest rate ever
+    # observed, a pulse must not be able to sweep past the far edge of tolerance.
+    # Landing anywhere inside the tolerance band ends the turn, so the worst
+    # acceptable sweep is the remaining error plus the band.
+    max_allowed_sweep = abs(heading_error_degrees) + heading_tolerance_degrees
+    ceiling_ms = (
+        max_allowed_sweep / _VIO_TURN_CONSERVATIVE_MAX_DEGREES_PER_SECOND
+    ) * 1000
+    info["max_allowed_sweep_degrees"] = round(max_allowed_sweep, 3)
+    info["ceiling_pulse_duration_ms"] = round(ceiling_ms, 1)
+    # The two safety bounds can conflict at a tight tolerance: below ~12 deg the
+    # ceiling asks for a pulse shorter than the actuation floor (at tolerance 8 it
+    # is 267 ms against a 400 ms floor). THE FLOOR WINS, deliberately -- an
+    # overshoot is recoverable by the next pulse, whereas a pulse too short to
+    # actuate makes no progress at all and walks the turn into
+    # `no_heading_progress` with the budget spent. Surfaced rather than resolved
+    # silently, because it means the anti-overshoot guarantee does NOT hold at a
+    # tight tolerance. It does hold on the accepted profile, whose
+    # `heading_tolerance_degrees` is 18.
+    info["ceiling_below_actuation_floor"] = ceiling_ms < _MIN_SCALED_TURN_PULSE_MS
+
     needed_ms = (abs(heading_error_degrees) / rate) * 1000
     if needed_ms >= pulse_duration_ms:
-        info["reason"] = "cruising_full_pulse_fits"
+        # The estimate says the mower cannot reach the target within this pulse.
+        # That judgement is only as good as the estimate, and on 2026-08-08 it was
+        # wrong by 2.2x on exactly this branch, so the ceiling still applies.
+        if ceiling_ms >= pulse_duration_ms:
+            info["reason"] = "cruising_full_pulse_fits"
+            return info
+        bounded = max(_MIN_SCALED_TURN_PULSE_MS, ceiling_ms)
+        info.update(
+            {
+                "applied": True,
+                "reason": "bounded_by_max_rate_ceiling",
+                "pulse_duration_ms": round(bounded, 1),
+            }
+        )
         return info
 
-    scaled = max(_MIN_SCALED_TURN_PULSE_MS, min(needed_ms, pulse_duration_ms))
+    # The estimate wants a shorter pulse than the ceiling would allow; take
+    # whichever is shorter, then apply the actuation floor.
+    scaled = max(
+        _MIN_SCALED_TURN_PULSE_MS,
+        min(needed_ms, ceiling_ms, pulse_duration_ms),
+    )
     info.update(
         {
             "applied": True,
-            "reason": "final_approach_scaled_to_remaining_angle",
+            "reason": (
+                "final_approach_scaled_to_remaining_angle"
+                if needed_ms <= ceiling_ms
+                else "bounded_by_max_rate_ceiling"
+            ),
             "pulse_duration_ms": round(scaled, 1),
         }
     )
@@ -7912,6 +8022,7 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # never be lengthened back to a full pulse.
         turn_approach = _turn_final_approach_pulse_ms(
             heading_error_degrees=error,
+            heading_tolerance_degrees=heading_tolerance_degrees,
             observed_rotation_degrees=observed_rotation_degrees,
             observed_rotation_ms=observed_rotation_ms,
             default_degrees_per_second=turn_degrees_per_second,
@@ -8088,7 +8199,17 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # scaling exists to prevent.
         if heading_went_fresh:
             observed_rotation_degrees += abs(measured_change)
-            observed_rotation_ms += pulse_ms
+            # Accumulate the DELIVERED window, not the commanded one. BLE write
+            # latency routinely runs a nominal 1500 ms pulse long -- live
+            # 2026-08-08 the three turn pulses of Gate 5 attempt 5 measured
+            # 2043 / 1530 / 1760 ms -- and dividing by the nominal figure made the
+            # estimator report 20.31 deg/s for a pulse that really ran at 14.91.
+            # `motion_refresh` is populated just above, so elapsed_ms is in hand;
+            # fall back to the commanded duration only if it is missing.
+            elapsed_ms = (command_result.get("motion_refresh") or {}).get("elapsed_ms")
+            observed_rotation_ms += (
+                float(elapsed_ms) if elapsed_ms is not None else pulse_ms
+            )
         result["command_results"].append(command_result)
         result["final_vision_heading"] = after_heading
         result["final_heading_error_degrees"] = round(new_error, 3)
@@ -10696,6 +10817,13 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     )
     result["turn_commands_sent"] = int(turn_result.get("commands_sent") or 0)
     result["commands_sent"] += result["turn_commands_sent"]
+    # Fold the turn primitive's refresh writes into the segment total. It keeps
+    # its own counter, and until beta31 nothing rolled it up: the segment field
+    # was accumulated ONLY inside the linear loop, so Gate 5 attempt 5 segment 1
+    # reported 6 refresh writes against an actual 15.
+    result["motion_refresh_commands_sent"] += int(
+        turn_result.get("motion_refresh_commands_sent") or 0
+    )
     result["command_results"].extend(turn_result.get("command_results") or [])
     result["samples"].extend(
         sample
@@ -10827,6 +10955,9 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                 correction_commands = int(correction.get("commands_sent") or 0)
                 result["turn_commands_sent"] += correction_commands
                 result["commands_sent"] += correction_commands
+                result["motion_refresh_commands_sent"] += int(
+                    correction.get("motion_refresh_commands_sent") or 0
+                )
                 result["command_results"].extend(
                     correction.get("command_results") or []
                 )
@@ -11227,7 +11358,26 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                     }
                     result["stop_reason"] = "target_requires_reverse_recovery"
                     return result
-                if abs(aim_error) > vio_realign_threshold_degrees:
+                # The realignment threshold (15 by default) is INDEPENDENT of the
+                # turn primitive's own tolerance (18 on the accepted profile), so
+                # an aim error in (threshold, tolerance] used to dispatch a turn
+                # that returned `target_heading_reached` at its entry check
+                # without sending a single command -- burning a realignment slot
+                # for nothing. Skip it: there is no correction to make.
+                #
+                # Be clear about what this changes, because it is more than slot
+                # accounting. Whenever `heading_tolerance_degrees` exceeds
+                # `vio_realign_threshold_degrees` -- which is the case on the
+                # accepted profile, 18 against 15 -- the EFFECTIVE trigger is now
+                # the tolerance, and the threshold parameter is inert in the gap
+                # between them. Mower behaviour is unchanged (those dispatches
+                # never sent a command), but the run record no longer shows a
+                # realignment entry for them and the remaining budget is larger.
+                # To make the threshold live again, lower the tolerance below it.
+                if (
+                    abs(aim_error) > vio_realign_threshold_degrees
+                    and abs(aim_error) > heading_tolerance_degrees
+                ):
                     if realignments_used >= vio_max_realignments:
                         result["stop_reason"] = "vio_realign_budget_exhausted"
                         return result
@@ -11254,6 +11404,9 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                     realign_commands = int(realign_result.get("commands_sent") or 0)
                     result["turn_commands_sent"] += realign_commands
                     result["commands_sent"] += realign_commands
+                    result["motion_refresh_commands_sent"] += int(
+                        realign_result.get("motion_refresh_commands_sent") or 0
+                    )
                     result["command_results"].extend(
                         realign_result.get("command_results") or []
                     )

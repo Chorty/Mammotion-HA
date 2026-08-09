@@ -6,7 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Read `docs/CODEX-HANDOFF.md`, then `docs/NEXT-SESSION.md`, before continuing P0
 or click-to-go work. The host runs the still-unaccepted, motion-disabled
-`0.6.4-beta30` candidate and experimental motion is verified off. Gate 2 passed
+`0.6.4-beta30` candidate and experimental motion is verified off; the branch is
+at the undeployed `0.6.4-beta31`. Gate 2 passed
 on 2026-08-03, and Gate 4 — which
 failed on 2026-08-03 before its first linear command — was **re-passed on
 2026-08-05** and **reproduced on a second daylight geometry on 2026-08-06**.
@@ -48,20 +49,43 @@ failed at the old 0.08. Evidence: `docs/evidence-gate5-PASSED-20260808.json`.
 Profile identity is now proven in fact — the card demonstrably sent the accepted
 profile to the mower.
 
-⚠️ Two fragilities the pass does **not** remove. **The turn budget has no margin
-near 90°** — one run used `turn_commands_sent: 4` of `max 4` while turn rate
-varied **2.6×** across identical 1500 ms pulses (30.46°, 22.17°, 57.63°). And
-**the BLE `TimeoutError` is intermittent, not fixed** — it failed one attempt at
+⚠️ Two fragilities the pass does **not** remove — **both rewritten 2026-08-08**
+after the raw per-command record was recovered
+(`docs/evidence-gate5-attempt5-segment1-raw-20260808.json`; analysis in
+`docs/turn-rate-variance-and-reach-analysis-20260808.md`). Read that evidence
+file before re-deriving any of this.
+
+**The turn budget is NOT the fragility — that claim is refuted.** The
+`turn_commands_sent: 4` was three turn-phase pulses plus one mid-drive
+realignment on a *separate* budget; the turn phase stopped at
+`target_heading_reached` on command **3 of 4**. The counter is reporting-only and
+the true per-segment ceiling is **14**. The real fragility is **overshoot against
+tolerance**: pulse 3 overshot the target heading by **13.258°** against
+`heading_tolerance_degrees: 18` — **4.74° of margin**. The 2.6× rate spread is
+partly an accounting artifact (`services.py:8091` divides by *nominal* pulse
+duration, never measured `elapsed_ms`); on elapsed time two of the three pulses
+agree to ~3% and only pulse 3 is anomalous. Pulse 3's rotation is nonetheless
+real, and unexplained.
+
+**The BLE `TimeoutError` is intermittent, not fixed** — it failed one attempt at
 a 80.6° turn, yet a later run completed *larger* turns while showing degraded BLE
-(writes median 540 ms, stops to 1819 ms against a 77–230 ms norm) without
-tripping. Treat it as the tail of a latency distribution, not a mystery.
+(writes median 540 ms) without tripping. Treat it as the tail of a latency
+distribution, not a mystery. ⚠️ The stop confirmations 1175/1819/402/628 ms are
+the **calibration and linear stops**, not turn stops — turn pulses record no stop
+duration at all (`services.py:3321-3333`).
 
 ⚠️ `waypoint_tolerance` changed 0.08 → **0.15** in beta30 on hardware evidence
 (`docs/evidence-slow-tier-validation-20260808.json`). The position feed is
 ~1031 ms stale and the mower covers 30–47 cm in that time, so 0.08 could never be
 confirmed before the mower had passed the point.
 
-The host and branch run the still-unaccepted `0.6.4-beta30` candidate. On top of
+⚠️ **The host and the branch have diverged.** The host still runs the deployed
+`0.6.4-beta30`; the branch is at `0.6.4-beta31`, which is **built but never
+deployed and never run on hardware**. Everything below describing runtime
+behaviour is beta30 unless it says otherwise. See "beta31 (undeployed)" at the end
+of this section.
+
+The deployed `0.6.4-beta30` candidate is still unaccepted. On top of
 beta22 it adds the read-only `report_stream_probe` diagnostic (beta23, now with
 per-channel attribution) and an **RTK quality gate**: non-Fix refuses with
 `rtk_not_precise` unless the caller passes `allow_degraded_rtk`, because Float
@@ -92,13 +116,45 @@ live snapshot proved Mammotion exposes only frozen course-over-ground while
 stationary (`toward: -29.589`, VIO inactive/0, RTK yaw 0), so since beta19 the card stops
 drawing that last-travel projection as current mower orientation and blocks
 Nudge unless a trustworthy current orientation is explicitly available. `manifest.json`,
-`pyproject.toml`, `CARD_VERSION` and `uv.lock` (PEP 440 `0.6.4b30`) must always agree, and the
+`pyproject.toml`, `CARD_VERSION` and `uv.lock` (PEP 440 — currently `0.6.4b31`) must always agree, and the
 `Beta Release` workflow verifies all four. The card is served from **two**
 paths, so deploy to both and bump the Lovelace resource key or the browser can
 silently load the stale card. The live Lovelace URL includes the unique build
-suffix `?v=0.6.4-beta30&build=<card md5 prefix>`. The misleading third-party-map
+suffix `?v=<version>&build=<card md5 prefix>` (currently serving beta30). The misleading third-party-map
 `card-mod` rotation was removed with verified config readback; its pre-change
 backup remains `/config/.storage/lovelace.dashboard_yard.bak.codex-20260802-213848`.
+
+## beta31 (undeployed, unvalidated) — reach 4 segments + turn overshoot ceiling
+
+Built 2026-08-08 on the branch. **No motion has run on it and it is not on the
+host.** All CI gates pass locally (533 pytest, 20 frontend, ruff, mypy,
+pre-commit). It touches **no `LUBA_ACCEPTANCE_PROFILE` key**, so the profile stays
+accepted and no §4 re-pinning is owed.
+
+1. **`REAL_CLICK_TO_GO_SEGMENT_LIMIT` 2 → 4** (`manual_motion.py:24`, mirrored by
+   the card's `MAX_REAL_SEGMENTS`). ⚠️ **Segment 3+ has never been executed.** The
+   VIO forward-heading offset is refreshed only from linear travel and never
+   re-derived across a turn, so cumulative cross-track error past segment 2 is
+   unmeasured — and attempt 5's segment 2 already produced the worst landing of
+   the four (0.1449 m against 0.15 m).
+2. **A turn overshoot ceiling**, `_VIO_TURN_CONSERVATIVE_MAX_DEGREES_PER_SECOND =
+   60.0`. Caps each turn pulse so that even at 60 °/s it cannot sweep past
+   `|error| + tolerance`. ⚠️ It **routinely becomes the active bound** on final
+   approach rather than acting as a rare backstop, and it **couples turn dynamics
+   to `heading_tolerance_degrees`**, which is a profile key. Below ~12° of
+   tolerance the 400 ms actuation floor wins and the guarantee does not hold.
+   Validated by replay arithmetic only — **zero hardware**.
+3. **The rotation-rate estimator now divides by measured `elapsed_ms`**, not the
+   commanded `pulse_ms` (`services.py`, the `heading_went_fresh` block). On its own
+   this makes overshoot slightly *worse*, which is why item 2 ships with it.
+4. Two reporting fixes: `motion_refresh_commands_sent` now folds in turn and
+   realignment refreshes (it under-reported 6 against 15), and the mid-drive
+   realignment no longer dispatches a no-op turn for aim errors already inside the
+   turn tolerance — which makes `vio_realign_threshold_degrees` inert in the gap
+   between it and `heading_tolerance_degrees`.
+
+Handover, open attacks and the validation-run design:
+`docs/HANDOVER-beta31-20260809.md`.
 
 `pre-commit run --all-files` is green as of 2026-07-31 and is now a usable
 gate. Its hook pins must move with `requirements_test.txt`: the Ruff and mypy
