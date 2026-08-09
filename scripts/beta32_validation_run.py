@@ -62,6 +62,21 @@ LEG_METRES = 0.9
 #: single-handed zigzag would not.
 JUNCTION_PATTERN = (60.0, -60.0, 60.0)
 
+#: `--reposition`: a U-turn built out of three same-direction 60 deg junctions.
+#:
+#: A single 180 deg turn is refused pre-dispatch on the accepted profile, twice
+#: over: `_vio_turn_budget_feasibility` needs 8 commands against
+#: `vio_turn_max_commands: 4`, and the estimated 0.468 m of turn drift exceeds
+#: `max_turn_translation_distance: 0.30`. The largest single turn that dispatches
+#: is ~114 deg. Both limits are `LUBA_ACCEPTANCE_PROFILE` keys, so raising either
+#: would un-accept the profile and owe a fresh Gate 5 -- absurd for a
+#: repositioning move. Three 60 deg junctions accumulate the same 180 deg inside
+#: the band already validated twice on hardware.
+#:
+#: Each entry is (leg metres, degrees to turn BEFORE that leg). The two short
+#: legs exist only to carry rotation; the long one does the travelling.
+REPOSITION_PLAN = ((0.8, 60.0), (0.8, 60.0), (2.0, 60.0))
+
 #: The accepted profile, sent explicitly. Mirrors LUBA_ACCEPTANCE_PROFILE in
 #: www/mammotion-custom-path-card.js -- if these drift the run is NOT the
 #: hardware-accepted profile and the result does not compare to Gate 5.
@@ -196,6 +211,87 @@ def build_path(
         "no initial heading keeps all four legs inside the area -- move the "
         "mower further from the boundary and retry"
     )
+
+
+def last_travel_heading() -> float | None:
+    """Bearing of the most recent leg this project actually drove, in degrees.
+
+    Used only to lay out `--reposition`, and deliberately NOT read from
+    `position.toward`: that field is course-over-ground and latches while the
+    mower is stationary, which is why the card refuses to draw it as current
+    orientation at all. The bearing of the last leg we ourselves commanded and
+    reached is the honest stand-in.
+
+    Being wrong here is cheap. Only SEGMENT 1's turn depends on the starting
+    heading; every junction after it is fixed by the waypoint geometry. If the
+    real facing differs enough that segment 1's turn exceeds ~114 deg, the turn
+    primitive refuses it pre-dispatch with `turn_budget_infeasible` and nothing
+    moves.
+    """
+    # Both run shapes count: whichever we drove most recently is the one whose
+    # last leg the mower is actually sitting on. Sorted by mtime, not by name --
+    # the two filename prefixes differ, so a name sort would group by prefix and
+    # silently return an older run's heading.
+    files = sorted(
+        [
+            *Path(REPO / "docs").glob("evidence-beta32-4segment-*.json"),
+            *Path(REPO / "docs").glob("evidence-beta33-reposition-*.json"),
+        ],
+        key=lambda p: p.stat().st_mtime,
+    )
+    if not files:
+        return None
+    try:
+        segments = json.loads(files[-1].read_text())["segments"]
+        last = segments[-1]["result"]
+        start, target = last["true_start"], last["target"]
+    except KeyError, IndexError, ValueError:
+        return None
+    return (
+        math.degrees(math.atan2(target["y"] - start["y"], target["x"] - start["x"]))
+        % 360
+    )
+
+
+def build_reposition_path(
+    start: tuple[float, float],
+    heading: float,
+    polygons: dict[str, list[tuple[float, float]]],
+) -> tuple[list[dict[str, float]], str, float]:
+    """Lay out the three-junction U-turn from a known start and heading."""
+    containing = [
+        (name, poly)
+        for name, poly in polygons.items()
+        if _point_in_polygon(start[0], start[1], poly)
+    ]
+    if not containing:
+        raise SystemExit(f"start point {start} is not inside any mapped area")
+    area_name, poly = containing[0]
+
+    x, y = start
+    points = [{"x": round(x, 4), "y": round(y, 4)}]
+    samples = [start]
+    for leg_metres, turn in REPOSITION_PLAN:
+        heading = (heading + turn) % 360
+        samples.extend(
+            (
+                x + leg_metres * step * math.cos(math.radians(heading)),
+                y + leg_metres * step * math.sin(math.radians(heading)),
+            )
+            for step in (0.5, 1.0)
+        )
+        x += leg_metres * math.cos(math.radians(heading))
+        y += leg_metres * math.sin(math.radians(heading))
+        points.append({"x": round(x, 4), "y": round(y, 4)})
+
+    outside = [p for p in samples if not _point_in_polygon(p[0], p[1], poly)]
+    if outside:
+        raise SystemExit(
+            f"the reposition arc leaves {area_name} at {len(outside)} sampled "
+            f"point(s), first {outside[0]} -- drive the mower somewhere with "
+            f"more room and retry"
+        )
+    return points, area_name, heading
 
 
 def preflight() -> dict[str, Any]:
@@ -337,6 +433,24 @@ def main() -> int:  # noqa: C901
         help="actually run it: enables the motion gate, executes, then disarms",
     )
     parser.add_argument("--skip-preflight-gate", action="store_true")
+    parser.add_argument(
+        "--reposition",
+        action="store_true",
+        help=(
+            "U-turn and drive back instead of the straight validation path: "
+            "three same-direction 60 deg junctions, because a single 180 deg "
+            "turn is refused pre-dispatch on the accepted profile"
+        ),
+    )
+    parser.add_argument(
+        "--heading",
+        type=float,
+        default=None,
+        help=(
+            "starting heading in map degrees for --reposition; defaults to the "
+            "bearing of the last leg this project drove"
+        ),
+    )
     args = parser.parse_args()
 
     load_dotenv()
@@ -353,15 +467,47 @@ def main() -> int:  # noqa: C901
 
     position = state["position"]
     start = (float(position["x"]), float(position["y"]))
-    points, area_name, initial_heading = build_path(start, _load_area_polygons())
-    print(f"\n== PATH ==  area={area_name}  initial heading={initial_heading:.0f} deg")
-    for index, point in enumerate(points):
-        print(f"    p{index}: ({point['x']:.3f}, {point['y']:.3f})")
-    print(f"  junction pattern: {JUNCTION_PATTERN} (all inside 45-70 deg band)")
+    polygons = _load_area_polygons()
+
+    if args.reposition:
+        heading = args.heading if args.heading is not None else last_travel_heading()
+        if heading is None:
+            raise SystemExit("no starting heading available -- pass --heading")
+        points, area_name, final_heading = build_reposition_path(
+            start, float(heading), polygons
+        )
+        turned = (final_heading - float(heading)) % 360
+        print(f"\n== REPOSITION ==  area={area_name}")
+        print(f"  assumed start heading {float(heading):.1f} deg (last leg driven)")
+        for index, point in enumerate(points):
+            print(f"    p{index}: ({point['x']:.3f}, {point['y']:.3f})")
+        net = math.hypot(points[-1]["x"] - start[0], points[-1]["y"] - start[1])
+        bearing = (
+            math.degrees(
+                math.atan2(points[-1]["y"] - start[1], points[-1]["x"] - start[0])
+            )
+            % 360
+        )
+        print(
+            f"  plan {REPOSITION_PLAN} -> {turned:.0f} deg turned, "
+            f"final heading {final_heading:.0f} deg"
+        )
+        print(f"  net displacement {net:.2f} m at bearing {bearing:.0f} deg")
+    else:
+        points, area_name, initial_heading = build_path(start, polygons)
+        print(
+            f"\n== PATH ==  area={area_name}  initial heading={initial_heading:.0f} deg"
+        )
+        for index, point in enumerate(points):
+            print(f"    p{index}: ({point['x']:.3f}, {point['y']:.3f})")
+        print(f"  junction pattern: {JUNCTION_PATTERN} (all inside 45-70 deg band)")
 
     payload = {
         "points": points,
-        "max_real_segments": 4,
+        # Cap at what this path actually has, not a constant: an honest cap
+        # means `max_real_segments_reached` can only ever mean the backend
+        # limit, never a stale number in this script.
+        "max_real_segments": len(points) - 1,
         **ACCEPTANCE_PROFILE,
     }
 
@@ -389,7 +535,8 @@ def main() -> int:  # noqa: C901
         return 0
 
     stamp = _now()
-    out = REPO / "docs" / f"evidence-beta32-4segment-{stamp}.json"
+    name = "beta33-reposition" if args.reposition else "beta32-4segment"
+    out = REPO / "docs" / f"evidence-{name}-{stamp}.json"
     armed = False
     try:
         print("\n== ARM ==")
