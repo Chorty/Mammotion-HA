@@ -39,14 +39,34 @@ of a supervised run and closed immediately after. Treat any Real Go as live.
   `max_linear_commands`. Inert until loop-to-tolerance is enabled; it was the
   last prerequisite blocking it.
 
-🚨 **THE ACCURACY WALL IS EXPLAINED, AND IT IS A PROFILE CONFLICT.** Over 12
-completed approaches, `landing = 0.62 × leg·sin(initial_aim) + 0.065 m`
-(R² = 0.69). A 0.9 m leg needs initial aim within **8.8°** to land inside 0.15 m;
-`heading_tolerance_degrees` is **18**, so a turn may legally finish at an aim
-error that guarantees a miss. `heading_tolerance_degrees` and `waypoint_tolerance`
-are geometrically inconsistent at these leg lengths. Both are
-`LUBA_ACCEPTANCE_PROFILE` keys — resolving it owes a fresh Gate 5 and is an
-operator decision. Shorter legs are the alternative that touches no key.
+✅ **beta38's re-aim guard is VALIDATED on hardware, 2026-08-10.** Two armed runs,
+four suppression events, **zero false suppressions** — every suppressed re-aim had
+a `perpendicular_miss_m` genuinely under `waypoint_tolerance`, and a −47.812° aim
+error was correctly *not* suppressed and corrected to −1.98°. The 60° run reached
+target on **all four segments**. Evidence:
+`docs/evidence-beta32-4segment-20260810T{185433,193833}Z.json`.
+
+⚠️ **THE ACCURACY WALL IS NOT (ONLY) A PROFILE CONFLICT — the initial-aim model is
+incomplete, and the 2026-08-10 60° run is what refuted it.** The standing fit is
+`landing = 0.62 × leg·sin(initial_aim) + 0.065 m` (R² = 0.69, n = 12), which says a
+0.9 m leg needs initial aim within **8.8°** while `heading_tolerance_degrees`
+permits **18**. That geometric inconsistency between `heading_tolerance_degrees`
+and `waypoint_tolerance` is real and both are `LUBA_ACCEPTANCE_PROFILE` keys.
+**But it does not explain the observed landings.** Segments 2/3/4 of the 60° run
+finished their turns at **−3.7 / −5.1 / +4.6°** — far inside any tolerance under
+discussion — and still landed 0.1431 / 0.1447 / 0.1229 m, where the model predicts
+0.089 / 0.102 / 0.097. It under-predicts by 26–54 mm. The aim error **develops
+mid-leg** (−3.7° → +18.2° in one pulse; −5.1° → −34.7°; +4.6° → +26.0°), part
+genuine heading drift and part bearing-to-target rotating as cross-track
+accumulates; this run cannot separate them.
+
+**So tightening `heading_tolerance_degrees` would have changed nothing here**, and
+the shorter-legs alternative looks worse, not better: the beta33 reference run
+drove **0.9 m** legs at the same 60° junctions for a mean landing of **0.098 m**,
+while this run's **0.6–0.7 m** legs averaged **0.1312 m**. That comparison is
+uncontrolled (six intervening betas, different day) — a warning flag, not a
+refutation. **Do not spend a Gate 5 on either profile key until the mid-leg
+divergence is characterised.**
 
 **Settled, so do not re-derive:**
 

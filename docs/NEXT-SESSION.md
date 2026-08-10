@@ -4,7 +4,94 @@ Updated **2026-08-08 late** after Gate 5 passed. This is the current handoff;
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
-## 🚨 START HERE 2026-08-10 afternoon — ready to run, one operator step first
+## 🚨 START HERE 2026-08-10 evening — beta38 VALIDATED; the accuracy premise moved
+
+Two armed runs on beta39, both authorized per-run, both disarmed and verified.
+Mower is **undocked** in Backyard Right at (6.7995, −0.0455), MODE_READY, blades
+OFF at 0 rpm, RTK Fix, battery ~50%. Gate **disarmed**.
+
+| run | geometry | result | landings (tol 0.15) |
+| --- | --- | --- | --- |
+| `…20260810T185433Z` | 4 × 0.7 m, **90°** junctions | seg3 `turn_budget_infeasible` | 0.0679 / 0.1424 / — / — |
+| `…20260810T193833Z` | 4 × ~0.65 m, **60°** junctions | **all four `target_reached`** | 0.1142 / 0.1431 / 0.1447 / 0.1229 |
+
+### 1. The beta38 re-aim guard is validated — do not re-litigate it
+
+Four suppression events across the two runs, **zero false suppressions**. Every
+one had a `perpendicular_miss_m` genuinely under `waypoint_tolerance`, verified by
+recomputing `distance · sin(aim)` independently:
+
+```
+0.3035 m @ 18.152 deg -> 0.0946    0.2390 m @ 34.655 deg -> 0.1359
+0.2606 m @ 25.980 deg -> 0.1141    0.2017 m @ 34.733 deg -> 0.1149
+```
+
+And the other half works: a **−47.812°** aim error was correctly NOT suppressed,
+dispatched, and corrected to −1.98°. That is precisely the case beta36 got wrong.
+
+### 2. ⚠️ But the guard's projection is systematically optimistic
+
+All four suppressed re-aims landed **worse** than the guard predicted:
+
+```
+predicted -> actual     error
+0.1149    -> 0.1424    +0.0275
+0.0945    -> 0.1431    +0.0486
+0.1359    -> 0.1447    +0.0088
+0.1142    -> 0.1229    +0.0087
+```
+
+The guard compares a biased-low projection against the **full** tolerance, so it
+spends the entire error budget on every decision — which is why the 60° run's four
+landings cluster at 0.114–0.145 rather than spreading. A margin change is drafted
+for review; it touches **no `LUBA_ACCEPTANCE_PROFILE` key**. Four samples is thin
+for fitting a constant, so the margin should be explicit and conservative, not
+fitted.
+
+### 3. 🚨 The initial-aim model is INCOMPLETE — this is the finding that matters
+
+`landing = 0.62 × leg·sin(initial_aim) + 0.065` does **not** explain these
+landings. Segments 2/3/4 finished their turns at **−3.7 / −5.1 / +4.6°** and still
+landed 0.1431 / 0.1447 / 0.1229 m against predictions of 0.089 / 0.102 / 0.097 —
+under-predicting by 26–54 mm. The aim error **develops mid-leg**: −3.7° → +18.2°
+in a single pulse, −5.1° → −34.7°, +4.6° → +26.0°. Part of that is genuine heading
+drift and part is the bearing-to-target rotating as cross-track accumulates, and
+**this run cannot separate the two** — that separation is the next real question.
+
+**Consequences for the profile decision, which is therefore NOT ready:**
+
+- **Option A (lower `heading_tolerance_degrees` 18 → 11) would have changed
+  nothing here.** All three turns already finished inside 5.1°.
+- **Option C (shorter legs) points the wrong way.** beta33 drove **0.9 m** legs at
+  the same 60° junctions for a mean of **0.098 m**; this run's **0.6–0.7 m** legs
+  averaged **0.1312 m**. Uncontrolled across six betas — a flag, not a refutation.
+- A newly measured tension against Option A: the preflight computes
+  `required_rotation = initial_error − heading_tolerance`, so **tightening the
+  tolerance makes `turn_budget_infeasible` refusals MORE likely** against the
+  fixed 4-command budget. The 90° run died exactly there (104.475° opening,
+  86.475° required, 5 commands needed of 4). Option A likely has to move
+  `max_turn_commands` with it — a second profile key and a wider Gate 5.
+
+### 4. Why the 90° run died, and what it exposed
+
+Segment 3 was refused pre-dispatch at a **104.475°** opening turn against a 90°
+plan. The extra ~14.5° was ~9.8° of end-of-leg mis-pointing plus ~3.5° of bearing
+shift from segment 2's 0.1424 m landing. **The guard optimises the current
+segment's landing and is silent about the heading the segment ends in**, which the
+next segment inherits as its opening turn. Landing inside the disc while pointed
+35° off the line is a legal answer to the question the guard asks. At 60° the same
+inherited error lands ~74°, inside budget — which is why the second run completed.
+
+### Next
+
+1. **Characterise the mid-leg divergence** — separate genuine heading drift from
+   bearing rotation due to cross-track. Until that is done the profile decision
+   rests on a model known to be incomplete.
+2. **Review the drafted guard margin** (§2 above).
+3. The profile conflict (§3) stays the operator's call and is **not** ready to
+   decide.
+
+## (superseded) START HERE 2026-08-10 afternoon — ready to run, one operator step first
 
 Host and branch both `0.6.4-beta39`. ⚠️ **The motion gate is ARMED**
 (`enabled: true`) at the operator's request — this is NOT the usual
