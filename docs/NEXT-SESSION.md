@@ -4,7 +4,79 @@ Updated **2026-08-08 late** after Gate 5 passed. This is the current handoff;
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
-## 🚨 START HERE 2026-08-10 evening — beta38 VALIDATED; the accuracy premise moved
+## 🏁 START HERE 2026-08-10 night — beta40 DEPLOYED AND VALIDATED. Best run on record.
+
+Host and branch both `0.6.4-beta40`. **Gate DISARMED**, verified after every run.
+Mower undocked in Backyard Right at **(7.4419, −6.4162)**, MODE_READY, blades OFF
+at 0 rpm, RTK Fix, battery ~44%. It is getting dark — **dock it.**
+
+### The result
+
+Four segments `target_reached` in 102.8 s. Landings **0.0585 / 0.0867 / 0.1393 /
+0.0979 m** against 0.15 — **mean 0.0956**, the best 4-segment result on record
+(beta33's was 0.0981; the beta39 run of the same 60° geometry was 0.1312).
+Evidence: `docs/evidence-beta32-4segment-20260810T205937Z.json`.
+
+**The new post-turn gate fired once and behaved exactly as designed:**
+
+| seg | map-frame aim | tol | corrected | landing |
+| --- | --- | --- | --- | --- |
+| 2 | +8.632° | 10.0 | no | 0.0867 |
+| 3 | **−9.733°** | 10.0 | no — passed by 0.27° | **0.1393** ← worst |
+| 4 | **−16.551°** | 10.0 | **yes → −7.331°** | 0.0979 |
+
+Segment 3 is the accidental control: it squeaked under the threshold, went
+uncorrected, and produced the worst landing. Segment 4's error came from the turn
+*overshooting* (+34.784 → −17.430°), not translation — the gate catches map-frame
+error whatever its source. n=1 each side, so suggestive, not proven.
+
+**⚠️ The unmeasured risk is now measured and it is small.** The correction turn
+displaced 0.0108 m: on a 0.636 m leg that is **0.97° of induced bearing error to
+buy 10.038° of correction**, roughly 10:1. Not a non-issue in principle, but not a
+blocker.
+
+**The translation identity held on three more segments** — residuals +0.26 / +0.08
+/ +0.03°. That is 8 segments across 3 runs now. See
+`docs/turn-translation-explains-the-landing-wall-20260810.md`.
+
+### 🗑️ The projection-margin idea is DROPPED — do not revive it
+
+The suppression projections were accurate this run (0.0895 → landed 0.0867;
+0.1390 → landed **0.1393**, 0.3 mm). Earlier they under-predicted by up to 4.9 cm.
+**That bias came from the uncorrected post-turn error, which beta40 fixes at
+source.** The margin would have padded a symptom, and its draft broke a
+hardware-derived pinned test ("allowed, then oscillated") to do it.
+
+### ⚠️ The stale-`toward` trap cost a run — read this before building any path
+
+The first beta40 attempt was refused pre-dispatch: `turn_budget_infeasible`,
+`initial_error_degrees: 177.056`. **`scripts/beta32_validation_run.py` builds its
+path from `last_travel_heading()`, which reads `toward` — frozen
+course-over-ground at rest.** It reported ~88° while the calibration drive then
+measured the mower's true facing as **266.712°**, nearly opposite, so the path was
+laid out backwards and segment 1 needed a 177° turn.
+
+Refusal was correct (a single 180° turn is refused pre-dispatch — settled). The
+workaround is `--heading <true facing>`; the calibration drive's
+`map_motion_heading_degrees` is the most reliable source for it. Evidence:
+`docs/evidence-beta32-4segment-20260810T205514Z.json`. **A real fix would derive
+the preview heading from something other than a field known to be frozen when
+stationary.**
+
+### Next
+
+1. **Dock the mower** — it is dark and battery is ~44%.
+2. The 10° threshold is the **turn primitive's floor, not an optimum.** Segments
+   at 8.6° and 9.7° still go uncorrected. Buying anything below 10 requires a
+   shorter actuation floor or a tighter sweep bound — that is the next accuracy
+   lever, and it is a turn-primitive question, not a profile question.
+3. **The profile conflict is no longer the blocker it looked like.** Option A
+   (`heading_tolerance_degrees` 18 → 11) targets the VIO-frame error, which was
+   never the problem. No profile key has been changed and none is owed.
+4. Fix the stale-`toward` path preview (above).
+5. BLE write latency remains the standing background item.
+
+## (superseded) START HERE 2026-08-10 evening — beta38 VALIDATED; the accuracy premise moved
 
 Two armed runs on beta39, both authorized per-run, both disarmed and verified.
 Mower is **undocked** in Backyard Right at (6.7995, −0.0455), MODE_READY, blades

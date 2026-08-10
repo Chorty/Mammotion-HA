@@ -10,14 +10,34 @@ provenance — accurate as a record, but **do not act on any build state it
 describes**, and note that measurement has since refuted several of its claims
 (the "unexplained" turn-rate variance and the turn-budget framing, both below).
 
-## Current build: `0.6.4-beta39` — deployed, GATE ARMED
+## Current build: `0.6.4-beta40` — deployed and VALIDATED ON HARDWARE, gate disarmed
 
-Host and branch agree at beta39. `docs/NEXT-SESSION.md` carries the live
-mower state and the queued run; this section carries what changed and why.
+Host and branch agree at beta40, deployed 2026-08-10 (46/46 byte-identical, both
+card paths `e6aed00b`, resource `?v=0.6.4-beta40&build=e6aed00b`).
+`docs/NEXT-SESSION.md` carries the live mower state; this section carries what
+changed and why.
 
-⚠️ **The experimental motion gate is ARMED at the operator's request.** That is
-not the usual disarmed-at-rest posture — normally it is opened only for the ~100 s
-of a supervised run and closed immediately after. Treat any Real Go as live.
+✅ **The gate is DISARMED and was verified disarmed after every run.** The
+2026-08-10 ARMED-at-rest posture ended with that session; normal posture is
+disarmed, opened only for the ~100 s of a supervised run.
+
+- **beta40** — the post-turn alignment gate gets its **own** tolerance,
+  `_POST_TURN_ALIGNMENT_TOLERANCE_DEGREES = 10.0`, instead of borrowing
+  `vio_realign_threshold_degrees` (the *mid-drive* trigger) through a `min()`. At
+  the old `min(18, 15) = 15` the gate never fired. **10 is a floor, not a
+  preference:** a correction fires only when the error exceeds the tolerance, so
+  the worst sweep is `error + tolerance`, and the affine bound `40 °/s·t + 12°` at
+  the 200 ms actuation floor still sweeps 20° — the guarantee needs
+  `error + tolerance ≥ 20`, i.e. **tolerance ≥ 10**. Below that, corrections enter
+  `sweep_exceeds_any_pulse` and the gate manufactures overshoot. Tightening
+  further needs a shorter actuation floor or a tighter sweep bound, **not** a
+  smaller number.
+  🏁 **Validated 2026-08-10:** four segments reached target, landings
+  0.0585 / 0.0867 / 0.1393 / 0.0979 m (**mean 0.0956**, best 4-segment result on
+  record). The gate fired once, correcting −16.551° → −7.331°. The correction turn
+  displaced 0.0108 m = **0.97° of induced error to buy 10.038°** — the
+  "fix reproduces the problem" risk is real but ~10:1 in our favour.
+  Evidence: `docs/evidence-beta32-4segment-20260810T205937Z.json`.
 
 **Shipped 2026-08-09/10, in order, each on measurement:**
 
