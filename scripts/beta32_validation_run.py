@@ -439,6 +439,38 @@ def preflight() -> dict[str, Any]:
     return {"runtime": runtime, "failed": failed, "position": position}
 
 
+def _segment_landing_error_m(seg: dict[str, Any]) -> float | None:
+    """Distance from where the segment stopped to the waypoint it aimed at.
+
+    ⚠️ This used to read a key named ``landing_error_m`` that THE BACKEND HAS
+    NEVER EMITTED, so every run this project has ever done printed
+    ``landing=None`` and the single most-watched number in the whole effort had to
+    be recomputed by hand from the saved JSON afterwards. Compute it here instead:
+    ``target`` is the waypoint the executor drove at, and ``final_telemetry`` is
+    the position it came to rest at, both already in every result.
+
+    Returns None when the segment never drove at the waypoint. A pre-dispatch
+    refusal still carries both a ``target`` and a ``final_telemetry``, so the
+    arithmetic succeeds and yields the UNTOUCHED leg length -- 0.8347 m for the
+    turn_budget_infeasible segment of 2026-08-10, which is not a landing error and
+    would poison any mean it was averaged into. The discriminator is whether a
+    linear command ever ran: no forward pulse, no landing.
+    """
+    if not int(seg.get("linear_commands_sent") or 0):
+        return None
+    target = seg.get("target")
+    position = (seg.get("final_telemetry") or {}).get("position")
+    if not isinstance(target, dict) or not isinstance(position, dict):
+        return None
+    try:
+        return math.dist(
+            (float(target["x"]), float(target["y"])),
+            (float(position["x"]), float(position["y"])),
+        )
+    except KeyError, TypeError, ValueError:
+        return None
+
+
 def _summarise(result: dict[str, Any]) -> None:
     """Print the section 6 record. Reads per-item records, never aggregates."""
     print("\n== RESULT ==")
@@ -446,12 +478,21 @@ def _summarise(result: dict[str, Any]) -> None:
     print(f"  segments executed  : {result.get('real_segments_executed')}")
 
     print("\n  per-segment landing error (tolerance 0.15):")
+    landings: list[float] = []
     for segment in result.get("segments") or []:
         seg = segment.get("result") or {}
-        landing = seg.get("landing_error_m", segment.get("landing_error_m"))
+        landing = _segment_landing_error_m(seg)
+        if landing is not None:
+            landings.append(landing)
+        shown = f"{landing:.4f}" if landing is not None else "n/a"
         print(
             f"    seg{segment.get('index')}  passed={segment.get('passed')}  "
-            f"landing={landing}  stop={seg.get('stop_reason')}"
+            f"landing={shown}  stop={seg.get('stop_reason')}"
+        )
+    if landings:
+        print(
+            f"    -> max {max(landings):.4f}  mean "
+            f"{sum(landings) / len(landings):.4f}  over {len(landings)} landing(s)"
         )
 
     print("\n  turn commands BROKEN DOWN BY PHASE (never as one number):")

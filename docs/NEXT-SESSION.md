@@ -8,7 +8,16 @@ Updated **2026-08-08 late** after Gate 5 passed. This is the current handoff;
 
 Host and branch both `0.6.4-beta40`. **Gate DISARMED**, verified after every run.
 Mower undocked in Backyard Right at **(7.4419, −6.4162)**, MODE_READY, blades OFF
-at 0 rpm, RTK Fix, battery ~44%. It is getting dark — **dock it.**
+at 0 rpm, RTK Fix, battery **39%** and falling ~7%/run.
+
+⚠️ **Light is fine — `brightness: light`, `tracked_features: 80` measured after
+the run.** An earlier revision of this block said "it is getting dark, dock it";
+that was inferred from the clock and never measured, and it was wrong. Measure the
+VIO feed rather than guessing from the time of day.
+
+⚠️ **BLE has drifted to −72 dBm** (it was −62 at the start of the session). The
+documented wall is ~−76, so the link is into its marginal band — a run refused on
+BLE from here is the link, not a regression.
 
 ### The result
 
@@ -65,7 +74,8 @@ stationary.**
 
 ### Next
 
-1. **Dock the mower** — it is dark and battery is ~44%.
+1. **Watch the battery** — 39% against a 30% preflight floor is roughly one more
+   four-segment run, not several. Dock before it gets close.
 2. The 10° threshold is the **turn primitive's floor, not an optimum.** Segments
    at 8.6° and 9.7° still go uncorrected. Buying anything below 10 requires a
    shorter actuation floor or a tighter sweep bound — that is the next accuracy
