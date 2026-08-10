@@ -288,11 +288,13 @@ adversarial verifier, plus a completeness critic. 13 agents, final tally
   observation that a normal-priority stop took 1392.7 ms while the mower continued
   past its target (`:3301-3306`). No comment justifies the asymmetry. Untouched by
   beta31.
-- **The mid-drive re-aim guard tests `command_index < max_linear_commands`**, not
-  `effective_linear_ceiling` (`services.py:11212` region). Harmless today because
-  `max_linear_pulse_ceiling` is `null`, but it must be fixed **before** anyone
-  enables loop-to-tolerance, or cross-track correction silently stops after pulse
-  3 while the mower keeps driving.
+- ~~**The mid-drive re-aim guard tests `command_index < max_linear_commands`**,
+  not `effective_linear_ceiling`.~~ **FIXED in beta39, 2026-08-10**, before the
+  mode it blocks was ever enabled. It now tests `effective_linear_ceiling`, with
+  a test that runs the executor at `max_linear_commands: 1` against
+  `max_linear_pulse_ceiling: 4` -- the two numbers the old comparison conflated
+  -- and is verified to fail without the fix. Loop-to-tolerance no longer has
+  this prerequisite outstanding.
 
 ## 6. Deploy and validate
 

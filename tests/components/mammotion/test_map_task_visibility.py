@@ -6058,6 +6058,93 @@ async def test_vector_segment_vio_realigns_when_facing_drifts_off_bearing(
     assert result["stop_reason"] == "no_target_progress"
 
 
+@pytest.mark.asyncio
+async def test_mid_drive_re_aim_follows_the_effective_linear_ceiling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With loop-to-tolerance on, re-aim must not stop at `max_linear_commands`.
+
+    The re-aim guard asks "can another forward command follow this?", and the
+    answer is `effective_linear_ceiling`. Those two numbers are equal only while
+    `max_linear_pulse_ceiling` is None. Enable loop-to-tolerance and the ceiling
+    becomes the pulse ceiling, so a guard testing `max_linear_commands` would
+    silently stop cross-track correction after that many pulses while the linear
+    loop kept driving -- a mower correcting nothing for the rest of a long
+    segment, which is precisely the failure mode the whole re-aim mechanism
+    exists to prevent.
+
+    Recorded as a prerequisite in docs/HANDOVER-beta31-20260809.md section 5:
+    harmless while the mode is off, and to be fixed BEFORE anyone turns it on.
+    This is that fix, with the mode on.
+
+    `max_linear_commands=1` against `max_linear_pulse_ceiling=4` separates them:
+    after the first linear pulse the old comparison is 1 < 1 and refuses, the
+    correct one is 1 < 4 and proceeds.
+    """
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=10.0, vio_state=2
+    )
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    async def fake_calibration(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        return {
+            "passed": True,
+            "reason": "calibrated",
+            "offset_degrees": -90.0,
+            "map_motion_heading_degrees": 280.0,
+            "vision_heading": 10.0,
+            "vio_state": 2,
+            "distance_m": 0.06,
+            "pulses_sent": 1,
+            "command_results": [],
+        }
+
+    turn_calls: list[dict[str, object]] = []
+
+    async def fake_vio_turn(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        turn_calls.append(kwargs)
+        return {
+            "stop_reason": "target_heading_reached",
+            "commands_sent": 1,
+            "command_results": [],
+        }
+
+    monkeypatch.setattr(
+        mammotion_services, "_vio_segment_calibration_drive", fake_calibration
+    )
+    monkeypatch.setattr(mammotion_services, "_vio_turn_to_heading", fake_vio_turn)
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 2.0, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        max_linear_commands=1,
+        max_linear_pulse_ceiling=4,
+        sample_delays=(0,),
+    )
+
+    assert result["linear_execution_mode"] == "loop_to_tolerance"
+    assert result["effective_linear_ceiling"] == 4
+    # The initial turn plus at least one mid-drive re-aim. Against
+    # `max_linear_commands` this would be the initial turn alone.
+    assert len(result["realignments"]) >= 1, (
+        "re-aim stopped at max_linear_commands while loop-to-tolerance kept "
+        "driving -- cross-track correction would be silently dead"
+    )
+    assert len(turn_calls) >= 2
+
+
 def _safety_telemetry() -> dict[str, object]:
     """Minimal telemetry that clears every guard except the one under test."""
     return {

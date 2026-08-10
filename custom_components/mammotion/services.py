@@ -11651,7 +11651,18 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                 # 8.46 cm from target, then three otherwise-successful turns
                 # added ~23 cm of drift even though the linear budget was
                 # already exhausted. Stop boundedly instead.
-                and command_index < max_linear_commands
+                #
+                # This must test `effective_linear_ceiling`, NOT
+                # `max_linear_commands`. They are the same number only while
+                # `max_linear_pulse_ceiling` is None; the moment loop-to-tolerance
+                # is enabled the ceiling becomes the pulse ceiling and this
+                # comparison would silently stop cross-track correction after
+                # `max_linear_commands` pulses while the linear loop kept
+                # driving -- a mower correcting nothing for the rest of a long
+                # segment. Recorded as a prerequisite in
+                # docs/HANDOVER-beta31-20260809.md section 5 and fixed here
+                # BEFORE anyone enables the mode, which is the whole point.
+                and command_index < effective_linear_ceiling
             ):
                 facing = (float(reading["vision_heading"]) + float(offset_now)) % 360
                 bearing = _path_heading_degrees(current_now, target)
