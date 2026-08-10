@@ -4,7 +4,75 @@ Updated **2026-08-08 late** after Gate 5 passed. This is the current handoff;
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
-## 🏁 START HERE 2026-08-09 **evening** — REACH GOAL MET. Four segments ran.
+## 🚨 START HERE 2026-08-10 — the accuracy wall is EXPLAINED, and it is a profile conflict
+
+Host and branch both run `0.6.4-beta38`, deployed motion-disabled,
+`real_motion_allowed: false` verified. Mower is out in Backyard Right around
+(7.02, −2.12), battery ~53%, blades off, gate off. **It is dark — dock it.**
+
+### The finding that matters most, and it needs an operator decision
+
+Across **12 completed approaches** spanning every run of 2026-08-09/10, landing
+error is predicted by the aim error at the *start* of the leg:
+
+```
+landing = 0.62 × leg·sin(initial_aim) + 0.065 m        R² = 0.69, n = 12
+```
+
+The 0.065 m intercept is the floor from stop latency and the ~1031 ms position
+feed. The slope is the controllable part, and it says:
+
+```
+0.7 m leg → initial aim must be within 11.3° to land inside 0.15 m
+0.9 m leg → within  8.8°
+```
+
+**`heading_tolerance_degrees` is 18.** A turn is therefore *allowed* to finish at
+an aim error that geometrically guarantees a miss — 0.9·sin(18°) = 0.28 m of
+cross-track against a 0.15 m `waypoint_tolerance`. **The two keys are mutually
+inconsistent**, and that is the mechanism behind the ~0.145 m wall seen at Gate 5
+and twice since; those segments simply started closer to aligned.
+
+Both are `LUBA_ACCEPTANCE_PROFILE` keys, so changing either un-accepts the profile
+and owes a fresh Gate 5. **Not acted on — this is the operator's call.** The
+cheap alternative that touches no key is shorter legs, since the requirement
+scales with leg length.
+
+### What shipped on 2026-08-09/10
+
+- **beta35** — refresh writes fire on a fixed cadence instead of
+  interval-after-completion. Delivered-window overruns fell from +117% to +29%,
+  and **BLE has not aborted a run since**.
+- **beta36** — a mid-drive re-aim guard that was **wrong**; see beta38.
+- **beta37** — the turn model rebuilt on 35 measured pulses:
+  `_MIN_SCALED_TURN_PULSE_MS` 400 → 200 (200 ms actuates; there is no threshold
+  near 400), the overshoot bound changed from `C×t` to the measured affine
+  `40 °/s·t + 12°`, and `_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND` 16.5 → 14.4,
+  which the first two changes finally made affordable.
+- **beta38** — the re-aim guard, corrected to ask the right question: skip only
+  when driving straight on would still land inside the disc
+  (`distance·sin(aim) ≤ waypoint_tolerance`), not when merely close.
+
+### Settled, so it is not re-derived
+
+- **Rotation is not predictable from duration** to better than ~40% at p90. Ten
+  pulses at matched ~200 ms windows spread 5.44–15.20°, 2.79×, with duration,
+  cadence and direction held constant. The *estimate* can only improve a landing;
+  the bound has to carry the safety.
+- **The "directional asymmetry" is refuted.** Three runs gave 8/8, 1/1, then 1/6.
+  Pooled over 33 samples the two directions differ by 0.5%.
+- **A 90° junction dispatches and completes** — measured, 3 of 4 commands.
+- **A single 180° turn is refused pre-dispatch**; chain junctions instead.
+
+### Next
+
+1. **Re-run the 4-segment / 90° / 0.7 m attempt on beta38** — a single-variable
+   test of the corrected guard. Needs daylight, RTK Fix, and authorization.
+2. **Decide the profile conflict above.**
+3. BLE write latency remains the standing item, though it has not aborted a run
+   since beta35.
+
+## (superseded) START HERE 2026-08-09 evening — REACH GOAL MET. Four segments ran.
 
 Supersedes the Gate 5 block below, which is now evidence rather than
 instructions. **Host runs `0.6.4-beta33`; branch is at `0.6.4-beta34`, built and

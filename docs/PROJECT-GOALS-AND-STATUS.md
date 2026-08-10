@@ -44,7 +44,7 @@ From `docs/p0-beta-release.md`:
 | --- | --- | --- |
 | **Alpha** | Every safety gate fails closed; no unbounded motion; abort always wins | ✅ **Met.** 2026-08-09 produced four separate aborts — a preflight refusal, a BLE queue refusal, a turn-budget refusal and a mid-run command failure — every one clean, zero unsafe motion |
 | **Beta** | Turn granularity solved | ✅ **Met 2026-08-09.** Overshoot ceiling validated; a 90° junction closes in 3 of 4 commands landing −2.66°; turn landings across the day −0.3° to −5.5° |
-| | **BLE link holds a full path run** | ❌ **The blocker.** One full 4-segment run succeeded; three of five runs that day ended on BLE |
+| | **BLE link holds a full path run** | ⚠️ **Much improved.** beta35's fixed-cadence refresh cut delivered-window overruns from +117% to +29%; **no run has aborted on BLE since**. Three consecutive clean runs is evidence, not proof |
 | | No known way to strand a live client | ⚠️ Unverified since the slot-leak work; needs a deliberate check |
 | **Release** | Non-LUBA hardware characterized or refused; no open safety defect | ⬜ Not started |
 
@@ -82,10 +82,16 @@ along-track accuracy and segment gating simultaneously. Four problems, one cause
 1. **BLE write latency.** Both the top of the queue and, literally, the Beta exit
    criterion. Off-mower work. Start at `docs/pymammotion-ble-slot-leak-bug.md`
    and the cadence analysis above.
-2. **The ~0.145 m landing-error ceiling.** Gate 5's worst was 0.1449 m, the
-   2026-08-09 four-segment run's worst 0.1452 m — 0.3 mm apart across independent
-   runs against a 0.15 m tolerance. Systematic, not noise. Plausibly the same
-   root cause as #1.
+2. **The ~0.145 m landing-error ceiling — EXPLAINED 2026-08-10, and it is not a
+   control bug.** Across 12 completed approaches, landing error is predicted by
+   the aim error at the start of the leg:
+   `landing = 0.62 × leg·sin(initial_aim) + 0.065 m` (R² = 0.69). To land inside
+   0.15 m a 0.9 m leg needs initial aim within **8.8°**, but
+   `heading_tolerance_degrees` is **18** — so a turn may legally finish at an aim
+   error that guarantees a miss. `heading_tolerance_degrees` and
+   `waypoint_tolerance` are geometrically inconsistent at these leg lengths.
+   Both are `LUBA_ACCEPTANCE_PROFILE` keys, so resolving it owes a fresh Gate 5;
+   shortening the legs is the alternative that touches no key.
 3. **Per-segment reach past ~1 m.** Now the binding constraint on the actual
    goal. Means enabling loop-to-tolerance (`max_linear_pulse_ceiling`).
    ⚠️ **Prerequisite:** the mid-drive re-aim guard tests
