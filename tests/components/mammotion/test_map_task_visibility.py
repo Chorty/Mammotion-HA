@@ -103,7 +103,7 @@ from custom_components.mammotion.services import (
     _raw_pymammotion_turn_to_heading,
     _raw_vector_readiness_phase_passed,
     _raw_vector_readiness_test,
-    _realign_bearing_is_ill_conditioned,
+    _realign_cannot_improve_the_landing,
     _report_stream_probe,
     _requires_reverse_recovery,
     _rtk_report_age_seconds,
@@ -5183,73 +5183,86 @@ def test_turn_final_approach_floors_the_pulse_so_the_mower_still_rotates() -> No
     assert info["pulse_duration_ms"] == 200.0
 
 
-def test_a_re_aim_is_suppressed_where_the_bearing_is_ill_conditioned() -> None:
-    """Near the waypoint, bearing-to-target is noise and re-aiming spends budget.
+def test_a_re_aim_is_skipped_only_when_it_cannot_improve_the_landing() -> None:
+    """The test is the perpendicular miss, not the distance to the waypoint.
 
-    `bearing = atan2(target - current)` is singular AT the target, so as the
-    mower closes in, a lateral offset it is not required to correct -- landing
-    inside `waypoint_tolerance` ends the segment -- swings the bearing
-    arbitrarily far. Re-aiming on that swing cannot reduce the miss distance.
+    Landing anywhere inside `waypoint_tolerance` ends the segment, so a re-aim is
+    worth spending turn commands on exactly when driving straight on would MISS
+    that disc. The perpendicular miss -- distance * sin(aim) -- answers that
+    directly and needs no tuned constant.
 
-    Live 2026-08-09 (docs/evidence-beta32-4segment-20260809T210241Z.json,
-    segment 3): the bearing swung 298.135 -> 277.835 deg across two linear
-    pulses, the second re-aim fired with ~0.21 m still to run, overshot twice
-    (-23.3 -> +20.2 -> -15.1), burned five turn commands and two realignment
-    slots, and the segment then stopped on `max_linear_commands_reached` 0.164 m
-    out -- 1.4 cm outside tolerance.
+    ⚠️ This replaces a wrong guard shipped in beta36, which compared distance
+    alone against `tolerance / tan(trigger)` = 0.4617 m. On the 0.7 m legs
+    introduced the same day that disabled re-aim for the last 66% of every leg
+    however badly the mower was pointed. It suppressed corrections at 40.099 and
+    77.922 deg of aim error and segment 3 landed 0.2548 m out, the worst of the
+    day (docs/evidence-beta32-4segment-20260810T002506Z.json). Those errors were
+    real, not bearing noise: RTK measured +40.73 and +72.92 deg independently of
+    VIO.
 
-    The radius is DERIVED, not tuned: a lateral offset the size of the tolerance
-    subtends atan(tolerance / distance), so the trigger can only distinguish a
-    real aim error from geometry while that angle stays below it. Hence
-    `tolerance / tan(trigger)`.
+    All four mid-drive re-aims on record, with the outcome each actually had.
     """
-    tolerance, trigger = 0.15, 18.0
-    radius = tolerance / math.tan(math.radians(trigger))
-    assert radius == pytest.approx(0.4617, abs=0.001)
+    tolerance = 0.15
+    cases = [
+        # distance, aim, suppress?, what happened
+        (0.540, 23.301, False, "allowed and legitimate"),
+        (0.210, 34.837, True, "allowed, then oscillated -- should have been skipped"),
+        (0.3104, 40.099, False, "beta36 suppressed it and the segment missed"),
+        (0.2072, 77.922, False, "beta36 suppressed it and the segment missed"),
+    ]
+    for distance, aim, expected, note in cases:
+        assert (
+            _realign_cannot_improve_the_landing(
+                distance_to_target_m=distance,
+                aim_error_degrees=aim,
+                waypoint_tolerance=tolerance,
+            )
+            is expected
+        ), note
 
-    def suppressed(distance: float) -> bool:
-        return _realign_bearing_is_ill_conditioned(
-            distance_to_target_m=distance,
-            waypoint_tolerance=tolerance,
-            trigger_degrees=trigger,
+    # The boundary sits exactly where the geometry puts it: a target 0.15 m off
+    # the travelled line is on the edge of the disc.
+    on_edge = math.degrees(math.asin(tolerance / 0.5))
+    for aim, expected in ((on_edge - 1.0, True), (on_edge + 1.0, False)):
+        assert (
+            _realign_cannot_improve_the_landing(
+                distance_to_target_m=0.5,
+                aim_error_degrees=aim,
+                waypoint_tolerance=tolerance,
+            )
+            is expected
         )
-
-    # The two re-aims of that segment, replayed at the distances they fired.
-    assert suppressed(0.21) is True, "the oscillating re-aim must be suppressed"
-    assert suppressed(0.54) is False, "the legitimate re-aim must still fire"
-    # And the boundary sits where the derivation puts it.
-    assert suppressed(radius - 0.01) is True
-    assert suppressed(radius + 0.01) is False
 
 
 @pytest.mark.parametrize(
     "override",
     [
-        {"trigger_degrees": 0.0},
-        {"trigger_degrees": 90.0},
-        {"trigger_degrees": -5.0},
-        {"waypoint_tolerance": 0.0},
         {"distance_to_target_m": 0.0},
+        {"waypoint_tolerance": 0.0},
+        # At or past 90 deg the target is abeam or behind, so driving on can only
+        # make it worse; `_requires_reverse_recovery` owns that case.
+        {"aim_error_degrees": 90.0},
+        {"aim_error_degrees": 120.0},
     ],
 )
 def test_the_re_aim_guard_fails_open_on_degenerate_input(
     override: dict[str, float],
 ) -> None:
-    """A guard that cannot compute its radius must never suppress.
+    """A guard that cannot judge must never suppress.
 
-    Suppressing re-aim is the dangerous direction here: a mower that stops
-    correcting its aim keeps driving. Every degenerate input therefore resolves
-    to "not ill-conditioned" and lets the existing trigger decide, which is the
-    pre-guard behaviour.
+    Suppressing a re-aim is the dangerous direction: a mower that stops
+    correcting its aim keeps driving. Every degenerate input resolves to "do not
+    suppress" and lets the existing trigger decide, which is the pre-guard
+    behaviour.
     """
     kwargs = {
         "distance_to_target_m": 0.05,
+        "aim_error_degrees": 30.0,
         "waypoint_tolerance": 0.15,
-        "trigger_degrees": 18.0,
     }
     kwargs.update(override)
 
-    assert _realign_bearing_is_ill_conditioned(**kwargs) is False
+    assert _realign_cannot_improve_the_landing(**kwargs) is False
 
 
 def test_a_stalled_refresh_write_is_not_a_rotation_rate() -> None:
