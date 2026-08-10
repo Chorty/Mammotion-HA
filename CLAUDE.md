@@ -156,6 +156,61 @@ accepted and no §4 re-pinning is owed.
 Handover, open attacks and the validation-run design:
 `docs/HANDOVER-beta31-20260809.md`.
 
+## Current build: `0.6.4-beta39` — deployed, GATE ARMED
+
+Read `docs/NEXT-SESSION.md` first; it carries the live state and the queued run.
+Host and branch agree at beta39.
+
+⚠️ **The experimental motion gate is ARMED at the operator's request.** That is
+not the usual disarmed-at-rest posture — normally it is opened only for the ~100 s
+of a supervised run and closed immediately after. Treat any Real Go as live.
+
+**Shipped 2026-08-09/10, in order, each on measurement:**
+
+- **beta35** — refresh writes fire on a fixed cadence from the window start
+  rather than one interval after the previous write completed. Delivered-window
+  overruns fell from +117% to +29% and **no run has aborted on BLE since.**
+- **beta37** — the turn model rebuilt on 35 measured pulses.
+  `_MIN_SCALED_TURN_PULSE_MS` 400 → **200** (200 ms actuates; there is no
+  threshold near 400). The overshoot bound is no longer a rate: rotation measures
+  `33.18 °/s·t + 4.63°`, which no single `C` can bound, so it is now the affine
+  envelope `40 °/s·t + 12°`. `_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND`
+  16.5 → **14.4**, which the first two changes finally made affordable.
+- **beta38** — the mid-drive re-aim guard, corrected. beta36's version compared
+  distance alone and suppressed two REAL corrections (40° and 78° aim errors,
+  confirmed by RTK independently of VIO), ruining a segment. It now skips only
+  when driving on would still land inside the disc:
+  `distance·sin(aim) ≤ waypoint_tolerance`.
+- **beta39** — the mid-drive re-aim guard follows `effective_linear_ceiling`, not
+  `max_linear_commands`. Inert until loop-to-tolerance is enabled; it was the
+  last prerequisite blocking it.
+
+🚨 **THE ACCURACY WALL IS EXPLAINED, AND IT IS A PROFILE CONFLICT.** Over 12
+completed approaches, `landing = 0.62 × leg·sin(initial_aim) + 0.065 m`
+(R² = 0.69). A 0.9 m leg needs initial aim within **8.8°** to land inside 0.15 m;
+`heading_tolerance_degrees` is **18**, so a turn may legally finish at an aim
+error that guarantees a miss. `heading_tolerance_degrees` and `waypoint_tolerance`
+are geometrically inconsistent at these leg lengths. Both are
+`LUBA_ACCEPTANCE_PROFILE` keys — resolving it owes a fresh Gate 5 and is an
+operator decision. Shorter legs are the alternative that touches no key.
+
+**Settled, so do not re-derive:**
+
+- Rotation is **not predictable from duration** better than ~40% at p90 — ten
+  pulses at matched ~200 ms windows spread 5.44–15.20°, 2.79×, with duration,
+  cadence and direction held constant. The estimate can only improve a landing;
+  the bound carries the safety.
+- The "directional turn asymmetry" is **refuted** (three runs: 8/8, 1/1, 1/6;
+  pooled over 33 samples the directions differ by 0.5%).
+- A **90° junction dispatches and completes** — measured, 3 of 4 commands.
+- A single **180° turn is refused pre-dispatch**; the largest that dispatches is
+  ~114°. Chain junctions instead (`--reposition`).
+- Per-**click** reach is 4 segments; per-**segment** reach is ~1 m. A 2.0 m leg is
+  not dispatchable.
+- `turning_mode` (`zero_turn` / `multipoint`, `nav_sys_param_cmd` ID 6) is a
+  MOWING-turnaround planner setting. Click-to-path turns bypass it entirely by
+  sending raw `DrvMotionCtrl` velocities. Untested but expected irrelevant.
+
 ## beta32 (undeployed) — beta31 reviewed, one fix, NOT cleared as-is
 
 beta31 was adversarially reviewed on 2026-08-09 before any deployment and **did

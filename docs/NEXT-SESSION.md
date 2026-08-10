@@ -4,7 +4,49 @@ Updated **2026-08-08 late** after Gate 5 passed. This is the current handoff;
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
-## 🚨 START HERE 2026-08-10 — the accuracy wall is EXPLAINED, and it is a profile conflict
+## 🚨 START HERE 2026-08-10 afternoon — ready to run, one operator step first
+
+Host and branch both `0.6.4-beta39`. ⚠️ **The motion gate is ARMED**
+(`enabled: true`) at the operator's request — this is NOT the usual
+disarmed-at-rest posture. `real_motion_allowed` is currently `false` only because
+the mower is docked.
+
+```
+mower     CHARGE_ON (4.337, 3.360)   battery 58%   charging off
+light     bright, tracked_features 80        RTK Fix        BLE −46
+blockers  ['position_not_valid_for_motion']   <- docking, nothing else
+```
+
+**The one operator step: undock and drive it into Backyard Right.** The dock sits
+~1 m outside the polygon; roughly (6.5, 0.0) gives comfortable margin. Everything
+else is green.
+
+### The run that is queued
+
+```sh
+set -a && source .env && set +a
+.venv/bin/python scripts/beta32_validation_run.py --junction 90            # preview
+.venv/bin/python scripts/beta32_validation_run.py --junction 90 --arm      # go
+```
+
+Four segments, 90° junctions, 0.7 m legs. It is a **single-variable test of the
+beta38 re-aim guard** — the previous attempt (0.0943 / 0.0753 / **0.2548** m) had
+its third segment ruined by the beta36 guard suppressing two real corrections,
+and beta38 replaced the criterion. Nothing else changed since.
+
+**What to look for:** `realignments_suppressed` should now be empty or carry only
+entries whose `perpendicular_miss_m` is genuinely under `waypoint_tolerance`. If a
+40°+ aim error is suppressed again, the criterion is still wrong.
+
+### Then, and it needs a decision not a commit
+
+The accuracy conflict below. **`heading_tolerance_degrees: 18` and
+`waypoint_tolerance: 0.15` are geometrically inconsistent** — a 0.9 m leg needs
+initial aim within 8.8°, and the turn is allowed to finish at 18°. Both are
+`LUBA_ACCEPTANCE_PROFILE` keys, so it owes a fresh Gate 5. Shorter legs are the
+no-key alternative.
+
+## (context) 2026-08-10 — the accuracy wall is EXPLAINED, and it is a profile conflict
 
 Host and branch both run `0.6.4-beta38`, deployed motion-disabled,
 `real_motion_allowed: false` verified. Mower is out in Backyard Right around
