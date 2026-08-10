@@ -46,8 +46,26 @@ error was correctly *not* suppressed and corrected to −1.98°. The 60° run re
 target on **all four segments**. Evidence:
 `docs/evidence-beta32-4segment-20260810T{185433,193833}Z.json`.
 
-⚠️ **THE ACCURACY WALL IS NOT (ONLY) A PROFILE CONFLICT — the initial-aim model is
-incomplete, and the 2026-08-10 60° run is what refuted it.** The standing fit is
+🔑 **THE ACCURACY WALL IS SOLVED, AND IT IS THE TURN'S OWN TRANSLATION.** Read
+`docs/turn-translation-explains-the-landing-wall-20260810.md`. A VIO turn does not
+pivot in place — it displaced the mower 0.028–0.131 m on the 2026-08-10 runs, and
+sideways displacement at the start of a 0.6–0.7 m leg rotates the bearing to the
+target by `atan(translation/leg)`. The turn primitive closes on **VIO body
+heading**, so it cannot see this: the heading did not change, the target's bearing
+moved. Across all five completed segments, map-frame aim error minus VIO-frame
+error equals `atan(translation/leg)` to within **0.02–1.25°**.
+
+**Consequence: `heading_tolerance_degrees` is the WRONG LEVER and lowering it
+18 → 11 would have changed none of those five segments.** It governs the VIO-frame
+error (mean 5.5°, already fine); the landing is set by the map-frame error (mean
+8.0°). The lever that works is **not a profile key** — the post-turn gate is
+`min(heading_tolerance_degrees, vio_realign_threshold_degrees)` = `min(18, 15)` =
+15, and every map-frame error fell inside it. Lowering the backend default
+`vio_realign_threshold_degrees` 15 → ~5 catches all five and moves no frozen key.
+
+⚠️ **Do not act on the paragraph below as a plan — it is kept because its
+measurements stand, but its diagnosis was superseded the same day.** The standing
+fit is
 `landing = 0.62 × leg·sin(initial_aim) + 0.065 m` (R² = 0.69, n = 12), which says a
 0.9 m leg needs initial aim within **8.8°** while `heading_tolerance_degrees`
 permits **18**. That geometric inconsistency between `heading_tolerance_degrees`

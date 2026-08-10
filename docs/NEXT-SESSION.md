@@ -48,7 +48,39 @@ for review; it touches **no `LUBA_ACCEPTANCE_PROFILE` key**. Four samples is thi
 for fitting a constant, so the margin should be explicit and conservative, not
 fitted.
 
-### 3. 🚨 The initial-aim model is INCOMPLETE — this is the finding that matters
+### 3. 🔑 SOLVED — the turn's own translation is what puts the mower off-bearing
+
+**Read `docs/turn-translation-explains-the-landing-wall-20260810.md`.** Derived
+off-mower from the two committed evidence files; no motion was commanded for it.
+
+A VIO turn does not pivot in place — it displaced the mower **0.028–0.131 m** on
+these runs. Sideways displacement at the *start* of a 0.6–0.7 m leg rotates the
+bearing to the target by `atan(translation / leg)`, and the turn primitive closes
+on **VIO body heading** so it cannot see this: the mower's heading did not change,
+the *target's bearing* moved. Across all five completed segments the map-frame aim
+error minus the VIO-frame error equals `atan(translation/leg)` to within **0.02–
+1.25°**. That is a mechanism, not a correlation.
+
+It also repairs the landing model: fed the map-frame aim instead of the VIO-frame
+aim, `0.62 × leg·sin(aim) + 0.065` goes from mean |residual| 0.0310 m to 0.0178 m
+and loses its one-directional bias. **The model was never wrong — it was being fed
+the wrong aim error.**
+
+**So Option A is dead.** `heading_tolerance_degrees` governs the VIO-frame error,
+mean 5.5°, already inside any tolerance under discussion; the landing is set by
+the map-frame error, mean 8.0°, which that key does not control. Lowering it
+18 → 11 would have changed **none** of these five segments.
+
+**The real lever is not a profile key.** The post-turn gate is
+`alignment_tolerance = min(heading_tolerance_degrees, vio_realign_threshold_
+degrees)` = `min(18, 15)` = **15**, and all five map-frame errors (3.079–11.452°)
+fell inside it, so no correction was ever attempted. Lowering
+`vio_realign_threshold_degrees` 15 → ~5 makes it 5 and catches all five, touching
+no `LUBA_ACCEPTANCE_PROFILE` key. The mid-drive trigger does **not** move (it
+resolves to `aim > 18` either way). ⚠️ Unmeasured risk: a correction turn also
+translates — small, but the same shape as the problem it fixes.
+
+### (superseded by §3) The initial-aim model looked INCOMPLETE
 
 `landing = 0.62 × leg·sin(initial_aim) + 0.065` does **not** explain these
 landings. Segments 2/3/4 finished their turns at **−3.7 / −5.1 / +4.6°** and still
