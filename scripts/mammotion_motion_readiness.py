@@ -24,8 +24,12 @@ def main() -> int:
         "--output-dir",
         default="/tmp/mammotion_motion_readiness",  # noqa: S108
     )
-    parser.add_argument("--sample-delays", type=float, nargs="+", default=[0, 5, 10, 20, 30, 45, 60])
-    parser.add_argument("--use-wifi", action="store_true", help="Use non-BLE transport preference.")
+    parser.add_argument(
+        "--sample-delays", type=float, nargs="+", default=[0, 5, 10, 20, 30, 45, 60]
+    )
+    parser.add_argument(
+        "--use-wifi", action="store_true", help="Use non-BLE transport preference."
+    )
     parser.add_argument("--max-real-steps", type=int, default=0)
     parser.add_argument("--dry-run", action="store_true", default=True)
     parser.add_argument("--real", dest="dry_run", action="store_false")
@@ -37,13 +41,19 @@ def main() -> int:
     args = parser.parse_args()
 
     if not args.ha_url or not args.ha_token:
-        parser.error("Provide --ha-url/--ha-token or set HA_URL/HA_TOKEN in .env or environment")
+        parser.error(
+            "Provide --ha-url/--ha-token or set HA_URL/HA_TOKEN in .env or environment"
+        )
     if args.max_real_steps < 0 or args.max_real_steps > 4:
         parser.error("--max-real-steps must be between 0 and 4")
-    if not args.dry_run and args.max_real_steps > 0 and (
-        not args.confirm_blades_off or not args.confirm_clear_area
+    if (
+        not args.dry_run
+        and args.max_real_steps > 0
+        and (not args.confirm_blades_off or not args.confirm_clear_area)
     ):
-        parser.error("Real readiness steps require --confirm-blades-off and --confirm-clear-area")
+        parser.error(
+            "Real readiness steps require --confirm-blades-off and --confirm-clear-area"
+        )
 
     payload = {
         "entity_id": args.entity_id,

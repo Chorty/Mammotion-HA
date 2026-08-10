@@ -30,8 +30,22 @@ def diagnose(document: dict[str, Any]) -> dict[str, Any]:
     )
     segment = segment_entry.get("result") or {}
     phases = segment.get("phases") or []
-    turn = next((phase.get("result") or {} for phase in phases if phase.get("name") == "turn_to_target_heading"), {})
-    linear = next((phase.get("result") or {} for phase in phases if phase.get("name") == "linear_forward_to_target"), {})
+    turn = next(
+        (
+            phase.get("result") or {}
+            for phase in phases
+            if phase.get("name") == "turn_to_target_heading"
+        ),
+        {},
+    )
+    linear = next(
+        (
+            phase.get("result") or {}
+            for phase in phases
+            if phase.get("name") == "linear_forward_to_target"
+        ),
+        {},
+    )
     vio = segment.get("vio") or {}
 
     turn_stop = turn.get("stop_reason")
@@ -74,9 +88,14 @@ def diagnose(document: dict[str, Any]) -> dict[str, Any]:
             "stopped instead of spending the remaining forward budget driving "
             "off-bearing."
         )
-    elif linear_stop == "max_linear_commands_reached" or segment.get("stop_reason") == "max_linear_commands_reached":
+    elif (
+        linear_stop == "max_linear_commands_reached"
+        or segment.get("stop_reason") == "max_linear_commands_reached"
+    ):
         classification = "linear_budget_exhausted"
-        conclusion = "The turn completed, but the permitted linear-command budget was exhausted."
+        conclusion = (
+            "The turn completed, but the permitted linear-command budget was exhausted."
+        )
     else:
         classification = "inspect_recorded_stop_reason"
         conclusion = "Use the recorded phase stop reasons below; this run does not match a known budget-exhaustion pattern."
@@ -95,11 +114,15 @@ def diagnose(document: dict[str, Any]) -> dict[str, Any]:
             "commands_sent": turn_count,
             "turn_feasibility": turn.get("turn_feasibility")
             or segment.get("turn_feasibility"),
-            "final_heading_error_degrees": _round(turn.get("final_heading_error_degrees")),
+            "final_heading_error_degrees": _round(
+                turn.get("final_heading_error_degrees")
+            ),
             "translation_m": _round(turn.get("final_displacement_m")),
             "target_vision_heading": _round(vio.get("target_vision_heading")),
             "final_vision_heading": _round(turn.get("final_vision_heading")),
-            "progress_degrees": [_round(item.get("progress_degrees")) for item in commands],
+            "progress_degrees": [
+                _round(item.get("progress_degrees")) for item in commands
+            ],
         },
         "linear": {
             "stop_reason": linear_stop,

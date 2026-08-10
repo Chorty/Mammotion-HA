@@ -113,7 +113,7 @@ def response(flow: http.HTTPFlow) -> None:
     if flow.response is not None:
         try:
             parsed = json.loads(flow.response.content or b"")
-        except (json.JSONDecodeError, UnicodeDecodeError):
+        except json.JSONDecodeError, UnicodeDecodeError:
             parsed = None
         if parsed is not None and (firmware_url := _find_firmware_url(parsed)):
             _start_download(firmware_url)

@@ -113,13 +113,19 @@ def main() -> None:  # noqa: C901
     window = (last - first).total_seconds() / 60 if first and last else 0.0
     emit("=" * 66)
     emit(f"window: {window:.0f} min")
-    emit(f"connect events: {connects}   disconnect events: {disconnects}"
-         f"   paired sessions: {len(sessions)}")
+    emit(
+        f"connect events: {connects}   disconnect events: {disconnects}"
+        f"   paired sessions: {len(sessions)}"
+    )
     if unpaired_connects:
-        emit(f"  NOTE: {unpaired_connects} connect(s) had no disconnect before the"
-             " next connect;")
-        emit("        those pairs are timed from the later connect, biasing"
-             " durations DOWN.")
+        emit(
+            f"  NOTE: {unpaired_connects} connect(s) had no disconnect before the"
+            " next connect;"
+        )
+        emit(
+            "        those pairs are timed from the later connect, biasing"
+            " durations DOWN."
+        )
     if opened is not None:
         emit("  (one session still open at end of log, excluded)")
 
@@ -135,8 +141,10 @@ def main() -> None:  # noqa: C901
         durations = sorted(s[0] for s in sessions)
         emit("")
         emit("session lifetime (s):")
-        emit(f"  min {durations[0]:.0f}   median {statistics.median(durations):.0f}"
-             f"   max {durations[-1]:.0f}")
+        emit(
+            f"  min {durations[0]:.0f}   median {statistics.median(durations):.0f}"
+            f"   max {durations[-1]:.0f}"
+        )
         emit(f"  all: {', '.join(f'{d:.0f}' for d in durations)}")
 
         emit("")
@@ -146,12 +154,16 @@ def main() -> None:  # noqa: C901
             by_reason.setdefault(reason, []).append(seconds)
         for reason, secs in sorted(by_reason.items(), key=lambda kv: -len(kv[1])):
             label = REASONS.get(reason, f"0x{reason:02X} unknown")
-            emit(f"  {len(secs):>3}x  {label:<44} median {statistics.median(secs):.0f}s")
+            emit(
+                f"  {len(secs):>3}x  {label:<44} median {statistics.median(secs):.0f}s"
+            )
 
     if mtus:
         emit("")
-        emit(f"negotiated MTU ({len(mtus)} fresh negotiations; connects logging"
-             " mtu=0 reused a cached value):")
+        emit(
+            f"negotiated MTU ({len(mtus)} fresh negotiations; connects logging"
+            " mtu=0 reused a cached value):"
+        )
         for value in sorted(set(mtus)):
             # A low MTU forces more BluFi fragments per report, and each extra
             # fragment is another chance to lose one and poison the reassembly

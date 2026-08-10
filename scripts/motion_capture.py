@@ -85,7 +85,7 @@ def _sensor(name: str) -> str | None:
         )
         with urllib.request.urlopen(request, timeout=10) as response:
             return json.loads(response.read())["state"]
-    except (urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError):
+    except urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError:
         return None
 
 
@@ -121,7 +121,10 @@ def capture(seconds: float, out: pathlib.Path, interval: float) -> int:
             try:
                 snap = sample()
             except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as err:
-                print(f"[{time.strftime('%H:%M:%S')}] poll error: {type(err).__name__}", flush=True)
+                print(
+                    f"[{time.strftime('%H:%M:%S')}] poll error: {type(err).__name__}",
+                    flush=True,
+                )
                 time.sleep(interval)
                 continue
             handle.write(json.dumps(snap) + "\n")
@@ -130,8 +133,12 @@ def capture(seconds: float, out: pathlib.Path, interval: float) -> int:
                 abs((snap["x"] or 0) - (previous["x"] or 0)) > 0.01
                 or abs((snap["y"] or 0) - (previous["y"] or 0)) > 0.01
             )
-            changed = previous is None or moved or any(
-                snap[k] != previous[k] for k in ("session", "phase", "work_mode")
+            changed = (
+                previous is None
+                or moved
+                or any(
+                    snap[k] != previous[k] for k in ("session", "phase", "work_mode")
+                )
             )
             if changed:
                 print(
@@ -183,9 +190,7 @@ def _report_compass_mirror(moving: list[dict]) -> None:
     for previous, current in zip(moving, moving[1:], strict=False):
         if previous.get("toward") is None or current.get("toward") is None:
             continue
-        step = math.dist(
-            (previous["x"], previous["y"]), (current["x"], current["y"])
-        )
+        step = math.dist((previous["x"], previous["y"]), (current["x"], current["y"]))
         if step < MIN_STEP_FOR_BEARING:
             continue
         if previous["toward"] == current["toward"]:
@@ -214,7 +219,9 @@ def _report_compass_mirror(moving: list[dict]) -> None:
     )
     print(f"deviation      : {_signed_delta(mean, COMPASS_MIRROR_DEGREES):+.2f} deg")
     if stale:
-        print(f"  note: skipped {stale} step(s) whose `toward` was stale (pulsed motion)")
+        print(
+            f"  note: skipped {stale} step(s) whose `toward` was stale (pulsed motion)"
+        )
 
 
 def summarise(path: pathlib.Path) -> int:
@@ -226,7 +233,9 @@ def summarise(path: pathlib.Path) -> int:
         return 1
     first, last = moving[0], moving[-1]
     travelled = math.dist((first["x"], first["y"]), (last["x"], last["y"]))
-    bearing = math.degrees(math.atan2(last["y"] - first["y"], last["x"] - first["x"])) % 360
+    bearing = (
+        math.degrees(math.atan2(last["y"] - first["y"], last["x"] - first["x"])) % 360
+    )
     print(f"samples        : {len(moving)}  {first['t']} -> {last['t']}")
     print(f"net travel     : {travelled:.4f} m")
     # .get(), not [] -- captures written by earlier ad-hoc scripts lack some of
@@ -262,8 +271,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seconds", type=float, default=300.0)
     parser.add_argument("--interval", type=float, default=1.5)
-    parser.add_argument("--out", type=pathlib.Path, default=pathlib.Path("motion_capture.jsonl"))
-    parser.add_argument("--summarise", type=pathlib.Path, help="summarise an existing capture")
+    parser.add_argument(
+        "--out", type=pathlib.Path, default=pathlib.Path("motion_capture.jsonl")
+    )
+    parser.add_argument(
+        "--summarise", type=pathlib.Path, help="summarise an existing capture"
+    )
     args = parser.parse_args()
     if args.summarise:
         return summarise(args.summarise)

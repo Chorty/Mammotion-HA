@@ -152,14 +152,10 @@ def _summary(
         "multi_segment_real_included": multi_real is not None,
         "multi_segment_real_passed": multi_real_passed,
         "multi_segment_real_segments_executed": (
-            None
-            if multi_real is None
-            else multi_real.get("real_segments_executed")
+            None if multi_real is None else multi_real.get("real_segments_executed")
         ),
         "multi_segment_failed_segment_index": (
-            None
-            if multi_real is None
-            else multi_real.get("failed_segment_index")
+            None if multi_real is None else multi_real.get("failed_segment_index")
         ),
         "recommended_next_step": result.get("recommended_next_step"),
         "passed": passed,
@@ -198,11 +194,15 @@ def main() -> int:  # noqa: C901
         action="store_true",
         help="Use shorter delays and timeouts for faster troubleshooting runs.",
     )
-    parser.add_argument("--use-wifi", action="store_true", help="Use non-BLE transport preference.")
+    parser.add_argument(
+        "--use-wifi", action="store_true", help="Use non-BLE transport preference."
+    )
     parser.add_argument("--max-real-steps", type=int, default=0)
     parser.add_argument("--target-distance", type=float, default=0.10)
     parser.add_argument("--turn-delta-degrees", type=float, default=10.0)
-    parser.add_argument("--calibrated-forward-heading-offset-degrees", type=float, default=116.5)
+    parser.add_argument(
+        "--calibrated-forward-heading-offset-degrees", type=float, default=116.5
+    )
     parser.add_argument("--max-turn-commands", type=int, default=4)
     parser.add_argument("--max-linear-commands", type=int, default=2)
     parser.add_argument("--include-multi-segment-dry-run", action="store_true")
@@ -221,19 +221,27 @@ def main() -> int:  # noqa: C901
         _apply_quick_profile(args)
 
     if not args.ha_url or not args.ha_token:
-        parser.error("Provide --ha-url/--ha-token or set HA_URL/HA_TOKEN in .env or environment")
+        parser.error(
+            "Provide --ha-url/--ha-token or set HA_URL/HA_TOKEN in .env or environment"
+        )
     if args.max_real_steps < 0 or args.max_real_steps > 3:
         parser.error("--max-real-steps must be between 0 and 3")
     if args.max_real_segments < 1 or args.max_real_segments > 3:
         parser.error("--max-real-segments must be between 1 and 3")
-    if not args.dry_run and args.max_real_steps > 0 and (
-        not args.confirm_blades_off or not args.confirm_clear_area
+    if (
+        not args.dry_run
+        and args.max_real_steps > 0
+        and (not args.confirm_blades_off or not args.confirm_clear_area)
     ):
-        parser.error("Real suite steps require --confirm-blades-off and --confirm-clear-area")
+        parser.error(
+            "Real suite steps require --confirm-blades-off and --confirm-clear-area"
+        )
     if args.include_multi_segment_real and (
         not args.confirm_blades_off or not args.confirm_clear_area
     ):
-        parser.error("Real multi-segment steps require --confirm-blades-off and --confirm-clear-area")
+        parser.error(
+            "Real multi-segment steps require --confirm-blades-off and --confirm-clear-area"
+        )
     if args.include_multi_segment_real and args.dry_run:
         parser.error("Real multi-segment steps require --real")
 
@@ -250,7 +258,9 @@ def main() -> int:  # noqa: C901
         wait_runtime=not args.no_wait_runtime,
         runtime_timeout=args.runtime_timeout,
     )
-    _write_json(output_dir / "raw_vector_readiness.json", {"payload": payload, "result": result})
+    _write_json(
+        output_dir / "raw_vector_readiness.json", {"payload": payload, "result": result}
+    )
     multi_dry_run: dict | None = None
     multi_real: dict | None = None
     runtime_state: dict | None = None

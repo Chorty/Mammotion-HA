@@ -30,11 +30,15 @@ def main() -> int:
         nargs="+",
         default=[0, 5, 10, 20, 30, 45, 60],
     )
-    parser.add_argument("--use-wifi", action="store_true", help="Use non-BLE transport preference.")
+    parser.add_argument(
+        "--use-wifi", action="store_true", help="Use non-BLE transport preference."
+    )
     parser.add_argument("--max-real-steps", type=int, default=0)
     parser.add_argument("--target-distance", type=float, default=0.10)
     parser.add_argument("--turn-delta-degrees", type=float, default=10.0)
-    parser.add_argument("--calibrated-forward-heading-offset-degrees", type=float, default=116.5)
+    parser.add_argument(
+        "--calibrated-forward-heading-offset-degrees", type=float, default=116.5
+    )
     parser.add_argument("--max-turn-commands", type=int, default=4)
     parser.add_argument("--max-linear-commands", type=int, default=2)
     parser.add_argument("--dry-run", action="store_true", default=True)
@@ -47,13 +51,19 @@ def main() -> int:
     args = parser.parse_args()
 
     if not args.ha_url or not args.ha_token:
-        parser.error("Provide --ha-url/--ha-token or set HA_URL/HA_TOKEN in .env or environment")
+        parser.error(
+            "Provide --ha-url/--ha-token or set HA_URL/HA_TOKEN in .env or environment"
+        )
     if args.max_real_steps < 0 or args.max_real_steps > 3:
         parser.error("--max-real-steps must be between 0 and 3")
-    if not args.dry_run and args.max_real_steps > 0 and (
-        not args.confirm_blades_off or not args.confirm_clear_area
+    if (
+        not args.dry_run
+        and args.max_real_steps > 0
+        and (not args.confirm_blades_off or not args.confirm_clear_area)
     ):
-        parser.error("Real vector readiness steps require --confirm-blades-off and --confirm-clear-area")
+        parser.error(
+            "Real vector readiness steps require --confirm-blades-off and --confirm-clear-area"
+        )
 
     payload = {
         "entity_id": args.entity_id,

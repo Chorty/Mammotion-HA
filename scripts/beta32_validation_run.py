@@ -44,7 +44,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import os  # noqa: E402
 
-from mammotion_ha_helpers import load_dotenv, post_service  # noqa: E402
+from mammotion_ha_helpers import (  # noqa: E402
+    load_dotenv,
+    post_service,
+    warm_ble_link,
+)
 
 ENTITY = "lawn_mower.back_yard_clip_skywalker"
 REPO = Path(__file__).resolve().parents[1]
@@ -350,6 +354,14 @@ def build_reposition_path(
 
 def preflight() -> dict[str, Any]:
     """Evaluate every hard gate the run needs and print a pass/fail table."""
+    # Wake the link before judging it. `ble_link_live` needs a RECENT outbound
+    # send and fails `ble_send_stalled` after 15 s of quiet, so a preflight on a
+    # rested link reports the staleness of its own idleness rather than anything
+    # about the link. The motion executors never hit this because they start the
+    # dense report stream first; a preflight run before any of that has no such
+    # luck. Read-only, sends no movement command. Live 2026-08-09 this turned a
+    # spurious FAIL on a healthy -62 dBm link into a PASS within 3 seconds.
+    warm_ble_link(os.environ["HA_URL"], os.environ["HA_TOKEN"], ENTITY)
     runtime = _call("export_runtime_state", {}, timeout=120)
     motion = runtime.get("experimental_motion", {})
     safety = runtime.get("safety", {})

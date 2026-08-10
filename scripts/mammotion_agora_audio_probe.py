@@ -63,9 +63,13 @@ def _post_ha_service(
             response_body = response.read().decode("utf-8")
     except urllib.error.HTTPError as err:
         detail = err.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"HA service {service} failed: HTTP {err.code}: {detail}") from err
+        raise RuntimeError(
+            f"HA service {service} failed: HTTP {err.code}: {detail}"
+        ) from err
     except urllib.error.URLError as err:
-        raise RuntimeError(f"Unable to reach Home Assistant at {ha_url}: {err}") from err
+        raise RuntimeError(
+            f"Unable to reach Home Assistant at {ha_url}: {err}"
+        ) from err
 
     if not response_body:
         return {}
@@ -136,7 +140,9 @@ def main() -> int:
     args = parser.parse_args()
 
     if not args.ha_url or not args.ha_token:
-        parser.error("Provide --ha-url/--ha-token or set HA_URL/HA_TOKEN in the environment")
+        parser.error(
+            "Provide --ha-url/--ha-token or set HA_URL/HA_TOKEN in the environment"
+        )
     if not PROBE_HTML.exists():
         raise RuntimeError(f"Probe file not found: {PROBE_HTML}")
     if not 100 <= args.frequency <= 4000:
@@ -157,7 +163,9 @@ def main() -> int:
     )
     tokens = _extract_stream_tokens(token_response)
     probe_url = _build_probe_url(tokens, args.frequency, args.duration)
-    redacted_url = probe_url.replace(urllib.parse.quote(str(tokens["token"]), safe=""), "REDACTED")
+    redacted_url = probe_url.replace(
+        urllib.parse.quote(str(tokens["token"]), safe=""), "REDACTED"
+    )
 
     print("Generated local Agora audio probe URL.")  # noqa: T201
     print(  # noqa: T201

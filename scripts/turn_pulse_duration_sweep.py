@@ -58,7 +58,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import os  # noqa: E402
 
-from mammotion_ha_helpers import load_dotenv, post_service  # noqa: E402
+from mammotion_ha_helpers import (  # noqa: E402
+    load_dotenv,
+    post_service,
+    warm_ble_link,
+)
 
 ENTITY = "lawn_mower.back_yard_clip_skywalker"
 REPO = Path(__file__).resolve().parents[1]
@@ -122,6 +126,12 @@ def _call(service: str, payload: dict[str, Any], timeout: int = 180) -> dict[str
 
 def preflight() -> list[str]:
     """Check the same hard gates the segment runs use, minus path gates."""
+    # Wake the link before judging it. `ble_link_live` needs a recent
+    # outbound send and fails `ble_send_stalled` after 15 s of quiet, so a
+    # preflight on a rested link reports the staleness of its own idleness.
+    # Read-only; sends no movement command. Live 2026-08-09 this turned a
+    # spurious FAIL on a healthy -62 dBm link into a PASS in 3 seconds.
+    warm_ble_link(os.environ["HA_URL"], os.environ["HA_TOKEN"], ENTITY)
     runtime = _call("export_runtime_state", {}, 120)
     safety = runtime.get("safety", {})
     tracked = _state("sensor.back_yard_clip_skywalker_vio_tracked_features")

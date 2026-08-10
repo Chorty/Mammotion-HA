@@ -39,14 +39,17 @@ def _summary(result: dict, output_dir: Path) -> dict:
         "output_dir": str(output_dir),
         "dry_run": result.get("dry_run"),
         "reason": result.get("reason"),
-        "passed": result.get("reason") in {
+        "passed": result.get("reason")
+        in {
             "dry_run",
             "position_source_changed",
             "metadata_source_changed",
             "position_source_unchanged",
         },
         "pulse_count": result.get("pulse_count"),
-        "commands_sent": len([cmd for cmd in result.get("commands", []) if cmd.get("ok")]),
+        "commands_sent": len(
+            [cmd for cmd in result.get("commands", []) if cmd.get("ok")]
+        ),
         "refresh_attempts": [
             {
                 "name": attempt.get("name"),
@@ -93,10 +96,14 @@ def main() -> int:
         parser.error("Provide --ha-url/--ha-token or set HA_URL/HA_TOKEN in .env")
     if args.pulse_count < 0 or args.pulse_count > 5:
         parser.error("--pulse-count must be between 0 and 5")
-    if not args.dry_run and args.pulse_count > 0 and (
-        not args.confirm_blades_off or not args.confirm_clear_area
+    if (
+        not args.dry_run
+        and args.pulse_count > 0
+        and (not args.confirm_blades_off or not args.confirm_clear_area)
     ):
-        parser.error("Real movement requires --confirm-blades-off and --confirm-clear-area")
+        parser.error(
+            "Real movement requires --confirm-blades-off and --confirm-clear-area"
+        )
 
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     output_dir = Path(args.output_dir) / timestamp

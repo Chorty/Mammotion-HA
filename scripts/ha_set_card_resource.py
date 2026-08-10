@@ -101,9 +101,10 @@ async def _retarget(
 async def run(version: str | None, apply: bool) -> int:
     """Show, and optionally update, the registered card resource URL."""
     url = os.environ["HA_URL"].rstrip("/") + "/api/websocket"
-    async with aiohttp.ClientSession() as session, session.ws_connect(
-        url, max_msg_size=0
-    ) as ws:
+    async with (
+        aiohttp.ClientSession() as session,
+        session.ws_connect(url, max_msg_size=0) as ws,
+    ):
         matches = await _card_resources(ws)
         if matches is None:
             return 1

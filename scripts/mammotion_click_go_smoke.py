@@ -107,11 +107,17 @@ def main() -> int:  # noqa: C901
     args = parser.parse_args()
 
     if not args.ha_url or not args.ha_token:
-        parser.error("Provide --ha-url/--ha-token or set HA_URL/HA_TOKEN in .env or environment")
+        parser.error(
+            "Provide --ha-url/--ha-token or set HA_URL/HA_TOKEN in .env or environment"
+        )
     if (args.target_x is None) != (args.target_y is None):
-        parser.error("Provide both --target-x and --target-y together, or neither to use offsets")
+        parser.error(
+            "Provide both --target-x and --target-y together, or neither to use offsets"
+        )
     if args.run_real and (not args.confirm_blades_off or not args.confirm_clear_area):
-        parser.error("--run-real requires both --confirm-blades-off and --confirm-clear-area")
+        parser.error(
+            "--run-real requires both --confirm-blades-off and --confirm-clear-area"
+        )
 
     runtime_state = wait_for_runtime(
         args.ha_url,
@@ -186,10 +192,18 @@ def main() -> int:  # noqa: C901
     output_dir = Path(args.output_dir) / timestamp
     output_dir.mkdir(parents=True, exist_ok=True)
     _write_json(output_dir / "runtime_state.json", runtime_state)
-    _write_json(output_dir / "preview.json", {"payload": preview_payload, "result": preview_result})
-    _write_json(output_dir / "dry_run.json", {"payload": dry_payload, "result": dry_result})
+    _write_json(
+        output_dir / "preview.json",
+        {"payload": preview_payload, "result": preview_result},
+    )
+    _write_json(
+        output_dir / "dry_run.json", {"payload": dry_payload, "result": dry_result}
+    )
     if real_payload is not None and real_result is not None:
-        _write_json(output_dir / "real_run.json", {"payload": real_payload, "result": real_result})
+        _write_json(
+            output_dir / "real_run.json",
+            {"payload": real_payload, "result": real_result},
+        )
 
     summary = {
         "output_dir": str(output_dir),
@@ -199,8 +213,12 @@ def main() -> int:  # noqa: C901
         "dry_run_stop_reason": dry_result.get("stop_reason"),
         "dry_run_blockers": dry_result.get("blockers"),
         "real_run_requested": args.run_real,
-        "real_run_stop_reason": None if real_result is None else real_result.get("stop_reason"),
-        "real_run_blockers": None if real_result is None else real_result.get("blockers"),
+        "real_run_stop_reason": None
+        if real_result is None
+        else real_result.get("stop_reason"),
+        "real_run_blockers": None
+        if real_result is None
+        else real_result.get("blockers"),
     }
     _write_json(output_dir / "summary.json", summary)
     print(json.dumps(summary, indent=2))  # noqa: T201
@@ -209,7 +227,10 @@ def main() -> int:  # noqa: C901
         return 2
     if summary["dry_run_stop_reason"] == "integration_not_ready":
         return 3
-    if args.run_real and summary["real_run_stop_reason"] in (None, "integration_not_ready"):
+    if args.run_real and summary["real_run_stop_reason"] in (
+        None,
+        "integration_not_ready",
+    ):
         return 4
     return 0
 

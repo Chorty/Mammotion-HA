@@ -116,7 +116,9 @@ def main() -> int:
     if not args.dry_run and (
         not args.confirm_blades_off or not args.confirm_clear_area
     ):
-        parser.error("Real two-pulse test requires --confirm-blades-off and --confirm-clear-area")
+        parser.error(
+            "Real two-pulse test requires --confirm-blades-off and --confirm-clear-area"
+        )
 
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     output_dir = Path(args.output_dir) / timestamp
@@ -137,7 +139,10 @@ def main() -> int:
         payload,
         args.timeout,
     )
-    _write_json(output_dir / "forward_two_pulse_latency.json", {"payload": payload, "result": result})
+    _write_json(
+        output_dir / "forward_two_pulse_latency.json",
+        {"payload": payload, "result": result},
+    )
     summary = _summary(result, output_dir)
     _write_json(output_dir / "summary.json", summary)
     print(json.dumps(summary, indent=2))  # noqa: T201

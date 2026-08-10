@@ -14,14 +14,54 @@ from pathlib import Path
 from typing import Any
 
 PROBES: tuple[dict[str, Any], ...] = (
-    {"name": "linear_plus_400", "command": "send_movement", "linear_speed": 400, "angular_speed": 0},
-    {"name": "linear_minus_400", "command": "send_movement", "linear_speed": -400, "angular_speed": 0},
-    {"name": "angular_plus_180", "command": "send_movement", "linear_speed": 0, "angular_speed": 180},
-    {"name": "angular_minus_180", "command": "send_movement", "linear_speed": 0, "angular_speed": -180},
-    {"name": "linear_plus_200", "command": "send_movement", "linear_speed": 200, "angular_speed": 0},
-    {"name": "linear_minus_200", "command": "send_movement", "linear_speed": -200, "angular_speed": 0},
-    {"name": "linear_plus_100", "command": "send_movement", "linear_speed": 100, "angular_speed": 0},
-    {"name": "linear_minus_100", "command": "send_movement", "linear_speed": -100, "angular_speed": 0},
+    {
+        "name": "linear_plus_400",
+        "command": "send_movement",
+        "linear_speed": 400,
+        "angular_speed": 0,
+    },
+    {
+        "name": "linear_minus_400",
+        "command": "send_movement",
+        "linear_speed": -400,
+        "angular_speed": 0,
+    },
+    {
+        "name": "angular_plus_180",
+        "command": "send_movement",
+        "linear_speed": 0,
+        "angular_speed": 180,
+    },
+    {
+        "name": "angular_minus_180",
+        "command": "send_movement",
+        "linear_speed": 0,
+        "angular_speed": -180,
+    },
+    {
+        "name": "linear_plus_200",
+        "command": "send_movement",
+        "linear_speed": 200,
+        "angular_speed": 0,
+    },
+    {
+        "name": "linear_minus_200",
+        "command": "send_movement",
+        "linear_speed": -200,
+        "angular_speed": 0,
+    },
+    {
+        "name": "linear_plus_100",
+        "command": "send_movement",
+        "linear_speed": 100,
+        "angular_speed": 0,
+    },
+    {
+        "name": "linear_minus_100",
+        "command": "send_movement",
+        "linear_speed": -100,
+        "angular_speed": 0,
+    },
 )
 
 
@@ -37,7 +77,9 @@ def _load_dotenv(path: Path) -> None:
         os.environ.setdefault(key.strip(), value.strip().strip("'\""))
 
 
-def _post_service(ha_url: str, token: str, service: str, payload: dict[str, Any], timeout: int) -> dict[str, Any]:
+def _post_service(
+    ha_url: str, token: str, service: str, payload: dict[str, Any], timeout: int
+) -> dict[str, Any]:
     """Call an HA service and return service_response."""
     url = f"{ha_url.rstrip('/')}/api/services/mammotion/{service}?return_response"
     request = urllib.request.Request(
@@ -87,20 +129,39 @@ def main() -> int:
         default="/tmp/mammotion_motion_calibration",  # noqa: S108
     )
     parser.add_argument("--probe", choices=[probe["name"] for probe in PROBES])
-    parser.add_argument("--sample-delays", type=float, nargs="+", default=[0, 5, 10, 20, 30, 45, 60])
-    parser.add_argument("--use-wifi", action="store_true", help="Use non-BLE transport preference.")
+    parser.add_argument(
+        "--sample-delays", type=float, nargs="+", default=[0, 5, 10, 20, 30, 45, 60]
+    )
+    parser.add_argument(
+        "--use-wifi", action="store_true", help="Use non-BLE transport preference."
+    )
     parser.add_argument("--dry-run", action="store_true", default=True)
-    parser.add_argument("--real", dest="dry_run", action="store_false", help="Send real one-command probes.")
+    parser.add_argument(
+        "--real",
+        dest="dry_run",
+        action="store_false",
+        help="Send real one-command probes.",
+    )
     parser.add_argument("--confirm-blades-off", action="store_true")
     parser.add_argument("--confirm-clear-area", action="store_true")
-    parser.add_argument("--yes-run-all", action="store_true", help="Run all selected real probes without prompting between probes.")
+    parser.add_argument(
+        "--yes-run-all",
+        action="store_true",
+        help="Run all selected real probes without prompting between probes.",
+    )
     parser.add_argument("--timeout", type=int, default=180)
     args = parser.parse_args()
 
     if not args.ha_url or not args.ha_token:
-        parser.error("Provide --ha-url/--ha-token or set HA_URL/HA_TOKEN in .env or environment")
-    if not args.dry_run and (not args.confirm_blades_off or not args.confirm_clear_area):
-        parser.error("Real probes require --confirm-blades-off and --confirm-clear-area")
+        parser.error(
+            "Provide --ha-url/--ha-token or set HA_URL/HA_TOKEN in .env or environment"
+        )
+    if not args.dry_run and (
+        not args.confirm_blades_off or not args.confirm_clear_area
+    ):
+        parser.error(
+            "Real probes require --confirm-blades-off and --confirm-clear-area"
+        )
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -108,7 +169,9 @@ def main() -> int:
 
     for index, probe in enumerate(probes, start=1):
         if not args.dry_run and not args.yes_run_all:
-            answer = input(f"Run real probe {index}/{len(probes)} {probe['name']}? Type RUN: ")
+            answer = input(
+                f"Run real probe {index}/{len(probes)} {probe['name']}? Type RUN: "
+            )
             if answer != "RUN":
                 print("Stopped before probe.")  # noqa: T201
                 return 1
@@ -122,7 +185,9 @@ def main() -> int:
         )
         timestamp = time.strftime("%Y%m%d-%H%M%S")
         output_path = output_dir / f"{timestamp}-{probe['name']}.json"
-        output_path.write_text(json.dumps({"probe": probe, "payload": payload, "result": result}, indent=2))
+        output_path.write_text(
+            json.dumps({"probe": probe, "payload": payload, "result": result}, indent=2)
+        )
         summary = result.get("motion_interpretation", {})
         print(  # noqa: T201
             json.dumps(
@@ -133,9 +198,7 @@ def main() -> int:
                     "command_ok": (result.get("command_result") or {}).get("ok"),
                     "status": summary.get("status"),
                     "delta": summary.get("delta"),
-                    "movement_heading_degrees": summary.get(
-                        "movement_heading_degrees"
-                    ),
+                    "movement_heading_degrees": summary.get("movement_heading_degrees"),
                 },
                 indent=2,
             )

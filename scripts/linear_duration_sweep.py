@@ -65,7 +65,13 @@ def edge_clearance(pt: dict[str, float], poly: list[dict[str, float]]) -> float:
         t = (
             0.0
             if (dx == 0 and dy == 0)
-            else max(0.0, min(1.0, ((pt["x"] - ax) * dx + (pt["y"] - ay) * dy) / (dx * dx + dy * dy)))
+            else max(
+                0.0,
+                min(
+                    1.0,
+                    ((pt["x"] - ax) * dx + (pt["y"] - ay) * dy) / (dx * dx + dy * dy),
+                ),
+            )
         )
         best = min(best, math.hypot(pt["x"] - (ax + t * dx), pt["y"] - (ay + t * dy)))
     return best
@@ -110,7 +116,10 @@ def pulse(action: str, duration_ms: int) -> dict:
     req = urllib.request.Request(
         f"{HA}/api/services/mammotion/manual_velocity_pulse_test?return_response",
         data=body,
-        headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"},
+        headers={
+            "Authorization": f"Bearer {TOKEN}",
+            "Content-Type": "application/json",
+        },
     )
     with urllib.request.urlopen(req, timeout=200) as resp:  # noqa: S310
         return json.loads(resp.read())["service_response"]
@@ -162,10 +171,20 @@ for i, dur in enumerate(DURATIONS):
     elif clear < MIN_CLEARANCE_M:
         note = "TOO CLOSE TO EDGE"
 
-    results.append({"duration_ms": dur, "action": action, "moved_m": round(moved, 4),
-                    "rate": round(moved / (dur / 1000), 4), "x": now["x"], "y": now["y"],
-                    "clearance_m": round(clear, 3)})
-    print(f"{dur:>6} {action:<9} {moved:>8.4f} {moved/(dur/1000):>7.3f}  {clear:>6.2f} m  {note}")
+    results.append(
+        {
+            "duration_ms": dur,
+            "action": action,
+            "moved_m": round(moved, 4),
+            "rate": round(moved / (dur / 1000), 4),
+            "x": now["x"],
+            "y": now["y"],
+            "clearance_m": round(clear, 3),
+        }
+    )
+    print(
+        f"{dur:>6} {action:<9} {moved:>8.4f} {moved / (dur / 1000):>7.3f}  {clear:>6.2f} m  {note}"
+    )
 
     if note:
         print(f"\nABORT: {note} at ({now['x']:.4f}, {now['y']:.4f})")

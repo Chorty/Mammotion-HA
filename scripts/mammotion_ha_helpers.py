@@ -47,9 +47,7 @@ def post_service(
             return json.load(response).get("service_response", {})
     except urllib.error.HTTPError as err:
         detail = err.read().decode(errors="replace")
-        raise SystemExit(
-            f"HA service call failed: HTTP {err.code}: {detail}"
-        ) from err
+        raise SystemExit(f"HA service call failed: HTTP {err.code}: {detail}") from err
 
 
 def runtime_ready(runtime_state: dict[str, Any]) -> bool:
@@ -137,7 +135,9 @@ def build_one_segment_vector_payload(
     confirm_clear_area: bool = False,
 ) -> dict[str, Any]:
     """Build guarded one-segment vector payload from live runtime position + target."""
-    position = runtime_state.get("position") if isinstance(runtime_state, dict) else None
+    position = (
+        runtime_state.get("position") if isinstance(runtime_state, dict) else None
+    )
     if not isinstance(position, dict):
         raise TypeError("runtime_state.position is required")
     if position.get("x") is None or position.get("y") is None:
@@ -167,3 +167,61 @@ def build_one_segment_vector_payload(
         "max_linear_commands": int(max_linear_commands),
         "sample_delays": [float(value) for value in sample_delays],
     }
+
+
+def warm_ble_link(
+    ha_url: str,
+    token: str,
+    entity_id: str,
+    *,
+    timeout_seconds: float = 20.0,
+) -> str | None:
+    """Generate BLE traffic so `ble_link_live` can judge a rested link.
+
+    `_ble_link_liveness` requires a RECENT outbound attempt -- it fails with
+    `ble_send_stalled` once `last_send_age_seconds` passes 15. That is correct
+    for a gate evaluated mid-run, but a harness that preflights a link nobody has
+    touched for an hour sees the staleness of its own idleness and refuses to
+    arm. The motion executors never hit this because they start the dense report
+    stream first, which is itself a BLE command; a preflight run BEFORE any of
+    that has no such luck.
+
+    Hit live 2026-08-09: the pulse sweep preflight reported `ble_send_stalled` on
+    a link with an entirely healthy -62 dBm, and a single read-only probe cleared
+    it within 3 seconds.
+
+    `report_stream_probe` is read-only and sends no movement command, so this is
+    safe to call before any gate. Returns the final `ble_link_reason`, or None
+    once the link reports live.
+    """
+    try:
+        post_service(
+            ha_url,
+            token,
+            "mammotion",
+            "report_stream_probe",
+            {"entity_id": entity_id, "duration_seconds": 6},
+            90,
+        )
+    except SystemExit:
+        # A probe failure is not itself disqualifying; let the gate below speak.
+        return "probe_failed"
+
+    deadline = time.monotonic() + timeout_seconds
+    reason: str | None = "unknown"
+    while time.monotonic() < deadline:
+        request = urllib.request.Request(
+            f"{ha_url.rstrip('/')}/api/states/"
+            f"binary_sensor.{entity_id.split('.', 1)[1]}_ble_link_live",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                state = json.load(response)
+        except Exception:  # noqa: BLE001
+            return "unreadable"
+        if state.get("state") == "on":
+            return None
+        reason = state.get("attributes", {}).get("ble_link_reason", "unknown")
+        time.sleep(2.0)
+    return reason
