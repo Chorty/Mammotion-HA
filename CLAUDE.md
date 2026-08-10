@@ -4,10 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current P0 Handoff
 
-Read `docs/CODEX-HANDOFF.md`, then `docs/NEXT-SESSION.md`, before continuing P0
-or click-to-go work. The host runs the still-unaccepted, motion-disabled
-`0.6.4-beta30` candidate and experimental motion is verified off; the branch is
-at the undeployed `0.6.4-beta31`. Gate 2 passed
+> ⚠️ **This section is history from 2026-08-05/08. For current state read
+> "Current build: `0.6.4-beta39`" below, and `docs/NEXT-SESSION.md` first.** The
+> host and branch are both at beta39, the motion gate is ARMED, and several
+> claims in this section have since been refuted by measurement — notably the
+> "unexplained" turn-rate variance (§ rate spread) and the turn-budget framing.
+> Keep it for the Gate 4/5 provenance; do not act on its build state.
+
+Read `docs/NEXT-SESSION.md` before continuing P0
+or click-to-go work. *(Historic, 2026-08-08:* the host ran the still-unaccepted,
+motion-disabled `0.6.4-beta30` candidate with experimental motion verified off;
+the branch was at the undeployed `0.6.4-beta31`.*)* Gate 2 passed
 on 2026-08-03, and Gate 4 — which
 failed on 2026-08-03 before its first linear command — was **re-passed on
 2026-08-05** and **reproduced on a second daylight geometry on 2026-08-06**.
