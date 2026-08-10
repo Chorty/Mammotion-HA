@@ -10302,6 +10302,39 @@ _DEFAULT_REFRESH_COMMANDS_PER_LINEAR_PULSE = 10
 # must stop instead of silently becoming a reverse-recovery controller.
 _MAX_FORWARD_REALIGNMENT_DEGREES = 90.0
 
+#: Tolerance for the post-turn alignment gate, in degrees. Kept SEPARATE from
+#: `vio_realign_threshold_degrees` (the mid-drive trigger), which the gate used to
+#: borrow through a `min()`. The two answer different questions and only shared a
+#: number by accident.
+#:
+#: WHY THE GATE MATTERS (measured 2026-08-10, see
+#: docs/turn-translation-explains-the-landing-wall-20260810.md): a VIO turn does
+#: not pivot in place. It displaced the mower 0.028-0.131 m across the five
+#: completed segments of that day's two runs, and sideways displacement at the
+#: start of a 0.6-0.7 m leg rotates the bearing to the target by
+#: `atan(translation/leg)`. The turn primitive closes on VIO BODY HEADING, so it
+#: cannot see this -- the heading did not change, the target's bearing moved. The
+#: map-frame aim error after the turn ran 3.079-11.452 deg while the turn phase
+#: reported 1.716-12.447 deg in the VIO frame, and the difference equals
+#: `atan(translation/leg)` to within 0.02-1.25 deg. This gate is the only place
+#: that error can be caught.
+#:
+#: WHY 10 AND NOT 5. A correction only fires when the error EXCEEDS the tolerance,
+#: so the worst sweep the correction may be asked to make is `error + tolerance >
+#: 2 x tolerance`. The anti-overshoot bound is affine --
+#: `_VIO_TURN_SWEEP_BOUND_*`, i.e. `40 deg/s * t + 12 deg` -- and at the 200 ms
+#: actuation floor the shortest safe pulse can still sweep 20 deg. So the
+#: guarantee holds only while `error + tolerance >= 20`, which for a
+#: trigger-on-exceed gate means **tolerance >= 10**. Below that, corrections land
+#: in the `sweep_exceeds_any_pulse` regime where NO duration is safe, and a gate
+#: meant to improve aim would start manufacturing overshoot with 2 commands to fix
+#: it. 10 is the tightest value the turn primitive can actually honour.
+#:
+#: ⚠️ This therefore catches only 2 of the 5 observed cases (10.607 and 11.452
+#: deg); 3.079, 7.360 and 7.304 still pass. Tightening further needs a shorter
+#: actuation floor or a tighter sweep bound, NOT a smaller number here.
+_POST_TURN_ALIGNMENT_TOLERANCE_DEGREES = 10.0
+
 
 def _realign_cannot_improve_the_landing(
     *,
@@ -11218,9 +11251,12 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                 float(reading_after_turn["vision_heading"]) + float(offset_after_turn)
             ) % 360
             fresh_aim_error = _heading_error_degrees(fresh_facing, fresh_bearing)
+            # Still floored by the turn primitive's own tolerance: asking for a
+            # landing tighter than the turn can deliver would spend the budget
+            # chasing a target it cannot hit.
             alignment_tolerance = min(
                 float(heading_tolerance_degrees),
-                float(vio_realign_threshold_degrees),
+                _POST_TURN_ALIGNMENT_TOLERANCE_DEGREES,
             )
             alignment: dict[str, Any] = {
                 "turn_displacement_m": float(turn_displacement),
