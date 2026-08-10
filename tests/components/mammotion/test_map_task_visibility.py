@@ -5069,13 +5069,15 @@ def test_turn_final_approach_scales_the_pulse_to_the_remaining_angle() -> None:
     assert info["applied"] is True
     assert info["degrees_per_second_source"] == "observed"
     assert info["degrees_per_second"] == pytest.approx(32.16, abs=0.01)
-    # beta31: the estimate alone wants 738.4 ms, but the 60 deg/s overshoot
-    # ceiling allows only (23.744 + 18) / 60 = 695.7 ms and is the tighter of the
-    # two, so it takes over here. Both land well inside tolerance; the 6%
-    # shortening is the documented cost of a bound that does not depend on the
-    # estimator being right.
-    assert info["reason"] == "bounded_by_max_rate_ceiling"
-    assert info["pulse_duration_ms"] == pytest.approx(695.7, abs=1.0)
+    # The estimate wants 738.4 ms and the measured sweep bound allows 743.6, so
+    # the estimate is the tighter of the two by 5 ms and takes it. beta31's
+    # C = 60 deg/s ceiling allowed only 695.7 here and overrode the estimate; the
+    # affine bound measured on 2026-08-09 restores the original, better-founded
+    # answer. That is the point of the change -- 60 deg/s over-estimated the
+    # slope, so it was shortening pulses that did not need shortening.
+    assert info["reason"] == "final_approach_scaled_to_remaining_angle"
+    assert info["pulse_duration_ms"] == pytest.approx(738.4, abs=1.0)
+    assert info["ceiling_pulse_duration_ms"] == pytest.approx(743.6, abs=1.0)
 
 
 def test_turn_final_approach_is_disabled_without_the_refresh_cadence() -> None:
@@ -5125,30 +5127,43 @@ def test_turn_final_approach_leaves_a_large_error_on_the_full_pulse() -> None:
 
 
 @pytest.mark.parametrize(
-    ("error", "binds"), [(71.0, True), (71.99, True), (72.01, False), (73.0, False)]
+    ("observed_rate", "binds"),
+    [(14.73, True), (25.0, True), (34.0, True), (37.0, False), (45.0, False)],
 )
-def test_turn_final_approach_ceiling_binding_threshold(
-    error: float, binds: bool
+def test_turn_final_approach_bound_binds_only_when_the_estimate_is_slow(
+    observed_rate: float, binds: bool
 ) -> None:
-    """Pins where the ceiling starts to bite, because it is not intuitive.
+    """Pins when the sweep bound takes over from the estimate, and when it does not.
 
-    A ceiling C binds when (|error| + tolerance) / C < pulse_duration, i.e. below
-    |error| = C * pulse_seconds - tolerance. At C = 60, a 1500 ms pulse and an
-    18 deg tolerance that is exactly 72 deg -- so the ceiling is active across
-    most of a normal final approach rather than being a rare backstop. That is
-    deliberate (it is the bound that does not depend on the estimator), but anyone
-    tuning C should know the threshold moves with it.
+    beta31's ceiling was a pure rate, so it bound purely on ERROR: below
+    C * pulse_seconds - tolerance, which at C = 60 was 72 deg. That made it the
+    active constraint across most of a normal final approach rather than a
+    backstop -- handover section 2.2's complaint.
+
+    The affine bound measured on 2026-08-09 does not work that way. It binds when
+    it is tighter than what the estimate wants, which is a statement about the
+    ESTIMATED RATE, not the error: a slow estimate asks for a long pulse and gets
+    capped, while an estimate at or above the configured 37 deg/s already asks
+    for less than the bound allows and is left alone.
+
+    Gate 5 attempt 5's geometry, 44.372 deg remaining. Its estimator had learned
+    14.73 deg/s from two stall-degraded pulses and wanted a full 1500 ms; the
+    bound allows 1259.3 and takes over, which is exactly the pulse that overshot.
+    At the configured 37 deg/s the estimate wants 1199 ms and the bound is not
+    consulted.
     """
     info = _turn_final_approach_pulse_ms(
-        heading_error_degrees=error,
+        heading_error_degrees=44.372,
         heading_tolerance_degrees=18.0,
-        observed_rotation_degrees=0.0,
-        observed_rotation_ms=0.0,
+        # One second of observation at the rate under test.
+        observed_rotation_degrees=observed_rate,
+        observed_rotation_ms=1000.0,
         default_degrees_per_second=37.0,
         pulse_duration_ms=1500.0,
         refresh_interval_ms=200,
     )
 
+    assert info["ceiling_pulse_duration_ms"] == pytest.approx(1259.3, abs=1.0)
     assert (info["reason"] == "bounded_by_max_rate_ceiling") is binds
 
 
@@ -5165,7 +5180,7 @@ def test_turn_final_approach_floors_the_pulse_so_the_mower_still_rotates() -> No
     )
 
     assert info["applied"] is True
-    assert info["pulse_duration_ms"] == 400.0
+    assert info["pulse_duration_ms"] == 200.0
 
 
 def test_a_re_aim_is_suppressed_where_the_bearing_is_ill_conditioned() -> None:
@@ -5299,7 +5314,10 @@ def test_turn_final_approach_rate_is_duration_normalised() -> None:
     )
 
     assert info["degrees_per_second"] == pytest.approx(33.72, abs=0.01)
-    assert info["pulse_duration_ms"] == pytest.approx(400.0)
+    # 10 deg at 33.72 deg/s is 296.6 ms, and with the floor at 200 the estimate
+    # is now honoured instead of being rounded up to a 400 ms minimum that would
+    # have swept ~13 deg for a 10 deg error.
+    assert info["pulse_duration_ms"] == pytest.approx(296.6, abs=1.0)
 
 
 def test_turn_final_approach_ceiling_shortens_the_gate5_overshoot_pulse() -> None:
@@ -5330,15 +5348,20 @@ def test_turn_final_approach_ceiling_shortens_the_gate5_overshoot_pulse() -> Non
     assert info["applied"] is True
     assert info["reason"] == "bounded_by_max_rate_ceiling"
     assert info["max_allowed_sweep_degrees"] == pytest.approx(62.372, abs=0.001)
-    assert info["pulse_duration_ms"] == pytest.approx(1039.5, abs=1.0)
+    # 1259.3 ms, not beta31's 1039.5: the affine bound measured on 2026-08-09
+    # permits a longer pulse here because C = 60 deg/s over-estimated the slope
+    # (measured 33.18) and so shortened pulses that did not need shortening.
+    assert info["pulse_duration_ms"] == pytest.approx(1259.3, abs=1.0)
 
     # At the rate the mower actually turned (32.736 deg/s) the shortened pulse
     # sweeps ~34.0 deg, leaving ~10.3 deg of error -- inside the 18 deg tolerance,
     # so the turn still ends on this pulse and costs no extra command, instead of
     # finishing 13.258 deg past the target.
     swept = 32.736 * (info["pulse_duration_ms"] / 1000)
-    assert swept == pytest.approx(34.0, abs=0.5)
-    assert abs(44.372 - swept) < 18.0
+    assert swept == pytest.approx(41.2, abs=0.5)
+    # Lands 3.2 deg short instead of 13.258 deg past. Still inside tolerance, so
+    # the turn ends on this pulse and costs no extra command.
+    assert 0 < 44.372 - swept < 18.0
 
 
 def test_turn_final_approach_ceiling_stays_out_of_the_way_on_large_turns() -> None:
@@ -5361,32 +5384,47 @@ def test_turn_final_approach_ceiling_stays_out_of_the_way_on_large_turns() -> No
     assert info["applied"] is False
     assert info["reason"] == "cruising_full_pulse_fits"
     assert info["pulse_duration_ms"] == 1500.0
-    assert info["ceiling_pulse_duration_ms"] == pytest.approx(1916.8, abs=1.0)
+    assert info["ceiling_pulse_duration_ms"] == pytest.approx(2575.1, abs=1.0)
 
 
 @pytest.mark.parametrize(
-    ("tolerance", "floor_binds"),
-    [(8.0, True), (11.9, True), (15.0, False), (18.0, False), (30.0, False)],
+    ("tolerance", "floor_binds", "no_safe_pulse"),
+    [
+        (3.0, True, True),
+        (5.5, True, True),
+        (8.0, True, False),
+        (11.9, False, False),
+        (18.0, False, False),
+        (30.0, False, False),
+    ],
 )
-def test_turn_final_approach_ceiling_vs_actuation_floor(
-    tolerance: float, floor_binds: bool
+def test_turn_final_approach_bound_vs_actuation_floor(
+    tolerance: float, floor_binds: bool, no_safe_pulse: bool
 ) -> None:
-    """Pins which safety bound wins when the two conflict, and where that starts.
+    """Pins which safety bound wins when the two conflict, and where each starts.
 
     The turn loop returns `target_heading_reached` as soon as the error is inside
     tolerance, so any pulse that runs has error > tolerance and the worst
-    acceptable sweep is > 2 * tolerance. At the 60 deg/s ceiling that is
-    > 2 * tolerance / 60 seconds -- which drops below the 400 ms actuation floor
-    once tolerance is under 12 deg.
+    acceptable sweep is > 2 * tolerance. Against the affine bound that permits
+    (2 * tolerance - 12) / 40 seconds, which drops below the 200 ms actuation
+    floor once tolerance is under ~10 deg.
 
-    When they conflict the FLOOR wins: an overshoot is recoverable by the next
-    pulse, but a pulse too short to actuate makes no progress at all and walks the
-    turn into `no_heading_progress` with its budget spent. The consequence is that
-    the anti-overshoot guarantee does NOT hold below ~12 deg of tolerance, so this
-    pins the boundary rather than pretending it does not exist.
+    There are now TWO ways to fail, and they are different:
 
-    The accepted profile runs `heading_tolerance_degrees: 18`, where the floor
-    never binds.
+    * `ceiling_below_actuation_floor` -- the bound wants a pulse shorter than the
+      mower reliably actuates. The FLOOR wins, deliberately: an overshoot is
+      recoverable by the next pulse, but a pulse too short to actuate makes no
+      progress and walks the turn into `no_heading_progress` with its budget
+      spent.
+    * `sweep_exceeds_any_pulse` -- the whole allowance is smaller than the
+      bound's 12 deg constant term, so NO duration is safe, because even the
+      shortest pulse can sweep past. Below ~6 deg of tolerance. This condition
+      did not exist under beta31's pure-rate ceiling, which always returned some
+      positive duration however small the allowance, and thereby implied a
+      guarantee it could not keep.
+
+    The accepted profile runs `heading_tolerance_degrees: 18`, where neither
+    binds.
     """
     info = _turn_final_approach_pulse_ms(
         heading_error_degrees=tolerance + 0.001,
@@ -5399,6 +5437,7 @@ def test_turn_final_approach_ceiling_vs_actuation_floor(
     )
 
     assert info["ceiling_below_actuation_floor"] is floor_binds
+    assert info["sweep_exceeds_any_pulse"] is no_safe_pulse
     assert info["pulse_duration_ms"] >= _MIN_SCALED_TURN_PULSE_MS
     if floor_binds:
         assert info["ceiling_pulse_duration_ms"] < _MIN_SCALED_TURN_PULSE_MS
@@ -5457,7 +5496,13 @@ async def test_vio_turn_scales_the_last_pulse_and_does_not_overshoot(
     result = await _vio_turn_to_heading(
         coordinator,
         target_vision_heading=3.62,
-        heading_tolerance_degrees=5.0,
+        # 18 deg, the accepted-profile tolerance, not the original 5. The sweep
+        # of 2026-08-09 measured a minimum sweep of ~12 deg for ANY pulse length,
+        # so a 5 deg tolerance is below the control scheme's achievable
+        # precision and `_vio_turn_budget_feasibility` now correctly refuses it
+        # up front with `turn_budget_infeasible`. Asking for 5 deg was always
+        # unachievable; the model only recently learned to say so.
+        heading_tolerance_degrees=18.0,
         angular_speed=500,
         pulse_duration_ms=1500,
         slow_threshold_degrees=0.0,
@@ -5474,12 +5519,13 @@ async def test_vio_turn_scales_the_last_pulse_and_does_not_overshoot(
     # Never turned past the target: no command may reverse direction.
     signs = {(c["angular_speed"] > 0) for c in result["command_results"] if c.get("ok")}
     assert len(signs) == 1, "turn reversed direction -- it overshot"
-    # beta31: the first pulse no longer cruises at the full 1500 ms. The initial
-    # error is 71.98 deg against a 5 deg tolerance, so the 60 deg/s overshoot
-    # ceiling allows (71.98 + 5) / 60 = 1.283 s and is the tighter bound. Pulses
-    # still shorten monotonically toward the target, which is what this test is
-    # really about.
-    assert durations[0] == pytest.approx(1.283, abs=0.002)
+    # The first pulse cruises at the full 1500 ms again: 71.98 deg of error
+    # against an 18 deg tolerance permits (71.98 + 18 - 12) / 40 = 1.950 s, so
+    # the bound is not the constraint. beta31's C = 60 ceiling capped it at
+    # 1.283 s here, which is the over-restriction the measured affine bound
+    # removes. Pulses still shorten monotonically toward the target, which is
+    # what this test is really about.
+    assert durations[0] == pytest.approx(1.5, abs=0.002)
     assert durations[-1] < durations[0]
     assert durations == sorted(durations, reverse=True)
     assert result["command_results"][-1]["final_approach"]["applied"] is True

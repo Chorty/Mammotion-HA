@@ -74,13 +74,13 @@ def test_helper_refuses_the_recorded_gate4_near_180_turn() -> None:
 
     assert feasibility["feasible"] is False
     assert feasibility["reason"] == "turn_budget"
-    # 16.5 deg/s (minimum observed) * 1.5 s = 24.75 deg/command;
-    # ceil(149.413 / 24.75) = 7 commands needed against a budget of 4.
-    assert feasibility["per_command_rotation_bound_degrees"] == pytest.approx(24.75)
+    # 14.4 deg/s (the measured minimum, lowered from an optimistic 16.5 on
+    # 2026-08-09) * 1.5 s = 21.6 deg/command.
+    assert feasibility["per_command_rotation_bound_degrees"] == pytest.approx(21.6)
     assert feasibility["rotation_bound_source"] == (
         "conservative_observed_rate_with_refresh"
     )
-    assert feasibility["estimated_commands_needed"] == 7
+    assert feasibility["estimated_commands_needed"] == 8
     assert feasibility["max_commands"] == 4
 
 
@@ -108,7 +108,7 @@ def test_helper_keeps_a_90_degree_junction_turn_feasible() -> None:
     assert feasibility["estimated_commands_needed"] == 4
     assert feasibility["max_commands"] == 4
     assert feasibility["command_count_model"] == "executor_pulse_policy_replay"
-    assert feasibility["modelled_pulse_durations_ms"] == [1500.0, 1387.5, 1005.9, 729.3]
+    assert feasibility["modelled_pulse_durations_ms"] == [1500.0, 1500.0, 1320.0, 844.8]
     # 90 deg * 0.0026 m/deg = 0.234 m stays under the 0.25 m cap. This headroom
     # is what bounds the per-degree constant from above: anything over
     # 0.25/90 = 0.002778 would refuse an L-path junction, which is the exact
@@ -127,7 +127,7 @@ def test_helper_refuses_when_estimated_translation_exceeds_the_cap() -> None:
         max_displacement_m=0.25,
     )
 
-    # 6 ceiling-aware commands fit the 8-command budget, but sweeping 130 deg at
+    # 6 bound-aware commands fit the 8-command budget, but sweeping 130 deg at
     # 0.0026 m/deg = 0.338 m would exceed the 0.25 m cap the run enforces anyway.
     # The two criteria are independent and the budget one must not mask this.
     assert feasibility["feasible"] is False
@@ -147,14 +147,18 @@ def test_feasibility_model_replays_the_executors_own_pulse_policy() -> None:
     two cannot drift again.
 
     The regression guard: at the accepted 4-command budget the two models
-    disagree over 100-117 deg. A closed form over full-length pulses says
-    ceil((105 - 18) / 24.75) = 4 commands and admits the turn; the real policy
-    needs 5, because the ceiling shortens every pulse after the first. Anything
-    in that band would have been dispatched and then aborted mid-turn after four
-    pulses and real translation. 117 deg is where the closed form itself gives
-    up, so the whole band was previously invisible.
+    disagree over roughly 96-104 deg. A closed form over full-length pulses says
+    ceil((100 - 18) / 21.6) = 4 commands and admits the turn; the real policy
+    needs 5, because the sweep bound shortens every pulse after the first.
+    Anything in that band would have been dispatched and then aborted mid-turn
+    after four pulses and real translation. Above 104 the closed form reaches 5
+    on its own, so the whole band was previously invisible.
+
+    The band moves whenever either the bound or the conservative rate changes --
+    it was 100-117 under beta31's pure-rate ceiling at 16.5 deg/s. It is the
+    DIVERGENCE that matters here, not its edges.
     """
-    error = 105.0
+    error = 100.0
     closed_form = math.ceil(
         (error - 18.0) / (_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND * 1.5)
     )
@@ -171,10 +175,9 @@ def test_feasibility_model_replays_the_executors_own_pulse_policy() -> None:
 
     assert closed_form == 4
     assert modelled == 5
-    # Full pulses while the error is above the 72 deg binding threshold, then
-    # monotonically shorter ones once the ceiling takes over. It is the tail the
-    # closed form cannot see.
-    assert pulses == [1500.0, 1500.0, 1225.0, 888.1, 643.9]
+    # Full pulses while the bound is slack, then monotonically shorter ones once
+    # it takes over. It is the tail the closed form cannot see.
+    assert pulses == [1500.0, 1500.0, 1500.0, 1030.0, 659.2]
     assert pulses == sorted(pulses, reverse=True)
 
     # And the guard now refuses it at the accepted 4-command budget instead of
@@ -222,36 +225,40 @@ def test_feasibility_estimator_seed_must_be_the_configured_rate() -> None:
     assert seeded_with_floor <= correct
 
 
-def test_conservative_rate_floor_is_known_optimistic() -> None:
-    """Pins a live inaccuracy so it cannot quietly become load-bearing.
+def test_conservative_rate_floor_is_now_below_the_measured_minimum() -> None:
+    """The floor finally says something true, and the L-path junction survives it.
 
-    `_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND` claims to be the minimum
-    rotation rate ever observed. It is not, and has not been moved: Gate 5
-    attempt 5 measured 14.490 deg/s against a delivered window, ~12% below it.
-    Lowering the constant is not a free correction -- at 14.4 deg/s a 90 deg
-    junction needs 5 commands against the accepted budget of 4, so a truthful
-    floor and L-path junctions cannot both hold at the current
-    `vio_turn_max_commands`. This test exists so that trade is a decision
-    somebody makes, not a comment somebody misses.
+    This constant claimed to be the minimum rotation rate ever observed while
+    sitting at 16.5 deg/s, above the 14.905 and 14.490 deg/s Gate 5 attempt 5
+    actually measured. beta32 recorded why it could not simply be lowered: at a
+    truthful value the ceiling-aware model needed 5 commands for a 90 deg
+    junction against a budget of 4, so "a truthful floor and L-path junctions are
+    mutually exclusive".
+
+    That trade is gone. Dropping `_MIN_SCALED_TURN_PULSE_MS` to its measured
+    200 ms and replacing the pure-rate ceiling with the measured affine sweep
+    bound both lengthen the modelled pulses, so the junction now fits at 14.4 --
+    and at any rate down to 14.0.
     """
     assert (
-        _VIO_TURN_MEASURED_MINIMUM_DEGREES_PER_SECOND
-        < _VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND
-    )
+        _VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND
+        < _VIO_TURN_MEASURED_MINIMUM_DEGREES_PER_SECOND
+    ), "the conservative floor must sit BELOW the slowest rate ever measured"
 
-    at_measured_minimum, _ = _vio_turn_commands_at_rate(
-        initial_error_degrees=90.0,
-        heading_tolerance_degrees=18.0,
-        degrees_per_second=_VIO_TURN_MEASURED_MINIMUM_DEGREES_PER_SECOND,
-        turn_degrees_per_second=37.0,
-        pulse_duration_ms=1500.0,
-        slow_pulse_duration_ms=700.0,
-        slow_threshold_degrees=15.0,
-        refresh_interval_ms=200,
-    )
-
-    assert at_measured_minimum == 5
-    assert at_measured_minimum > 4
+    for rate in (14.0, _VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND, 14.49, 16.5):
+        commands, _ = _vio_turn_commands_at_rate(
+            initial_error_degrees=90.0,
+            heading_tolerance_degrees=18.0,
+            degrees_per_second=rate,
+            turn_degrees_per_second=37.0,
+            pulse_duration_ms=1500.0,
+            slow_pulse_duration_ms=700.0,
+            slow_threshold_degrees=15.0,
+            refresh_interval_ms=200,
+        )
+        assert commands is not None and commands <= 4, (
+            f"a 90 deg junction must fit the 4-command budget at {rate} deg/s"
+        )
 
 
 def test_helper_uses_the_single_shot_quantum_without_refresh() -> None:

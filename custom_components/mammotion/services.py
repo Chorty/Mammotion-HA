@@ -7413,62 +7413,78 @@ async def _reconfirm_vio_feed_degraded(
 #: another pulse instead of overshooting and having to reverse. Only the
 #: fallback; the turn prefers the rate it measures during the run.
 _DEFAULT_TURN_DEGREES_PER_SECOND = 37.0
-#: Floor for a scaled turn pulse (~15 deg at the measured rate).
-#: NOT PROVEN: the shortest turn pulse ever measured is 700 ms. Rotation is
-#: proportional to duration under refresh, so a shorter pulse should simply turn
-#: less -- but the single-shot path had a hard actuation threshold (a 2000 ms
-#: single-shot pulse was a measured physical no-op on 2026-07-18), and no one has
-#: shown where the refreshed path's threshold is. To prove it: run
-#: `vio_turn_to_heading` at refresh 200 / angular 500 with `pulse_duration_ms`
-#: stepped down 700 -> 500 -> 400 -> 300 and find where measured rotation stops
-#: tracking duration.
-_MIN_SCALED_TURN_PULSE_MS = 400.0
-#: Upper bound on rotation rate, used ONLY to cap how long a turn pulse may run.
+#: Floor for a scaled turn pulse.
 #:
-#: This is the SYMMETRIC COUNTERPART to
-#: `_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND = 16.5`, and the two are supposed to
-#: disagree -- do not "reconcile" them. The floor is fail-closed for BUDGET
-#: (under-estimate rotation, so the feasibility guard refuses turns it cannot
-#: finish). This ceiling is fail-closed for OVERSHOOT (over-estimate rotation, so
-#: the pulse is cut short). Raising this value is the SAFE direction; lowering it
-#: weakens the guard.
+#: MEASURED 2026-08-09, closing the "NOT PROVEN" this constant carried since it
+#: was written. Its old docstring asked for exactly one experiment -- step
+#: `pulse_duration_ms` down at refresh 200 / angular 500 and find where measured
+#: rotation stops tracking duration -- and it was finally run: 35 cadence-intact
+#: pulses over 200-1711 ms across three sessions
+#: (docs/evidence-turn-pulse-duration-sweep-*.json).
 #:
-#: Why it exists: on 2026-08-08 Gate 5 attempt 5, turn pulse 3 rotated 57.630 deg
-#: with 44.372 deg remaining -- overshooting the target heading by 13.258 deg
-#: against an 18 deg tolerance, i.e. the run finished cleanly on 4.74 deg of
-#: margin. No rate ESTIMATE could have prevented it: the mower turned at 32.74
-#: deg/s on elapsed time while every sample available to the estimator said ~14.7
-#: deg/s, so the pulse was correctly judged "cruising" and ran full length. Only a
-#: hard ceiling bounds a 2.2x outlier.
-#: Evidence: docs/evidence-gate5-attempt5-segment1-raw-20260808.json.
+#: 200 ms ACTUATES. Ten pulses at ~200 ms windows rotated 5.44-15.20 deg, every
+#: one of them real motion. There is no actuation threshold anywhere near 400 ms,
+#: so the old value was costing precision for nothing: it forced a minimum pulse
+#: that sweeps ~11 deg at the measured rate, which is most of an 18 deg tolerance
+#: band and is why small corrections overshot and oscillated.
 #:
-#: WHY 60 AND NOT THE OBSERVED MAXIMUM. The highest rate ever recorded is
-#: 49.5649 deg/s (2026-08-04 characterization run 3,
-#: docs/evidence-turnchar-beta19-analysis-20260804.json:117). Anchoring the
-#: constant there would leave under 1% of margin against a single run's maximum,
-#: while this file's convention for the comparable translation bound is +7.9%
-#: with both walls documented. It is also the wrong statistic: the whole reason
-#: this guard exists is an outlier nobody can explain, so "the largest value seen
-#: so far" is a weak bound on what the hardware can do. 60 keeps ~21%.
+#: 200 is the schema minimum for `pulse_duration_ms`, so it cannot go lower
+#: without widening that too, and nothing below 200 ms has been measured.
+_MIN_SCALED_TURN_PULSE_MS = 200.0
+#: Upper envelope on how far ONE turn pulse can sweep, as an affine function of
+#: its delivered window: ``sweep <= SLOPE * seconds + OFFSET``. Used only to cap
+#: how long a pulse may run. Raising either value weakens the guard; lowering
+#: them is the safe direction.
 #:
-#: THE TRADE-OFF, stated so it is not rediscovered as a bug. A ceiling binds when
-#: (|error| + tolerance) / ceiling < pulse_duration, and it beats the estimate
-#: when the estimated rate is below ceiling * |error| / (|error| + tolerance). At
-#: 60 that threshold is 34.1 deg/s for the Gate 5 geometry, so the ceiling is no
-#: longer a rare backstop -- it routinely becomes the active bound on final
-#: approach, and pulses are systematically a little shorter. That costs at most an
-#: extra short pulse against a 4-command turn budget (attempt 5 used 3), and it
-#: buys a bound that does not depend on the estimator being right. The 2026-07-27
-#: replay case moves 738.4 -> 695.7 ms, a 6% shortening.
+#: WHY AFFINE, AND NOT A RATE. beta31 bounded sweep as ``C * seconds`` with
+#: C = 60 deg/s, on the theory that rotation is proportional to duration. It is
+#: not. Measured 2026-08-09 over 35 cadence-intact pulses spanning 200-1711 ms
+#: (docs/evidence-turn-pulse-duration-sweep-*.json), the best fit is
 #:
-#: COUPLING TO A PROFILE KEY. This bound reads `heading_tolerance_degrees`, which
-#: IS a frozen `LUBA_ACCEPTANCE_PROFILE` key (18 on the accepted profile). Turn
-#: dynamics therefore now depend on the tolerance, which was not true before
-#: beta31: raising the tolerance lengthens the permitted pulse. Below ~10 deg of
-#: tolerance the ceiling falls under `_MIN_SCALED_TURN_PULSE_MS` and the floor
-#: wins, so the anti-overshoot guarantee does NOT hold there -- see
-#: `_turn_final_approach_pulse_ms` and its parametrised test.
-_VIO_TURN_CONSERVATIVE_MAX_DEGREES_PER_SECOND = 60.0
+#:     rotation = 33.18 deg/s * seconds + 4.63 deg      residual sd 5.23 deg
+#:
+#: A pure rate cannot bound that shape: the C needed to cover the worst case is
+#: ~110 deg/s at 0.2 s and ~43 deg/s at 1.5 s, so any single constant is either
+#: useless at long pulses or ruinous at short ones. C = 60 was both -- it
+#: under-bounded short pulses, which is where the overshoots actually happened,
+#: while over-restricting long ones and costing turn budget.
+#:
+#: HOW THE NUMBERS WERE CHOSEN. The envelope must bound every sample, not fit
+#: them. At slope 40 the smallest offset that covers all 35 is 9.09 deg; 12 deg
+#: is used, which clears the worst observed sample by 2.9 deg and sits 1.7 sd
+#: above the best fit at 0.2 s rising to 3.4 sd at 1.5 s. It is deliberately an
+#: envelope with margin rather than a regression line.
+#:
+#: WHAT CHANGED IN PRACTICE. At the tolerance edge the two forms agree almost
+#: exactly (an 18 deg error at 18 deg tolerance permits 600 ms either way), so
+#: the well-tested case is untouched. Above that the new bound is more permissive
+#: -- 1259 ms against 1040 for the Gate 5 geometry -- because 60 deg/s badly
+#: over-estimated the slope, and that headroom goes straight back into the turn
+#: budget. Below it the bound is tighter, which is correct: that is where the
+#: constant term dominates and where beta31's ceiling silently under-bounded.
+#:
+#: ⚠️ The per-pulse scatter this envelope covers is large and irreducible: ten
+#: pulses at matched ~200 ms windows spread 5.44-15.20 deg, 2.79x, with duration,
+#: cadence and direction all held constant. Rotation cannot be predicted from
+#: duration to better than ~40% at p90. That is why the ESTIMATE in
+#: `_turn_final_approach_pulse_ms` can only ever get near the target and this
+#: bound, which does not depend on the estimate being right, carries the safety.
+_VIO_TURN_SWEEP_BOUND_DEGREES_PER_SECOND = 40.0
+_VIO_TURN_SWEEP_BOUND_OFFSET_DEGREES = 12.0
+
+
+def _max_turn_pulse_ms_for_sweep(allowed_sweep_degrees: float) -> float:
+    """Longest pulse whose worst-case sweep stays within ``allowed_sweep``.
+
+    Inverts ``sweep <= SLOPE * seconds + OFFSET``. Returns 0.0 when the allowance
+    is smaller than the offset -- i.e. when even the shortest possible pulse can
+    sweep past it, so no duration is safe and the caller must decide between
+    overshooting and not moving.
+    """
+    usable = allowed_sweep_degrees - _VIO_TURN_SWEEP_BOUND_OFFSET_DEGREES
+    if usable <= 0:
+        return 0.0
+    return (usable / _VIO_TURN_SWEEP_BOUND_DEGREES_PER_SECOND) * 1000
 
 
 def _turn_final_approach_pulse_ms(
@@ -7509,11 +7525,17 @@ def _turn_final_approach_pulse_ms(
 
     * the *estimated* rate shortens the pulse to the angle that remains, which is
       an accuracy optimisation and can be wrong in either direction;
-    * ``_VIO_TURN_CONSERVATIVE_MAX_DEGREES_PER_SECOND`` caps the pulse so that even
-      if the mower turns at the fastest rate ever observed, it cannot sweep past
-      the far edge of tolerance. That is a safety bound, it only ever shortens, and
-      it applies even when the estimate says a full pulse fits -- which is exactly
+    * the affine SWEEP BOUND (``_VIO_TURN_SWEEP_BOUND_*``) caps the pulse so that
+      even at the worst sweep ever measured for that duration, it cannot pass the
+      far edge of tolerance. That is a safety bound, it only ever shortens, and it
+      applies even when the estimate says a full pulse fits -- which is exactly
       the case that overshot on 2026-08-08.
+
+    The estimate is the weak half and is known to be. Rotation cannot be
+    predicted from duration to better than ~40% at p90: ten pulses at matched
+    ~200 ms windows spread 5.44-15.20 deg with duration, cadence and direction
+    all held constant (2026-08-09, 35 samples). The bound therefore carries the
+    safety and the estimate only improves the landing.
     """
     info: dict[str, Any] = {
         "applied": False,
@@ -7522,9 +7544,8 @@ def _turn_final_approach_pulse_ms(
         "heading_tolerance_degrees": heading_tolerance_degrees,
         "degrees_per_second": None,
         "degrees_per_second_source": None,
-        "max_rate_ceiling_degrees_per_second": (
-            _VIO_TURN_CONSERVATIVE_MAX_DEGREES_PER_SECOND
-        ),
+        "sweep_bound_degrees_per_second": _VIO_TURN_SWEEP_BOUND_DEGREES_PER_SECOND,
+        "sweep_bound_offset_degrees": _VIO_TURN_SWEEP_BOUND_OFFSET_DEGREES,
         "max_allowed_sweep_degrees": None,
         "ceiling_pulse_duration_ms": None,
         "pulse_duration_ms": pulse_duration_ms,
@@ -7548,26 +7569,29 @@ def _turn_final_approach_pulse_ms(
         info["reason"] = "no_usable_rotation_rate"
         return info
 
-    # Safety ceiling, independent of the estimate: even at the fastest rate ever
-    # observed, a pulse must not be able to sweep past the far edge of tolerance.
-    # Landing anywhere inside the tolerance band ends the turn, so the worst
-    # acceptable sweep is the remaining error plus the band.
+    # Safety bound, independent of the estimate: even at the worst sweep ever
+    # measured for a pulse of this length, it must not pass the far edge of
+    # tolerance. Landing anywhere inside the tolerance band ends the turn, so the
+    # worst acceptable sweep is the remaining error plus the band.
     max_allowed_sweep = abs(heading_error_degrees) + heading_tolerance_degrees
-    ceiling_ms = (
-        max_allowed_sweep / _VIO_TURN_CONSERVATIVE_MAX_DEGREES_PER_SECOND
-    ) * 1000
+    ceiling_ms = _max_turn_pulse_ms_for_sweep(max_allowed_sweep)
     info["max_allowed_sweep_degrees"] = round(max_allowed_sweep, 3)
     info["ceiling_pulse_duration_ms"] = round(ceiling_ms, 1)
-    # The two safety bounds can conflict at a tight tolerance: below ~12 deg the
-    # ceiling asks for a pulse shorter than the actuation floor (at tolerance 8 it
-    # is 267 ms against a 400 ms floor). THE FLOOR WINS, deliberately -- an
-    # overshoot is recoverable by the next pulse, whereas a pulse too short to
+    # The two safety bounds still conflict at a tight tolerance, and now there is
+    # a second, sharper way to fail. THE FLOOR WINS in both cases, deliberately:
+    # an overshoot is recoverable by the next pulse, whereas a pulse too short to
     # actuate makes no progress at all and walks the turn into
-    # `no_heading_progress` with the budget spent. Surfaced rather than resolved
-    # silently, because it means the anti-overshoot guarantee does NOT hold at a
-    # tight tolerance. It does hold on the accepted profile, whose
-    # `heading_tolerance_degrees` is 18.
+    # `no_heading_progress` with the budget spent. Both are surfaced rather than
+    # resolved silently, because they mean the anti-overshoot guarantee does NOT
+    # hold there.
+    #
+    # `sweep_exceeds_any_pulse` is the sharp one: when the whole allowance is
+    # smaller than the bound's constant term, NO pulse duration is safe, because
+    # even the shortest can sweep past. Dropping the actuation floor to 200 ms
+    # made this reachable in practice -- it needs a tolerance under ~6 deg -- and
+    # it is a genuinely different condition from merely wanting a short pulse.
     info["ceiling_below_actuation_floor"] = ceiling_ms < _MIN_SCALED_TURN_PULSE_MS
+    info["sweep_exceeds_any_pulse"] = ceiling_ms <= 0
 
     needed_ms = (abs(heading_error_degrees) / rate) * 1000
     if needed_ms >= pulse_duration_ms:
@@ -7646,27 +7670,25 @@ def _turn_final_approach_pulse_ms(
 #:   exists -- so without refresh the translation criterion is still left to
 #:   the runtime displacement cap instead of estimated.
 #:
-#: ⚠️ 16.5 IS NO LONGER A FLOOR, and deliberately has not been moved. Gate 5
-#: attempt 5 measured 30.460 deg over a 2043.622 ms delivered window (14.905
-#: deg/s) and 22.174 deg over 1530.326 ms (14.490 deg/s) -- both BELOW this
-#: constant, which claims to be the minimum ever observed. They were invisible
-#: until beta31 started dividing by the delivered window instead of the
-#: commanded one; on the old denominator the second reads 14.78 and the first
-#: 20.31. Evidence:
-#: docs/evidence-gate5-attempt5-segment1-raw-20260808.json.
+#: LOWERED 16.5 -> 14.4 on 2026-08-09, closing an item that had been open since
+#: beta32. Gate 5 attempt 5 measured 14.905 and 14.490 deg/s against delivered
+#: windows -- both BELOW the 16.5 this constant claimed as a minimum -- but
+#: lowering it then would have cost the 90 deg L-path junction, because the
+#: ceiling-aware model needed 5 commands against a budget of 4. beta32 recorded
+#: that as "a truthful floor and L-path junctions are mutually exclusive".
 #:
-#: Lowering it to 14.4 is NOT a free correction: at that rate the ceiling-aware
-#: model below needs 5 commands for a 90 deg junction against a 4-command
-#: budget, so a truthful floor and L-path junctions are mutually exclusive at
-#: the current `vio_turn_max_commands`. Resolving that is a capability decision
-#: (widen the turn overshoot allowance, or raise the budget -- a
-#: `LUBA_ACCEPTANCE_PROFILE` key), not a constant edit, and it is tracked in
-#: docs/HANDOVER-beta31-20260809.md. Until then this guard is fail-closed with
-#: respect to the PULSE POLICY (modelled exactly, below) and ~12% optimistic
-#: with respect to the RATE, so the admitted band 86-100 deg is approximate.
-#: `test_conservative_rate_floor_is_known_optimistic` pins the gap so it cannot
-#: be forgotten.
-_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND = 16.5
+#: That is no longer true. Dropping `_MIN_SCALED_TURN_PULSE_MS` to its measured
+#: 200 ms and replacing the pure-rate ceiling with the measured affine sweep
+#: bound both lengthen the modelled pulses, so a 90 deg junction now completes in
+#: 4 commands at any rate down to 14.0 deg/s. The trade that forced the
+#: optimistic value is gone, and the constant can finally say something true.
+#:
+#: Verified against every retained real turn at the new value: the four
+#: 2026-08-04 characterization turns still admit at their 8-command budget, and
+#: the failed Gate 4 retry's 167.4 deg still refuses at 4. ⚠️ The -170 deg
+#: characterization turn now needs 8 of 8 commands, so it sits exactly at its
+#: budget with no margin.
+_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND = 14.4
 #: The lowest rotation rate ever measured against a delivered window. Not used
 #: to plan anything -- it exists so the staleness of the constant above is a
 #: tested fact rather than a comment.
