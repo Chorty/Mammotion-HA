@@ -56,7 +56,18 @@ JUNCTION_MAX_DEGREES = 70.0
 #: Leg length. Long enough that the linear phase runs multiple pulses and the
 #: VIO forward-heading offset gets refreshed (it needs >= 0.05 m of travel),
 #: short enough that four of them stay inside a mapped area.
-LEG_METRES = 0.9
+#:
+#: 0.9 -> 0.7 on 2026-08-09. `max_linear_commands: 3` at ~0.35 m per pulse gives
+#: about 1.05 m of travel budget, and cross-track error makes the real path
+#: longer than the straight-line leg -- so a 0.9 m leg leaves roughly 0.15 m of
+#: margin and any single bad pulse exhausts it. That is how the 21:02 run ended:
+#: segment 3 stopped on `max_linear_commands_reached` 0.164 m from target,
+#: 1.4 cm outside tolerance, having driven 102% of the way along the leg.
+#:
+#: This is a TEST-GEOMETRY change, not a fix. The underlying limit is
+#: `max_linear_commands`, which is a frozen `LUBA_ACCEPTANCE_PROFILE` key;
+#: shortening the leg buys the same margin without un-accepting the profile.
+LEG_METRES = 0.7
 #: Turn pattern across the three junctions: right, left, right. Alternating
 #: keeps the path compact and exercises both rotation directions, which a
 #: single-handed zigzag would not.
