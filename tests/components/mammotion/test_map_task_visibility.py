@@ -119,6 +119,7 @@ from custom_components.mammotion.services import (
     _vio_segment_calibration_drive,
     _vio_turn_probe,
     _vio_turn_to_heading,
+    _vio_turn_to_heading_staged,
     _wrap_exclusive_manual_motion,
 )
 
@@ -11458,3 +11459,189 @@ async def test_force_map_resync_reports_sync_failure_without_regen() -> None:
     assert "geojson_regenerated" not in result["steps"]
     fake.manager.regenerate_stale_geojson.assert_not_called()
     assert result["last_map_task_error"] == "map_sync: RuntimeError"
+
+
+#: Patch target for the module under test. The staged-turn tests replace the turn
+#: primitive itself, so they must patch the name `services` resolves, not the one
+#: this test module imported.
+SERVICES = "custom_components.mammotion.services"
+
+
+def _staged_turn_harness(
+    *,
+    direct_stop_reason: str,
+    stage_displacement: float = 0.02,
+    stage_stop_reason: str = "target_heading_reached",
+) -> tuple[list[dict[str, object]], dict[str, float], object]:
+    """Fake `_vio_turn_to_heading` that refuses once, then honours each stage.
+
+    Returns the recorded calls, the mutable vision-heading state the fake keeps in
+    sync with the stages it "executes", and the patch target.
+    """
+    calls: list[dict[str, object]] = []
+    state = {"heading": 0.0}
+
+    async def fake_turn(_coordinator, **kwargs):
+        calls.append(dict(kwargs))
+        if len(calls) == 1:
+            return {"stop_reason": direct_stop_reason, "turn_feasibility": {"x": 1}}
+        state["heading"] = float(kwargs["target_vision_heading"])
+        return {
+            "stop_reason": stage_stop_reason,
+            "commands_sent": 2,
+            "motion_refresh_commands_sent": 5,
+            "command_results": [{"stage": len(calls) - 1}],
+            "samples": [],
+            "final_displacement_m": stage_displacement,
+        }
+
+    return calls, state, fake_turn
+
+
+@pytest.mark.asyncio
+async def test_staged_turn_passes_a_dispatchable_turn_straight_through() -> None:
+    """A turn the primitive accepts is returned untouched, with no staging."""
+    calls, _state, fake_turn = _staged_turn_harness(
+        direct_stop_reason="target_heading_reached"
+    )
+    with patch(f"{SERVICES}._vio_turn_to_heading", fake_turn):
+        result = await _vio_turn_to_heading_staged(
+            MagicMock(),
+            target_vision_heading=40.0,
+            heading_tolerance_degrees=18.0,
+            max_displacement_m=0.3,
+        )
+
+    assert result["stop_reason"] == "target_heading_reached"
+    assert "staged_turn" not in result
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_staged_turn_only_decomposes_a_budget_refusal() -> None:
+    """A turn that RAN and failed is not retried in pieces.
+
+    `turn_budget_infeasible` sends zero commands, so decomposing costs nothing.
+    Every other failure means something is wrong -- a stale feed, a lost
+    transport, no rotation -- and slicing it up would just fail more slowly.
+    """
+    calls, _state, fake_turn = _staged_turn_harness(
+        direct_stop_reason="no_heading_progress"
+    )
+    with patch(f"{SERVICES}._vio_turn_to_heading", fake_turn):
+        result = await _vio_turn_to_heading_staged(
+            MagicMock(),
+            target_vision_heading=170.0,
+            heading_tolerance_degrees=18.0,
+            max_displacement_m=0.3,
+        )
+
+    assert result["stop_reason"] == "no_heading_progress"
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_staged_turn_splits_a_refused_180_into_bounded_stages() -> None:
+    """A 177 deg opening turn -- refused as one call -- completes in stages.
+
+    This is the case an operator hits by clicking a point behind the mower. A
+    single 180 deg turn wants 8 commands against a budget of 4 (measured
+    2026-08-09), and nothing can preflight it because no feed reports a
+    stationary mower's orientation.
+    """
+    calls, state, fake_turn = _staged_turn_harness(
+        direct_stop_reason="turn_budget_infeasible"
+    )
+
+    def fake_reading(_coordinator):
+        return {"vio_state": 2, "vision_heading": state["heading"]}
+
+    with (
+        patch(f"{SERVICES}._vio_turn_to_heading", fake_turn),
+        patch(f"{SERVICES}._vio_reading", fake_reading),
+    ):
+        result = await _vio_turn_to_heading_staged(
+            MagicMock(),
+            target_vision_heading=177.0,
+            heading_tolerance_degrees=18.0,
+            max_displacement_m=0.3,
+        )
+
+    assert result["staged_turn"] is True
+    assert result["stop_reason"] == "target_heading_reached"
+    # No stage may exceed the validated 60 deg magnitude.
+    steps = [abs(float(stage["step_degrees"])) for stage in result["stages"]]
+    assert steps and max(steps) <= 60.0 + 1e-9
+    # Totals roll up rather than reporting only the last stage.
+    assert result["commands_sent"] == 2 * len(result["stages"])
+    assert result["motion_refresh_commands_sent"] == 5 * len(result["stages"])
+    assert len(result["command_results"]) == len(result["stages"])
+
+
+@pytest.mark.asyncio
+async def test_staged_turn_budgets_translation_across_the_whole_turn() -> None:
+    """Each stage gets only the translation the earlier stages left.
+
+    Without this, four stages could each drift the full `max_displacement_m`
+    while every individual call looked compliant -- four times the cap the
+    profile actually grants a turn.
+    """
+    calls, state, fake_turn = _staged_turn_harness(
+        direct_stop_reason="turn_budget_infeasible", stage_displacement=0.1
+    )
+
+    def fake_reading(_coordinator):
+        return {"vio_state": 2, "vision_heading": state["heading"]}
+
+    with (
+        patch(f"{SERVICES}._vio_turn_to_heading", fake_turn),
+        patch(f"{SERVICES}._vio_reading", fake_reading),
+    ):
+        result = await _vio_turn_to_heading_staged(
+            MagicMock(),
+            target_vision_heading=177.0,
+            heading_tolerance_degrees=18.0,
+            max_displacement_m=0.3,
+        )
+
+    offered = [float(call["max_displacement_m"]) for call in calls[1:]]
+    assert offered[0] == pytest.approx(0.3)
+    for earlier, later in zip(offered, offered[1:], strict=False):
+        assert later < earlier
+    assert float(result["final_displacement_m"]) <= 0.3 + 1e-9
+
+
+@pytest.mark.asyncio
+async def test_staged_turn_reports_the_original_refusal_when_staging_cannot_help() -> (
+    None
+):
+    """A 60 deg stage refused too means the budget, not the rotation, is the problem.
+
+    Slicing finer cannot fix a budget that dispatches nothing, so the original
+    `turn_budget_infeasible` is reported rather than a staging failure -- keeping
+    the feasibility math that explains why.
+    """
+    calls, state, fake_turn = _staged_turn_harness(
+        direct_stop_reason="turn_budget_infeasible",
+        stage_stop_reason="turn_budget_infeasible",
+    )
+
+    def fake_reading(_coordinator):
+        return {"vio_state": 2, "vision_heading": state["heading"]}
+
+    with (
+        patch(f"{SERVICES}._vio_turn_to_heading", fake_turn),
+        patch(f"{SERVICES}._vio_reading", fake_reading),
+    ):
+        result = await _vio_turn_to_heading_staged(
+            MagicMock(),
+            target_vision_heading=177.0,
+            heading_tolerance_degrees=18.0,
+            max_displacement_m=0.3,
+        )
+
+    assert result["stop_reason"] == "turn_budget_infeasible"
+    assert result["staging_cannot_help"] is True
+    assert result["turn_feasibility"] is not None
+    # It gave up after the first refused stage rather than burning all four.
+    assert len(result["stages"]) == 1

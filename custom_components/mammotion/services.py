@@ -8510,6 +8510,158 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
     return result
 
 
+#: Largest rotation attempted in one stage of a staged turn, in degrees.
+#: 60 is not a guess -- every validation run since 2026-08-09 has driven three
+#: 60 deg junctions, and `--reposition` accumulated a full 180 deg out of three
+#: of them on 2026-08-09. It is the most-exercised turn magnitude on this
+#: hardware.
+_STAGED_TURN_STAGE_DEGREES = 60.0
+#: Stages allowed before giving up. A heading error is normalised to +/-180, so
+#: at 60 deg a stage three always suffices; the fourth is slack for a stage that
+#: under-rotates.
+_MAX_TURN_STAGES = 4
+
+
+async def _vio_turn_to_heading_staged(
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    target_vision_heading: float,
+    heading_tolerance_degrees: float,
+    max_displacement_m: float,
+    **turn_kwargs: Any,
+) -> dict[str, Any]:
+    """Turn to a vision heading, splitting a rotation too large to dispatch.
+
+    A single ``_vio_turn_to_heading`` call is refused pre-dispatch when the
+    rotation needs more than ``max_commands`` pulses or more translation than
+    ``max_displacement_m``. Measured 2026-08-09: a 180 deg turn wants 8 commands
+    against a budget of 4 and 0.468 m of drift against a 0.30 m cap, and the
+    largest single turn that dispatches is ~114 deg.
+
+    **Chaining works where one call does not, and that is not a loophole.** Each
+    call gets its own command budget and its own displacement allowance, which is
+    exactly why three chained 60 deg junctions accumulate 180 deg on hardware
+    (`--reposition`, 2026-08-09) while one 180 deg turn is refused. This makes the
+    same decomposition available to a segment's OPENING turn, which is the one
+    rotation nothing can preflight -- no feed reports a stationary mower's
+    orientation, so a user clicking a point behind the mower could only discover
+    the problem as a `turn_budget_infeasible` refusal.
+
+    Deliberately tries the direct turn FIRST and only decomposes on a
+    ``turn_budget_infeasible`` refusal, which sends zero commands. Any other
+    failure (stale feed, lost transport, no progress) is returned untouched --
+    those mean something is wrong, and retrying a broken turn in smaller pieces
+    would just fail more slowly.
+
+    The residual is left to the caller's post-turn alignment gate. Stages rotate
+    toward a FIXED vision heading and do not re-derive the bearing to the target,
+    so the translation they accumulate leaves a map-frame aim error behind. That
+    is precisely what `post_turn_alignment` measures and corrects, so re-deriving
+    here would duplicate it.
+
+    ⚠️ Translation is budgeted across the WHOLE staged turn, not per stage. Each
+    stage is given only what is left, so a staged turn may not translate further
+    than a single turn was allowed to. Without that, four stages could drift four
+    times the cap while every individual call looked compliant.
+    """
+    direct = await _vio_turn_to_heading(
+        coordinator,
+        target_vision_heading=target_vision_heading,
+        heading_tolerance_degrees=heading_tolerance_degrees,
+        max_displacement_m=max_displacement_m,
+        **turn_kwargs,
+    )
+    if direct.get("stop_reason") != "turn_budget_infeasible":
+        return direct
+
+    staged: dict[str, Any] = {
+        "staged_turn": True,
+        "stage_degrees": _STAGED_TURN_STAGE_DEGREES,
+        "max_stages": _MAX_TURN_STAGES,
+        "direct_refusal": direct.get("turn_feasibility"),
+        "stages": [],
+        "commands_sent": 0,
+        "motion_refresh_commands_sent": 0,
+        "command_results": [],
+        "samples": [],
+        "final_displacement_m": 0.0,
+        "turn_feasibility": direct.get("turn_feasibility"),
+        "stop_reason": None,
+    }
+    displacement_budget = float(max_displacement_m)
+
+    for _ in range(_MAX_TURN_STAGES):
+        reading = _vio_reading(coordinator)
+        current = reading.get("vision_heading")
+        if reading.get("vio_state") != _VIO_STATE_ACTIVE or current is None:
+            staged["stop_reason"] = "staged_turn_vio_unavailable"
+            return staged
+        remaining = _heading_error_degrees(float(current), target_vision_heading)
+        if abs(remaining) <= heading_tolerance_degrees:
+            staged["stop_reason"] = "target_heading_reached"
+            return staged
+        if displacement_budget <= 0:
+            staged["stop_reason"] = "staged_turn_translation_budget_exhausted"
+            return staged
+        step = max(
+            -_STAGED_TURN_STAGE_DEGREES,
+            min(_STAGED_TURN_STAGE_DEGREES, remaining),
+        )
+        stage_target = _normalized_heading_degrees(float(current) + step)
+        stage = await _vio_turn_to_heading(
+            coordinator,
+            target_vision_heading=float(stage_target or 0.0),
+            heading_tolerance_degrees=heading_tolerance_degrees,
+            max_displacement_m=displacement_budget,
+            **turn_kwargs,
+        )
+        moved = float(stage.get("final_displacement_m") or 0.0)
+        displacement_budget -= moved
+        staged["commands_sent"] += int(stage.get("commands_sent") or 0)
+        staged["motion_refresh_commands_sent"] += int(
+            stage.get("motion_refresh_commands_sent") or 0
+        )
+        staged["command_results"].extend(stage.get("command_results") or [])
+        staged["samples"].extend(stage.get("samples") or [])
+        staged["final_displacement_m"] += moved
+        staged["stages"].append(
+            {
+                "target_vision_heading": round(float(stage_target or 0.0), 3),
+                "remaining_before_degrees": round(remaining, 3),
+                "step_degrees": round(step, 3),
+                "stop_reason": stage.get("stop_reason"),
+                "commands_sent": int(stage.get("commands_sent") or 0),
+                "displacement_m": round(moved, 4),
+            }
+        )
+        if stage.get("stop_reason") == "turn_budget_infeasible":
+            # A stage this small being refused too means the rotation was never
+            # the problem -- the budget cannot dispatch ANY turn, so slicing it
+            # finer cannot help. Report the original refusal rather than dressing
+            # it up as a staging failure, and keep the feasibility math that says
+            # why. Pinned by test_vector_segment_surfaces_the_refusal_stop_reason.
+            staged["stop_reason"] = "turn_budget_infeasible"
+            staged["turn_feasibility"] = stage.get("turn_feasibility") or direct.get(
+                "turn_feasibility"
+            )
+            staged["staging_cannot_help"] = True
+            return staged
+        if stage.get("stop_reason") != "target_heading_reached":
+            staged["stop_reason"] = "staged_turn_stage_failed"
+            staged["failed_stage_reason"] = stage.get("stop_reason")
+            return staged
+
+    reading = _vio_reading(coordinator)
+    current = reading.get("vision_heading")
+    if current is not None and abs(
+        _heading_error_degrees(float(current), target_vision_heading)
+    ) <= float(heading_tolerance_degrees):
+        staged["stop_reason"] = "target_heading_reached"
+    else:
+        staged["stop_reason"] = "staged_turn_stages_exhausted"
+    return staged
+
+
 def _raw_segment_current_point(telemetry: dict[str, Any]) -> dict[str, float] | None:
     """Return the current map-local point from telemetry, if available."""
     position = telemetry.get("position", {})
@@ -11109,7 +11261,15 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                 float(target_heading) - float(offset)
             )
             vio_info["target_vision_heading"] = target_vision
-            turn_result = await _vio_turn_to_heading(
+            # STAGED, and only here. This is the segment's OPENING turn -- the one
+            # rotation nothing can preflight, because no feed reports a stationary
+            # mower's orientation (beta19), so an operator clicking a point behind
+            # the mower can only discover it as a pre-dispatch refusal. The
+            # mid-drive re-aim and the post-turn correction below deliberately
+            # keep calling `_vio_turn_to_heading` directly: their rotations are
+            # small by construction, so infeasibility there means something is
+            # wrong rather than something is large.
+            turn_result = await _vio_turn_to_heading_staged(
                 coordinator,
                 target_vision_heading=float(target_vision or 0.0),
                 heading_tolerance_degrees=heading_tolerance_degrees,
@@ -11220,6 +11380,18 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
             result["stop_reason"] = "turn_budget_infeasible"
         else:
             result["stop_reason"] = "turn_phase_incomplete"
+        # A staged opening turn fails with its own reasons, and flattening them
+        # all into `turn_phase_incomplete` would hide WHICH stage broke and how
+        # much translation it had already spent. The stage record is the only
+        # place that says so.
+        if turn_result.get("staged_turn"):
+            result["staged_turn"] = {
+                "stages": turn_result.get("stages"),
+                "stop_reason": turn_result.get("stop_reason"),
+                "failed_stage_reason": turn_result.get("failed_stage_reason"),
+                "final_displacement_m": turn_result.get("final_displacement_m"),
+                "direct_refusal": turn_result.get("direct_refusal"),
+            }
         return result
 
     # A nominally in-place VIO turn can translate materially. Gate 4 on
