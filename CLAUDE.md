@@ -2,35 +2,100 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Current P0 Handoff
+## Start here
 
-> ⚠️ **This section is history from 2026-08-05/08. For current state read
-> "Current build: `0.6.4-beta39`" below, and `docs/NEXT-SESSION.md` first.** The
-> host and branch are both at beta39, the motion gate is ARMED, and several
-> claims in this section have since been refuted by measurement — notably the
-> "unexplained" turn-rate variance (§ rate spread) and the turn-budget framing.
-> Keep it for the Gate 4/5 provenance; do not act on its build state.
+**Read `docs/NEXT-SESSION.md` first**, then the "Current build" section directly below.
+Those two carry the live state. Everything from "Gate history" down is settled
+provenance — accurate as a record, but **do not act on any build state it
+describes**, and note that measurement has since refuted several of its claims
+(the "unexplained" turn-rate variance and the turn-budget framing, both below).
 
-Read `docs/NEXT-SESSION.md` before continuing P0
-or click-to-go work. *(Historic, 2026-08-08:* the host ran the still-unaccepted,
-motion-disabled `0.6.4-beta30` candidate with experimental motion verified off;
-the branch was at the undeployed `0.6.4-beta31`.*)* Gate 2 passed
-on 2026-08-03, and Gate 4 — which
-failed on 2026-08-03 before its first linear command — was **re-passed on
-2026-08-05** and **reproduced on a second daylight geometry on 2026-08-06**.
-Read `docs/gate4-repass-20260805.md` before acting
-on this; the evidence is `docs/evidence-gate4-beta20-day2j-*20260805*` and
+## Current build: `0.6.4-beta39` — deployed, GATE ARMED
+
+Host and branch agree at beta39. `docs/NEXT-SESSION.md` carries the live
+mower state and the queued run; this section carries what changed and why.
+
+⚠️ **The experimental motion gate is ARMED at the operator's request.** That is
+not the usual disarmed-at-rest posture — normally it is opened only for the ~100 s
+of a supervised run and closed immediately after. Treat any Real Go as live.
+
+**Shipped 2026-08-09/10, in order, each on measurement:**
+
+- **beta35** — refresh writes fire on a fixed cadence from the window start
+  rather than one interval after the previous write completed. Delivered-window
+  overruns fell from +117% to +29% and **no run has aborted on BLE since.**
+- **beta37** — the turn model rebuilt on 35 measured pulses.
+  `_MIN_SCALED_TURN_PULSE_MS` 400 → **200** (200 ms actuates; there is no
+  threshold near 400). The overshoot bound is no longer a rate: rotation measures
+  `33.18 °/s·t + 4.63°`, which no single `C` can bound, so it is now the affine
+  envelope `40 °/s·t + 12°`. `_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND`
+  16.5 → **14.4**, which the first two changes finally made affordable.
+- **beta38** — the mid-drive re-aim guard, corrected. beta36's version compared
+  distance alone and suppressed two REAL corrections (40° and 78° aim errors,
+  confirmed by RTK independently of VIO), ruining a segment. It now skips only
+  when driving on would still land inside the disc:
+  `distance·sin(aim) ≤ waypoint_tolerance`.
+- **beta39** — the mid-drive re-aim guard follows `effective_linear_ceiling`, not
+  `max_linear_commands`. Inert until loop-to-tolerance is enabled; it was the
+  last prerequisite blocking it.
+
+🚨 **THE ACCURACY WALL IS EXPLAINED, AND IT IS A PROFILE CONFLICT.** Over 12
+completed approaches, `landing = 0.62 × leg·sin(initial_aim) + 0.065 m`
+(R² = 0.69). A 0.9 m leg needs initial aim within **8.8°** to land inside 0.15 m;
+`heading_tolerance_degrees` is **18**, so a turn may legally finish at an aim
+error that guarantees a miss. `heading_tolerance_degrees` and `waypoint_tolerance`
+are geometrically inconsistent at these leg lengths. Both are
+`LUBA_ACCEPTANCE_PROFILE` keys — resolving it owes a fresh Gate 5 and is an
+operator decision. Shorter legs are the alternative that touches no key.
+
+**Settled, so do not re-derive:**
+
+- Rotation is **not predictable from duration** better than ~40% at p90 — ten
+  pulses at matched ~200 ms windows spread 5.44–15.20°, 2.79×, with duration,
+  cadence and direction held constant. The estimate can only improve a landing;
+  the bound carries the safety.
+- The "directional turn asymmetry" is **refuted** (three runs: 8/8, 1/1, 1/6;
+  pooled over 33 samples the directions differ by 0.5%).
+- A **90° junction dispatches and completes** — measured, 3 of 4 commands.
+- A single **180° turn is refused pre-dispatch**; the largest that dispatches is
+  ~114°. Chain junctions instead (`--reposition`).
+- Per-**click** reach is 4 segments; per-**segment** reach is ~1 m. A 2.0 m leg is
+  not dispatchable.
+- `turning_mode` (`zero_turn` / `multipoint`, `nav_sys_param_cmd` ID 6) is a
+  MOWING-turnaround planner setting. Click-to-path turns bypass it entirely by
+  sending raw `DrvMotionCtrl` velocities. Untested but expected irrelevant.
+
+## Gate history — all five gates complete
+
+**Gate 2** passed 2026-08-03.
+
+**Gate 4** failed on 2026-08-03 before its first linear command, was **re-passed
+on 2026-08-05**, and **reproduced on a second daylight geometry on 2026-08-06**.
+Read `docs/gate4-repass-20260805.md` before acting on this; the evidence is
+`docs/evidence-gate4-beta20-day2j-*20260805*` and
 `docs/evidence-gate4-beta21-second-geometry-summary-20260806.json`.
 
-**Neither pass tracked its path, and beta22 deliberately refuses the behaviour
-that produced them.** Both runs passed by driving past the waypoint and turning
-back — 2.28 m and 2.06 m of travel for a 1.04 m path, with 103.427° and
-−112.325° recovery turns. Beta22 treats a correction of 90° or more as a change
+⚠️ **Neither Gate 4 pass tracked its path, and beta22 deliberately refuses the
+behaviour that produced them.** Both runs passed by driving past the waypoint and
+turning back — 2.28 m and 2.06 m of travel for a 1.04 m path, with 103.427° and
+−112.325° recovery turns. beta22 treats a correction of 90° or more as a change
 of motion contract and stops with `target_requires_reverse_recovery` rather than
 dispatching a U-turn, so **a Gate 4 run on the current build is expected to fail
-where beta20/beta21 passed.** That is containment, not regression. The open
-question is control quality — lead the stop by `speed × latency`, or accept
-overshoot-and-recovery explicitly — **not** a Gate 4 retry or a Gate 5 attempt.
+where beta20/beta21 passed.** That is containment, not regression.
+
+🔑 **2026-08-10 — why those runs overshot is now known, and it was not bad luck.**
+Landing error is set by the aim error at the *start* of the leg:
+`landing = 0.62 × leg·sin(initial_aim) + 0.065 m` (R² = 0.69, n = 12). A 0.9 m leg
+needs initial aim within **8.8°** to land inside 0.15 m, and
+`heading_tolerance_degrees` permits **18**. The control law was always going to
+miss; the U-turn recovery is what rescued the Gate 4 number, and Gate 5 passed
+because its segments happened to start better aligned (worst landing 0.1449 m,
+1 mm inside tolerance). Resolving that conflict is the open decision — see
+"Current build" above.
+
+*(Historic build state, 2026-08-08: the host ran the motion-disabled
+`0.6.4-beta30` candidate with experimental motion verified off, and the branch
+was at the undeployed `0.6.4-beta31`. Both are now beta39.)*
 
 The card now emits the Gate 4 re-pass profile, so the profile-identity gap
 (`docs/p0-beta-release.md:98-102`) is closed for those three fields
@@ -43,7 +108,8 @@ copy, a `CARD_VERSION` bump deployed to both serving paths, and the pinning
 tests listed in §4 of the re-pass doc. See
 `docs/CLAUDE-FINAL-IMPLEMENTATION-PROMPT.md` for the older implementation
 handoff, noting that its turn-planning premise was overtaken by the 2026-08-05
-measurements. No motion is authorized by this handoff.
+measurements. No motion is authorized by this handoff. *(Superseded: the gate is currently
+ARMED — see "Current build" above.)*
 
 The card's Real Go defaults are frozen as `LUBA_ACCEPTANCE_PROFILE` in
 `www/mammotion-custom-path-card.js` and pinned by frontend tests.
@@ -131,7 +197,7 @@ suffix `?v=<version>&build=<card md5 prefix>` (currently serving beta30). The mi
 `card-mod` rotation was removed with verified config readback; its pre-change
 backup remains `/config/.storage/lovelace.dashboard_yard.bak.codex-20260802-213848`.
 
-## beta31 (undeployed, unvalidated) — reach 4 segments + turn overshoot ceiling
+## (history) beta31 — reach 4 segments + turn overshoot ceiling
 
 Built 2026-08-08 on the branch. **No motion has run on it and it is not on the
 host.** All CI gates pass locally (533 pytest, 20 frontend, ruff, mypy,
@@ -163,62 +229,7 @@ accepted and no §4 re-pinning is owed.
 Handover, open attacks and the validation-run design:
 `docs/HANDOVER-beta31-20260809.md`.
 
-## Current build: `0.6.4-beta39` — deployed, GATE ARMED
-
-Read `docs/NEXT-SESSION.md` first; it carries the live state and the queued run.
-Host and branch agree at beta39.
-
-⚠️ **The experimental motion gate is ARMED at the operator's request.** That is
-not the usual disarmed-at-rest posture — normally it is opened only for the ~100 s
-of a supervised run and closed immediately after. Treat any Real Go as live.
-
-**Shipped 2026-08-09/10, in order, each on measurement:**
-
-- **beta35** — refresh writes fire on a fixed cadence from the window start
-  rather than one interval after the previous write completed. Delivered-window
-  overruns fell from +117% to +29% and **no run has aborted on BLE since.**
-- **beta37** — the turn model rebuilt on 35 measured pulses.
-  `_MIN_SCALED_TURN_PULSE_MS` 400 → **200** (200 ms actuates; there is no
-  threshold near 400). The overshoot bound is no longer a rate: rotation measures
-  `33.18 °/s·t + 4.63°`, which no single `C` can bound, so it is now the affine
-  envelope `40 °/s·t + 12°`. `_VIO_TURN_CONSERVATIVE_DEGREES_PER_SECOND`
-  16.5 → **14.4**, which the first two changes finally made affordable.
-- **beta38** — the mid-drive re-aim guard, corrected. beta36's version compared
-  distance alone and suppressed two REAL corrections (40° and 78° aim errors,
-  confirmed by RTK independently of VIO), ruining a segment. It now skips only
-  when driving on would still land inside the disc:
-  `distance·sin(aim) ≤ waypoint_tolerance`.
-- **beta39** — the mid-drive re-aim guard follows `effective_linear_ceiling`, not
-  `max_linear_commands`. Inert until loop-to-tolerance is enabled; it was the
-  last prerequisite blocking it.
-
-🚨 **THE ACCURACY WALL IS EXPLAINED, AND IT IS A PROFILE CONFLICT.** Over 12
-completed approaches, `landing = 0.62 × leg·sin(initial_aim) + 0.065 m`
-(R² = 0.69). A 0.9 m leg needs initial aim within **8.8°** to land inside 0.15 m;
-`heading_tolerance_degrees` is **18**, so a turn may legally finish at an aim
-error that guarantees a miss. `heading_tolerance_degrees` and `waypoint_tolerance`
-are geometrically inconsistent at these leg lengths. Both are
-`LUBA_ACCEPTANCE_PROFILE` keys — resolving it owes a fresh Gate 5 and is an
-operator decision. Shorter legs are the alternative that touches no key.
-
-**Settled, so do not re-derive:**
-
-- Rotation is **not predictable from duration** better than ~40% at p90 — ten
-  pulses at matched ~200 ms windows spread 5.44–15.20°, 2.79×, with duration,
-  cadence and direction held constant. The estimate can only improve a landing;
-  the bound carries the safety.
-- The "directional turn asymmetry" is **refuted** (three runs: 8/8, 1/1, 1/6;
-  pooled over 33 samples the directions differ by 0.5%).
-- A **90° junction dispatches and completes** — measured, 3 of 4 commands.
-- A single **180° turn is refused pre-dispatch**; the largest that dispatches is
-  ~114°. Chain junctions instead (`--reposition`).
-- Per-**click** reach is 4 segments; per-**segment** reach is ~1 m. A 2.0 m leg is
-  not dispatchable.
-- `turning_mode` (`zero_turn` / `multipoint`, `nav_sys_param_cmd` ID 6) is a
-  MOWING-turnaround planner setting. Click-to-path turns bypass it entirely by
-  sending raw `DrvMotionCtrl` velocities. Untested but expected irrelevant.
-
-## beta32 (undeployed) — beta31 reviewed, one fix, NOT cleared as-is
+## (history) beta32 — beta31 reviewed, one fix, NOT cleared as-is
 
 beta31 was adversarially reviewed on 2026-08-09 before any deployment and **did
 not clear**. beta32 = beta31 + one refusal-side fix. Read
