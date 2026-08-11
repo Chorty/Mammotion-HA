@@ -434,14 +434,53 @@ When making changes, follow existing patterns in similar files and follow Home A
 
 - All imports within the integration must be relative (e.g. `from . import Foo`, `from .services import bar`). Never use `from custom_components.mammotion import ...` — HA loads integrations in a way that makes absolute imports from `custom_components` fail at runtime.
 
-## Subagent Model Routing
+## Model and Subagent Routing
 
-Keep expensive reasoning on the session model; route delegated work to cheaper models automatically:
+**Route by cost of being wrong, not by price per token.** Sonnet 5 is only ~1.67×
+cheaper than Opus 5 ($3/$15 against $5/$25 per MTok), so a cheaper model that
+needs two passes where Opus needs one has already cost more — before counting the
+time spent reviewing the bad first pass. The token gap is the small term. A
+plausible-but-wrong claim that reaches an evidence file or shapes a hardware run
+is the large one, and this project has been bitten by exactly that repeatedly.
 
-- **Search/scan fan-out** (code-review finder angles, diff scans, symbol/caller hunts, convention audits): use the `finder` agent, or pass `model: sonnet` when spawning a general-purpose agent for this kind of work.
-- **Verification and adjudication** (confirming/refuting review candidates, checking that a library API actually exists, call-site impact analysis): use the `verifier` agent, or pass `model: opus`.
-- **Fix authoring in a subagent**: `model: opus`.
-- Only leave a subagent on the session (inherited) model when the task genuinely needs top-tier long-horizon reasoning — orchestration itself already runs there.
+**Sonnet when a machine catches a wrong answer, or the work is high-volume and
+mechanical:**
+
+- Deploys — md5 comparison and the `real_motion_allowed: false` readback catch errors
+- Version bumps across the four sites — the `Beta Release` workflow verifies all four
+- Running the CI gate suite and reporting pass/fail
+- Translations sweeps across every language file — JSON parse plus key-presence check
+- Broad symbol/reference sweeps where only the conclusion is needed
+
+**Opus when the output is a claim or carries a consequence:**
+
+- Anything touching the motion control law, or any `LUBA_ACCEPTANCE_PROFILE` decision
+- Interpreting a run's telemetry; deciding whether a fix actually worked
+- Adversarial review, and adjudicating findings
+- Analysis written into a `docs/evidence-*` file — it becomes load-bearing for later sessions
+- Supervising real motion
+
+**Testing: separate the run from the diagnosis.** Have the cheap session run the
+suite and report **raw output only** — which tests failed and the actual
+traceback, no interpretation — then stop. Most runs pass, so the common case is
+cheap. On a failure, `/model opus` continues in the *same* session with the output
+already in context; that invalidates the prompt cache once, but it is not a
+restart. A plausible-looking diagnosis from a cheaper model is the exact failure
+mode to avoid here.
+
+**For search, prefer inline grep over a subagent.** A subagent returns a summary,
+and this project's rule is *verify with per-item records, not aggregates*. On
+2026-08-09 two verifier agents wrongly reported that
+`REAL_CLICK_TO_GO_SEGMENT_LIMIT` does not exist; one inline grep disproved it.
+Use the `finder` agent only when the sweep is genuinely broad, spans several
+naming conventions, and the conclusion is all that is needed. When the individual
+hits matter — which is most of the time in this repo — grep inline.
+
+**In workflows** (`Workflow` tool), set `opts.model` per stage: cheap models for
+find/scan stages, Opus for verify and adjudicate. That is the shape the 2026-08-08
+turn-variance investigation used — six Sonnet finders, six Opus verifiers, one
+Opus critic. Named agents follow the same split: `finder` for scans, `verifier`
+for confirming or refuting a candidate, Opus for fix authoring.
 
 ## Translations
 
