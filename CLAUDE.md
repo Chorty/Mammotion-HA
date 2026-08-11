@@ -10,12 +10,29 @@ provenance — accurate as a record, but **do not act on any build state it
 describes**, and note that measurement has since refuted several of its claims
 (the "unexplained" turn-rate variance and the turn-budget framing, both below).
 
-## Current build: `0.6.4-beta40` — deployed and VALIDATED ON HARDWARE, gate disarmed
+## Current build: `0.6.4-beta41` — deployed and VALIDATED ON HARDWARE, gate disarmed
 
-Host and branch agree at beta40, deployed 2026-08-10 (46/46 byte-identical, both
-card paths `e6aed00b`, resource `?v=0.6.4-beta40&build=e6aed00b`).
-`docs/NEXT-SESSION.md` carries the live mower state; this section carries what
-changed and why.
+Host and branch agree at beta41, deployed 2026-08-10 (46/46 byte-identical, both
+card paths `174f317d`, resource `?v=0.6.4-beta41&build=174f317d`).
+`docs/NEXT-SESSION.md` carries the live mower state and the queued run; this
+section carries what changed and why.
+
+- **beta41** — a segment's **opening turn decomposes instead of refusing**
+  (`_vio_turn_to_heading_staged`). It tries the direct turn first and, ONLY on a
+  `turn_budget_infeasible` refusal, splits the rotation into stages of ≤60°. Each
+  turn call gets its own command budget and displacement allowance, which is why
+  chained 60° junctions accumulate 180° where a single 180° turn is refused.
+  Wired into the **opening turn only** — mid-drive re-aim and post-turn correction
+  keep calling the primitive directly, since their rotations are small by
+  construction. Translation is budgeted across the WHOLE staged turn, not per
+  stage. If a 60° stage is also refused, the ORIGINAL `turn_budget_infeasible` is
+  reported (`staging_cannot_help`), because slicing finer cannot fix a budget that
+  dispatches nothing.
+  🏁 **Validated 2026-08-10:** a **165.048°** opening turn completed in three
+  stages, total staged displacement 0.1326 m of a 0.30 budget, and the beta40
+  post-turn gate then corrected the +13.557° residual staging left. The two
+  changes compose. Evidence:
+  `docs/evidence-beta32-4segment-20260811T001250Z.json`.
 
 ✅ **The gate is DISARMED and was verified disarmed after every run.** The
 2026-08-10 ARMED-at-rest posture ended with that session; normal posture is

@@ -4,7 +4,135 @@ Updated **2026-08-08 late** after Gate 5 passed. This is the current handoff;
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
-## 🏁 START HERE 2026-08-10 night — beta40 DEPLOYED AND VALIDATED. Best run on record.
+## 🚦 START HERE 2026-08-11 — beta41 deployed. One daylight run answers the reach question.
+
+Host and branch both `0.6.4-beta41`. **Gate DISARMED.** Mower is **DOCKED** at
+(4.3188, 3.2862) and charging; it was at 42% when docked. It is **dark**
+(`tracked_features: 0`, `brightness: dark`), so nothing closed-loop can run until
+daylight — see "night" below.
+
+### The one thing to do next, and it is cheap
+
+**Measure whether loop-to-tolerance lifts per-segment reach past ~1 m.** One run,
+two 2 m legs, ~4 m of travel. Everything for it is built, deployed and committed.
+
+```sh
+set -a && source .env && set +a
+# undock first: the dock is ~1 m outside the polygon
+.venv/bin/python scripts/beta32_validation_run.py --leg 2.0 --segments 2 \
+    --pulse-ceiling 10 --heading <TRUE FACING>          # preview
+#   ... then --arm
+```
+
+**Aim the first leg along the mower's actual facing** so the opening turn is ~2°
+and the LINEAR phase is the only variable. Prediction under test: on the accepted
+profile a 2 m leg dies around 1 m on `max_linear_commands_reached`; with
+`--pulse-ceiling 10` it should loop to the waypoint in ~5–6 pulses.
+
+⚠️ `--pulse-ceiling` sends `max_linear_pulse_ceiling`, a frozen
+`LUBA_ACCEPTANCE_PROFILE` key the card sends as `null`. The harness prints a loud
+warning: that run is **NOT** the accepted profile and does not compare to Gate 5.
+This is deliberate — measure first, so nobody pays a Gate 5 for an unknown.
+
+### 🚨 How to get the mower's TRUE facing — this cost two runs on 2026-08-10
+
+`last_travel_heading()` reads the last **driven** leg out of the evidence files.
+That is sound until **the operator repositions the mower from the app, which
+invalidates it silently and the script cannot detect it.** It happened three times
+in one session; twice it built a backwards path and the run was refused with
+`turn_budget_infeasible` at a ~177° opening turn.
+
+**Use the mirror relation on a FRESH `toward` instead**, and cross-check:
+
+```
+map_facing = (90.13 - toward) % 360
+```
+
+Validated against both of 2026-08-10's calibration drives to **0.179°** and
+**2.677°**, and independently corroborated by the operator eyeballing "South".
+Cross-check it against the last driven leg's travel bearing; on 2026-08-10 night
+those agreed at 325.63 / 328.34 (legs) vs 327.44 (mirror). **If the two disagree
+by more than a few degrees, the mower was moved — trust the mirror, and only if
+`toward` is fresh (i.e. it was just driven).**
+
+⚠️ `toward` is a COMPASS bearing, so compass = `90.13 - map_facing`. Useful for
+talking to the operator: map 130° is compass 320° = northwest.
+
+Fixing this in the harness is the top off-mower item (below).
+
+### Night: closed-loop motion is refused, and this is settled
+
+`vio_active` is appended as a safety gate **only when VIO is cold**
+(`services.py`, the `turn_mode == "vio" and vio_state != ACTIVE` branch), and it
+passes only when the scene is bright enough that the calibration drive can warm
+VIO. In the dark it refuses. A whole night was already lost to this on
+2026-08-07: 11 of 12 gates passed and this was the 12th. **Do not try to bypass it
+with `--skip-preflight-gate`** — that only skips the harness's own check; the
+backend gate still refuses. Night motion is linear-only via Nudge, which is capped
+at 2 m and does no closed-loop approach, so it cannot answer the reach question.
+
+In daylight VIO is usually already warm and the gate is never even created — a
+healthy run shows **11** safety gates, not 12.
+
+### What shipped 2026-08-10, all deployed and hardware-validated
+
+- **beta40** — the post-turn alignment gate gets its own tolerance,
+  `_POST_TURN_ALIGNMENT_TOLERANCE_DEGREES = 10.0`, instead of borrowing
+  `vio_realign_threshold_degrees` through a `min()`. At the old `min(18,15)=15` it
+  never fired. **10 is a floor, not a preference** — a correction fires only when
+  the error exceeds the tolerance, so the worst sweep is `error + tolerance`, and
+  the affine bound `40 °/s·t + 12°` at the 200 ms actuation floor still sweeps 20°.
+  The guarantee needs `error + tolerance ≥ 20`, i.e. **tolerance ≥ 10**. Tightening
+  further needs a shorter actuation floor or a tighter sweep bound, **not** a
+  smaller number.
+- **beta41** — a segment's **opening turn decomposes instead of refusing**
+  (`_vio_turn_to_heading_staged`). Tries the direct turn first and, only on
+  `turn_budget_infeasible`, splits into stages of ≤60°. Validated on hardware: a
+  **165.048° opening turn** completed in three stages (60/60/41.25), total staged
+  displacement **0.1326 m of a 0.30 budget shared across stages**. Gap 2 closed —
+  a user can click a point behind the mower and it turns and goes.
+
+### The three beta40/41 runs, for anyone re-deriving
+
+| run | landings (tol 0.15) | mean |
+| --- | --- | --- |
+| `…20260810T205937Z` | 0.0585 / 0.0867 / 0.1393 / 0.0979 | 0.0956 |
+| `…20260810T232848Z` | 0.1396 / 0.0489 / 0.0117 / 0.0960 | **0.0741** |
+| `…20260811T001250Z` (staged) | 0.1323 / 0.0591 / 0.1260 / 0.1467 | 0.1160 |
+
+**Final map-frame aim predicts the landing: Pearson r = 0.923, r² = 0.852 (n=6).**
+The segment that arrived at 2.07° landed **1.2 cm**. Corrected and uncorrected
+segments land the SAME on average (0.0809 vs 0.0793) — the gate is not magic, it
+moves segments down the aim axis and where they land on that axis is what matters.
+
+**The landing wall is the turn's own translation** — see
+`docs/turn-translation-explains-the-landing-wall-20260810.md`. Identity holds
+across **14 segments / 4 runs, mean residual 0.46°**. Consequence:
+`heading_tolerance_degrees` is the WRONG lever (it governs the VIO-frame error,
+already ~5°); the landing is set by the map-frame error.
+
+### Off-mower queue, in priority order
+
+1. **Fix the heading trap** (above). Cross-check `last_travel_heading()` against
+   the mirror on a fresh `toward` and refuse to build a path when they disagree.
+   Would have caught both 2026-08-10 failures before any motion. Script-only.
+2. **`realignments_suppressed` lacks `facing`/`bearing`**, unlike `realignments`.
+   Small instrumentation gap; costs an analysis reconstruction step.
+3. **BLE write latency** — standing item, `docs/pymammotion-ble-slot-leak-bug.md`.
+   Has not aborted a run since beta35 but degrades the rate estimate.
+4. ⚠️ **NOTHING IS PUSHED.** The branch has no upstream configured. `origin` is
+   the Chorty fork; the `mikey0000` remote has its push URL disabled. Today's work
+   exists only on the dev machine.
+
+### If the reach run works
+
+Adopting `max_linear_pulse_ceiling` changes a frozen profile key, which
+un-accepts the profile and **owes a fresh Gate 5**. That re-pass — Gate 5 on a
+reach-enabled profile — is the next genuine milestone. All five acceptance gates
+are otherwise complete (Gate 5 passed 2026-08-08); the remaining work is
+capability, not gates.
+
+## (superseded) START HERE 2026-08-10 night — beta40 DEPLOYED AND VALIDATED. Best run on record.
 
 Host and branch both `0.6.4-beta40`. **Gate DISARMED**, verified after every run.
 Mower undocked in Backyard Right at **(7.4419, −6.4162)**, MODE_READY, blades OFF
