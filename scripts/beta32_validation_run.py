@@ -183,8 +183,10 @@ def build_path(
     polygons: dict[str, list[tuple[float, float]]],
     pattern: tuple[float, ...] = JUNCTION_PATTERN,
     prefer_heading: float | None = None,
+    leg_metres: float = LEG_METRES,
+    segments: int = 4,
 ) -> tuple[list[dict[str, float]], str, float]:
-    """Lay a 4-segment path from ``start`` that stays inside one mapped area.
+    """Lay a path of ``segments`` legs from ``start``, all inside one mapped area.
 
     Sweeps the initial heading and keeps the first orientation whose five points
     all sit inside the same polygon, with a margin check on the midpoints too so
@@ -208,6 +210,14 @@ def build_path(
 
     Containment still wins: a preferred heading that leaves the area is skipped,
     exactly as before. This only reorders which candidate is tried first.
+
+    ``leg_metres`` and ``segments`` exist for the REACH test. Per-segment reach is
+    ~1 m on the accepted profile (`max_linear_commands: 3` at ~0.35-0.42 m per
+    pulse), so a 2 m leg is not dispatchable and stops on
+    `max_linear_commands_reached` -- measured 2026-08-09. Testing whether
+    loop-to-tolerance lifts that needs a longer leg, and a longer leg needs FEWER
+    of them to stay inside the polygon: four 2 m legs sweep roughly 8 m of path,
+    which no area here holds. Both are TEST GEOMETRY and touch no profile key.
     """
     containing = [
         (name, poly)
@@ -229,18 +239,22 @@ def build_path(
         x, y = start
         points = [{"x": round(x, 4), "y": round(y, 4)}]
         samples: list[tuple[float, float]] = [start]
-        for index in range(4):
+        for index in range(segments):
             # Sample the leg's midpoint as well as its end, so a leg cannot cut
             # a corner across a concave boundary between two inside endpoints.
+            # A long leg needs more than a midpoint: at 2 m the gap between
+            # samples is itself wider than the 0.7 m legs this was written for,
+            # so step the check along the leg instead of assuming three points.
+            checks = max(2, int(math.ceil(leg_metres / 0.5)))
             samples.extend(
                 (
-                    x + LEG_METRES * step * math.cos(math.radians(heading)),
-                    y + LEG_METRES * step * math.sin(math.radians(heading)),
+                    x + leg_metres * (step / checks) * math.cos(math.radians(heading)),
+                    y + leg_metres * (step / checks) * math.sin(math.radians(heading)),
                 )
-                for step in (0.5, 1.0)
+                for step in range(1, checks + 1)
             )
-            x += LEG_METRES * math.cos(math.radians(heading))
-            y += LEG_METRES * math.sin(math.radians(heading))
+            x += leg_metres * math.cos(math.radians(heading))
+            y += leg_metres * math.sin(math.radians(heading))
             points.append({"x": round(x, 4), "y": round(y, 4)})
             if index < len(pattern):
                 heading += pattern[index]
@@ -248,8 +262,9 @@ def build_path(
             return points, area_name, float(initial)
 
     raise SystemExit(
-        "no initial heading keeps all four legs inside the area -- move the "
-        "mower further from the boundary and retry"
+        f"no initial heading keeps all {segments} legs of {leg_metres:.2f} m inside "
+        "the area -- move the mower further from the boundary, shorten --leg, or "
+        "reduce --segments"
     )
 
 
@@ -561,6 +576,36 @@ def main() -> int:  # noqa: C901
         ),
     )
     parser.add_argument(
+        "--leg",
+        type=float,
+        default=LEG_METRES,
+        help=(
+            f"leg length in metres (default {LEG_METRES}). Per-segment reach is "
+            "~1 m on the accepted profile, so anything past that needs "
+            "--pulse-ceiling as well or it stops on max_linear_commands_reached"
+        ),
+    )
+    parser.add_argument(
+        "--segments",
+        type=int,
+        default=4,
+        help=(
+            "number of legs (default 4). Long legs need fewer of them to stay "
+            "inside a mapped area"
+        ),
+    )
+    parser.add_argument(
+        "--pulse-ceiling",
+        type=int,
+        default=None,
+        help=(
+            "enable loop-to-tolerance with this many linear pulses per segment. "
+            "⚠️ NOT the accepted profile: max_linear_pulse_ceiling is a frozen "
+            "LUBA_ACCEPTANCE_PROFILE key and the card sends null. Use this to "
+            "MEASURE whether longer reach works before anyone changes the profile"
+        ),
+    )
+    parser.add_argument(
         "--heading",
         type=float,
         default=None,
@@ -613,13 +658,13 @@ def main() -> int:  # noqa: C901
         print(f"  net displacement {net:.2f} m at bearing {bearing:.0f} deg")
     else:
         if args.junction is None:
-            pattern = JUNCTION_PATTERN
+            pattern = JUNCTION_PATTERN[: max(0, args.segments - 1)]
             band = "all inside the validated 45-70 deg band"
         else:
             magnitude = abs(args.junction)
             # Alternate the sign: a same-signed pattern spirals out of the area.
             pattern = tuple(
-                magnitude * (-1.0) ** index for index in range(len(JUNCTION_PATTERN))
+                magnitude * (-1.0) ** index for index in range(args.segments - 1)
             )
             band = (
                 "inside the validated band"
@@ -629,7 +674,12 @@ def main() -> int:  # noqa: C901
             )
         facing = args.heading if args.heading is not None else last_travel_heading()
         points, area_name, initial_heading = build_path(
-            start, polygons, pattern, prefer_heading=facing
+            start,
+            polygons,
+            pattern,
+            prefer_heading=facing,
+            leg_metres=args.leg,
+            segments=args.segments,
         )
         print(
             f"\n== PATH ==  area={area_name}  initial heading={initial_heading:.0f} deg"
@@ -652,6 +702,33 @@ def main() -> int:  # noqa: C901
         "max_real_segments": len(points) - 1,
         **ACCEPTANCE_PROFILE,
     }
+    if args.pulse_ceiling is not None:
+        # Loop-to-tolerance. The backend branches on this key being present at
+        # all (`loop_to_tolerance = max_linear_pulse_ceiling is not None`), so
+        # sending it changes the linear phase from a fixed budget to a loop --
+        # and `max_linear_commands` stops being the binding limit.
+        payload["max_linear_pulse_ceiling"] = int(args.pulse_ceiling)
+        print(
+            "\n⚠️  CUSTOMISED PROFILE -- this run is NOT the hardware-accepted "
+            "profile.\n"
+            f"    max_linear_pulse_ceiling={args.pulse_ceiling} enables "
+            "loop-to-tolerance;\n"
+            "    the card sends null. Results do NOT compare to Gate 5, and "
+            "adopting this\n"
+            "    would un-accept the profile and owe a fresh Gate 5."
+        )
+    if abs(args.leg - LEG_METRES) > 1e-9 or args.segments != 4:
+        print(
+            f"    test geometry: {args.segments} x {args.leg:.2f} m legs "
+            f"(default 4 x {LEG_METRES:.2f}) -- geometry only, no profile key."
+        )
+    if args.leg > 1.0 and args.pulse_ceiling is None:
+        print(
+            f"\n⚠️  A {args.leg:.2f} m leg exceeds the ~1 m per-segment reach of "
+            "`max_linear_commands: 3`.\n"
+            "    Expect `max_linear_commands_reached` short of the waypoint. Pass "
+            "--pulse-ceiling to test the loop."
+        )
 
     print("\n== DRY RUN (zero motion) ==")
     dry = _call(
