@@ -25,6 +25,9 @@ Design rules this encodes, each of which was learned the expensive way:
 * **The path is built from the LIVE position** and every point is checked inside
   the area polygon before anything is dispatched, because a path that fails
   validation at the mower wastes the daylight window.
+* **The mower's facing is derived twice and the two must agree**, or the script
+  refuses to lay out a path at all. Getting this wrong built a backwards path
+  twice on 2026-08-10 and cost two daylight runs. See ``resolve_start_facing``.
 """
 
 from __future__ import annotations
@@ -120,6 +123,42 @@ ACCEPTANCE_PROFILE: dict[str, Any] = {
 #: against the runtime state; every one must pass before --arm proceeds.
 MIN_TRACKED_FEATURES = 70
 MIN_BATTERY_PERCENT = 30
+
+#: `toward` is a COMPASS bearing (clockwise from north) while map headings are
+#: math angles (counter-clockwise from +x), so the map facing is the MIRROR of
+#: `toward` about this value -- `(90.13 - toward) % 360` -- and NOT any additive
+#: offset. No constant added to `toward` can ever work; that is why the legacy
+#: path's `+102.4` mis-aimed by ~10 deg and why this is written as a subtraction.
+#:
+#: Checked against every calibration drive this project has recorded, comparing
+#: the mirror of the pre-run `toward` against the facing the drive then measured:
+#:
+#:     20260810T002506  toward  176.0868  measured 274.160  mirror 274.0432  0.117
+#:     20260810T185433  toward  174.0572  measured 278.811  mirror 276.0728  2.738
+#:     20260810T193833  toward   33.5651  measured  55.099  mirror  56.5649  1.466
+#:     20260810T205514  toward -173.9049  measured 266.712  mirror 264.0349  2.677
+#:     20260810T205937  toward -173.9049  measured 263.856  mirror 264.0349  0.179
+#:     20260810T232848  toward  173.2761  measured 277.416  mirror 276.8539  0.562
+#:     20260811T001250  toward  122.6853  measured 326.772  mirror 327.4447  0.673
+#:
+#: Seven for seven, worst residual **2.738 deg**. Pinned by a test.
+TOWARD_MIRROR_DEGREES = 90.13
+
+#: How far the two independent facing estimates -- the live mirror and the
+#: bearing of the last leg we ourselves drove -- may disagree before this script
+#: refuses to lay out a path.
+#:
+#: The failure this guards against is not subtle. On 2026-08-10 the operator
+#: repositioned the mower from the app three times; `last_travel_heading()`
+#: cannot see that and kept reporting the bearing of OUR last leg, so the path
+#: was built backwards and twice the run was refused pre-dispatch with
+#: `turn_budget_infeasible` at a ~177 deg opening turn. Two daylight runs were
+#: spent finding that out by hand.
+#:
+#: 15 sits >5x above the worst agreement ever measured (2.738) and an order of
+#: magnitude below the failure mode (~177), so it separates the two cleanly
+#: without being a tuned number.
+FACING_DISAGREEMENT_LIMIT_DEGREES = 15.0
 
 
 def _now() -> str:
@@ -271,17 +310,21 @@ def build_path(
 def last_travel_heading() -> float | None:
     """Bearing of the most recent leg this project actually drove, in degrees.
 
-    Used only to lay out `--reposition`, and deliberately NOT read from
-    `position.toward`: that field is course-over-ground and latches while the
-    mower is stationary, which is why the card refuses to draw it as current
-    orientation at all. The bearing of the last leg we ourselves commanded and
-    reached is the honest stand-in.
+    One of the two facing estimates `resolve_start_facing()` holds against each
+    other; never used alone if the mirror is available. Its blind spot is
+    specific and was expensive: it can only see motion THIS PROJECT commanded,
+    so an app-driven reposition leaves it confidently reporting a bearing the
+    mower abandoned minutes ago.
 
-    Being wrong here is cheap. Only SEGMENT 1's turn depends on the starting
-    heading; every junction after it is fixed by the waypoint geometry. If the
-    real facing differs enough that segment 1's turn exceeds ~114 deg, the turn
-    primitive refuses it pre-dispatch with `turn_budget_infeasible` and nothing
-    moves.
+    ⚠️ An earlier version of this docstring claimed being wrong here is cheap,
+    on the reasoning that only segment 1's turn depends on it and an impossible
+    turn gets refused pre-dispatch. **Both halves have since failed.** The
+    refusal did fire -- twice on 2026-08-10, at ~177 deg openings -- but each
+    one cost a preflight, an arming cycle and a slice of the daylight window,
+    and the operator had no way to tell a bad path from a bad build. And since
+    beta41 the refusal is no longer a backstop at all: an opening turn that the
+    primitive declines is now DECOMPOSED into <=60 deg stages and driven, so a
+    backwards path executes instead of being caught.
     """
     # Both run shapes count: whichever we drove most recently is the one whose
     # last leg the mower is actually sitting on. Sorted by mtime, not by name --
@@ -324,6 +367,121 @@ def last_travel_heading() -> float | None:
                 % 360
             )
     return None
+
+
+def mirror_facing(position: dict[str, Any]) -> float | None:
+    """Map facing implied by the live `toward`, or None if it is unreadable.
+
+    See ``TOWARD_MIRROR_DEGREES`` for the relation and its validation. This is
+    only as good as `toward` is fresh: the field is course-over-ground and
+    LATCHES while the mower is stationary, so it reports the direction of the
+    last travel, whoever commanded it. That is exactly what makes it useful
+    here -- an app-driven reposition updates it while `last_travel_heading()`
+    goes silently stale -- and exactly what makes it useless if the mower was
+    carried rather than driven, which nothing on this device can detect.
+    """
+    toward = position.get("toward")
+    if toward is None:
+        return None
+    try:
+        return (TOWARD_MIRROR_DEGREES - float(toward)) % 360
+    except TypeError, ValueError:
+        return None
+
+
+def resolve_start_facing(
+    position: dict[str, Any], override: float | None
+) -> tuple[float, str]:
+    """Agree two independent facing estimates, or refuse to build a path.
+
+    Returns ``(facing_degrees, provenance)``. Raises ``SystemExit`` rather than
+    guessing, because a wrong facing here does not fail safe in any useful
+    sense: it lays out a plausible-looking path pointing the wrong way, burns
+    the arming step and the daylight, and is only caught -- if we are lucky --
+    by the turn primitive refusing a huge opening turn pre-dispatch.
+
+    The two estimates fail in different ways, which is the whole point of
+    holding them against each other:
+
+    * ``last_travel_heading()`` reads the last leg THIS PROJECT drove out of its
+      own evidence files. It is blind to any movement commanded elsewhere.
+    * the mirror of ``toward`` is live telemetry. It sees an app-driven move,
+      but latches when the mower is stationary and cannot see a carried mower.
+
+    So when they agree, nothing has moved the mower since our last run and both
+    are right. When they disagree, something moved it: the mirror saw the move
+    and the evidence files did not, so the MIRROR is the one to trust -- but
+    only if the mower was driven. That is a judgement about the physical world
+    this script cannot make, so it stops and puts the choice in front of the
+    operator with both numbers in hand.
+    """
+    mirror = mirror_facing(position)
+    driven = last_travel_heading()
+
+    print("\n== FACING ==")
+    print(
+        f"  mirror of live `toward`   : "
+        f"{'unavailable' if mirror is None else f'{mirror:7.2f} deg'}"
+        f"   (toward={position.get('toward')})"
+    )
+    print(
+        f"  last leg we actually drove: "
+        f"{'unavailable' if driven is None else f'{driven:7.2f} deg'}"
+    )
+
+    if override is not None:
+        facing = override % 360
+        print(f"  -> USING --heading {facing:.2f} deg (operator override)")
+        for label, estimate in (("mirror", mirror), ("last leg", driven)):
+            if estimate is not None:
+                gap = abs((estimate - facing + 180) % 360 - 180)
+                print(f"     {label} disagrees with it by {gap:.2f} deg")
+        return facing, "operator_override"
+
+    if mirror is not None and driven is not None:
+        disagreement = abs((mirror - driven + 180) % 360 - 180)
+        if disagreement > FACING_DISAGREEMENT_LIMIT_DEGREES:
+            raise SystemExit(
+                f"\nREFUSING TO BUILD A PATH: the two facing estimates disagree by "
+                f"{disagreement:.1f} deg,\nwhich is past the "
+                f"{FACING_DISAGREEMENT_LIMIT_DEGREES:.0f} deg limit (worst honest "
+                f"agreement ever measured: 2.7 deg).\n\n"
+                f"Something moved the mower since our last run -- almost certainly "
+                f"the app.\n"
+                f"  if it was DRIVEN (app, joystick, its own dock return), `toward` "
+                f"is fresh and the\n"
+                f"  mirror is right:            --heading {mirror:.2f}\n"
+                f"  if it was CARRIED or nudged in place, BOTH are stale. Drive it a "
+                f"metre in a\n"
+                f"  straight line first, then re-run this with no --heading at all.\n\n"
+                f"Do not guess. A backwards path cost two daylight runs on 2026-08-10."
+            )
+        print(
+            f"  -> agree within {disagreement:.2f} deg; using the mirror "
+            f"{mirror:.2f} deg (live)"
+        )
+        return mirror, "mirror_corroborated_by_last_leg"
+
+    if mirror is not None:
+        print(
+            f"  -> using the mirror {mirror:.2f} deg, UNCORROBORATED "
+            "(no driven leg on record to check it against)"
+        )
+        return mirror, "mirror_uncorroborated"
+
+    if driven is not None:
+        print(
+            f"  -> using the last driven leg {driven:.2f} deg, UNCORROBORATED "
+            "(`toward` unreadable, so the live check is unavailable)"
+        )
+        return driven, "last_leg_uncorroborated"
+
+    raise SystemExit(
+        "\nREFUSING TO BUILD A PATH: no facing is available from either source.\n"
+        "`toward` is unreadable and no evidence file records a leg that drove.\n"
+        "Drive the mower a metre in a straight line and re-run, or pass --heading "
+        "with a facing you have measured."
+    )
 
 
 def build_reposition_path(
@@ -610,8 +768,10 @@ def main() -> int:  # noqa: C901
         type=float,
         default=None,
         help=(
-            "starting heading in map degrees for --reposition; defaults to the "
-            "bearing of the last leg this project drove"
+            "the mower's true facing in map degrees, overriding both automatic "
+            "estimates. Without it the script derives the facing from the live "
+            "`toward` mirror, cross-checks it against the last leg it drove, and "
+            "REFUSES to build a path if the two disagree -- pass this to settle it"
         ),
     )
     args = parser.parse_args()
@@ -632,16 +792,16 @@ def main() -> int:  # noqa: C901
     start = (float(position["x"]), float(position["y"]))
     polygons = _load_area_polygons()
 
+    facing, facing_source = resolve_start_facing(position, args.heading)
+
     if args.reposition:
-        heading = args.heading if args.heading is not None else last_travel_heading()
-        if heading is None:
-            raise SystemExit("no starting heading available -- pass --heading")
+        heading = facing
         points, area_name, final_heading = build_reposition_path(
             start, float(heading), polygons
         )
         turned = (final_heading - float(heading)) % 360
         print(f"\n== REPOSITION ==  area={area_name}")
-        print(f"  assumed start heading {float(heading):.1f} deg (last leg driven)")
+        print(f"  assumed start heading {float(heading):.1f} deg ({facing_source})")
         for index, point in enumerate(points):
             print(f"    p{index}: ({point['x']:.3f}, {point['y']:.3f})")
         net = math.hypot(points[-1]["x"] - start[0], points[-1]["y"] - start[1])
@@ -672,7 +832,6 @@ def main() -> int:  # noqa: C901
                 else f"OUTSIDE the validated {JUNCTION_MIN_DEGREES:.0f}-"
                 f"{JUNCTION_MAX_DEGREES:.0f} deg band -- this IS the experiment"
             )
-        facing = args.heading if args.heading is not None else last_travel_heading()
         points, area_name, initial_heading = build_path(
             start,
             polygons,
@@ -684,11 +843,21 @@ def main() -> int:  # noqa: C901
         print(
             f"\n== PATH ==  area={area_name}  initial heading={initial_heading:.0f} deg"
         )
-        if facing is not None:
-            opening = abs((initial_heading - facing + 180) % 360 - 180)
+        opening = abs((initial_heading - facing + 180) % 360 - 180)
+        print(
+            f"  mower faces ~{facing:.0f} deg ({facing_source}), so segment 1's "
+            f"opening turn is ~{opening:.0f} deg"
+        )
+        # beta41 decomposes an opening turn into <=60 deg stages instead of
+        # refusing it, so the old ~114 deg dispatch ceiling no longer applies to
+        # segment 1 -- a 165.048 deg opening turn completed on hardware
+        # 2026-08-10. Still worth seeing: a staged turn spends its whole
+        # translation budget across the stages, so a large opening turn starts
+        # the first leg further off its bearing than a small one.
+        if opening > 114.0:
             print(
-                f"  mower faces ~{facing:.0f} deg, so segment 1's opening turn is "
-                f"~{opening:.0f} deg (must stay under ~114 to dispatch)"
+                "    (over ~114 deg: the direct turn will be refused and beta41 "
+                "will stage it)"
             )
         for index, point in enumerate(points):
             print(f"    p{index}: ({point['x']:.3f}, {point['y']:.3f})")
