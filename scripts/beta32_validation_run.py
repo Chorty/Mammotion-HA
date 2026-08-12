@@ -525,6 +525,19 @@ def build_reposition_path(
     return points, area_name, heading
 
 
+def blocking_reasons(motion: dict[str, Any]) -> list[str]:
+    """Backend blockers that a preflight should fail on.
+
+    Everything the gate reports EXCEPT `experimental_motion_disabled`, which is
+    the normal resting posture and is precisely what `--arm` is about to clear.
+    """
+    return [
+        blocker
+        for blocker in (motion.get("blockers") or [])
+        if blocker != "experimental_motion_disabled"
+    ]
+
+
 def preflight() -> dict[str, Any]:
     """Evaluate every hard gate the run needs and print a pass/fail table."""
     # Wake the link before judging it. `ble_link_live` needs a RECENT outbound
@@ -593,6 +606,19 @@ def preflight() -> dict[str, Any]:
             "no active session",
             not motion.get("active_session"),
             f"active_session={motion.get('active_session')}",
+        ),
+        (
+            # Ask the BACKEND what would stop it, rather than only re-deriving
+            # the answer from entities. On 2026-08-11 every check above passed
+            # -- including "BLE link live", whose binary_sensor still read `on`
+            # -- while `blockers` already carried `ble_client_not_connected` and
+            # `ble_rssi` read 0. The run armed, was refused by the gate, and the
+            # only warning had been a line of informational print. The gate's
+            # own blocker list is the authoritative answer; anything in it other
+            # than the disarmed-gate entry is a real preflight failure.
+            "no backend blockers",
+            not blocking_reasons(motion),
+            f"blockers={motion.get('blockers')}",
         ),
     ]
 
@@ -925,7 +951,18 @@ def main() -> int:  # noqa: C901
     stamp = _now()
     name = "beta33-reposition" if args.reposition else "beta32-4segment"
     out = REPO / "docs" / f"evidence-{name}-{stamp}.json"
-    armed = False
+    # ⚠️ Set BEFORE the enable, never after. This flag does not mean "the gate
+    # opened", it means "this script may have touched the gate and therefore
+    # owes a disarm". Keying it off the readback -- which is what it used to do
+    # -- leaves the gate ENABLED on every path where the enable succeeds but
+    # `real_motion_allowed` comes back false, because the `finally` then
+    # declines to clean up. That fired for real on 2026-08-11: BLE dropped
+    # between the preflight and the arm, `real_motion_allowed` read false on
+    # `ble_client_not_connected`, the script aborted "without sending anything"
+    # -- and left `enabled: true` behind it, one BLE reconnect away from an
+    # unattended open gate. Setting it first also covers a crash or a Ctrl-C
+    # landing mid-enable.
+    armed = True
     try:
         print("\n== ARM ==")
         subprocess.run(
@@ -938,12 +975,15 @@ def main() -> int:  # noqa: C901
             check=True,
         )
         verify = _call("export_runtime_state", {}, timeout=120)
-        allowed = verify.get("experimental_motion", {}).get("real_motion_allowed")
+        motion_now = verify.get("experimental_motion", {})
+        allowed = motion_now.get("real_motion_allowed")
         print(f"  real_motion_allowed = {allowed}")
         if not allowed:
-            print("  gate did not open -- aborting without sending anything.")
+            print(
+                "  gate did not open -- aborting without sending anything.\n"
+                f"  blockers: {motion_now.get('blockers')}"
+            )
             return 1
-        armed = True
 
         print("\n== EXECUTE ==")
         started = time.monotonic()

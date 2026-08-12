@@ -169,6 +169,105 @@ def test_driven_leg_alone_is_used_when_toward_is_unreadable(
     assert source == "last_leg_uncorroborated"
 
 
+@pytest.mark.parametrize(
+    ("blockers", "expected"),
+    [
+        (None, []),
+        ([], []),
+        (["experimental_motion_disabled"], []),
+        (["ble_client_not_connected"], ["ble_client_not_connected"]),
+        (
+            ["experimental_motion_disabled", "position_not_valid_for_motion"],
+            ["position_not_valid_for_motion"],
+        ),
+    ],
+)
+def test_only_the_disarmed_gate_is_an_acceptable_blocker(
+    blockers: list[str] | None, expected: list[str]
+) -> None:
+    """`experimental_motion_disabled` is the resting posture; nothing else is.
+
+    On 2026-08-11 every entity-derived check passed -- `ble_link_live` still
+    read `on` -- while the gate already knew the BLE client was gone. Asking the
+    backend directly is the check that would have caught it.
+    """
+    assert harness.blocking_reasons({"blockers": blockers}) == expected
+
+
+def _arm_abort_harness(monkeypatch: pytest.MonkeyPatch, calls: list[str]) -> None:
+    """Drive main() to the arm step with a gate that refuses to open."""
+    monkeypatch.setattr(harness, "load_dotenv", lambda: None)
+    monkeypatch.setenv("HA_URL", "http://localhost:8123")
+    monkeypatch.setenv("HA_TOKEN", "token")
+    monkeypatch.setattr(
+        harness,
+        "preflight",
+        lambda: {"runtime": {}, "failed": [], "position": {"x": 0.0, "y": 0.0}},
+    )
+    monkeypatch.setattr(
+        harness,
+        "_load_area_polygons",
+        lambda: {"Test": [(-50.0, -50.0), (50.0, -50.0), (50.0, 50.0), (-50.0, 50.0)]},
+    )
+    monkeypatch.setattr(harness, "last_travel_heading", lambda: 0.0)
+
+    def fake_call(service: str, payload: dict[str, Any], timeout: int = 300) -> Any:
+        calls.append(service)
+        if service == "export_runtime_state":
+            # The gate refuses: enabled, but not allowed, because BLE dropped.
+            return {
+                "experimental_motion": {
+                    "enabled": True,
+                    "real_motion_allowed": False,
+                    "blockers": ["ble_client_not_connected"],
+                }
+            }
+        return {"valid": True, "errors": [], "stop_reason": "dry_run"}
+
+    def fake_subprocess(cmd: list[str], **kwargs: Any) -> Any:
+        calls.append(f"gate:{cmd[-2]}")
+        return None
+
+    monkeypatch.setattr(harness, "_call", fake_call)
+    monkeypatch.setattr(harness.subprocess, "run", fake_subprocess)
+
+
+def test_a_gate_that_opens_but_refuses_is_still_disarmed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """THE safety property: touching the gate obliges a disarm, always.
+
+    This failed for real on 2026-08-11. BLE dropped between the preflight and
+    the arm, so `real_motion_allowed` came back false, main() returned early
+    reporting it had aborted "without sending anything" -- and left
+    `enabled: true` behind, one BLE reconnect away from an unattended open gate.
+    The `armed` flag had been set AFTER the readback, so the `finally` block
+    declined to clean up something it had in fact already done.
+    """
+    calls: list[str] = []
+    _arm_abort_harness(monkeypatch, calls)
+    monkeypatch.setattr(
+        sys, "argv", ["beta32_validation_run.py", "--arm", "--heading", "0"]
+    )
+
+    assert harness.main() == 1
+    assert "gate:on" in calls, "test set-up wrong: the gate was never armed"
+    assert "gate:off" in calls, "GATE LEFT OPEN after an aborted arm"
+    assert calls.index("gate:off") > calls.index("gate:on")
+
+
+def test_the_preview_path_never_touches_the_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The counterpart: without --arm nothing may reach the gate at all."""
+    calls: list[str] = []
+    _arm_abort_harness(monkeypatch, calls)
+    monkeypatch.setattr(sys, "argv", ["beta32_validation_run.py", "--heading", "0"])
+
+    assert harness.main() == 0
+    assert not [c for c in calls if c.startswith("gate:")]
+
+
 def test_no_facing_at_all_refuses_rather_than_defaulting(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
