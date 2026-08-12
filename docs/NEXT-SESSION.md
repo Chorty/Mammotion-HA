@@ -63,15 +63,47 @@ in that run were ones where the old and new rules agree.
 - **The segment is decided by 0.5 m out**: perpendicular miss ≤ 0.113 m at that
   range → 6 of 6 reached; ≥ 0.147 m → 4 of 6 missed.
 
-### Next, and it is a measurement not a commit
+### ⛔ Then that remedy was REFUTED the same afternoon — §8 of the same doc
 
-**Do not implement the trigger change yet.** It rests on n=2 failures, and no run
-has ever corrected at 1.8 m out on this control law — the mechanism says an early
-correction is cheap, but that is an argument, not a measurement. The honest next
-step is a single-variable hardware test of *early* correction.
+**Do not implement the trigger change. Two independent checks killed it.**
 
-⚠️ **Gate 5 should wait.** Spending it while a known defect can end a segment in
-reverse-recovery buys a failed gate.
+1. **The turn primitive cannot deliver it.** 65 corrections on record: smallest
+   rotation ever **4.93°** (once), median **35.23°**. Fixing a 6° aim error at
+   1.87 m needs ±4.6°. At the median it would turn a 0.196 m cross-track into
+   ~0.91 m. Corrections only help where required precision ≥ deliverable, i.e.
+   **d ≲ 0.86 m**, and inside that window the existing 18° trigger already fires
+   at about the right cross-track.
+2. **Initial cross-track does not predict the landing.** Over 39 approaches,
+   r² = 0.068; segments that REACHED had up to **0.4218 m** of initial
+   cross-track, segments that MISSED as little as 0.0928 m. Run A segment 2
+   started 0.4218 m off-line and landed **0.0912 m** because a correction fired
+   at 0.797 m and worked.
+
+### 🔑 The real picture: 33 of 39 approaches reached
+
+```
+20260809T195940 seg2  0.5830  command_failed          BLE
+20260812T001116 seg1  0.5493  vio_realign_incomplete  BLE
+20260809T210241 seg3  0.1641  max_linear_commands     old fixed-budget profile
+20260810T002506 seg3  0.2548  max_linear_commands     beta36 guard, since fixed
+20260811T235133 seg2  0.1797  reverse_recovery        genuine
+20260812T191850 seg1  0.1715  reverse_recovery        genuine
+```
+
+**Two genuine control failures in 39, both ~2 cm outside a 15 cm tolerance.**
+beta38/39 6/6, beta40 8/8. Short legs 28/28 on control grounds, long legs 5/7.
+
+### Next: STOP TUNING. Run Gate 5.
+
+Two plausible mechanisms were proposed and refuted in one afternoon — beta42's
+guard fix (worth 4 mm of a 42 mm error) and the early-correction trigger
+(actively harmful). There is no defect here big enough to justify another
+motion-law change on n = 2.
+
+**The outstanding obligation is Gate 5 on the adopted profile, card-driven.** It
+must come from the CARD, not the harness — a harness run cannot close the
+profile-identity gap (`docs/p0-beta-release.md:98-102`). The regime it exercises
+(short-to-moderate legs) is the one running 28/28.
 
 Reach is unaffected and still solved: 2/3/4 m single legs at 0.0690 / 0.0928 /
 0.1023 m. Reach and final-approach accuracy are separable and only the first is

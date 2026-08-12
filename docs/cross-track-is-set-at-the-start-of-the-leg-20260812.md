@@ -1,5 +1,14 @@
 # The landing is decided in the first pulse, and the trigger is range-blind
 
+> ## ⛔ §6's REMEDY IS REFUTED. Read §8 before acting on anything below.
+>
+> Written the same afternoon, hours apart. §1–§5 stand — they are direct
+> measurements. **§6's recommendation does not**, on two independent grounds:
+> the turn primitive cannot deliver the precision an early correction needs, and
+> initial cross-track turns out not to predict the landing at all. §8 has the
+> numbers. The document is kept whole because the reasoning is instructive and
+> because deleting a wrong recommendation hides that it was made.
+
 **2026-08-12, off-mower.** Written after Run C failed on segment 1
 (`target_requires_reverse_recovery`, 0.1715 m) despite the beta42 guard fix, and
 after that fix turned out to explain almost none of the error.
@@ -166,3 +175,86 @@ first is solved.
 - The trigger change above is **not implemented**. It is a motion-control-law
   change resting on n = 2 failures, and the honest next step is a single-variable
   hardware test of *early* correction before any of it is frozen into a profile.
+
+## 8. ⛔ REFUTATION of §6, same afternoon, before any of it was implemented
+
+Nothing here was shipped. Two checks killed the remedy in §6.
+
+### 8.1 The turn primitive cannot make the correction §6 asks for
+
+65 correction turns on record:
+
+```
+smallest rotation ever achieved     4.93 deg   (once in 65)
+median rotation                    35.23 deg
+under 12 deg                        5 of 65
+```
+
+against the precision the geometry demands:
+
+| remaining | aim must be within | deliverable? |
+| --- | --- | --- |
+| 2.50 m | 3.44° | no |
+| 1.87 m | 4.60° | beaten once in 65 |
+| 1.00 m | 8.63° | marginal |
+| 0.86 m | 10.04° | marginal |
+| 0.50 m | 17.46° | yes |
+| 0.30 m | 30.00° | comfortably |
+
+Firing a correction at 1.87 m to fix a 6.03° aim error asks for a ~6° turn
+landing inside ±4.6°. At the median 35° delivered, it would convert a 0.196 m
+cross-track into roughly **0.91 m**. **The early correction §6 proposes is the
+most destructive available action at that range.**
+
+Corrections only help where required precision ≥ deliverable precision, i.e.
+**d ≲ 0.86 m** — and below ~0.5 m §2's bearing swing makes the input stale. The
+useful window is roughly **0.5–0.86 m**, and inside it the existing 18° trigger
+already fires at a cross-track of 0.15–0.27 m, which is about right. **The
+trigger is not meaningfully broken where it can act.**
+
+### 8.2 Initial cross-track does not predict the landing
+
+Regressed across all 39 completed approaches:
+
+```
+landing vs leg length                    r = +0.321   r^2 = 0.103
+landing vs |initial aim|                 r = +0.093   r^2 = 0.009
+landing vs initial cross-track           r = +0.261   r^2 = 0.068
+```
+
+and there is no threshold either: segments that REACHED had initial cross-track
+up to **0.4218 m**, while segments that MISSED had it as low as **0.0928 m**. The
+decisive case is Run A segment 2 — it began **0.4218 m** off-line and landed
+**0.0912 m**, because a correction fired at 0.797 m, inside the useful window,
+and did its job.
+
+**So §3's observation was real but its generalisation was not.** Cross-track is
+indeed near-constant *along a leg that is never corrected*; across the population
+the mid-drive correction routinely rescues large initial cross-track. The two
+traced failures were selected for being failures.
+
+### 8.3 What the failures actually are
+
+33 of 39 approaches reached. Every miss, by cause:
+
+```
+20260809T195940 seg2  0.5830  command_failed          BLE
+20260812T001116 seg1  0.5493  vio_realign_incomplete  BLE
+20260809T210241 seg3  0.1641  max_linear_commands     old fixed-budget profile
+20260810T002506 seg3  0.2548  max_linear_commands     beta36's guard, since fixed
+20260811T235133 seg2  0.1797  reverse_recovery        genuine
+20260812T191850 seg1  0.1715  reverse_recovery        genuine
+```
+
+**Two genuine control failures in 39 approaches, both ~2 cm outside a 15 cm
+tolerance.** By era: beta38/39 6/6, beta40 8/8. On control-law grounds short legs
+are 28/28 and long legs 5/7 — which hints at a leg-length effect at the
+threshold, but n = 7 and §8.2 refutes the mechanism that would explain it.
+
+### 8.4 Conclusion
+
+**Stop changing the control law.** There is no defect here large enough to
+justify another motion-law change on n = 2, and two plausible mechanisms have now
+been proposed and refuted in one afternoon — the beta42 guard fix (worth 4 mm of
+a 42 mm error) and §6's early correction (actively harmful). The outstanding work
+is **Gate 5 on the adopted profile**, not more tuning.
