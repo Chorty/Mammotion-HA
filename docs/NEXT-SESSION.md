@@ -169,12 +169,12 @@ byte-identical, both card paths `09a1d05e`, resource
 re-aim guard fix **and** the adopted reach profile. Deploy record in
 `docs/deploy-runbook-p0.md`.
 
-🚨 **THE PROFILE IS NOW UN-ACCEPTED.** `max_linear_pulse_ceiling` moved
-`null` → **14** on the operator's decision, so loop-to-tolerance is what a card
-user gets by default and per-click reach is ~16 m. That owes a **fresh Gate 5,
-card-driven, and it has not been run.** The card's execution-profile label says
-"Gate 5 re-pass PENDING" until it is. Do not call any run on this build
-profile-accepted.
+~~🚨 THE PROFILE IS NOW UN-ACCEPTED.~~ **RESOLVED THE SAME DAY — the Gate 5
+re-pass passed, see the top of this file.** `max_linear_pulse_ceiling` moved
+`null` → **14** on the operator's decision, which un-accepted the profile and
+owed a fresh card-driven Gate 5. That gate ran on 2026-08-12 and passed 4/4, so
+the key is accepted and the card's label no longer says "PENDING". Kept because
+it records that the debt existed and was paid, not skipped.
 
 Order matters: **A before C.** Each is single-variable, and A's failure would
 invalidate C.
@@ -543,7 +543,9 @@ already ~5°); the landing is set by the map-frame error.
 2. **`realignments_suppressed` lacks `facing`/`bearing`**, unlike `realignments`.
    Small instrumentation gap; costs an analysis reconstruction step.
 3. **BLE write latency** — standing item, `docs/pymammotion-ble-slot-leak-bug.md`.
-   Has not aborted a run since beta35 but degrades the rate estimate.
+   ⚠️ It HAS aborted a run since beta35 — the 2026-08-12 4 m run, on a queue
+   deadline. 1 of 15 runs since beta35 (~7%); 2 of 20 overall. Also degrades
+   the rate estimate.
 4. ⚠️ **NOTHING IS PUSHED.** The branch has no upstream configured. `origin` is
    the Chorty fork; the `mikey0000` remote has its push URL disabled. Today's work
    exists only on the dev machine.
@@ -837,7 +839,8 @@ scales with leg length.
 
 - **beta35** — refresh writes fire on a fixed cadence instead of
   interval-after-completion. Delivered-window overruns fell from +117% to +29%,
-  and **BLE has not aborted a run since**.
+  and BLE aborts became rare. ⚠️ **"Has not aborted a run since" is REFUTED** —
+  1 of 15 runs since beta35 died on a BLE queue deadline (2026-08-12).
 - **beta36** — a mid-drive re-aim guard that was **wrong**; see beta38.
 - **beta37** — the turn model rebuilt on 35 measured pulses:
   `_MIN_SCALED_TURN_PULSE_MS` 400 → 200 (200 ms actuates; there is no threshold

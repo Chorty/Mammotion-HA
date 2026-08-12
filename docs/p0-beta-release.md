@@ -2,18 +2,28 @@
 
 ## Maturity stage
 
-This branch has completed **Alpha implementation and supervised backend
-acceptance**: every LUBA Gate 1-4 test passed and the safety gates fail closed,
-but known release blockers remain. The card's built-in Real Go defaults now
-match the deliberately bounded profile used for Gate 4 (see "Card execution
-profile" below), so the card emits the accepted payload by default. The card
-has driven the mower, but its 2026-08-02 exact 0.400 m beta16 run stopped
-0.1311 m short of waypoint 1 and never began segment 2. Backend acceptance
-therefore still must not be presented as completed UI-to-mower acceptance. The
-three stages are exit criteria, not
-version labels -- the version
-scheme stays `0.6.x-betaN` because
-`beta-release.yml` numbers from it and prior builds already shipped as `-betaN`.
+This branch has completed **Alpha implementation and the full supervised LUBA
+acceptance sequence**: Gates 1-4 passed, and **Gate 5 has passed twice** —
+2026-08-08 on the fixed-budget profile and **2026-08-12 on the reach-enabled
+profile**, both card-driven. The card's Real Go defaults are the frozen
+`LUBA_ACCEPTANCE_PROFILE`, and the 2026-08-12 run's real payload carried every
+one of them, so **UI-to-mower acceptance is demonstrated in fact, not on paper.**
+Four segments reached target at 0.0674 / 0.1032 / 0.0807 / 0.0607 m against a
+0.15 m tolerance — mean 0.0780, the best four-segment result on record. See
+`docs/gate5-repass-PASSED-20260812.md`.
+
+⚠️ **Reconciled 2026-08-12.** The paragraph this replaces was written on
+2026-08-02 and had gone badly stale: it stated that the card "has not completed
+both Gate 5 segments" and that backend acceptance "must not be presented as
+completed UI-to-mower acceptance". Both were superseded within a week and
+neither was corrected for ten days. The results sections below are the evidence;
+when this summary disagrees with them, **they win**.
+
+The three stages are exit criteria, not version labels -- the version scheme
+stays `0.6.x-betaN` because `beta-release.yml` numbers from it and prior builds
+already shipped as `-betaN`. **The Beta exit criteria are assessed against the
+record in "Alpha to Beta" below**; passing every gate is not the same as
+clearing them.
 
 | Stage       | Meaning                              | Exit criteria                                                                                 |
 | ----------- | ------------------------------------ | --------------------------------------------------------------------------------------------- |
@@ -795,12 +805,54 @@ safety one. It is tracked as the headline Alpha-to-Beta item below.
 ## Alpha to Beta
 
 ⚠️ **Reconcile this list against the chronological record above before acting on
-it.** Last reconciled: **2026-07-31 (evening)**. These entries are a summary,
+it.** Last reconciled: **2026-08-12 (evening)**. These entries are a summary,
 and the results sections are the evidence — when they disagree, the results win.
-This list has already drifted once: it asked for a stationary BLE soak that had
-been completed the previous day and recorded 300 lines above, which sent a later
-session off to repeat finished work. If you close an item, edit it here in the
-same change that records the result, and move this date.
+This list has already drifted twice: once it asked for a stationary BLE soak that
+had been completed the previous day and recorded 300 lines above, sending a later
+session off to repeat finished work; and from 2026-07-31 to 2026-08-12 it sat
+unreconciled across ~25 betas and the entire Gate 5 sequence, still describing
+`0.6.4-beta19` and "Release remains halted". If you close an item, edit it here
+in the same change that records the result, and move this date.
+
+### Beta exit criteria — assessed 2026-08-12
+
+> **Beta:** *turn granularity solved; BLE link holds a full path run; no known
+> way to strand a live client.*
+
+**1. Turn granularity — MET IN EFFECT, with a documented residual.**
+Four-segment landings now run 0.0674–0.1032 m against a 0.15 m tolerance
+(mean 0.0780), and 33 of 39 recorded approaches reached target. The granularity
+that once produced a fixed ~4 in step and an oscillating turn no longer prevents
+a path run. ⚠️ **The residual is real and measured:** across 65 correction turns
+the smallest rotation ever achieved is **4.93°** with a **35.23°** median, so a
+correction can only help while the required precision is coarser than that —
+about 0.86 m from the target. See
+`docs/cross-track-is-set-at-the-start-of-the-leg-20260812.md` §8.
+
+**2. BLE holds a full path run — NOT MET, but it fails safe.** Over 20 armed
+multi-segment runs, **2 were lost to BLE** (`command_failed` 2026-08-09;
+`vio_realign_incomplete` on a queue deadline 2026-08-12) — 10% overall, and
+**1 in 15 since beta35** (~7%). Both aborted the run rather than doing anything
+unsafe.
+
+🚨 **This refutes a claim carried in `CLAUDE.md` and repeated since 2026-08-10:**
+that after beta35 "no run has aborted on BLE since". The 2026-08-12 4 m run
+did exactly that. Corrected in both documents.
+
+**3. No known way to strand a live client — MET FOR THE SHIPPED BUILD.** Sites A
+and C of `docs/pymammotion-ble-slot-leak-bug.md` are **unfixed upstream** in
+0.8.12/`main`, and PR #180 remains open. This integration pins the Chorty
+`0.8.12.post1` wheel carrying the failure-atomic teardown patch, and
+`backend_capability.py` locks real motion if that code is absent — so the
+shipped configuration is covered, ⚠️ **but the coverage depends on a fork wheel
+that upstream has not merged.** A user who installs against stock pymammotion is
+not protected; the capability probe refuses motion rather than running unsafely.
+
+**Disposition: one criterion short.** Every acceptance gate is passed and the
+profile is accepted, but criterion 2 is not met on the evidence. The call on
+whether ~7% BLE-aborted runs clears a "holds a full path run" bar is the
+operator's, and it is a judgement about acceptable reliability, not a missing
+measurement.
 
 - **Card execution profile — RESOLVED 2026-07-31 (second pass).** The backend
   Gate 4 call used one linear command per segment, an 8 cm waypoint tolerance,
@@ -820,15 +872,16 @@ same change that records the result, and move this date.
   carries both a minimal YAML and the written-out defaults. The emitted payload
   was additionally validated against the shipped voluptuous schemas for both
   card services, confirming the ceiling is absent rather than zeroed.
-  **Current disposition:** the card has driven the mower in three supervised
-  runs but has not completed both Gate 5 segments. Two beta16 short approaches
-  established the refresh-count/stop-latency defect. The beta19 candidate
-  retains beta17's correction, keeps the accepted profile unchanged,
-  and must re-pass affected backend Gates 2 and 4 before Gate 5. Release remains
-  halted.
-  `CARD_VERSION`, `manifest.json`, `pyproject.toml` and `uv.lock` are bumped
-  together to `0.6.4-beta19` (`0.6.4b19` in `uv.lock`); the host matches,
-  affected hardware gates remain open.
+  **Current disposition — reconciled 2026-08-12.** ⚠️ The text here previously
+  read "the card has driven the mower in three supervised runs but has not
+  completed both Gate 5 segments … Release remains halted" and named
+  `0.6.4-beta19`. That was true on 2026-07-31 and false from 2026-08-08 onward.
+  **Gate 5 has now passed twice, both card-driven** — 2026-08-08 (two segments,
+  twice) and 2026-08-12 (four segments, mean 0.0780 m). The profile itself
+  changed once since: `waypoint_tolerance` 0.08 → 0.15 (beta30, on the
+  slow-tier evidence) and `max_linear_pulse_ceiling` null → 14 (beta42, adopted
+  on the reach evidence and **accepted by the 2026-08-12 Gate 5**). All four
+  version sites are at `0.6.4-beta44` and the host matches.
 - **`Beta Release` workflow was unrunnable — FIXED 2026-07-31.** Three shell
   expressions in `.github/workflows/beta-release.yml` were written with doubled
   backslashes inside YAML block scalars, which do not process escapes, so sed

@@ -10,12 +10,17 @@ provenance — accurate as a record, but **do not act on any build state it
 describes**, and note that measurement has since refuted several of its claims
 (the "unexplained" turn-rate variance and the turn-budget framing, both below).
 
-## Current build: `0.6.4-beta41` — deployed and VALIDATED ON HARDWARE, gate disarmed
+## Current build: `0.6.4-beta44` — deployed, PROFILE ACCEPTED, gate disarmed
 
-Host and branch agree at beta41, deployed 2026-08-10 (46/46 byte-identical, both
-card paths `174f317d`, resource `?v=0.6.4-beta41&build=174f317d`).
-`docs/NEXT-SESSION.md` carries the live mower state and the queued run; this
-section carries what changed and why.
+Host and branch agree at beta44, deployed 2026-08-12 (46/46 byte-identical, both
+card paths `9db56b22`, resource `?v=0.6.4-beta44&build=9db56b22`).
+`docs/NEXT-SESSION.md` carries the live mower state; this section carries what
+changed and why.
+
+**All five gates are complete and Gate 5 has passed twice** — 2026-08-08
+fixed-budget, 2026-08-12 reach-enabled. ⚠️ **One Beta exit criterion is still
+short**: "BLE holds a full path run" fails at ~7% of runs since beta35. See the
+assessment in `docs/p0-beta-release.md` → "Alpha to Beta".
 
 🏁 **GATE 5 RE-PASSED ON THE REACH-ENABLED PROFILE, 2026-08-12.** Card-driven,
 four segments, all `target_reached`, landings 0.0674 / 0.1032 / 0.0807 / 0.0607
@@ -54,11 +59,12 @@ disarm, never "enable succeeded".** Same commit makes the backend's own
 `blockers` list a hard preflight check: all eight entity-derived checks passed
 while the gate already knew the BLE client was gone.
 
-⚠️ **`max_linear_pulse_ceiling` is a frozen `LUBA_ACCEPTANCE_PROFILE` key that
-the card sends as `null`, so NEITHER RUN IS ON THE ACCEPTED PROFILE and the
-landings do not compare to Gate 5.** Every other key was sent at its accepted
-value. Adopting it un-accepts the profile and owes a fresh Gate 5 — which is now
-the next genuine milestone. Measuring first was the entire point.
+~~⚠️ `max_linear_pulse_ceiling` is a frozen key the card sends as `null`, so
+NEITHER RUN IS ON THE ACCEPTED PROFILE.~~ **SUPERSEDED 2026-08-12.** True when
+the reach runs were measured; the key was adopted (`null` → 14) that day and
+**accepted by the Gate 5 re-pass the same day**. The card now sends 14 and the
+landings above are directly comparable to Gate 5. Kept because it records why
+the reach runs were deliberately measured off-profile first.
 
 🔑 **The loop is robust to BLE stalls, and that reframes the standing BLE item.**
 The 3 m leg drove through two 2-write pulses (4158 ms and 2847 ms windows) that
@@ -123,7 +129,11 @@ disarmed, opened only for the ~100 s of a supervised run.
 
 - **beta35** — refresh writes fire on a fixed cadence from the window start
   rather than one interval after the previous write completed. Delivered-window
-  overruns fell from +117% to +29% and **no run has aborted on BLE since.**
+  overruns fell from +117% to +29%. ⚠️ **The follow-on claim that "no run has
+  aborted on BLE since" is REFUTED** — the 2026-08-12 4 m run died on a BLE
+  queue deadline (`vio_realign_incomplete`). Measured over 20 armed
+  multi-segment runs: 2 lost to BLE overall, 1 of 15 since beta35 (~7%). Both
+  aborted the run rather than doing anything unsafe.
 - **beta37** — the turn model rebuilt on 35 measured pulses.
   `_MIN_SCALED_TURN_PULSE_MS` 400 → **200** (200 ms actuates; there is no
   threshold near 400). The overshoot bound is no longer a rate: rotation measures
