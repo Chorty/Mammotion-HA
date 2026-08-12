@@ -18,88 +18,97 @@ blades off, battery 59% when it docked. VIO went 80 → 77 → 59 → **0** betw
 night; only our closed-loop executor needs VIO. That is a night-repositioning
 tool we were not using.)*
 
-## 📋 THE PLAN FOR 2026-08-12
+## 📋 THE PLAN FOR 2026-08-12 — PHASE 0 IS DONE AND DEPLOYED
 
-### The one thing to understand before choosing what to do
+✅ **`0.6.4-beta42` is on the host, motion-disabled, verified** (46/46
+byte-identical, both card paths `09a1d05e`, resource
+`?v=0.6.4-beta42&build=09a1d05e`, `real_motion_allowed: false`). It carries the
+re-aim guard fix **and** the adopted reach profile. Deploy record in
+`docs/deploy-runbook-p0.md`.
 
-**Tonight's reach result does not reach the user.** The card sends
-`max_linear_pulse_ceiling: null` (`LUBA_ACCEPTANCE_PROFILE`, frozen), so a
-person clicking the map still gets ~1 m segments no matter what the harness can
-do with an override. **The profile change is therefore ON the critical path to
-the goal, not an optional adoption** — and it owes a fresh Gate 5. Every step
-below is sequenced to arrive at that Gate 5 with the open defects already closed,
-because running it twice is the expensive mistake.
+🚨 **THE PROFILE IS NOW UN-ACCEPTED.** `max_linear_pulse_ceiling` moved
+`null` → **14** on the operator's decision, so loop-to-tolerance is what a card
+user gets by default and per-click reach is ~16 m. That owes a **fresh Gate 5,
+card-driven, and it has not been run.** The card's execution-profile label says
+"Gate 5 re-pass PENDING" until it is. Do not call any run on this build
+profile-accepted.
 
-Order matters: **A before B before C.** Each is single-variable, and each one's
-failure would invalidate the next.
+Order matters: **A before C.** Each is single-variable, and A's failure would
+invalidate C.
 
-### Phase 0 — off-mower, before first light
+### Phase 0 — DONE 2026-08-12, kept for the record
 
-**0.1 `beta42`: the re-aim guard projects to the END OF THE NEXT PULSE.** This is
-the whole reason a multi-segment long-leg path has never completed. The guard
-currently answers `distance · sin(aim)` — the miss at *closest approach* — but
-the mower drives a whole pulse and sails past that point. See §3 of
-`docs/loop-to-tolerance-reach-20260811.md` for the derivation and the 13-sample
-replay.
+✅ **0.1 The re-aim guard projects to the end of the next pulse.** It answered
+`distance · sin(aim)` — the miss at *closest approach* — but the mower drives a
+whole pulse and sails past that point. With the planner aiming the next pulse at
+the remaining distance, the projection collapses to the chord
+**`2·d·sin(a/2)`**: you drove the right distance in the wrong direction. Derived,
+no new constant. `_projected_landing_after_next_pulse` in `services.py`.
 
-- The extra term needs an estimate of the next pulse's travel. Prefer the
-  segment's OWN measured pulses (`final_approach_observation.measured_distance`
-  is already recorded per pulse) over any constant; fall back to the profile's
-  `final_approach_metres_per_pulse` on pulse 1 when there is no history yet.
-- ⚠️ **Get the fail-closed direction right.** Over-estimating the next pulse makes
-  the guard correct MORE often: it costs turn commands and adds turn translation,
-  but it protects the landing. Under-estimating suppresses corrections that were
-  needed — which is the bias actually on record, 11 of 13. **Err toward
-  correcting.**
-- Touches no `LUBA_ACCEPTANCE_PROFILE` key. It IS a motion-control-law change, so
-  it gets a real review, not a quick patch.
+⚠️ **This plan's own advice about the estimator was WRONG, and the replay caught
+it — do not re-derive it.** It said to prefer "the segment's own measured
+pulses". A full measured pulse badly over-estimates the *next* one, because the
+final-approach logic shortens the pulse near the target. Replayed, that version
+fixed 1 real miss and **broke 5 good suppressions**. The correct input is the
+executor's own planned step, `min(remaining, metres_per_pulse)`, now produced by
+a `_effective_metres_per_pulse` helper the planner and the guard **share** so
+they cannot disagree.
 
-**0.2 `last_travel_heading()` reads the last pulse, not the whole leg** (see
-below). Cheap; removes a `--heading` round trip from every long run.
+Net effect on the record: fixes the one suppression that missed, and newly
+corrects two at 52.0° and 54.2° of aim error that had scraped inside — an
+accepted cost with a test named for it. ⚠️ The fix clears tolerance by **1.1 mm**;
+it pins which side of the boundary a decision is on, not where the mower lands.
 
-**0.3 Ship it.** Four version sites to `0.6.4-beta42`, full CI suite, deploy
-**motion-disabled** to both card paths, bump the Lovelace resource key, read back
-`real_motion_allowed: false`. `docs/deploy-runbook-p0.md`.
+✅ **0.2 `realignments_suppressed` now carries `facing`/`bearing`**, plus the
+projection and the metres-per-pulse it used.
 
-### Phase 1 — first light, three runs, in this order
+❌ **NOT done: `last_travel_heading()` still reads the whole leg, not the last
+pulse.** Still worth doing; still costs a `--heading` round trip after any
+mid-drive correction.
+
+✅ **0.3 Shipped and deployed.** See the deploy record above.
+
+### Phase 1 — first light, two runs, A then C
 
 Undock first: the dock sits ~1 m outside the polygon. **Drive to ~(6.5, −1.0)** —
 room in every direction, and it is where the beta39/40 runs started.
+`one_touch_leave_pile()` would do the undock without a walk, but it is not wired
+up yet.
 
-**Run A — the guard fix, single-variable. Repeat tonight's exact geometry.**
+⚠️ **`--pulse-ceiling` is no longer needed and passing it now LEAVES the accepted
+profile** — 14 is the profile value, so an override is the deviation. The harness
+prints which case it is in.
+
+**Run A — the guard fix, single-variable. Repeat last night's exact geometry.**
 
 ```sh
 .venv/bin/python scripts/beta32_validation_run.py --leg 2.0 --segments 2 \
-    --pulse-ceiling 10 --heading <TRUE FACING>
+    --heading <TRUE FACING>
 ```
 
-This is the highest-diagnostic run of the day and it must go first. Tonight this
-exact path failed at a suppression with **3.1 mm** of margin (projected 0.1469
-against 0.150, landed 0.1797, `target_requires_reverse_recovery`). Nothing else
-will have changed. **Pass = segment 2 corrects instead of suppressing, and
-reaches.** If it still suppresses, the extra term is too small or is reading the
-wrong pulse estimate — stop and fix before B.
+This is the highest-diagnostic run of the day and it must go first. That exact
+path failed at a suppression with **3.1 mm** of margin (projected 0.1469 against
+0.150, landed 0.1797, `target_requires_reverse_recovery`). **Pass = segment 2
+corrects instead of suppressing, and reaches.**
 
-**Run B — the staged opening turn on a long leg. Never been combined.**
+⚠️ Not perfectly single-variable any more: the ceiling also moved 10 → 14. It
+did not bind on that run (5 pulses used), so the geometry should behave
+identically — but say so rather than assuming it.
 
-```sh
-.venv/bin/python scripts/beta32_validation_run.py --leg 4.0 --segments 1 \
-    --pulse-ceiling 16 --heading <TRUE FACING + 180>
-```
+If segment 2 still suppresses, read `projected_landing_m` in
+`realignments_suppressed` (new in beta42) against `waypoint_tolerance` before
+touching anything: it says exactly what the guard decided on.
 
-A 180° opening turn decomposes into ≤60° stages (beta41, validated at 165° — but
-only ahead of 0.7 m legs). Staging spends its translation budget **across the
-whole staged turn**, so the leg starts further off-bearing than a small turn
-would; on a 4 m leg with loop-to-tolerance that interaction is untested. It is
-also exactly the geometry a user produces by clicking *behind* the mower.
-**Watch:** total staged displacement against the 0.30 m budget, the post-turn
-gate's correction, and whether the first two linear pulses re-aim.
+*(The 180° staged-turn run is **dropped** — it existed mostly to walk the mower
+back toward the middle of the yard, which `lawn_mower.dock` and
+`one_touch_leave_pile` do better. Staged turn ahead of a long leg is still
+untested and worth a run eventually, just not at the cost of daylight.)*
 
 **Run C — the goal, in miniature: click across the yard.**
 
 ```sh
 .venv/bin/python scripts/beta32_validation_run.py --leg 3.0 --segments 3 \
-    --pulse-ceiling 12 --heading <TRUE FACING>
+    --heading <TRUE FACING>
 ```
 
 ~9 m of path over three segments with two junctions. **This is the first run that
@@ -130,14 +139,21 @@ out beyond ~5°, the whole direction is dead — and that is a cheap thing to le
 *(Also unused and night-capable: `one_touch_leave_pile()` would undock without the
 manual step above. Not wired up.)*
 
-### Phase 2 — the decision, and it is not a commit
+### Phase 2 — GATE 5 RE-PASS. This is the milestone now.
 
-If A, B and C pass, the open question is no longer technical: **adopt
-`max_linear_pulse_ceiling` into `LUBA_ACCEPTANCE_PROFILE` and re-run Gate 5
-card-driven.** That obligates the §4 re-pinning in `docs/gate4-repass-20260805.md`
-— card copy, `CARD_VERSION` to both serving paths, frontend pinning tests — and a
-Gate 5 on the new profile. It is the operator's call, and it is the last thing
-between the measured capability and a user actually having it.
+The adoption decision is **made** (operator, 2026-08-12) and the §4 re-pinning is
+**done** — card profile, payload, frontend pin, README, execution-profile label,
+`CARD_VERSION`, and the harness mirror. What remains is the part that cannot be
+done off-mower: **Gate 5, card-driven, on the reach-enabled profile.**
+
+Until it passes, the profile is adopted but unaccepted, and the card says so.
+Run it after A and C pass — a Gate 5 attempt on a build whose guard fix has not
+been validated would be spending the gate to learn something a cheaper run
+teaches.
+
+**Drive it from the CARD, not the harness.** The whole point of
+`LUBA_ACCEPTANCE_PROFILE` is proving the card emits what was accepted; a harness
+run does not close that gap (`docs/p0-beta-release.md:98-102`).
 
 ### Hygiene, learned tonight
 

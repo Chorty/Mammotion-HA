@@ -34,6 +34,29 @@ passes were bought by driving past the waypoint and U-turning back. The next
 motion decision is whether to fix control quality (stop-latency lead, pulse
 sizing) or to accept overshoot-and-recovery — not a Gate 5 attempt.
 
+### beta42 reach-profile deploy — 2026-08-12 07:08-07:20 UTC
+
+`0.6.4-beta42` is deployed **motion-disabled**. Backup:
+`/config/mammotion-backup-20260812-0708-beta42.tgz`. All **46** files
+byte-identical to the tree, zero AppleDouble; both card copies
+`09a1d05ebbd79889a01a334dd9e3ef4b`. API back in **51 s**, 128 Mammotion entities
+in 165 s. Resource read back as `?v=0.6.4-beta42&build=09a1d05e` (was
+`beta41&build=174f317d`). Backend verified `pymammotion 0.8.12.post1`. Host
+readback: `CARD_VERSION = "0.6.4-beta42"`, `max_linear_pulse_ceiling: 14`,
+`manifest.version 0.6.4-beta42`. Gate off, `real_motion_allowed: false`, mower
+docked at (4.3188, 3.2862) `CHARGE_ON`, `MODE_READY`.
+
+🚨 **THIS BUILD CHANGES THE ACCEPTED PROFILE AND IS THEREFORE UNACCEPTED.**
+`max_linear_pulse_ceiling` moved `null` → **14**, adopting loop-to-tolerance on
+the operator's decision and 2026-08-11 hardware evidence (2/3/4 m legs landing
+0.0690 / 0.0928 / 0.1023 m). Per §4 of `docs/gate4-repass-20260805.md` that owes
+a **fresh Gate 5, card-driven, which has NOT been run.** The card's own
+execution-profile label now says so out loud: "Gate 5 re-pass PENDING". Do not
+describe any run on this build as profile-accepted until that gate passes.
+
+Also in this build: the mid-drive re-aim guard projects to the end of the next
+pulse rather than to the closest approach (no profile key).
+
 ### beta32 preflight-model correction deploy — 2026-08-09 01:16-01:22 EDT
 
 `0.6.4-beta32` is deployed motion-disabled. Backup:
