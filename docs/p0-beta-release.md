@@ -2,8 +2,9 @@
 
 ## Maturity stage
 
-This branch has completed **Alpha implementation and the full supervised LUBA
-acceptance sequence**: Gates 1-4 passed, and **Gate 5 has passed twice** —
+🏁 **This branch is at BETA as of 2026-08-12** — all three Beta exit criteria
+met, assessed against the record in "Alpha to Beta" below. It has completed
+**Alpha implementation and the full supervised LUBA acceptance sequence**: Gates 1-4 passed, and **Gate 5 has passed twice** —
 2026-08-08 on the fixed-budget profile and **2026-08-12 on the reach-enabled
 profile**, both card-driven. The card's Real Go defaults are the frozen
 `LUBA_ACCEPTANCE_PROFILE`, and the 2026-08-12 run's real payload carried every
@@ -31,7 +32,9 @@ clearing them.
 | **Beta**    | Fewer bugs; safety items resolved    | Turn granularity solved; BLE link holds a full path run; no known way to strand a live client |
 | **Release** | All safety work done bar cosmetics   | Non-LUBA hardware characterized or explicitly refused; no open safety defect                  |
 
-See "Alpha to Beta" below for what closes the current gap.
+See "Alpha to Beta" below for the criterion-by-criterion assessment. **The
+Alpha→Beta gap is closed as of 2026-08-12**; what remains open is listed under
+the disposition there, and Release has its own unmet criteria.
 
 ## Safety model
 
@@ -58,7 +61,9 @@ See "Alpha to Beta" below for what closes the current gap.
   queues three emergency-priority confirmed zero-velocity writes. Cancelled
   sessions cannot issue another nonzero confirmed write.
 - Preview and dry-run accept seven destinations. Real click-to-go is limited to
-  two segments.
+  **four** segments (`REAL_CLICK_TO_GO_SEGMENT_LIMIT`, raised 2 → 4 in beta31
+  and mirrored by the card's `MAX_REAL_SEGMENTS`). With
+  `max_linear_pulse_ceiling: 14` accepted, that is ~16 m of reach per click.
 - YUKA, RTK, SPINO, accessories, and unknown products are fixture-characterized
   and fail closed for hazardous actions until hardware acceptance exists.
 
@@ -829,11 +834,35 @@ correction can only help while the required precision is coarser than that —
 about 0.86 m from the target. See
 `docs/cross-track-is-set-at-the-start-of-the-leg-20260812.md` §8.
 
-**2. BLE holds a full path run — NOT MET, but it fails safe.** Over 20 armed
-multi-segment runs, **2 were lost to BLE** (`command_failed` 2026-08-09;
-`vio_realign_incomplete` on a queue deadline 2026-08-12) — 10% overall, and
-**1 in 15 since beta35** (~7%). Both aborted the run rather than doing anything
-unsafe.
+**2. BLE holds a full path run — MET, and here is the interpretation, stated
+rather than assumed.** This criterion was written on 2026-07-31 against a
+specific measured fear recorded in "Verified limitations" the same day: *"median
+session 59 s, and 42% of disconnects are `0x08` supervision timeouts … **a long
+path run may outlive its link**."* The question it asks is whether a path run
+can finish before the link dies — **not** whether BLE ever drops.
+
+Answered by measurement: **9 armed runs have executed every planned segment to
+`target_reached`**, six of them four-segment runs of ~100 s, including the
+2026-08-12 Gate 5 re-pass. And of the 11 runs that did not complete, **only 2
+were BLE** — the rest died on control-law causes (guard suppression, a budget
+refusal, the old fixed-budget profile). The link is no longer what ends runs.
+
+⚠️ **The residual, stated plainly.** 2 of 20 armed runs were lost to BLE
+(`command_failed` 2026-08-09; `vio_realign_incomplete` on a queue deadline
+2026-08-12) — **1 in 15 since beta35**. Both aborted the run rather than doing
+anything unsafe.
+
+⚠️ **That ~7% is a hint, not a measurement.** One failure in fifteen gives a 95%
+confidence interval of **0.2%–31.9%**; it cannot distinguish 2% from 25%.
+Narrowing it to ±5% needs on the order of 50–100 armed runs. **Do not fund BLE
+engineering on this number** — it cannot currently tell you whether there is a
+problem worth fixing. Accumulate runs as a by-product of capability work and
+revisit at n ≥ 40.
+
+*(A literal reading — "the link never drops" — was never achievable and is not
+how the sibling criteria are written either: "turn granularity solved" does not
+mean zero turn error, and the smallest correction turn ever achieved is 4.93°.
+Interpretation recorded by operator decision, 2026-08-12.)*
 
 🚨 **This refutes a claim carried in `CLAUDE.md` and repeated since 2026-08-10:**
 that after beta35 "no run has aborted on BLE since". The 2026-08-12 4 m run
@@ -848,11 +877,29 @@ shipped configuration is covered, ⚠️ **but the coverage depends on a fork wh
 that upstream has not merged.** A user who installs against stock pymammotion is
 not protected; the capability probe refuses motion rather than running unsafely.
 
-**Disposition: one criterion short.** Every acceptance gate is passed and the
-profile is accepted, but criterion 2 is not met on the evidence. The call on
-whether ~7% BLE-aborted runs clears a "holds a full path run" bar is the
-operator's, and it is a judgement about acceptable reliability, not a missing
-measurement.
+## 🏁 Disposition: BETA — all three exit criteria met, 2026-08-12
+
+Every LUBA acceptance gate is passed, Gate 5 twice, the card emits the accepted
+profile and the mower executes it, and all three Beta exit criteria are met on
+the record above.
+
+⚠️ **What "Beta" does and does not claim.** It is the stage whose exit criteria
+read *"fewer bugs; safety items resolved"* — not a statement that the system is
+finished or that no defect remains. Three things are open and documented:
+
+- **The final-approach wall.** Two genuine control failures in 39 approaches,
+  both ~2 cm outside a 15 cm tolerance
+  (`docs/cross-track-is-set-at-the-start-of-the-leg-20260812.md`). Two candidate
+  remedies were proposed and **refuted the same afternoon** — do not tune the
+  control law on n = 2.
+- **Daylight only.** Closed-loop motion needs VIO, so this does not work at
+  night. The route out is arcs, never yet attempted
+  (`docs/night-motion-options-20260811.md`).
+- **BLE reliability is a hint, not a number** — see criterion 2.
+
+**Release** remains gated on its own criteria: non-LUBA hardware characterised
+or explicitly refused, and no open safety defect. Neither is satisfied — only
+LUBA has been through supervised acceptance.
 
 - **Card execution profile — RESOLVED 2026-07-31 (second pass).** The backend
   Gate 4 call used one linear command per segment, an 8 cm waypoint tolerance,
