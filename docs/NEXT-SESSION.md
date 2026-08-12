@@ -4,7 +4,90 @@ Updated **2026-08-08 late** after Gate 5 passed. This is the current handoff;
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
-## 🚦 START HERE 2026-08-11 — beta41 deployed. One daylight run answers the reach question.
+## 🚦 START HERE 2026-08-11 night — REACH IS SOLVED. 3 m on one segment, measured.
+
+Host and branch both `0.6.4-beta41`. **Gate DISARMED**, verified after both runs.
+Mower is undocked in Backyard Right at **(9.9796, −7.4524)**, AREA_INSIDE,
+MODE_READY, blades off. Battery was 62% before the two runs and was not readable
+after — **check it and dock**. It is now dark, so nothing closed-loop can run.
+
+### What the two runs settled
+
+**Loop-to-tolerance lifts per-segment reach from ~1 m to 3 m.** Full analysis:
+`docs/loop-to-tolerance-reach-20260811.md`.
+
+| run | leg | pulses | landing | stop |
+| --- | --- | --- | --- | --- |
+| `…235133Z` seg1 | 2.000 m | 5 of 10 | **0.0690** | `target_reached` |
+| `…235133Z` seg2 | 1.942 m | 5 of 10 | 0.1797 | `target_requires_reverse_recovery` |
+| `…235945Z` seg1 | 3.000 m | 8 of 12 | **0.0928** | `target_reached` |
+
+Both good segments **stopped on tolerance, not on the ceiling**. The
+counterfactual is each segment's own third row: on the accepted profile they sit
+0.7489 / 0.6777 / **1.7919** m short on `max_linear_commands_reached`. Per-click
+reach goes ~4 m → **~12 m** at 4 segments.
+
+🔑 **The loop is robust to BLE stalls, and that is the bigger finding.** The 3 m
+leg ran through two 2-write pulses (4158 ms and 2847 ms windows) that travelled
+0.2325 / 0.2016 m against 0.34–0.49 m for the 15 cadence-intact pulses, and still
+landed at 9.3 cm — it just took two more pulses. Against `max_linear_commands: 3`
+those stalls are fatal. **BLE latency stops being a blocker for reach**, though
+it still degrades the rate estimate. ⚠️ n = 2 stalled pulses; that is the shape
+of the effect, not a calibrated number.
+
+### ⚠️ Do NOT read these as profile results
+
+Both runs passed `--pulse-ceiling`, i.e. `max_linear_pulse_ceiling`, a frozen
+`LUBA_ACCEPTANCE_PROFILE` key the card sends as `null`. Every other key was sent
+at its accepted value. **The landings do not compare to Gate 5.** Adopting the
+key un-accepts the profile and owes a fresh Gate 5 — which is now the next
+genuine milestone, and the reason to measure first was exactly this.
+
+### The one open defect, and it is well characterised
+
+Segment 2 of the 2 m run failed on **cross-track, not reach**. The beta38 re-aim
+guard suppressed a correction at a projected 0.1469 m miss against the 0.150 m
+tolerance — **3.1 mm of margin** — and it landed 0.1797 m out.
+
+The guard projects the miss at the **closest approach**, but the mower drives a
+whole pulse and finished 0.0877 m past that point. In quadrature that predicts
+0.1711 m, which **exceeds tolerance, so the correction would have fired**.
+Replayed over all 13 recorded suppressions the extra term cuts mean error
+0.0212 → 0.0147 m, and the guard under-predicts on **11 of 13**.
+
+⚠️ This is **not** the fitted margin dropped on 2026-08-10, and that drop was not
+wrong — its rationale (the bias came from post-turn error, which beta40 fixes at
+source) holds on the 0.7 m legs it was written about, where beta40/41
+suppressions land within ~±1 cm. It is incomplete at long legs, where one pulse
+is a large fraction of what remains. beta40 fired correctly on this very segment
+(18.139° → −5.363°) and the guard still missed by 3.3 cm.
+
+**Not implemented.** It changes the motion control law; give it its own review.
+
+### The facing cross-check shipped and earned itself immediately
+
+`scripts/beta32_validation_run.py` now derives the facing twice — the mirror of
+the live `toward` and the last leg we drove — and **refuses to build a path when
+they disagree past 15°**, handing back the mirror value to pass as `--heading`.
+The operator repositioned from the app before run 1 and it fired at **94.3°**,
+the exact condition that cost two runs on 2026-08-10. Run 2, with no app move in
+between, agreed to 6.03° and needed no override. Pinned by 18 tests, including
+the mirror against all 7 recorded calibration drives (worst residual 2.738°).
+
+### Off-mower queue, in priority order
+
+1. **The re-aim guard's projection** (above). Highest value: it is the only thing
+   between here and a multi-segment long-leg path.
+2. **Decide whether to take `max_linear_pulse_ceiling` into the profile.** That
+   is a Gate 5 re-pass, and it is an operator call, not a commit.
+3. **`realignments_suppressed` lacks `facing`/`bearing`**, unlike `realignments`.
+   Small instrumentation gap; it cost a reconstruction step in tonight's analysis.
+4. **BLE write latency** — `docs/pymammotion-ble-slot-leak-bug.md`. Demoted by
+   tonight's result but not closed.
+5. ⚠️ **NOTHING IS PUSHED.** The branch has no upstream. `origin` is the Chorty
+   fork; the `mikey0000` remote has its push URL disabled.
+
+## (superseded) START HERE 2026-08-11 — beta41 deployed. One daylight run answers the reach question.
 
 Host and branch both `0.6.4-beta41`. **Gate DISARMED.** Mower is **DOCKED** at
 (4.3188, 3.2862) and charging; it was at 42% when docked. It is **dark**

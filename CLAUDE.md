@@ -17,6 +17,40 @@ card paths `174f317d`, resource `?v=0.6.4-beta41&build=174f317d`).
 `docs/NEXT-SESSION.md` carries the live mower state and the queued run; this
 section carries what changed and why.
 
+🏁 **REACH IS SOLVED, 2026-08-11: 3 m on a single segment, measured.** Read
+`docs/loop-to-tolerance-reach-20260811.md`. With `max_linear_pulse_ceiling` set,
+a 2.0 m leg landed **0.0690 m** in 5 pulses and a 3.0 m leg landed **0.0928 m**
+in 8 — both stopping on **tolerance, not on the ceiling**. The counterfactual is
+each segment's own third row: on the accepted profile they sit 0.7489 / 0.6777 /
+**1.7919 m** short on `max_linear_commands_reached`. Per-click reach goes ~4 m →
+**~12 m** at 4 segments.
+
+⚠️ **`max_linear_pulse_ceiling` is a frozen `LUBA_ACCEPTANCE_PROFILE` key that
+the card sends as `null`, so NEITHER RUN IS ON THE ACCEPTED PROFILE and the
+landings do not compare to Gate 5.** Every other key was sent at its accepted
+value. Adopting it un-accepts the profile and owes a fresh Gate 5 — which is now
+the next genuine milestone. Measuring first was the entire point.
+
+🔑 **The loop is robust to BLE stalls, and that reframes the standing BLE item.**
+The 3 m leg drove through two 2-write pulses (4158 ms and 2847 ms windows) that
+travelled 0.2325 / 0.2016 m against 0.34–0.49 m for the 15 cadence-intact pulses,
+and still landed at 9.3 cm — it just took two more pulses. Against
+`max_linear_commands: 3` those stalls are fatal. BLE latency still degrades the
+rate estimate, but it **is no longer a blocker for reach**. (n = 2 stalled
+pulses: the shape of the effect, not a calibrated number.)
+
+⚠️ **One open defect, well characterised and NOT implemented.** The 2 m run's
+second segment failed on **cross-track, not reach**: the beta38 re-aim guard
+suppressed a correction at a projected 0.1469 m miss against 0.150 m tolerance —
+3.1 mm of margin — and landed 0.1797 m out. The guard projects the miss at the
+**closest approach**, but the mower drives a whole pulse and finished 0.0877 m
+past it; in quadrature that predicts 0.1711 m, which exceeds tolerance and would
+have fired the correction. Over all 13 recorded suppressions the extra term cuts
+mean error 0.0212 → 0.0147 m and the guard under-predicts on **11 of 13**. This
+is **not** the fitted margin dropped on 2026-08-10 — that drop's rationale holds
+for the 0.7 m legs it was written about and is merely incomplete at long legs.
+Touches no profile key. Give it its own review before writing it.
+
 - **beta41** — a segment's **opening turn decomposes instead of refusing**
   (`_vio_turn_to_heading_staged`). It tries the direct turn first and, ONLY on a
   `turn_budget_infeasible` refusal, splits the rotation into stages of ≤60°. Each
