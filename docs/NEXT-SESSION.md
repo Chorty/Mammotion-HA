@@ -7,9 +7,127 @@ Updated **2026-08-08 late** after Gate 5 passed. This is the current handoff;
 ## 🚦 START HERE 2026-08-11 night — REACH IS SOLVED. 4 m on one segment, measured.
 
 Host and branch both `0.6.4-beta41`. **Gate DISARMED**, verified after every run.
-Mower is undocked in Backyard Right at **(5.28, −8.55)** area, AREA_INSIDE,
-MODE_READY, blades off, battery **60%**. It is dark — nothing closed-loop can
-run. **Dock it.**
+Mower is **DOCKED and charging** at (4.3188, 3.2862), `CHARGE_ON`, MODE_READY,
+blades off, battery 59% when it docked. VIO went 80 → 77 → 59 → **0** between
+20:27 and 20:37 EDT; `camera_brightness` reads `dark`.
+
+📋 **TOMORROW'S PLAN IS THE NEXT SECTION.** Read it before anything else.
+
+*(Docked with `lawn_mower.dock` at 20:39 — the mower's own RTK navigation covered
+~12 m in ~65 s in full darkness. Worth remembering: the VENDOR's nav works at
+night; only our closed-loop executor needs VIO. That is a night-repositioning
+tool we were not using.)*
+
+## 📋 THE PLAN FOR 2026-08-12
+
+### The one thing to understand before choosing what to do
+
+**Tonight's reach result does not reach the user.** The card sends
+`max_linear_pulse_ceiling: null` (`LUBA_ACCEPTANCE_PROFILE`, frozen), so a
+person clicking the map still gets ~1 m segments no matter what the harness can
+do with an override. **The profile change is therefore ON the critical path to
+the goal, not an optional adoption** — and it owes a fresh Gate 5. Every step
+below is sequenced to arrive at that Gate 5 with the open defects already closed,
+because running it twice is the expensive mistake.
+
+Order matters: **A before B before C.** Each is single-variable, and each one's
+failure would invalidate the next.
+
+### Phase 0 — off-mower, before first light
+
+**0.1 `beta42`: the re-aim guard projects to the END OF THE NEXT PULSE.** This is
+the whole reason a multi-segment long-leg path has never completed. The guard
+currently answers `distance · sin(aim)` — the miss at *closest approach* — but
+the mower drives a whole pulse and sails past that point. See §3 of
+`docs/loop-to-tolerance-reach-20260811.md` for the derivation and the 13-sample
+replay.
+
+- The extra term needs an estimate of the next pulse's travel. Prefer the
+  segment's OWN measured pulses (`final_approach_observation.measured_distance`
+  is already recorded per pulse) over any constant; fall back to the profile's
+  `final_approach_metres_per_pulse` on pulse 1 when there is no history yet.
+- ⚠️ **Get the fail-closed direction right.** Over-estimating the next pulse makes
+  the guard correct MORE often: it costs turn commands and adds turn translation,
+  but it protects the landing. Under-estimating suppresses corrections that were
+  needed — which is the bias actually on record, 11 of 13. **Err toward
+  correcting.**
+- Touches no `LUBA_ACCEPTANCE_PROFILE` key. It IS a motion-control-law change, so
+  it gets a real review, not a quick patch.
+
+**0.2 `last_travel_heading()` reads the last pulse, not the whole leg** (see
+below). Cheap; removes a `--heading` round trip from every long run.
+
+**0.3 Ship it.** Four version sites to `0.6.4-beta42`, full CI suite, deploy
+**motion-disabled** to both card paths, bump the Lovelace resource key, read back
+`real_motion_allowed: false`. `docs/deploy-runbook-p0.md`.
+
+### Phase 1 — first light, three runs, in this order
+
+Undock first: the dock sits ~1 m outside the polygon. **Drive to ~(6.5, −1.0)** —
+room in every direction, and it is where the beta39/40 runs started.
+
+**Run A — the guard fix, single-variable. Repeat tonight's exact geometry.**
+
+```sh
+.venv/bin/python scripts/beta32_validation_run.py --leg 2.0 --segments 2 \
+    --pulse-ceiling 10 --heading <TRUE FACING>
+```
+
+This is the highest-diagnostic run of the day and it must go first. Tonight this
+exact path failed at a suppression with **3.1 mm** of margin (projected 0.1469
+against 0.150, landed 0.1797, `target_requires_reverse_recovery`). Nothing else
+will have changed. **Pass = segment 2 corrects instead of suppressing, and
+reaches.** If it still suppresses, the extra term is too small or is reading the
+wrong pulse estimate — stop and fix before B.
+
+**Run B — the staged opening turn on a long leg. Never been combined.**
+
+```sh
+.venv/bin/python scripts/beta32_validation_run.py --leg 4.0 --segments 1 \
+    --pulse-ceiling 16 --heading <TRUE FACING + 180>
+```
+
+A 180° opening turn decomposes into ≤60° stages (beta41, validated at 165° — but
+only ahead of 0.7 m legs). Staging spends its translation budget **across the
+whole staged turn**, so the leg starts further off-bearing than a small turn
+would; on a 4 m leg with loop-to-tolerance that interaction is untested. It is
+also exactly the geometry a user produces by clicking *behind* the mower.
+**Watch:** total staged displacement against the 0.30 m budget, the post-turn
+gate's correction, and whether the first two linear pulses re-aim.
+
+**Run C — the goal, in miniature: click across the yard.**
+
+```sh
+.venv/bin/python scripts/beta32_validation_run.py --leg 3.0 --segments 3 \
+    --pulse-ceiling 12 --heading <TRUE FACING>
+```
+
+~9 m of path over three segments with two junctions. **This is the first run that
+would look, to the operator, like the thing the project is for.** It needs A to
+have passed, because segment-to-segment inheritance of end-of-leg mis-pointing is
+what killed the 90° run on 2026-08-10 and the 2 m run tonight.
+
+### Phase 2 — the decision, and it is not a commit
+
+If A, B and C pass, the open question is no longer technical: **adopt
+`max_linear_pulse_ceiling` into `LUBA_ACCEPTANCE_PROFILE` and re-run Gate 5
+card-driven.** That obligates the §4 re-pinning in `docs/gate4-repass-20260805.md`
+— card copy, `CARD_VERSION` to both serving paths, frontend pinning tests — and a
+Gate 5 on the new profile. It is the operator's call, and it is the last thing
+between the measured capability and a user actually having it.
+
+### Hygiene, learned tonight
+
+- **Measure `vio_tracked_features`, never `camera_brightness`.** The latter sat
+  latched on `light` for ten hours today and only flipped to `dark` at 20:36.
+  Features went 80 → 0 in ten minutes; check them before every run, not once.
+- **Watch BLE across the session, not just at preflight.** It degraded −48 → −72,
+  dropped the client entirely once, and killed a run outright. If runs start
+  failing on BLE, restart the link rather than tuning anything.
+- **Expect a `--heading` round trip** after any app-driven move; that is the
+  facing guard working, not a fault.
+- **Budget battery by run length**, not by run count: tonight's short runs cost
+  ~1% each, not the ~7% the four-segment runs cost.
 
 ### What the four runs settled
 
