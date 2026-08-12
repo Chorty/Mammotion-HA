@@ -18,7 +18,66 @@ blades off, battery 59% when it docked. VIO went 80 → 77 → 59 → **0** betw
 night; only our closed-loop executor needs VIO. That is a night-repositioning
 tool we were not using.)*
 
-## 📋 THE PLAN FOR 2026-08-12 — PHASE 0 IS DONE AND DEPLOYED
+## 🚦 START HERE 2026-08-12 afternoon — the defect is the TRIGGER, not the guard
+
+Two runs on beta42. **Run A passed**, Run C failed, and the analysis that came out
+of it is the most useful thing today produced. Read
+`docs/cross-track-is-set-at-the-start-of-the-leg-20260812.md`.
+
+| run | geometry | result |
+| --- | --- | --- |
+| `…185603Z` | 2 × 2.0 m, 60° junction | **both segments reached**, 0.1030 / 0.0912, mean 0.0971 |
+| `…191850Z` | 3 × 2.5 m | seg1 `target_requires_reverse_recovery` at 0.1715 |
+
+### 🔑 The cross-track is set in the FIRST pulse and barely changes
+
+Both failing segments, traced pulse by pulse, show a near-constant perpendicular
+miss — Run C's segment 1 was already missing by **0.1963 m against a 0.150
+tolerance after pulse 1**, with 1.87 m still to run. The *angle* triples over the
+leg only because the range collapses. Nothing objected until pulse 4.
+
+**The mid-drive re-aim triggers on an ANGLE (18°), which is range-blind.** At 3 m
+that permits 0.93 m of cross-track; at 0.3 m it permits 0.09 m. The trigger is
+most permissive exactly where an error is cheapest to fix and most costly to
+keep. That is backwards, and it is why long legs fail more.
+
+**The guard already computes the right quantity** — `distance · sin(aim)` against
+`waypoint_tolerance`. Trigger and guard ask the same question in different units,
+which is why a band exists where the trigger never fires while the miss is
+already unacceptable.
+
+### ⚠️ beta42's guard fix is correct and nearly irrelevant
+
+Using the failing pulse's *actual* measured travel, the pulse-overshoot term
+explains **~4 mm of a 42 mm error**. It stays — it is free and right — but it was
+not the mechanism. Do not credit it with Run A's pass either: both guard decisions
+in that run were ones where the old and new rules agree.
+
+### The measured picture, so it is not re-derived
+
+- **Heading drift while driving straight is small**: n=46 pairs, mean |drift|
+  2.84°/pulse.
+- **Bearing-to-target rotation is a 1/d effect**: median 1.47°/pulse beyond 1 m,
+  **33.73°/pulse inside 0.3 m** (max 136°). Any decision made from an aim error
+  inside ~0.5 m is stale before its own pulse finishes.
+- **The segment is decided by 0.5 m out**: perpendicular miss ≤ 0.113 m at that
+  range → 6 of 6 reached; ≥ 0.147 m → 4 of 6 missed.
+
+### Next, and it is a measurement not a commit
+
+**Do not implement the trigger change yet.** It rests on n=2 failures, and no run
+has ever corrected at 1.8 m out on this control law — the mechanism says an early
+correction is cheap, but that is an argument, not a measurement. The honest next
+step is a single-variable hardware test of *early* correction.
+
+⚠️ **Gate 5 should wait.** Spending it while a known defect can end a segment in
+reverse-recovery buys a failed gate.
+
+Reach is unaffected and still solved: 2/3/4 m single legs at 0.0690 / 0.0928 /
+0.1023 m. Reach and final-approach accuracy are separable and only the first is
+done.
+
+## 📋 (done) THE PLAN FOR 2026-08-12 — PHASE 0 IS DONE AND DEPLOYED
 
 ✅ **`0.6.4-beta42` is on the host, motion-disabled, verified** (46/46
 byte-identical, both card paths `09a1d05e`, resource
