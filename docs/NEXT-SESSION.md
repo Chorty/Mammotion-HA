@@ -107,6 +107,29 @@ would look, to the operator, like the thing the project is for.** It needs A to
 have passed, because segment-to-segment inheritance of end-of-leg mis-pointing is
 what killed the 90° run on 2026-08-10 and the 2 m run tonight.
 
+**Run D — the arc probe, if light and battery remain.** Read
+`docs/night-motion-options-20260811.md` first. We have **never sent a command
+with both axes non-zero**, though the wire has always accepted it, and an arc
+keeps the mower translating — which keeps `toward` live and closes a heading loop
+**with no VIO at all**. That is Phase 1 of the vendor's own two-tier design, the
+thing we watched dock the mower in the dark.
+
+```
+raw_pymammotion_motion_probe   linear_speed=400  angular_speed=180  single shot
+```
+
+Zero code, ~10 cm of travel: an existence check that both axes actuate together,
+not a measurement. **Run it in DAYLIGHT even though the goal is night capability**
+— VIO is the only independent ground truth for heading, and a night-only
+controller with nothing to check it against is how you ship something plausible
+and quietly wrong. If it actuates, the next step is one schema key
+(`motion_refresh_interval_ms` on that probe) and then the real question: **does
+`toward` track an arc closely enough to close a loop on?** If it lags or noises
+out beyond ~5°, the whole direction is dead — and that is a cheap thing to learn.
+
+*(Also unused and night-capable: `one_touch_leave_pile()` would undock without the
+manual step above. Not wired up.)*
+
 ### Phase 2 — the decision, and it is not a commit
 
 If A, B and C pass, the open question is no longer technical: **adopt

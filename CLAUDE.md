@@ -304,7 +304,18 @@ silent. `MammotionRTKCoordinator` already queries this every tick.
 
 ⚠️ **Closed-loop segments cannot run after dark.** The `vio_active` gate keys off
 `turn_mode == "vio"` unconditionally, not off whether a turn is needed, and
-`_VIO_TURN_MODES` is `("vio", "legacy")` only. Plan real-motion tests for
+`_VIO_TURN_MODES` is `("vio", "legacy")` only. *(Refined 2026-08-11 — read
+`docs/night-motion-options-20260811.md`. The gate is created ONLY for
+`turn_mode == "vio"` (`services.py:10965`), so `legacy` skips it; but `legacy`
+closes on `position.toward`, which is course-over-ground and therefore blind to
+in-place rotation **at any hour**, not just at night. The real constraint is not
+"no heading at night", it is **"no heading while stationary"** — which is why an
+ARC, never once sent by this project despite the wire accepting both axes, is the
+open lead. 🗑️ **IR is CLOSED**: the mower really does dock on rear-facing IR, but
+zero `infrared`/`ir_*`/`photoelectric`/`beacon` fields exist in the integration or
+pymammotion, so it is firmware-internal and unreachable. Ultrasonic entities are
+`SensorCheckState` self-check enums, not distances; `location.RTK.yaw` is `None`
+on this hardware.)* Plan real-motion tests for
 daylight. A zero-command
 live snapshot proved Mammotion exposes only frozen course-over-ground while
 stationary (`toward: -29.589`, VIO inactive/0, RTK yaw 0), so since beta19 the card stops
