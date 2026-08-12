@@ -263,6 +263,19 @@
           "out_of_sync": "Nesincronizat"
         }
       },
+      "cloud_sends_24h": {
+        "name": "Trimiteri în cloud (24 h)"
+      },
+      "cloud_send_limit": {
+        "name": "Limită trimiteri cloud",
+        "state": {
+          "ok": "OK",
+          "rate_limited": "Limitat"
+        }
+      },
+      "command_timeouts_24h": {
+        "name": "Expirări comenzi (24 h)"
+      },
       "mqtt_status": {
         "name": "Stare MQTT",
         "state": {
@@ -481,6 +494,9 @@
       },
       "start_schedule_sync": {
         "name": "Sincronizați programele"
+      },
+      "refresh_status": {
+        "name": "Reîmprospătează starea"
       },
       "resync_rtk_dock": {
         "name": "Sincronizați RTK și docul"

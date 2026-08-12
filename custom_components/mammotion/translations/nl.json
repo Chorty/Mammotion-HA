@@ -263,6 +263,19 @@
           "out_of_sync": "Niet gesynchroniseerd"
         }
       },
+      "cloud_sends_24h": {
+        "name": "Cloudverzendingen (24 u)"
+      },
+      "cloud_send_limit": {
+        "name": "Cloudverzendlimiet",
+        "state": {
+          "ok": "OK",
+          "rate_limited": "Beperkt"
+        }
+      },
+      "command_timeouts_24h": {
+        "name": "Commando-time-outs (24 u)"
+      },
       "mqtt_status": {
         "name": "MQTT-status",
         "state": {
@@ -481,6 +494,9 @@
       },
       "start_schedule_sync": {
         "name": "Schema's synchroniseren"
+      },
+      "refresh_status": {
+        "name": "Status vernieuwen"
       },
       "resync_rtk_dock": {
         "name": "Synchroniseer RTK en laadstation"

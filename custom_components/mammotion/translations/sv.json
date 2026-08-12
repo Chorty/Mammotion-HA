@@ -263,6 +263,19 @@
           "out_of_sync": "Inte synkroniserad"
         }
       },
+      "cloud_sends_24h": {
+        "name": "Molnsändningar (24 h)"
+      },
+      "cloud_send_limit": {
+        "name": "Gräns för molnsändningar",
+        "state": {
+          "ok": "OK",
+          "rate_limited": "Begränsad"
+        }
+      },
+      "command_timeouts_24h": {
+        "name": "Kommandotimeouter (24 h)"
+      },
       "mqtt_status": {
         "name": "MQTT-status",
         "state": {
@@ -481,6 +494,9 @@
       },
       "start_schedule_sync": {
         "name": "Synkronisera scheman"
+      },
+      "refresh_status": {
+        "name": "Uppdatera status"
       },
       "resync_rtk_dock": {
         "name": "Synkronisera RTK och laddstationen"

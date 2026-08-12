@@ -263,6 +263,19 @@
           "out_of_sync": "Niezsynchronizowano"
         }
       },
+      "cloud_sends_24h": {
+        "name": "Wysyłki do chmury (24 h)"
+      },
+      "cloud_send_limit": {
+        "name": "Limit wysyłek do chmury",
+        "state": {
+          "ok": "OK",
+          "rate_limited": "Ograniczono"
+        }
+      },
+      "command_timeouts_24h": {
+        "name": "Przekroczenia czasu poleceń (24 h)"
+      },
       "mqtt_status": {
         "name": "Stan MQTT",
         "state": {
@@ -481,6 +494,9 @@
       },
       "start_schedule_sync": {
         "name": "Synchronizuj harmonogramy"
+      },
+      "refresh_status": {
+        "name": "Odśwież stan"
       },
       "resync_rtk_dock": {
         "name": "Zsynchronizuj RTK i stację ładującą"

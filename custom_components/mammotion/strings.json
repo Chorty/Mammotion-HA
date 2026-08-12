@@ -323,6 +323,19 @@
           "out_of_sync": "Out of sync"
         }
       },
+      "cloud_sends_24h": {
+        "name": "Cloud sends (24 h)"
+      },
+      "cloud_send_limit": {
+        "name": "Cloud send limit",
+        "state": {
+          "ok": "OK",
+          "rate_limited": "Rate limited"
+        }
+      },
+      "command_timeouts_24h": {
+        "name": "Command timeouts (24 h)"
+      },
       "task_count": {
         "name": "Task count"
       },
@@ -490,6 +503,9 @@
     "button": {
       "start_map_sync": {
         "name": "Sync maps"
+      },
+      "refresh_status": {
+        "name": "Refresh status"
       },
       "resync_rtk_dock": {
         "name": "Sync RTK and dock"
