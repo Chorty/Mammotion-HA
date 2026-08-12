@@ -11540,7 +11540,36 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                     target_vision_heading=float(correction_target or 0.0),
                     heading_tolerance_degrees=alignment_tolerance,
                     angular_speed=vio_angular_speed,
-                    max_commands=min(2, vio_turn_max_commands),
+                    # 🏁 beta43: the SAME budget as any other turn. This was
+                    # `min(2, vio_turn_max_commands)`, an uncommented cap that
+                    # predates beta40 -- and beta40 tightened this correction's
+                    # tolerance to 10 deg without revisiting it. That
+                    # combination killed a Gate 5 attempt on 2026-08-12:
+                    #
+                    #   segment 3, post-turn aim error 29.647 deg, tolerance 10
+                    #   -> required_rotation 19.647, estimated_commands_needed 3
+                    #   -> max_commands 2 -> turn_budget_infeasible
+                    #   -> post_turn_realign_incomplete, segment never drove
+                    #
+                    # A TIGHTER tolerance needs MORE rotation, and the pulse
+                    # policy shortens each pulse as the error closes, so the
+                    # modelled ladder was [691, 442, 283] ms -- three commands
+                    # for what fits in two at the old 18 deg tolerance. The
+                    # feasible envelope at 2 commands is 21.50 deg; at 4 it is
+                    # 49.50, against a ~30 deg worst case ever observed.
+                    #
+                    # The command cap was never what bounded the cost --
+                    # `max_displacement_m` is. Measured over 92 recorded turns,
+                    # translation is 0.00098 m/deg median and 0.00487 worst
+                    # ever, so the 19.647 deg above costs ~0.019 m typical and
+                    # ~0.096 m worst against a 0.30 m allowance. Removing the
+                    # cap spends translation we can afford to avoid losing the
+                    # whole segment.
+                    #
+                    # ⚠️ beta40 validated this gate on a 16.551 deg correction,
+                    # which fits in two commands. The budget was never stressed
+                    # until a real gate ran.
+                    max_commands=vio_turn_max_commands,
                     motion_refresh_interval_ms=motion_refresh_interval_ms,
                     turn_degrees_per_second=turn_degrees_per_second,
                     max_displacement_m=max_turn_translation_distance,
@@ -11567,10 +11596,24 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                         "bearing_degrees": round(fresh_bearing, 3),
                         "aim_error_degrees": round(fresh_aim_error, 3),
                         "stop_reason": correction.get("stop_reason"),
+                        # A refusal must carry its own arithmetic. On 2026-08-12
+                        # this record said only `turn_budget_infeasible`, and
+                        # working out WHY meant replaying the shipped
+                        # feasibility function by hand against a guessed set of
+                        # inputs. The primitive already computes this dict;
+                        # there is no reason to make the next reader re-derive
+                        # it. Same principle as the per-command records: the
+                        # evidence file should answer the question, not pose it.
+                        "turn_feasibility": correction.get("turn_feasibility"),
+                        "max_commands": vio_turn_max_commands,
+                        "alignment_tolerance_degrees": alignment_tolerance,
                     }
                 )
                 if correction.get("stop_reason") != "target_heading_reached":
                     alignment["correction_stop_reason"] = correction.get("stop_reason")
+                    alignment["correction_turn_feasibility"] = correction.get(
+                        "turn_feasibility"
+                    )
                     result["stop_reason"] = "post_turn_realign_incomplete"
                     return result
 
