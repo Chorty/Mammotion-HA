@@ -4,16 +4,16 @@ Updated **2026-08-08 late** after Gate 5 passed. This is the current handoff;
 `docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
 `docs/p0-beta-release.md` are evidence, not current instructions.
 
-## 🚦 START HERE 2026-08-11 night — REACH IS SOLVED. 3 m on one segment, measured.
+## 🚦 START HERE 2026-08-11 night — REACH IS SOLVED. 4 m on one segment, measured.
 
-Host and branch both `0.6.4-beta41`. **Gate DISARMED**, verified after both runs.
-Mower is undocked in Backyard Right at **(9.9796, −7.4524)**, AREA_INSIDE,
-MODE_READY, blades off. Battery was 62% before the two runs and was not readable
-after — **check it and dock**. It is now dark, so nothing closed-loop can run.
+Host and branch both `0.6.4-beta41`. **Gate DISARMED**, verified after every run.
+Mower is undocked in Backyard Right at **(5.28, −8.55)** area, AREA_INSIDE,
+MODE_READY, blades off, battery **60%**. It is dark — nothing closed-loop can
+run. **Dock it.**
 
-### What the two runs settled
+### What the four runs settled
 
-**Loop-to-tolerance lifts per-segment reach from ~1 m to 3 m.** Full analysis:
+**Loop-to-tolerance lifts per-segment reach from ~1 m to 4 m.** Full analysis:
 `docs/loop-to-tolerance-reach-20260811.md`.
 
 | run | leg | pulses | landing | stop |
@@ -21,11 +21,17 @@ after — **check it and dock**. It is now dark, so nothing closed-loop can run.
 | `…235133Z` seg1 | 2.000 m | 5 of 10 | **0.0690** | `target_reached` |
 | `…235133Z` seg2 | 1.942 m | 5 of 10 | 0.1797 | `target_requires_reverse_recovery` |
 | `…235945Z` seg1 | 3.000 m | 8 of 12 | **0.0928** | `target_reached` |
+| `…001116Z` seg1 | 4.000 m | 9 of 16 | 0.5493 | `vio_realign_incomplete` (BLE) |
+| `…002804Z` seg1 | 4.000 m | 11 of 16 | **0.1023** | `target_reached` |
 
-Both good segments **stopped on tolerance, not on the ceiling**. The
+All three good segments **stopped on tolerance, not on the ceiling**. The
 counterfactual is each segment's own third row: on the accepted profile they sit
-0.7489 / 0.6777 / **1.7919** m short on `max_linear_commands_reached`. Per-click
-reach goes ~4 m → **~12 m** at 4 segments.
+0.7489 / 0.6777 / 1.7919 / **2.9543** m short on `max_linear_commands_reached`.
+Per-click reach goes ~4 m → **~16 m** at 4 segments.
+
+⚠️ **4 m is a demonstrated floor, not a limit** — the ceiling has never bound.
+Where reach actually breaks is unknown; the 4 m run took 11 pulses over ~108 s,
+so patience or link stability may bind before the control law does.
 
 🔑 **The loop is robust to BLE stalls, and that is the bigger finding.** The 3 m
 leg ran through two 2-write pulses (4158 ms and 2847 ms windows) that travelled
@@ -64,6 +70,34 @@ is a large fraction of what remains. beta40 fired correctly on this very segment
 
 **Not implemented.** It changes the motion control law; give it its own review.
 
+### 🚨 A harness bug left the gate OPEN once tonight — fixed, but read this
+
+`c196b8b1`. `armed` was set **after** the post-enable readback, so when the
+enable succeeded but `real_motion_allowed` came back false — which is what
+`ble_client_not_connected` produced when BLE dropped between preflight and arm —
+the script returned early saying it had aborted "without sending anything" and
+the `finally` declined to disarm. It left `enabled: true` behind, one BLE
+reconnect from an unattended open gate. Caught and disarmed by hand within the
+minute; verified against a pre-fix copy that the new test catches it.
+
+Second defect, same commit: the preflight passed all eight entity-derived checks
+— `ble_link_live` still read `on` — while the backend's `blockers` already said
+`ble_client_not_connected`. The gate's own blocker list is now a hard check.
+
+**Rule this reinforces:** any script that can open the gate must treat "I called
+enable" as the thing that obliges a disarm, never "enable succeeded".
+
+### ⚠️ `last_travel_heading()` is wrong whenever a leg is not straight
+
+It fired the facing guard at 23.8° with nobody having moved the mower, and the
+**mirror was right**. It returns the straight-line start→target bearing of the
+last segment (340.00°), but that leg had a mid-drive realignment at pulse 6 that
+left the mower facing ~316.04° for its final two pulses; the mirror said 316.23°,
+agreeing to **0.19°**. Long legs cause mid-drive corrections, so this gets worse
+exactly where reach now lives. **Fix: take the bearing of the last pulse from the
+final two samples, not of the whole leg.** Script-only, not implemented. It is a
+false *alarm*, not a false negative — it costs a `--heading` round trip.
+
 ### The facing cross-check shipped and earned itself immediately
 
 `scripts/beta32_validation_run.py` now derives the facing twice — the mirror of
@@ -80,10 +114,17 @@ the mirror against all 7 recorded calibration drives (worst residual 2.738°).
    between here and a multi-segment long-leg path.
 2. **Decide whether to take `max_linear_pulse_ceiling` into the profile.** That
    is a Gate 5 re-pass, and it is an operator call, not a commit.
-3. **`realignments_suppressed` lacks `facing`/`bearing`**, unlike `realignments`.
+3. **`last_travel_heading()` should read the last pulse, not the whole leg**
+   (above). Cheap, and it removes a `--heading` round trip from every long run.
+4. **`realignments_suppressed` lacks `facing`/`bearing`**, unlike `realignments`.
    Small instrumentation gap; it cost a reconstruction step in tonight's analysis.
-4. **BLE write latency** — `docs/pymammotion-ble-slot-leak-bug.md`. Demoted by
-   tonight's result but not closed.
+5. **BLE session degradation** — `docs/pymammotion-ble-slot-leak-bug.md`. Demoted
+   for reach by tonight's robustness result, but it still killed one run outright
+   and the link deteriorated across the session (−48 → −72, then a full client
+   drop while stationary, then recovery). ⚠️ The tempting "rssi tracks distance
+   from the house" story **does not hold** — after driving the mower back to the
+   middle of the yard it read −68 at 8 m, worse than −64 at that same distance an
+   hour earlier. Elapsed session time fits the record better than distance.
 5. ⚠️ **NOTHING IS PUSHED.** The branch has no upstream. `origin` is the Chorty
    fork; the `mikey0000` remote has its push URL disabled.
 

@@ -1,12 +1,16 @@
-# Loop-to-tolerance lifts per-segment reach from ~1 m to 3 m
+# Loop-to-tolerance lifts per-segment reach from ~1 m to 4 m
 
-**2026-08-11, two armed daylight runs on `0.6.4-beta41`.** Both authorized
-per-run, both disarmed with the gate state verified afterwards. Blades off
+**2026-08-11, four armed daylight runs on `0.6.4-beta41`.** All authorized
+per-run, all disarmed with the gate state verified afterwards. Blades off
 throughout. Evidence:
 
 - `docs/evidence-beta32-4segment-20260811T235133Z.json` — 2 × 2.0 m legs, one
   60° junction
 - `docs/evidence-beta32-4segment-20260811T235945Z.json` — 1 × 3.0 m leg
+- `docs/evidence-beta32-4segment-20260812T001116Z.json` — 1 × 4.0 m leg, **cut
+  short by a BLE command failure** at 0.5493 m remaining
+- `docs/evidence-beta32-4segment-20260812T002804Z.json` — 1 × 4.0 m leg, the
+  same run repeated once BLE recovered
 
 ⚠️ **Neither run is on the accepted profile.** Both pass
 `max_linear_pulse_ceiling` (10 and 12), which is a frozen
@@ -22,15 +26,19 @@ sent at its accepted value.
 | `…235133Z` seg1 | 2.000 m | 5 of 10 | **0.0690 m** | `target_reached` |
 | `…235133Z` seg2 | 1.942 m | 5 of 10 | 0.1797 m | `target_requires_reverse_recovery` |
 | `…235945Z` seg1 | 3.000 m | 8 of 12 | **0.0928 m** | `target_reached` |
+| `…001116Z` seg1 | 4.000 m | 9 of 16 | 0.5493 m | `vio_realign_incomplete` (BLE) |
+| `…002804Z` seg1 | 4.000 m | 11 of 16 | **0.1023 m** | `target_reached` |
 
-Both successful segments converged monotonically and **terminated on tolerance,
-not on the ceiling** — 5 pulses of 10, and 8 of 12. The ceiling was never the
-binding constraint, which is what "the loop works" has to mean.
+All three successful segments converged monotonically and **terminated on
+tolerance, not on the ceiling** — 5 of 10, 8 of 12, 11 of 16. The ceiling was
+never the binding constraint, which is what "the loop works" has to mean.
 
 ```
 2.0 m leg:  2.0000 -> 1.5579 -> 1.1348 -> 0.7489 -> 0.3603 -> 0.0690
 3.0 m leg:  3.0000 -> 2.4309 -> 2.0223 -> 1.7919 -> 1.4151 -> 0.9787
                    -> 0.7904 -> 0.4643 -> 0.0928
+4.0 m leg:  4.0000 -> 3.6130 -> 3.2511 -> 2.9543 -> 2.5226 -> 2.0507 -> 1.6368
+                   -> 1.3230 -> 0.9162 -> 0.5895 -> 0.2605 -> 0.1039
 ```
 
 **The counterfactual is not a guess** — it is the third row of each segment's own
@@ -41,14 +49,20 @@ trace, since the accepted profile differs only in stopping after pulse 3:
 | `…235133Z` seg1 | 2.000 m | **0.7489 m** | 0.0690 m in 5 |
 | `…235133Z` seg2 | 1.942 m | **0.6777 m** | 0.1797 m in 5 |
 | `…235945Z` seg1 | 3.000 m | **1.7919 m** | 0.0928 m in 8 |
+| `…002804Z` seg1 | 4.000 m | **2.9543 m** | 0.1023 m in 11 |
 
-On the accepted profile all three stop on `max_linear_commands_reached` between
-0.68 m and 1.79 m short. This confirms the standing measurement that per-segment
+On the accepted profile all four stop on `max_linear_commands_reached` between
+0.68 m and 2.95 m short. This confirms the standing measurement that per-segment
 reach is ~1 m, and shows the loop is what removes it.
 
-**Per-click reach therefore goes from ~4 m to ~12 m** at the current
+**Per-click reach therefore goes from ~4 m to ~16 m** at the current
 `REAL_CLICK_TO_GO_SEGMENT_LIMIT` of 4. That is the difference between a
 repositioning nudge and clicking a point across the yard.
+
+⚠️ **4 m is a demonstrated floor, not a measured limit.** The ceiling has never
+bound; every run ended because the mower arrived. Where reach actually breaks is
+still unknown, and the 4 m run needed 11 pulses over ~108 s, so the practical
+limit may turn out to be patience or link stability rather than the control law.
 
 ## 2. 🔑 The loop is robust to BLE stalls, and that is the bigger finding
 
@@ -150,6 +164,25 @@ next pulse, not at the closest approach.** It touches no
 control law and deserves its own review rather than being written at dusk with
 the mower on the lawn.
 
+## 3b. ⚠️ `last_travel_heading()` is wrong whenever a leg is not straight
+
+The facing guard fired before the first 4 m attempt at **23.8°** with nobody
+having touched the mower — and the mirror was still the correct answer.
+
+`last_travel_heading()` returns the straight-line bearing from a segment's start
+to its target, 340.00°. But that leg had a mid-drive realignment at pulse 6 that
+left the mower facing ~316.04°, and it drove its last two pulses on that
+heading. The mirror said **316.23°** — agreeing with the realignment record to
+**0.19°**.
+
+So the estimate degrades with exactly what long legs produce: mid-drive
+corrections. The fix is to take the bearing of the **last pulse**, from the final
+two sample positions, rather than of the whole leg. Script-only, not implemented.
+
+Note this is a *false alarm*, not a false negative — the guard flagged a real
+disagreement and the operator-facing advice ("trust the mirror") was correct.
+It costs a `--heading` round trip, which is the cheap direction to be wrong in.
+
 ## 4. The facing cross-check earned itself on its first live use
 
 The harness now derives the mower's facing twice — the mirror of the live
@@ -168,9 +201,53 @@ cost two daylight runs. It cost one re-run with `--heading 276.58` here, and the
 resulting opening turn was **2°**. On the second run, with no app move in
 between, the two agreed to **6.03°** and no override was needed.
 
+## 4b. The one failure that was neither reach nor the guard
+
+The first 4 m attempt (`…001116Z`) stopped at 0.5493 m remaining with
+`vio_realign_incomplete`, after 9 of 16 pulses. The cause is one line:
+
+```
+RuntimeError: BLE motion command did not start before the queue deadline;
+              the queued item was disarmed
+```
+
+The loop was still converging and had 7 pulses in hand. It asked for a −26.005°
+re-aim and the link dropped the command. **It was not light** — the calibration
+drive that run recorded `vio_state: 2`, `tracked_features: 80`,
+`brightness_label: "Light"`. Repeating the identical run ~17 minutes later, once
+BLE recovered, reached target at 0.1023 m.
+
+⚠️ A tempting story — that `ble_rssi` was tracking the mower's distance from the
+house, −48 docked through −72 at 15.7 m out, with the failure at the furthest
+point — **does not survive the next data point.** After the operator drove the
+mower back to the middle of the yard the link read −68 at 8 m, worse than the
+−64 it had shown at that same distance an hour earlier, and the BLE client then
+dropped entirely while the mower sat still. Elapsed session time explains the
+record at least as well as distance does. Treat the distance hypothesis as
+unsupported; the standing BLE-session item
+(`docs/pymammotion-ble-slot-leak-bug.md`) fits better.
+
+## 4c. Two harness defects the failures exposed
+
+Both found by the harness misbehaving live, not by reading it. Fixed in
+`c196b8b1`; script and tests only.
+
+1. 🚨 **An aborted arm left the gate OPEN.** `armed` was set *after* the
+   post-enable readback, so when the enable succeeded but `real_motion_allowed`
+   came back false — exactly what `ble_client_not_connected` produced — the
+   script returned early announcing it had aborted "without sending anything",
+   and the `finally` declined to disarm something it had already done. Caught
+   and disarmed by hand within the minute. `armed` now means "may have touched
+   the gate, owes a disarm" and is set *before* the enable.
+2. **The preflight never asked the gate what blocks it.** All eight
+   entity-derived checks passed — `ble_link_live` still read `on` — while the
+   backend's `blockers` already carried `ble_client_not_connected` and
+   `ble_rssi` read 0. That list was printed as informational text. It is now a
+   hard check.
+
 ## 5. What is NOT established
 
-- **Reach beyond 3 m.** The ceiling was never reached, so 3 m is a demonstrated
+- **Reach beyond 4 m.** The ceiling was never reached, so 4 m is a demonstrated
   floor, not a measured limit.
 - **Reach on the accepted profile.** Adopting `max_linear_pulse_ceiling` changes
   a frozen key, un-accepts the profile and owes a fresh Gate 5. That re-pass is

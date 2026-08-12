@@ -17,13 +17,25 @@ card paths `174f317d`, resource `?v=0.6.4-beta41&build=174f317d`).
 `docs/NEXT-SESSION.md` carries the live mower state and the queued run; this
 section carries what changed and why.
 
-🏁 **REACH IS SOLVED, 2026-08-11: 3 m on a single segment, measured.** Read
+🏁 **REACH IS SOLVED, 2026-08-11: 4 m on a single segment, measured.** Read
 `docs/loop-to-tolerance-reach-20260811.md`. With `max_linear_pulse_ceiling` set,
-a 2.0 m leg landed **0.0690 m** in 5 pulses and a 3.0 m leg landed **0.0928 m**
-in 8 — both stopping on **tolerance, not on the ceiling**. The counterfactual is
-each segment's own third row: on the accepted profile they sit 0.7489 / 0.6777 /
-**1.7919 m** short on `max_linear_commands_reached`. Per-click reach goes ~4 m →
-**~12 m** at 4 segments.
+a 2.0 m leg landed **0.0690 m** in 5 pulses, a 3.0 m leg **0.0928 m** in 8, and a
+4.0 m leg **0.1023 m** in 11 — all stopping on **tolerance, not on the ceiling**,
+which never bound on any run. The counterfactual is each segment's own third row:
+on the accepted profile they sit 0.7489 / 0.6777 / 1.7919 / **2.9543 m** short on
+`max_linear_commands_reached`. Per-click reach goes ~4 m → **~16 m** at 4
+segments. **4 m is a demonstrated floor, not a limit** — where it breaks is
+unknown.
+
+🚨 **A harness bug left the motion gate OPEN once on 2026-08-11 (fixed,
+`c196b8b1`).** `scripts/beta32_validation_run.py` set its `armed` flag *after*
+the post-enable readback, so an enable that succeeded while `real_motion_allowed`
+came back false — BLE dropping between preflight and arm — returned early
+claiming it had aborted "without sending anything" and never disarmed. **Any
+script that can open the gate must treat "I called enable" as what obliges the
+disarm, never "enable succeeded".** Same commit makes the backend's own
+`blockers` list a hard preflight check: all eight entity-derived checks passed
+while the gate already knew the BLE client was gone.
 
 ⚠️ **`max_linear_pulse_ceiling` is a frozen `LUBA_ACCEPTANCE_PROFILE` key that
 the card sends as `null`, so NEITHER RUN IS ON THE ACCEPTED PROFILE and the
