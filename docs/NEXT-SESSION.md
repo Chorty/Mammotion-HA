@@ -18,7 +18,45 @@ blades off, battery 59% when it docked. VIO went 80 → 77 → 59 → **0** betw
 night; only our closed-loop executor needs VIO. That is a night-repositioning
 tool we were not using.)*
 
-## 🏁 START HERE 2026-08-12 evening — GATE 5 RE-PASSED ON THE REACH PROFILE
+## 🔑 START HERE 2026-08-12 night — ARCS WORK. The night route is open.
+
+Read `docs/arcs-work-20260812.md`. Two armed pulses, back to back, same speed and
+window, one variable apart:
+
+| | command | displacement | course change |
+| --- | --- | --- | --- |
+| **arc** | `linear 400, angular 180` | **0.5823 m** | **+22.20°** |
+| **linear** | `linear 400, angular 0` | 0.5840 m | +0.00° |
+
+1.8 mm apart in distance, 22.20° apart in course. Implied arc radius **1.512 m**.
+
+🔑 **`toward` tracked the rotation exactly** — 22.20° of course change for 22.20°
+of turn. That was the open question, and it is the mechanism a night controller
+needs: translation keeps course-over-ground live, and a live `toward` closes a
+heading loop with **no VIO**.
+
+🔑 **"Angular needs 500" is a STATIONARY-only finding.** Angular 180 actuated
+fine in an arc. The 2026-07-25 A/B measured a pure in-place turn; a stationary
+skid-steer must break static friction on both tracks, a moving one only needs a
+differential. Do not carry 500 into arc work.
+
+⚠️ **The probe was blind to its own motion and nearly produced a false negative.**
+The arc reported four bit-identical samples; the true position reached the cache
+~5 minutes later. Fixed in beta45 — the probe now forces
+`request_reports_count_5` and waits for the settle, like every real executor
+already did. **Bit-identical telemetry is a stale feed, not a stationary mower**
+— written down twice before and still nearly missed.
+
+### Next on this thread
+
+1. **Arcs at two or three more angular speeds** for radius vs angular. Cheap,
+   daylight, one battery. An `arc_to_point` controller needs that curve.
+2. Then closed-loop `arc_to_point` — but only if `toward` tracks when sampled
+   DURING an arc, not just settled after it. Everything so far is open-loop.
+3. Nothing has been tested at night yet, deliberately: both pulses ran in
+   daylight so VIO was available as independent ground truth.
+
+## 🏁 (still current) 2026-08-12 evening — GATE 5 RE-PASSED ON THE REACH PROFILE
 
 Read `docs/gate5-repass-PASSED-20260812.md`. Card-driven, four segments, all
 `target_reached`, landings **0.0674 / 0.1032 / 0.0807 / 0.0607** against 0.15 —

@@ -10,17 +10,30 @@ provenance — accurate as a record, but **do not act on any build state it
 describes**, and note that measurement has since refuted several of its claims
 (the "unexplained" turn-rate variance and the turn-budget framing, both below).
 
-## Current build: `0.6.4-beta44` — deployed, PROFILE ACCEPTED, gate disarmed
+## Current build: `0.6.4-beta46` — BETA, profile accepted, gate disarmed
 
-Host and branch agree at beta44, deployed 2026-08-12 (46/46 byte-identical, both
-card paths `9db56b22`, resource `?v=0.6.4-beta44&build=9db56b22`).
 `docs/NEXT-SESSION.md` carries the live mower state; this section carries what
 changed and why.
 
-**All five gates are complete and Gate 5 has passed twice** — 2026-08-08
-fixed-budget, 2026-08-12 reach-enabled. ⚠️ **One Beta exit criterion is still
-short**: "BLE holds a full path run" fails at ~7% of runs since beta35. See the
-assessment in `docs/p0-beta-release.md` → "Alpha to Beta".
+🏁 **All five gates complete, Gate 5 passed twice** (2026-08-08 fixed-budget,
+2026-08-12 reach-enabled), and **the branch reached BETA on 2026-08-12** — all
+three exit criteria met, assessed in `docs/p0-beta-release.md` → "Alpha to
+Beta". ⚠️ Criterion 2 ("BLE holds a full path run") turned on an interpretation
+that is written down there rather than assumed: it asks whether a run can finish
+before the link dies, and 9 runs have completed every planned segment. The
+residual is ~7% of runs aborting on BLE, which is **a hint, not a measurement**
+(95% CI 0.2–31.9%) — do not fund BLE work on it.
+
+🔑 **ARCS WORK, 2026-08-12 — the night route is open.** Read
+`docs/arcs-work-20260812.md`. Two armed pulses back to back, one variable apart:
+`linear 400 + angular 180` travelled 0.5823 m and rotated its course **+22.20°**;
+`linear 400 + angular 0` travelled 0.5840 m and rotated **+0.00°**. 1.8 mm apart
+in distance. Implied arc radius **1.512 m**. **`toward` tracked the rotation
+exactly**, which is the mechanism a night controller needs — translation keeps
+course-over-ground live, and a live `toward` closes a heading loop with no VIO.
+⚠️ **"Angular needs 500" is a STATIONARY-only finding** — 180 actuated fine in an
+arc; the 2026-07-25 A/B measured a pure in-place turn. ⚠️ Still open-loop, still
+daylight-only, and the radius-vs-angular curve is unmeasured.
 
 🏁 **GATE 5 RE-PASSED ON THE REACH-ENABLED PROFILE, 2026-08-12.** Card-driven,
 four segments, all `target_reached`, landings 0.0674 / 0.1032 / 0.0807 / 0.0607

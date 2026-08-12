@@ -86,3 +86,30 @@ def test_the_probe_still_defaults_to_dry_run() -> None:
     assert data["dry_run"] is True
     assert data["confirm_blades_off"] is False
     assert data["confirm_clear_area"] is False
+
+
+def test_the_probe_forces_a_readback_after_real_motion() -> None:
+    """It must not be blind to its own motion.
+
+    On 2026-08-12 an arc moved the mower 0.5823 m and rotated its course 22.20
+    deg, and the probe reported four bit-identical samples -- the new position
+    only reached the coordinator cache about five minutes later. The device does
+    not push position while stationary, so once a pulse ends nothing updates the
+    cache until something asks. That null result was nearly written up as "arcs
+    do not actuate".
+
+    Every other motion path already called these two helpers. Asserting the
+    source calls them keeps the probe from silently losing the readback again.
+    """
+    root = Path(__file__).resolve().parents[3] / "custom_components" / "mammotion"
+    source = (root / "services.py").read_text(encoding="utf-8")
+    start = source.index("async def _raw_pymammotion_motion_probe")
+    # the next TOP-LEVEL def, so the nested _resend closure does not cut it short
+    end = source.index("\nasync def ", start + 1)
+    body = source[start:end]
+    assert "_refresh_position_after_raw_motion" in body, (
+        "probe does not force a report refresh after motion"
+    )
+    assert "_settle_linear_position_feed" in body, (
+        "probe does not wait for the position feed to settle"
+    )

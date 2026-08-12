@@ -5983,6 +5983,24 @@ async def _raw_pymammotion_motion_probe(
             coordinator, use_wifi=not prefer_ble
         )
 
+    # 🚨 FORCE A REPORT REFRESH, THEN WAIT FOR THE FEED TO SETTLE. Without this
+    # the probe reads whatever the coordinator last cached and is blind to its
+    # own motion -- which is exactly what happened on 2026-08-12: an arc that
+    # moved the mower 0.58 m and rotated its course 22.2 deg reported four
+    # bit-identical samples, and the new position only appeared in the cache
+    # about five minutes later. The device does not push position while
+    # stationary, so after a pulse ends there is nothing to update the cache
+    # until something asks. Every real executor already does this; the probe was
+    # the one motion path that did not, and it produced a null result that was
+    # nearly written up as "arcs do not actuate".
+    result["post_command_feedback_refresh"] = await _refresh_position_after_raw_motion(
+        coordinator
+    )
+    settle = await _settle_linear_position_feed(coordinator, before)
+    result["position_settle"] = settle
+    result["position_moved"] = bool(settle.get("moved"))
+    result["position_feed_stale"] = bool(settle.get("feed_stale"))
+
     previous_delay = 0.0
     for index, delay in enumerate(sample_delays):
         await asyncio.sleep(max(0.0, float(delay) - previous_delay))
