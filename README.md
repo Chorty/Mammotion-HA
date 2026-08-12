@@ -170,6 +170,7 @@ turn_mode: vio
 max_turn_commands: 4
 vio_turn_max_commands: 4
 max_linear_commands: 3
+max_linear_pulse_ceiling: 14
 max_no_progress_pulses: 3
 heading_tolerance_degrees: 18
 waypoint_tolerance: 0.15
@@ -189,10 +190,18 @@ sample_delays:
 
 Notes on the profile:
 
-- `max_linear_pulse_ceiling` is deliberately **unset**. The candidate profile
-  runs at most three linear commands per segment with no loop-to-tolerance.
-  Setting it
-  re-enables loop-to-tolerance and leaves the accepted profile.
+- `max_linear_pulse_ceiling: 14` enables **loop-to-tolerance**, and it is what
+  makes per-click reach usable. Without it a segment stops after three linear
+  commands at roughly 1 m; four measured legs stopped 0.68 / 0.68 / 1.79 /
+  2.95 m short. With it, 2 m / 3 m / 4 m legs reached target at 0.0690 /
+  0.0928 / 0.1023 m, every one stopping on tolerance rather than on the
+  ceiling. Per-segment reach is ~4 m, per-click ~16 m at four segments.
+  ⚠️ Adopted 2026-08-12; **the Gate 5 re-pass on this profile has not been run
+  yet.** `max_linear_commands` stays at 3 so disabling the ceiling falls back to
+  exactly the Gate 4/5 behaviour.
+- A runaway is bounded by distance, not by the pulse count:
+  `linear_distance_ceiling_factor` (2.0) stops a segment at twice its leg
+  length regardless of how many pulses it has left.
 - `calibrated_forward_heading_offset_degrees` is a per-mower measurement taken
   on the acceptance LUBA. Re-derive it for a different mower instead of
   assuming 102.4 transfers.

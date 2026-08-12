@@ -154,24 +154,45 @@ test("default Real Go payload is the Gate 4 accepted profile", () => {
   assert.equal(payload.turn_mode, "vio");
 });
 
-test("no loop-to-tolerance ceiling is omitted rather than sent as zero", () => {
+test("the accepted profile enables loop-to-tolerance and sends the ceiling", () => {
   const element = card();
   element._waypoints = [{ x: 2, y: 2 }];
 
   const { payload } = element._motionPayload(false);
 
-  assert.equal(LUBA_ACCEPTANCE_PROFILE.max_linear_pulse_ceiling, null);
-  assert.equal("max_linear_pulse_ceiling" in payload, false);
+  // Adopted 2026-08-12. This is the key that makes reach real for a card user:
+  // without it a segment stops after three pulses at roughly 1 m.
+  assert.equal(LUBA_ACCEPTANCE_PROFILE.max_linear_pulse_ceiling, 14);
+  assert.equal(payload.max_linear_pulse_ceiling, 14);
+  // max_linear_commands stays at the Gate 4/5 value so that turning the ceiling
+  // off anywhere falls back to exactly the accepted fixed-budget behaviour.
+  assert.equal(payload.max_linear_commands, 3);
 
   element._config.max_linear_pulse_ceiling = 30;
   const opted = element._motionPayload(false).payload;
   assert.equal(opted.max_linear_pulse_ceiling, 30);
+  assert.deepEqual(element._profileOverrides(), ["max_linear_pulse_ceiling"]);
+});
+
+test("an explicitly null ceiling falls back to the accepted value, not omission", () => {
+  // `_profileValue` treats null as "unset" and returns the profile value, so a
+  // dashboard cannot silently disable loop-to-tolerance by nulling the key --
+  // it has to be a deliberate different number.
+  const element = card();
+  element._waypoints = [{ x: 2, y: 2 }];
+  element._config.max_linear_pulse_ceiling = null;
+
+  const { payload } = element._motionPayload(false);
+  assert.equal(payload.max_linear_pulse_ceiling, 14);
 });
 
 test("profile label reports acceptance by default and names any override", () => {
   const element = card();
 
-  assert.match(element._profileLabel(), /LUBA acceptance profile/);
+  // The label must state that the Gate 5 re-pass on this profile is pending --
+  // the profile is adopted but NOT yet re-accepted on hardware.
+  assert.match(element._profileLabel(), /LUBA profile \+ reach/);
+  assert.match(element._profileLabel(), /Gate 5 re-pass PENDING/);
 
   element._config.waypoint_tolerance = 0.25;
   element._config.ble_auto_recover = true;
@@ -231,16 +252,9 @@ test("README's written-out defaults are the accepted profile", () => {
   }
 
   for (const key of PROFILE_KEYS) {
-    // The one profile key README must NOT list: setting it at all re-enables
-    // loop-to-tolerance and leaves the accepted profile.
-    if (key === "max_linear_pulse_ceiling") {
-      assert.equal(
-        documented.has(key),
-        false,
-        "README must leave max_linear_pulse_ceiling unset",
-      );
-      continue;
-    }
+    // `max_linear_pulse_ceiling` used to be the one key README had to OMIT,
+    // because setting it left the accepted profile. It was adopted 2026-08-12,
+    // so it is now documented like every other key.
     assert.ok(documented.has(key), `README omits ${key}`);
     assert.equal(
       documented.get(key)?.toString(),

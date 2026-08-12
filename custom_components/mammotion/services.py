@@ -10488,11 +10488,57 @@ _MAX_FORWARD_REALIGNMENT_DEGREES = 90.0
 _POST_TURN_ALIGNMENT_TOLERANCE_DEGREES = 10.0
 
 
+def _projected_landing_after_next_pulse(
+    *,
+    distance_to_target_m: float,
+    aim_error_degrees: float,
+    metres_per_pulse: float,
+) -> float:
+    """Where the mower ends up if it fires one more pulse on its current heading.
+
+    ⚠️ **This is the correction beta42 exists for, and it is derived, not fitted.**
+    The guard used to answer `distance * sin(aim)` -- the miss at the point of
+    CLOSEST APPROACH. But the mower does not stop at the closest approach. It
+    drives a whole pulse and sails past it, and the leftover along-track distance
+    adds to the miss in quadrature.
+
+    With the remaining distance ``d``, an aim error ``a``, and a pulse that
+    travels ``t``:
+
+        perpendicular  = d * sin(a)
+        overshoot      = max(0, t - d * cos(a))
+        landing        = hypot(perpendicular, overshoot)
+
+    The executor's own final-approach planner aims the next pulse at the
+    remaining distance and only fires a full pulse when more than one remains,
+    so ``t = min(d, metres_per_pulse)``. In the ``t = d`` case -- every decision
+    on record -- this collapses to the chord ``2 * d * sin(a / 2)``, which is
+    just "you drove the right distance in the wrong direction".
+
+    Measured on 2026-08-11: 0.3246 m out at 26.914 deg projected a 0.1469 m miss
+    and was suppressed by **3.1 mm**; the next pulse ran 0.3771 m and it landed
+    0.1797 m out, ending the segment on `target_requires_reverse_recovery`. This
+    model projects 0.1511 m for that decision -- over tolerance, so it corrects.
+
+    ⚠️ **That margin is 1.1 mm.** The model is directionally right and mechanistic,
+    but it is not precise, because the next pulse's travel is not precisely
+    predictable: measured next-pulse distance ran 0.30x to 1.16x of the remaining
+    distance across the same runs. Do not read a projection as a landing
+    prediction; read it as "which side of the tolerance is this on".
+    """
+    aim = math.radians(min(abs(float(aim_error_degrees)), 90.0))
+    perpendicular = distance_to_target_m * math.sin(aim)
+    travel = min(distance_to_target_m, max(0.0, metres_per_pulse))
+    overshoot = max(0.0, travel - distance_to_target_m * math.cos(aim))
+    return math.hypot(perpendicular, overshoot)
+
+
 def _realign_cannot_improve_the_landing(
     *,
     distance_to_target_m: float,
     aim_error_degrees: float,
     waypoint_tolerance: float,
+    metres_per_pulse: float,
 ) -> bool:
     """Return true when driving straight on still lands inside the tolerance disc.
 
@@ -10526,6 +10572,18 @@ def _realign_cannot_improve_the_landing(
 
     Fails OPEN on degenerate input, because suppressing a re-aim is the dangerous
     direction: a mower that stops correcting its aim keeps driving.
+
+    🏁 **beta42 projects to the END OF THE NEXT PULSE, not to the closest
+    approach** -- see `_projected_landing_after_next_pulse`. Replayed against all
+    twelve beta38-era suppressions on record it changes three decisions: it
+    corrects the one that actually missed (0.1797 m, reverse-recovery), and it
+    also corrects two that had scraped inside at **52.0 and 54.2 deg** of aim
+    error, landing 0.1393 and 0.1467 against a 0.150 tolerance. Those two are a
+    deliberate accepted cost, not an oversight: declining to re-aim while pointed
+    54 deg away from the target because the arithmetic says you would just clip
+    the edge of the disc is not a trade worth defending, and both were within
+    1 cm of missing. The measured price of a correction is ~0.97 deg of induced
+    bearing error to buy ~10 deg, roughly 10:1 in our favour.
     """
     if distance_to_target_m <= 0 or waypoint_tolerance <= 0:
         return False
@@ -10535,13 +10593,37 @@ def _realign_cannot_improve_the_landing(
     # stopped the segment. Never suppress there.
     if aim >= _MAX_FORWARD_REALIGNMENT_DEGREES:
         return False
-    perpendicular_miss = abs(distance_to_target_m * math.sin(math.radians(aim)))
-    return perpendicular_miss <= waypoint_tolerance
+    projected = _projected_landing_after_next_pulse(
+        distance_to_target_m=distance_to_target_m,
+        aim_error_degrees=aim,
+        metres_per_pulse=metres_per_pulse,
+    )
+    return projected <= waypoint_tolerance
 
 
 def _requires_reverse_recovery(aim_error_degrees: float) -> bool:
     """Return whether reaching the target now requires a non-forward recovery."""
     return abs(float(aim_error_degrees)) >= _MAX_FORWARD_REALIGNMENT_DEGREES
+
+
+def _effective_metres_per_pulse(
+    observed_pulse_distances: list[float], default_metres_per_pulse: float
+) -> float:
+    """How far the executor expects a FULL linear pulse to travel.
+
+    Shared by the final-approach planner and the mid-drive re-aim guard so the
+    two cannot disagree about the size of the next step -- the same reason the
+    beta32 turn preflight was made to replay the executor's own pulse policy
+    rather than keep a second model of it.
+
+    Never let a slow or noisy observation shrink the figure: over-estimating
+    stops short and spends another bounded pulse, under-estimating adds writes
+    and overshoots.
+    """
+    if not observed_pulse_distances:
+        return default_metres_per_pulse
+    observed = sum(observed_pulse_distances) / len(observed_pulse_distances)
+    return max(default_metres_per_pulse, observed)
 
 
 def _final_approach_pulse_ms(
@@ -10592,14 +10674,13 @@ def _final_approach_pulse_ms(
         info["reason"] = "distance_unknown"
         return info
 
+    metres_per_pulse = _effective_metres_per_pulse(
+        observed_pulse_distances, default_metres_per_pulse
+    )
     if observed_pulse_distances:
         observed_metres_per_pulse = sum(observed_pulse_distances) / len(
             observed_pulse_distances
         )
-        # Never let a slow/noisy observation increase the next motion budget.
-        # Over-estimating distance per write can stop short and use another
-        # bounded pulse; under-estimating it adds writes and can overshoot.
-        metres_per_pulse = max(default_metres_per_pulse, observed_metres_per_pulse)
         info["observed_metres_per_pulse"] = round(observed_metres_per_pulse, 4)
         info["metres_per_pulse_source"] = (
             "observed"
@@ -10607,7 +10688,6 @@ def _final_approach_pulse_ms(
             else "default_conservative_floor"
         )
     else:
-        metres_per_pulse = default_metres_per_pulse
         info["metres_per_pulse_source"] = "default"
     info["metres_per_pulse"] = round(metres_per_pulse, 4)
 
@@ -11918,10 +11998,25 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                     distance_to_target
                     * math.sin(math.radians(min(abs(aim_error), 90.0)))
                 )
+                # The SAME figure the final-approach planner will use for the
+                # next pulse, from the same helper, so the guard cannot be
+                # projecting a step the executor is not about to take.
+                guard_metres_per_pulse = _effective_metres_per_pulse(
+                    observed_pulse_distances_by_speed.get(
+                        int(selection["linear_speed"]), []
+                    ),
+                    final_approach_metres_per_pulse,
+                )
+                projected_landing = _projected_landing_after_next_pulse(
+                    distance_to_target_m=distance_to_target,
+                    aim_error_degrees=aim_error,
+                    metres_per_pulse=guard_metres_per_pulse,
+                )
                 already_lands_inside = _realign_cannot_improve_the_landing(
                     distance_to_target_m=distance_to_target,
                     aim_error_degrees=aim_error,
                     waypoint_tolerance=waypoint_tolerance,
+                    metres_per_pulse=guard_metres_per_pulse,
                 )
                 needs_correction = (
                     abs(aim_error) > vio_realign_threshold_degrees
@@ -11931,9 +12026,20 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                     result.setdefault("realignments_suppressed", []).append(
                         {
                             "after_linear_pulse": command_index,
+                            # `facing`/`bearing` were missing here while the
+                            # `realignments` record carried both, so every
+                            # analysis of a suppression had to reconstruct them.
+                            "facing_degrees": round(float(facing), 3),
+                            "bearing_degrees": round(float(bearing), 3),
                             "aim_error_degrees": round(aim_error, 3),
                             "distance_to_target_m": round(distance_to_target, 4),
+                            # Kept for continuity with every run before beta42:
+                            # this is what the guard USED to decide on.
                             "perpendicular_miss_m": round(perpendicular_miss, 4),
+                            # What it decides on now -- the miss at the end of
+                            # the next pulse, not at the closest approach.
+                            "projected_landing_m": round(projected_landing, 4),
+                            "metres_per_pulse": round(guard_metres_per_pulse, 4),
                             "waypoint_tolerance": waypoint_tolerance,
                             "reason": "already_lands_inside_tolerance",
                         }

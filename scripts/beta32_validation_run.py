@@ -104,6 +104,10 @@ ACCEPTANCE_PROFILE: dict[str, Any] = {
     "max_turn_commands": 4,
     "vio_turn_max_commands": 4,
     "max_linear_commands": 3,
+    # Adopted 2026-08-12. Loop-to-tolerance is now part of the accepted profile,
+    # so a default run here is a reach-enabled run. ⚠️ The Gate 5 re-pass on this
+    # profile has NOT been done.
+    "max_linear_pulse_ceiling": 14,
     "max_no_progress_pulses": 3,
     "heading_tolerance_degrees": 18,
     "waypoint_tolerance": 0.15,
@@ -897,33 +901,28 @@ def main() -> int:  # noqa: C901
         "max_real_segments": len(points) - 1,
         **ACCEPTANCE_PROFILE,
     }
-    if args.pulse_ceiling is not None:
-        # Loop-to-tolerance. The backend branches on this key being present at
-        # all (`loop_to_tolerance = max_linear_pulse_ceiling is not None`), so
-        # sending it changes the linear phase from a fixed budget to a loop --
-        # and `max_linear_commands` stops being the binding limit.
+    accepted_ceiling = ACCEPTANCE_PROFILE["max_linear_pulse_ceiling"]
+    if args.pulse_ceiling is not None and int(args.pulse_ceiling) != accepted_ceiling:
+        # Loop-to-tolerance is now part of the accepted profile, so overriding
+        # the ceiling is what leaves it -- the opposite of before 2026-08-12.
         payload["max_linear_pulse_ceiling"] = int(args.pulse_ceiling)
         print(
             "\n⚠️  CUSTOMISED PROFILE -- this run is NOT the hardware-accepted "
             "profile.\n"
-            f"    max_linear_pulse_ceiling={args.pulse_ceiling} enables "
-            "loop-to-tolerance;\n"
-            "    the card sends null. Results do NOT compare to Gate 5, and "
-            "adopting this\n"
-            "    would un-accept the profile and owe a fresh Gate 5."
+            f"    max_linear_pulse_ceiling={args.pulse_ceiling} overrides the "
+            f"accepted {accepted_ceiling};\n"
+            "    results do not compare to a Gate 5 run on the accepted profile."
         )
     if abs(args.leg - LEG_METRES) > 1e-9 or args.segments != 4:
         print(
             f"    test geometry: {args.segments} x {args.leg:.2f} m legs "
             f"(default 4 x {LEG_METRES:.2f}) -- geometry only, no profile key."
         )
-    if args.leg > 1.0 and args.pulse_ceiling is None:
-        print(
-            f"\n⚠️  A {args.leg:.2f} m leg exceeds the ~1 m per-segment reach of "
-            "`max_linear_commands: 3`.\n"
-            "    Expect `max_linear_commands_reached` short of the waypoint. Pass "
-            "--pulse-ceiling to test the loop."
-        )
+    print(
+        f"\n  loop-to-tolerance ON at max_linear_pulse_ceiling="
+        f"{payload['max_linear_pulse_ceiling']} (accepted 2026-08-12). "
+        "⚠️ Gate 5 re-pass on this profile is PENDING."
+    )
 
     print("\n== DRY RUN (zero motion) ==")
     dry = _call(

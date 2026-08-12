@@ -9,7 +9,7 @@ const MAX_REAL_SEGMENTS = 4;
 const MAX_NUDGE_METRES = 2.0;
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
-const CARD_VERSION = "0.6.4-beta41";
+const CARD_VERSION = "0.6.4-beta42";
 
 // The exact bounded execution profile that passed supervised LUBA acceptance
 // Gate 4 re-pass on 2026-08-05 (three-write zero stop, bounded straight segment,
@@ -36,10 +36,35 @@ const LUBA_ACCEPTANCE_PROFILE = Object.freeze({
   turn_mode: "vio",
   max_turn_commands: 4,
   vio_turn_max_commands: 4,
+  // Inert while loop-to-tolerance is on: the linear phase runs to the ceiling
+  // below instead. Kept at 3 so turning loop-to-tolerance off anywhere falls
+  // back to exactly the Gate 4/5 behaviour.
   max_linear_commands: 3,
-  // null = loop-to-tolerance disabled. The key is omitted from the payload so
-  // the backend's `max_linear_pulse_ceiling is None` branch is what runs.
-  max_linear_pulse_ceiling: null,
+  // 🏁 ADOPTED 2026-08-12 on hardware evidence, replacing `null`. This is the
+  // change that makes per-click reach real for someone using the card: with
+  // loop-to-tolerance disabled a segment stops after 3 pulses at roughly 1 m,
+  // and four measured legs stopped 0.68 / 0.68 / 1.79 / 2.95 m short of their
+  // waypoints. With it enabled the same geometry reached target:
+  //
+  //     2.0 m leg -> 0.0690 m in  5 pulses
+  //     3.0 m leg -> 0.0928 m in  8 pulses
+  //     4.0 m leg -> 0.1023 m in 11 pulses
+  //
+  // all three stopping on TOLERANCE rather than on the ceiling. Per-segment
+  // reach goes ~1 m -> 4 m, per-click ~4 m -> ~16 m at four segments.
+  // docs/loop-to-tolerance-reach-20260811.md.
+  //
+  // **Why 14 and not 11.** The ceiling is a loop bound, not the runaway guard --
+  // `linear_distance_ceiling_factor: 2.0` stops a segment at twice its leg
+  // length whatever the pulse count does. So the number only has to survive a
+  // bad link. A healthy pulse travels ~0.41 m and a BLE-stalled one ~0.22 m
+  // (measured, n=2); the 4 m leg needed 11 pulses with 2 of 11 stalled. At
+  // double that stall rate a 4 m leg needs ~12, at a 50% stall rate ~13. 14
+  // clears the worst of those and still bounds a segment near 5.7 m.
+  //
+  // ⚠️ CHANGING THIS UN-ACCEPTS THE PROFILE. It owes the §4 re-pinning in
+  // docs/gate4-repass-20260805.md and a fresh Gate 5, which is NOT yet run.
+  max_linear_pulse_ceiling: 14,
   max_no_progress_pulses: 3,
   heading_tolerance_degrees: 18,
   // 0.15, not 0.08, on hardware evidence from 2026-08-08: three 1.0 m segments
@@ -801,7 +826,7 @@ class MammotionCustomPathCard extends HTMLElement {
     const overrides = this._profileOverrides();
     return overrides.length
       ? `customised (not hardware-accepted): ${overrides.join(", ")}`
-      : "LUBA acceptance profile (Gate 4 re-pass 2026-08-05; tolerance 2026-08-08)";
+      : "LUBA profile + reach (Gate 4 re-pass 2026-08-05; tolerance 2026-08-08; reach 2026-08-12 — Gate 5 re-pass PENDING)";
   }
 
   // Straight-line nudge along trustworthy CURRENT orientation only. The old

@@ -5217,19 +5217,25 @@ def test_a_re_aim_is_skipped_only_when_it_cannot_improve_the_landing() -> None:
                 distance_to_target_m=distance,
                 aim_error_degrees=aim,
                 waypoint_tolerance=tolerance,
+                metres_per_pulse=1.06,
             )
             is expected
         ), note
 
-    # The boundary sits exactly where the geometry puts it: a target 0.15 m off
-    # the travelled line is on the edge of the disc.
-    on_edge = math.degrees(math.asin(tolerance / 0.5))
-    for aim, expected in ((on_edge - 1.0, True), (on_edge + 1.0, False)):
+    # The boundary sits where the geometry puts it. beta42 MOVED it: the mower
+    # drives a whole pulse rather than stopping at the closest approach, so with
+    # the remaining distance `d` the landing is the chord `2*d*sin(aim/2)` and
+    # the edge is at `2*asin(tolerance / (2*d))` -- 17.254 deg at d = 0.5,
+    # against 17.458 for the old closest-approach rule.
+    on_edge = 2.0 * math.degrees(math.asin(tolerance / (2 * 0.5)))
+    assert on_edge == pytest.approx(17.2544, abs=1e-3)
+    for aim, expected in ((on_edge - 0.5, True), (on_edge + 0.5, False)):
         assert (
             _realign_cannot_improve_the_landing(
                 distance_to_target_m=0.5,
                 aim_error_degrees=aim,
                 waypoint_tolerance=tolerance,
+                metres_per_pulse=1.06,
             )
             is expected
         )
@@ -5260,6 +5266,7 @@ def test_the_re_aim_guard_fails_open_on_degenerate_input(
         "distance_to_target_m": 0.05,
         "aim_error_degrees": 30.0,
         "waypoint_tolerance": 0.15,
+        "metres_per_pulse": 1.06,
     }
     kwargs.update(override)
 
