@@ -41,6 +41,9 @@
       },
       "refresh_cloud_session": {
         "default": "mdi:cloud-refresh"
+      },
+      "refresh_status": {
+        "default": "mdi:refresh"
       }
     },
     "camera": {
@@ -161,6 +164,15 @@
       },
       "zone_hash": {
         "default": "mdi:vector-square"
+      },
+      "cloud_sends_24h": {
+        "default": "mdi:cloud-upload-outline"
+      },
+      "cloud_send_limit": {
+        "default": "mdi:cloud-alert-outline"
+      },
+      "command_timeouts_24h": {
+        "default": "mdi:timer-alert-outline"
       }
     },
     "select": {

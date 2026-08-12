@@ -263,6 +263,19 @@
           "out_of_sync": "Ikke synkroniseret"
         }
       },
+      "cloud_sends_24h": {
+        "name": "Cloud-afsendelser (24 t)"
+      },
+      "cloud_send_limit": {
+        "name": "Cloud-afsendelsesgrænse",
+        "state": {
+          "ok": "OK",
+          "rate_limited": "Begrænset"
+        }
+      },
+      "command_timeouts_24h": {
+        "name": "Kommando-timeouts (24 t)"
+      },
       "mqtt_status": {
         "name": "MQTT-status",
         "state": {
@@ -481,6 +494,9 @@
       },
       "start_schedule_sync": {
         "name": "Synkroniser tidsplaner"
+      },
+      "refresh_status": {
+        "name": "Opdater status"
       },
       "resync_rtk_dock": {
         "name": "Synkroniser RTK og ladestation"

@@ -263,6 +263,19 @@
           "out_of_sync": "Ni sinhronizirano"
         }
       },
+      "cloud_sends_24h": {
+        "name": "Pošiljanja v oblak (24 h)"
+      },
+      "cloud_send_limit": {
+        "name": "Omejitev pošiljanja v oblak",
+        "state": {
+          "ok": "V redu",
+          "rate_limited": "Omejeno"
+        }
+      },
+      "command_timeouts_24h": {
+        "name": "Potek ukazov (24 h)"
+      },
       "mqtt_status": {
         "name": "Stanje MQTT",
         "state": {
@@ -481,6 +494,9 @@
       },
       "start_schedule_sync": {
         "name": "Sinhronizacija urnikov"
+      },
+      "refresh_status": {
+        "name": "Osveži stanje"
       },
       "resync_rtk_dock": {
         "name": "Sinhronizacija položaja RTK in polnilne postaje"

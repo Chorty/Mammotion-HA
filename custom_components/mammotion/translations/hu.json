@@ -263,6 +263,19 @@
           "out_of_sync": "Nincs szinkronizálva"
         }
       },
+      "cloud_sends_24h": {
+        "name": "Felhőbe küldések (24 ó)"
+      },
+      "cloud_send_limit": {
+        "name": "Felhő küldési korlát",
+        "state": {
+          "ok": "Rendben",
+          "rate_limited": "Korlátozva"
+        }
+      },
+      "command_timeouts_24h": {
+        "name": "Parancs-időtúllépések (24 ó)"
+      },
       "mqtt_status": {
         "name": "MQTT állapot",
         "state": {
@@ -481,6 +494,9 @@
       },
       "start_schedule_sync": {
         "name": "Ütemezések szinkronizálása"
+      },
+      "refresh_status": {
+        "name": "Állapot frissítése"
       },
       "resync_rtk_dock": {
         "name": "RTK és dokk szinkronizálása"

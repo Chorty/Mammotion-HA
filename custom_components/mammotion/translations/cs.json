@@ -263,6 +263,19 @@
           "out_of_sync": "Nesynchronizováno"
         }
       },
+      "cloud_sends_24h": {
+        "name": "Odeslání do cloudu (24 h)"
+      },
+      "cloud_send_limit": {
+        "name": "Limit odesílání do cloudu",
+        "state": {
+          "ok": "V pořádku",
+          "rate_limited": "Omezeno"
+        }
+      },
+      "command_timeouts_24h": {
+        "name": "Vypršení příkazů (24 h)"
+      },
       "mqtt_status": {
         "name": "Stav MQTT",
         "state": {
@@ -481,6 +494,9 @@
       },
       "start_schedule_sync": {
         "name": "Synchronizovat plány"
+      },
+      "refresh_status": {
+        "name": "Obnovit stav"
       },
       "resync_rtk_dock": {
         "name": "Synchronizovat RTK a dok"

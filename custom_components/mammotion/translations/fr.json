@@ -263,6 +263,19 @@
           "out_of_sync": "Désynchronisée"
         }
       },
+      "cloud_sends_24h": {
+        "name": "Envois cloud (24 h)"
+      },
+      "cloud_send_limit": {
+        "name": "Limite d'envoi cloud",
+        "state": {
+          "ok": "OK",
+          "rate_limited": "Débit limité"
+        }
+      },
+      "command_timeouts_24h": {
+        "name": "Délais de commande dépassés (24 h)"
+      },
       "mqtt_status": {
         "name": "État MQTT",
         "state": {
@@ -481,6 +494,9 @@
       },
       "start_schedule_sync": {
         "name": "Synchroniser les plannings"
+      },
+      "refresh_status": {
+        "name": "Actualiser l'état"
       },
       "resync_rtk_dock": {
         "name": "Synchroniser RTK et base"

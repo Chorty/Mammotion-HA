@@ -50,6 +50,7 @@ from pymammotion.utility.device_type import DeviceType
 from . import MammotionConfigEntry
 from .const import DOMAIN
 from .coordinator import (
+    CLOUD_SEND_LIMIT_STATES,
     MAP_SYNC_STATUSES,
     MammotionBaseUpdateCoordinator,
     MammotionDeviceErrorUpdateCoordinator,
@@ -722,6 +723,35 @@ WORK_SENSOR_TYPES: tuple[MammotionWorkSensorEntityDescription, ...] = (
         options=list(MAP_SYNC_STATUSES),
         native_unit_of_measurement=None,
         value_fn=lambda coordinator, mower_data: coordinator.map_sync_status,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    # Link-health diagnostics. These make visible what was previously only at
+    # DEBUG/WARNING log level: how hard we are leaning on the cloud transport,
+    # whether it is currently blocked, and how often commands time out. The
+    # 2026-08-11 session had to infer link degradation from `ble_rssi` plus one
+    # failed run, and a distance-based explanation for it had to be withdrawn --
+    # a counter beats an inference.
+    MammotionWorkSensorEntityDescription(
+        key="cloud_sends_24h",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=None,
+        value_fn=lambda coordinator, mower_data: coordinator.cloud_sends_in_window,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionWorkSensorEntityDescription(
+        key="cloud_send_limit",
+        state_class=None,
+        device_class=SensorDeviceClass.ENUM,
+        options=list(CLOUD_SEND_LIMIT_STATES),
+        native_unit_of_measurement=None,
+        value_fn=lambda coordinator, mower_data: coordinator.cloud_send_limit_state,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionWorkSensorEntityDescription(
+        key="command_timeouts_24h",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=None,
+        value_fn=lambda coordinator, mower_data: coordinator.command_timeouts_in_window,
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     MammotionWorkSensorEntityDescription(

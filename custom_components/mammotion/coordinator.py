@@ -10,6 +10,7 @@ import json
 import secrets
 import time
 from abc import abstractmethod
+from collections import deque
 from collections.abc import Callable, Mapping
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, cast
@@ -121,6 +122,12 @@ SPINO_INTERVAL = timedelta(weeks=1)
 # the ``map_sync_status`` diagnostic ENUM sensor that surfaces it.
 MAP_SYNC_STATUSES = ("synced", "syncing", "out_of_sync")
 
+#: Rolling window for the command-timeout diagnostic. 24 h deliberately matches
+#: the cloud transport's own `sends_in_window()` window so the two sensors can
+#: be read against each other without mentally rescaling one of them.
+_COMMAND_TIMEOUT_WINDOW_SECONDS = 24 * 60 * 60
+CLOUD_SEND_LIMIT_STATES = ("ok", "rate_limited")
+
 # Cloud response code returned by the stream-subscription endpoint when the
 # device is unreachable ("Device not responding. Please check the network
 # connection").  Treated as a device-offline signal.
@@ -163,6 +170,14 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         self.manager: MammotionClient = mammotion
         self._operation_settings = OperationSettings()
         self.update_failures = 0
+        # Monotonic timestamps of CommandTimeoutError raised out of
+        # `async_send_command`, the single funnel every queued command passes
+        # through. Kept as a rolling 24 h window to match the cloud transport's
+        # own `sends_in_window()` accounting, so the two diagnostics can be read
+        # side by side. Monotonic, not wall clock: the window must survive a
+        # clock step, and it resets on restart, which is the honest behaviour
+        # for a counter that only ever lived in memory.
+        self._command_timeouts: deque[float] = deque()
         self._stream_data: Response[StreamSubscriptionResponse] | None = (
             None  # Stream data [Agora]
         )
@@ -486,6 +501,80 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
             return bool(not handle.availability.mqtt_reported_offline)
         return False
 
+    def _cloud_transport(self) -> Any | None:
+        """Return the connected cloud transport, or the first registered one.
+
+        Two cloud transports can be registered (Aliyun and Mammotion) and only
+        one is normally live, so prefer a connected one and fall back to
+        whichever exists — a rate limit on an idle transport is still worth
+        reporting.
+        """
+        handle = self.manager.mower(self.device_name)
+        if handle is None:
+            return None
+        cloud_types = (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION)
+        fallback: Any | None = None
+        for t_type in cloud_types:
+            if not handle.has_transport(t_type):
+                continue
+            transport = handle.get_transport(t_type)
+            if transport is None:
+                continue
+            if handle.is_transport_connected(t_type):
+                return transport
+            if fallback is None:
+                fallback = transport
+        return fallback
+
+    @property
+    def cloud_sends_in_window(self) -> int | None:
+        """Cloud sends in the transport's rolling 24 h window, or None.
+
+        Counts every PHYSICAL send including retries, so ACK degradation shows
+        up here as an elevated rate before it shows up as a rate limit. None
+        means no cloud transport is registered, which is not the same as zero.
+        """
+        transport = self._cloud_transport()
+        if transport is None:
+            return None
+        try:
+            return int(transport.sends_in_window())
+        except AttributeError, TypeError, ValueError:
+            return None
+
+    @property
+    def cloud_send_limit_state(self) -> str | None:
+        """`rate_limited` while cloud sends are blocked, else `ok`.
+
+        Covers both sources PyMammotion folds into `is_rate_limited`: a
+        cloud-imposed 429 ban and the self-imposed rolling quota.
+        """
+        transport = self._cloud_transport()
+        if transport is None:
+            return None
+        try:
+            return "rate_limited" if bool(transport.is_rate_limited) else "ok"
+        except AttributeError, TypeError:
+            return None
+
+    def record_command_timeout(self) -> None:
+        """Note a command timeout for the rolling 24 h diagnostic."""
+        self._command_timeouts.append(time.monotonic())
+
+    @property
+    def command_timeouts_in_window(self) -> int:
+        """Command timeouts in the last 24 h.
+
+        ⚠️ Counts timeouts raised out of `async_send_command` only. Commands
+        dispatched by the motion executors in `services.py` do not pass through
+        it, so this is a measure of the INTEGRATION's command health, not of a
+        motion run's. Reads as 0 on a healthy link and resets on restart.
+        """
+        cutoff = time.monotonic() - _COMMAND_TIMEOUT_WINDOW_SECONDS
+        while self._command_timeouts and self._command_timeouts[0] < cutoff:
+            self._command_timeouts.popleft()
+        return len(self._command_timeouts)
+
     @property
     def bluetooth_enabled(self) -> bool:
         """Return whether Bluetooth transport is enabled."""
@@ -746,6 +835,13 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
             self.update_failures += 1
             self.last_command_failure_reason = f"{command}:{type(exc).__name__}"
             await self.async_refresh_login(exc)
+        except CommandTimeoutError:
+            # Count it and re-raise UNCHANGED. Callers already handle this --
+            # several catch it and pass -- so swallowing it here to make the
+            # accounting tidier would silently change command behaviour. The
+            # counter is a diagnostic; it must not become a control-flow change.
+            self.record_command_timeout()
+            raise
         except GatewayTimeoutException as ex:
             LOGGER.error(f"Gateway timeout exception: {ex.iot_id}")
             self.update_failures = 0

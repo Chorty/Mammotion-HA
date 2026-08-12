@@ -263,6 +263,19 @@
           "out_of_sync": "Nicht synchronisiert"
         }
       },
+      "cloud_sends_24h": {
+        "name": "Cloud-Sendungen (24 Std.)"
+      },
+      "cloud_send_limit": {
+        "name": "Cloud-Sendelimit",
+        "state": {
+          "ok": "OK",
+          "rate_limited": "Limitiert"
+        }
+      },
+      "command_timeouts_24h": {
+        "name": "Befehls-Zeitüberschreitungen (24 Std.)"
+      },
       "mqtt_status": {
         "name": "MQTT-Status",
         "state": {
@@ -481,6 +494,9 @@
       },
       "start_schedule_sync": {
         "name": "Synchronisiere Zeitpläne"
+      },
+      "refresh_status": {
+        "name": "Status aktualisieren"
       },
       "resync_rtk_dock": {
         "name": "Synchronisiere RTK und Ladestation"
