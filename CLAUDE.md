@@ -17,6 +17,23 @@ card paths `174f317d`, resource `?v=0.6.4-beta41&build=174f317d`).
 `docs/NEXT-SESSION.md` carries the live mower state and the queued run; this
 section carries what changed and why.
 
+🏁 **GATE 5 RE-PASSED ON THE REACH-ENABLED PROFILE, 2026-08-12.** Card-driven,
+four segments, all `target_reached`, landings 0.0674 / 0.1032 / 0.0807 / 0.0607
+against 0.15 — **mean 0.0780, the best four-segment result on record.** Zero
+reverse-recovery, zero budget exhaustion. The real payload carried
+`max_linear_pulse_ceiling: 14`, so **the reach profile is hardware-accepted and
+profile identity is proven in fact.** Read
+`docs/gate5-repass-PASSED-20260812.md`; evidence
+`docs/evidence-gate5-repass-2-20260812.json`.
+
+⚠️ **Do not overstate it.** beta43 (post-turn correction budget 2 → 4) was **not
+exercised** — the only correction was −10.477°, inside the old 21.50° envelope,
+and the first attempt's 29.647° refusal did not recur because segment 3's
+geometry differed. The **ceiling never bound** either: 0.8 m legs use 2–3 pulses
+of 14, so reach is evidenced by `docs/loop-to-tolerance-reach-20260811.md`, not
+by this gate. That was deliberate — long legs are 5/7 on control-law grounds,
+short legs 28/28.
+
 🏁 **REACH IS SOLVED, 2026-08-11: 4 m on a single segment, measured.** Read
 `docs/loop-to-tolerance-reach-20260811.md`. With `max_linear_pulse_ceiling` set,
 a 2.0 m leg landed **0.0690 m** in 5 pulses, a 3.0 m leg **0.0928 m** in 8, and a

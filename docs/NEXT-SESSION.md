@@ -18,7 +18,59 @@ blades off, battery 59% when it docked. VIO went 80 → 77 → 59 → **0** betw
 night; only our closed-loop executor needs VIO. That is a night-repositioning
 tool we were not using.)*
 
-## 🚦 START HERE 2026-08-12 afternoon — the defect is the TRIGGER, not the guard
+## 🏁 START HERE 2026-08-12 evening — GATE 5 RE-PASSED ON THE REACH PROFILE
+
+Read `docs/gate5-repass-PASSED-20260812.md`. Card-driven, four segments, all
+`target_reached`, landings **0.0674 / 0.1032 / 0.0807 / 0.0607** against 0.15 —
+**mean 0.0780, the best four-segment result on record.** Zero reverse-recovery,
+zero budget exhaustion, zero failed gates. Evidence:
+`docs/evidence-gate5-repass-2-20260812.json`.
+
+**`max_linear_pulse_ceiling: 14` is now HARDWARE-ACCEPTED.** The real payload
+carried it, so profile identity is proven in fact and per-click reach of ~16 m
+sits behind an accepted profile rather than a harness override.
+
+### ⚠️ Three things this gate does NOT prove — do not overstate it
+
+1. **beta43 was not exercised.** It raised the post-turn correction budget 2 → 4
+   to fix the refusal that failed the first attempt (29.647° at tol 10 needing 3
+   commands). This run's only correction was −10.477°, inside the OLD 21.50°
+   envelope. The 29.6° case is still replay-only.
+2. **The first attempt's failure did not recur naturally.** Its segment 3 had a
+   54° opening turn and −29.647° post-turn error; this run's saw −4.711°. The
+   geometry differed.
+3. **The ceiling never bound** — 0.8 m legs used 2–3 pulses of 14. Reach is
+   evidenced by `docs/loop-to-tolerance-reach-20260811.md`, not by this gate.
+   Deliberate: long legs are 5/7 on control-law grounds, short legs 28/28.
+
+### The build
+
+`0.6.4-beta44` supersedes the beta43 that carried the gate. It adds nothing to
+motion — it updates the card's execution-profile label (the re-pass is no longer
+"PENDING") and **echoes every accepted-profile key from both executors**, because
+two keys came back `null` and the gate had to be argued around the hole:
+`motion_refresh_interval_ms` was provable from the per-segment echo and the
+delivered writes; `max_no_progress_pulses` was not, and was dismissed only as
+un-exercised. Pinned by a test that reads the card's frozen profile.
+
+### Next
+
+The five gates are complete and Gate 5 has passed twice — once fixed-budget
+(2026-08-08), once reach-enabled (2026-08-12). **Remaining work is capability,
+not gates.** The open items, in the order the evidence supports:
+
+1. **The final-approach wall**, unchanged and now well characterised —
+   `docs/cross-track-is-set-at-the-start-of-the-leg-20260812.md`, including its
+   §8 refutation. Two genuine control failures in 39 approaches, both ~2 cm
+   outside tolerance. **Do not tune the control law on n = 2.**
+2. **A "Download JSON" button on the card.** The record was the hard part twice
+   in one day — a wrong file once, a 50k paste truncation twice. `_persistLastRun`
+   also swallows quota failures silently. Card-only.
+3. **`last_travel_heading()` should read the last pulse, not the whole leg.**
+4. **The arc probe** (`docs/night-motion-options-20260811.md`) — the only route
+   to night capability, and still only an existence check away.
+
+## (superseded) START HERE 2026-08-12 afternoon — the defect is the TRIGGER, not the guard
 
 Two runs on beta42. **Run A passed**, Run C failed, and the analysis that came out
 of it is the most useful thing today produced. Read

@@ -11150,6 +11150,9 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         # especially, since without it `max_linear_commands` defaults to 1 and a
         # multi-metre segment stops after a single pulse (live 2026-07-25).
         "max_linear_pulse_ceiling": max_linear_pulse_ceiling,
+        # beta44, same reason as the multi-segment echo: an accepted-profile key
+        # the card sends must come back, or a gate cannot prove what ran.
+        "max_no_progress_pulses": max_no_progress_pulses,
         "final_approach_metres_per_pulse": final_approach_metres_per_pulse,
         "turn_degrees_per_second": turn_degrees_per_second,
         "turn_pulse_duration_ms": turn_pulse_duration_ms,
@@ -12433,6 +12436,16 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
         "vio_turn_max_commands": vio_turn_max_commands,
         "vio_angular_speed": vio_angular_speed,
         "max_linear_pulse_ceiling": max_linear_pulse_ceiling,
+        # beta44: these two were the ONLY accepted-profile keys the multi-segment
+        # response did not echo, and the Gate 5 pass of 2026-08-12 had to be
+        # argued around the hole -- `motion_refresh_interval_ms` was provable
+        # from the per-segment echo and the delivered writes, but
+        # `max_no_progress_pulses` was unprovable from the record and had to be
+        # dismissed as un-exercised instead. Gate 5's whole purpose is showing
+        # the card sent the accepted profile, so every profile key it sends has
+        # to come back.
+        "max_no_progress_pulses": max_no_progress_pulses,
+        "motion_refresh_interval_ms": motion_refresh_interval_ms,
         "sample_delays": list(sample_delays),
         "confirm_blades_off": confirm_blades_off,
         "confirm_clear_area": confirm_clear_area,

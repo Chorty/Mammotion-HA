@@ -34,6 +34,30 @@ passes were bought by driving past the waypoint and U-turning back. The next
 motion decision is whether to fix control quality (stop-latency lead, pulse
 sizing) or to accept overshoot-and-recovery — not a Gate 5 attempt.
 
+### beta43/44 — Gate 5 re-pass and the profile-echo fix, 2026-08-12
+
+**`0.6.4-beta43` deployed motion-disabled 2026-08-12 ~20:35 UTC** and is the
+build that **passed Gate 5 on the reach-enabled profile** — see
+`docs/gate5-repass-PASSED-20260812.md`. 46/46 byte-identical, both card paths
+`f92f2e71`, resource `?v=0.6.4-beta43&build=f92f2e71`, API back in 51 s, 132
+entities in 134 s, `pymammotion 0.8.12.post1`, `real_motion_allowed: false`
+verified before arming.
+
+beta43's one motion change: the post-turn correction gets the same command
+budget as any other turn (`vio_turn_max_commands`, was `min(2, ...)`). ⚠️ **It
+was not exercised by the gate** — the only correction was −10.477°, inside the
+old 21.50° envelope.
+
+**`0.6.4-beta44` supersedes it and changes no motion behaviour.** The card's
+execution-profile label drops "Gate 5 re-pass PENDING", and both executors now
+echo every accepted-profile key. Two came back `null` during the gate
+(`max_no_progress_pulses`, `motion_refresh_interval_ms`) and the pass had to be
+argued around the hole — unacceptable in a gate whose entire purpose is proving
+the card sent the accepted profile.
+
+✅ **The profile is ACCEPTED again.** `max_linear_pulse_ceiling: 14` no longer
+owes a Gate 5; it has one.
+
 ### beta42 reach-profile deploy — 2026-08-12 07:08-07:20 UTC
 
 `0.6.4-beta42` is deployed **motion-disabled**. Backup:

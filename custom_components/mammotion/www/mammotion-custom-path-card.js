@@ -9,7 +9,7 @@ const MAX_REAL_SEGMENTS = 4;
 const MAX_NUDGE_METRES = 2.0;
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
-const CARD_VERSION = "0.6.4-beta43";
+const CARD_VERSION = "0.6.4-beta44";
 
 // The exact bounded execution profile that passed supervised LUBA acceptance
 // Gate 4 re-pass on 2026-08-05 (three-write zero stop, bounded straight segment,
@@ -62,8 +62,15 @@ const LUBA_ACCEPTANCE_PROFILE = Object.freeze({
   // double that stall rate a 4 m leg needs ~12, at a 50% stall rate ~13. 14
   // clears the worst of those and still bounds a segment near 5.7 m.
   //
-  // ⚠️ CHANGING THIS UN-ACCEPTS THE PROFILE. It owes the §4 re-pinning in
-  // docs/gate4-repass-20260805.md and a fresh Gate 5, which is NOT yet run.
+  // 🏁 GATE 5 RE-PASSED ON THIS PROFILE, 2026-08-12, card-driven: four segments
+  // target_reached at 0.0674 / 0.1032 / 0.0807 / 0.0607 m against a 0.15
+  // tolerance — mean 0.0780, the best four-segment result on record. Zero
+  // reverse-recovery, zero budget exhaustion, and the payload carried this key,
+  // so profile identity is proven in fact.
+  // docs/evidence-gate5-repass-2-20260812.json.
+  //
+  // ⚠️ CHANGING THIS UN-ACCEPTS THE PROFILE again. It would owe the §4
+  // re-pinning in docs/gate4-repass-20260805.md and another Gate 5.
   max_linear_pulse_ceiling: 14,
   max_no_progress_pulses: 3,
   heading_tolerance_degrees: 18,
@@ -826,7 +833,7 @@ class MammotionCustomPathCard extends HTMLElement {
     const overrides = this._profileOverrides();
     return overrides.length
       ? `customised (not hardware-accepted): ${overrides.join(", ")}`
-      : "LUBA profile + reach (Gate 4 re-pass 2026-08-05; tolerance 2026-08-08; reach 2026-08-12 — Gate 5 re-pass PENDING)";
+      : "LUBA acceptance profile + reach (Gate 4 re-pass 2026-08-05; tolerance 2026-08-08; reach + Gate 5 re-pass 2026-08-12)";
   }
 
   // Straight-line nudge along trustworthy CURRENT orientation only. The old

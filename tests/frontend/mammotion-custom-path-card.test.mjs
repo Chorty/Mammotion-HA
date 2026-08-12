@@ -189,10 +189,11 @@ test("an explicitly null ceiling falls back to the accepted value, not omission"
 test("profile label reports acceptance by default and names any override", () => {
   const element = card();
 
-  // The label must state that the Gate 5 re-pass on this profile is pending --
-  // the profile is adopted but NOT yet re-accepted on hardware.
-  assert.match(element._profileLabel(), /LUBA profile \+ reach/);
-  assert.match(element._profileLabel(), /Gate 5 re-pass PENDING/);
+  // Gate 5 re-passed on this profile 2026-08-12, card-driven, 4/4 segments
+  // target_reached. The label must no longer say the re-pass is pending.
+  assert.match(element._profileLabel(), /LUBA acceptance profile \+ reach/);
+  assert.match(element._profileLabel(), /Gate 5 re-pass 2026-08-12/);
+  assert.doesNotMatch(element._profileLabel(), /PENDING/);
 
   element._config.waypoint_tolerance = 0.25;
   element._config.ble_auto_recover = true;

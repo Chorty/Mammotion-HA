@@ -18,6 +18,9 @@ Every number here is replayed through the shipped
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 import pytest
 
 from custom_components.mammotion.services import _vio_turn_budget_feasibility
@@ -127,3 +130,35 @@ def test_a_hopeless_correction_is_still_refused() -> None:
     assert _feasible(120.0, POST_TURN_TOLERANCE, ACCEPTED_TURN_COMMANDS)[
         "feasible"
     ] is (False)
+
+
+def test_every_accepted_profile_key_is_echoed_by_the_multi_segment_result() -> None:
+    """beta44: a gate cannot prove what ran if the response drops a key.
+
+    The 2026-08-12 Gate 5 pass had to be argued around a hole:
+    `motion_refresh_interval_ms` came back null at the top level and was only
+    provable from the per-segment echo plus the delivered writes, and
+    `max_no_progress_pulses` was unprovable from the record at all -- it had to
+    be dismissed as un-exercised instead. Proving the card sent the accepted
+    profile is the entire purpose of Gate 5, so every key it sends must return.
+
+    Pinned against the card's own frozen profile so the two cannot drift.
+    """
+    root = Path(__file__).resolve().parents[3] / "custom_components" / "mammotion"
+    card = (root / "www" / "mammotion-custom-path-card.js").read_text(encoding="utf-8")
+    frozen = card.split("const LUBA_ACCEPTANCE_PROFILE = Object.freeze({")[1].split(
+        "});"
+    )[0]
+    keys = set(re.findall(r"^\s{2}([a-z_]+):", frozen, re.MULTILINE))
+    assert "max_no_progress_pulses" in keys and "motion_refresh_interval_ms" in keys
+
+    source = (root / "services.py").read_text(encoding="utf-8")
+    # Both executors that a card Real Go can reach must echo every profile key.
+    missing = sorted(k for k in keys if f'"{k}": ' not in source)
+    assert not missing, f"profile keys never echoed by any result: {missing}"
+
+    # And specifically the two that were absent from the multi-segment echo.
+    for key in ("max_no_progress_pulses", "motion_refresh_interval_ms"):
+        assert source.count(f'"{key}": {key},') >= 2, (
+            f"{key} is not echoed by both the vector and multi-segment results"
+        )
