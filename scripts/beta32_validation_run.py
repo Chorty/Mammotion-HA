@@ -998,7 +998,11 @@ def main() -> int:  # noqa: C901
             600,
         )
         # SAVE FIRST. Nothing above may parse this before it is on disk.
-        out.write_text(json.dumps(result, indent=1))
+        # Trailing newline because these files are committed and `pre-commit`'s
+        # end-of-file-fixer rewrites them otherwise -- which would mean the repo
+        # hook editing an evidence file after the fact, and evidence files are
+        # meant to be exactly what the mower returned.
+        out.write_text(json.dumps(result, indent=1) + "\n")
         print(f"  wall clock {time.monotonic() - started:.1f} s")
         print(f"  COMPLETE RESPONSE SAVED -> {out.relative_to(REPO)}")
         _summarise(result)
