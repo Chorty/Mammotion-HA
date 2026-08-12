@@ -567,6 +567,23 @@ RAW_PYMAMMOTION_MOTION_PROBE_SCHEMA = vol.Schema(
         vol.Optional("speed", default=0.4): vol.All(
             vol.Coerce(float), vol.Range(min=0.05, max=0.4)
         ),
+        # beta45. Without a refresh the h-watchdog stops the motor almost
+        # immediately, so a single-shot probe moves ~10 cm however long the
+        # window is (measured 2026-07-22: 4 in single-shot vs 44 in at refresh
+        # 200, same 4 s command). That is enough to prove a command actuates and
+        # nothing more -- and it is specifically NOT enough to characterise an
+        # ARC, which is the one motion this project has never sent: every one of
+        # its 55 send_movement call sites is single-axis, though DrvMotionCtrl
+        # has always taken both. See docs/night-motion-options-20260811.md.
+        vol.Optional("motion_refresh_interval_ms", default=0): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=1000)
+        ),
+        # Bounded low: this probe has no closed loop and no waypoint, so the
+        # only thing limiting travel is the window. 4000 ms at the app-parity
+        # cadence is roughly 1.5 m.
+        vol.Optional("duration_ms", default=1300): vol.All(
+            vol.Coerce(int), vol.Range(min=50, max=4000)
+        ),
         vol.Optional("prefer_ble", default=True): cv.boolean,
         vol.Optional("sample_delays", default=[0, 5, 10, 20, 30, 45, 60]): vol.All(
             cv.ensure_list,
@@ -5833,12 +5850,27 @@ async def _raw_pymammotion_motion_probe(
     angular_speed: int = 0,
     speed: float = 0.4,
     prefer_ble: bool = True,
+    motion_refresh_interval_ms: int = 0,
+    duration_ms: int = 1300,
     sample_delays: list[float] | tuple[float, ...] = (0, 5, 10, 20, 30, 45, 60),
     dry_run: bool = True,
     confirm_blades_off: bool = False,
     confirm_clear_area: bool = False,
 ) -> dict[str, Any]:
-    """Run or simulate one raw pymammotion movement command with telemetry."""
+    """Run or simulate one raw pymammotion movement command with telemetry.
+
+    With ``motion_refresh_interval_ms > 0`` the command is held open for
+    ``duration_ms`` at the app's cadence and then explicitly stopped, instead of
+    being fired once and left to the device watchdog. That is what makes this
+    probe able to characterise an **arc** -- a command with both
+    ``linear_speed`` and ``angular_speed`` non-zero, which this project has
+    never sent despite ``DrvMotionCtrl`` accepting both since the beginning.
+
+    An arc matters because it is the only route to night capability: translation
+    keeps ``toward`` (course-over-ground) live, and a live ``toward`` closes a
+    heading loop with no VIO at all. See
+    `docs/night-motion-options-20260811.md`.
+    """
     before = _custom_path_telemetry_snapshot(coordinator)
     gates = _manual_velocity_pulse_gates(
         coordinator,
@@ -5862,6 +5894,19 @@ async def _raw_pymammotion_motion_probe(
         "command_args": command_args,
         "prefer_ble": prefer_ble,
         "transport_preference": "ble_preferred" if prefer_ble else "default",
+        "motion_refresh_interval_ms": motion_refresh_interval_ms,
+        "duration_ms": duration_ms,
+        # Named so the record says what kind of motion this was without anyone
+        # having to re-read the speeds.
+        "motion_axes": (
+            "arc"
+            if int(linear_speed) and int(angular_speed)
+            else "linear"
+            if int(linear_speed)
+            else "angular"
+            if int(angular_speed)
+            else "none"
+        ),
         "sample_delays": list(sample_delays),
         "confirm_blades_off": confirm_blades_off,
         "confirm_clear_area": confirm_clear_area,
@@ -5913,6 +5958,29 @@ async def _raw_pymammotion_motion_probe(
         result["command_result"]["duration_ms"] = round(
             (time.monotonic() - started) * 1000,
             3,
+        )
+
+    if motion_refresh_interval_ms > 0:
+        # Hold the command open at the app's cadence, then STOP it explicitly.
+        # Without the stop the window would end and the device watchdog would
+        # coast the mower to a halt on its own timeline, which is exactly the
+        # ambiguity this probe exists to remove.
+        async def _resend() -> None:
+            await _send_manager_command_with_args(
+                coordinator,
+                command,
+                prefer_ble=prefer_ble,
+                command_kwargs=command_args,
+            )
+
+        result["motion_refresh"] = await _motion_refresh_window(
+            coordinator,
+            resend=_resend,
+            duration_seconds=duration_ms / 1000.0,
+            refresh_interval_ms=motion_refresh_interval_ms,
+        )
+        result["stop_result"] = await _manual_velocity_stop_attempt(
+            coordinator, use_wifi=not prefer_ble
         )
 
     previous_delay = 0.0
@@ -14814,6 +14882,8 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             angular_speed=call.data["angular_speed"],
             speed=call.data["speed"],
             prefer_ble=call.data["prefer_ble"],
+            motion_refresh_interval_ms=call.data["motion_refresh_interval_ms"],
+            duration_ms=call.data["duration_ms"],
             sample_delays=tuple(call.data["sample_delays"]),
             dry_run=call.data["dry_run"],
             confirm_blades_off=call.data["confirm_blades_off"],

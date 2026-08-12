@@ -752,6 +752,22 @@ raw_pymammotion_motion_probe:
       default: true
       selector:
         boolean:
+    motion_refresh_interval_ms:
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 1000
+          step: 50
+    duration_ms:
+      required: false
+      default: 1300
+      selector:
+        number:
+          min: 50
+          max: 4000
+          step: 50
     sample_delays:
       required: false
       default:
