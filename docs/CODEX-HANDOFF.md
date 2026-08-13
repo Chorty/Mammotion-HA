@@ -22,6 +22,12 @@ window and then arrived as one +36.3064° step; no intermediate headings were
 observed at roughly 0.1-second cadence. See
 `docs/night-toward-latency-20260813.md`.
 
+A later read-only autonomous-mow capture recorded 291 samples over 179.895 s
+and three complete vendor pivots. `toward` streamed progressive headings during
+continuous vendor motion; 40 usable moving steps gave `bearing + toward =
+90.57°`, circular SD 2.02°. This narrows the stepwise item-16 result to the
+bounded pulse/report path. See `docs/autonomous-mow-observation-20260813.md`.
+
 The gate is off, no session is active, the mower is `MODE_READY`, RTK Fix, BLE
 live, and blades zero. Do not proceed to item 18. Item 17 is the next hardware
 discriminator and needs fresh explicit supervised-motion authorization.

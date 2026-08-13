@@ -35,6 +35,14 @@ observed. Read `docs/night-toward-latency-20260813.md`. The next hardware
 discriminator is item 17 and requires a new, explicit, supervised-motion
 authorization.
 
+🔎 **Same-day read-only autonomous-mow comparison:** 291 samples over 179.895 s
+captured three complete vendor pivots. Unlike the bounded manual pulse,
+`toward` streamed progressive headings during continuous vendor motion. Forty
+usable moving steps gave `travel bearing + toward = 90.57°` with 2.02° circular
+SD. Read `docs/autonomous-mow-observation-20260813.md`. This narrows item 16's
+stepwise result to the manual pulse/report cadence; it does not settle reverse
+or `fuse_status`.
+
 **beta48/49 were card-only** — run-record downloads, a per-segment landing table
 (leg / landing / tolerance / verdict / pulses / mean), a readiness banner that
 names every blocker code *and* explains it, grouped toolbar, collapsed

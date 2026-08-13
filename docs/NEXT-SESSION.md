@@ -47,6 +47,13 @@ one backward pulse plus `RapidState.fuse_status`. That is new physical motion
 and requires separate, fresh, supervised authorization; this handoff grants
 none.
 
+🔎 **Autonomous comparison, read-only:** while the mower continued its own
+Backyard Hill route, a 179.895 s capture recorded 291 samples and three complete
+pivots. `toward` streamed progressively during those continuous vendor turns;
+40 usable steps gave `bearing + toward = 90.57°`, circular SD 2.02°. This means
+item 16's single post-pulse update characterizes our bounded pulse/report path,
+not all mower rotation. See `docs/autonomous-mow-observation-20260813.md`.
+
 It was produced by a 20-agent adversarial design workflow and **every gate design
 in it was refuted at least once before the plan was written**. Read §4 before
 changing anything — it records 21 defects already fixed and 8 risks knowingly

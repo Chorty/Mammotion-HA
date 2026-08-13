@@ -44,6 +44,11 @@ read `docs/night-toward-latency-20260813.md`. Do not proceed to item 18. The
 next discriminator is item 17 and requires fresh, explicit supervised-motion
 authorization from the operator. Until then, review and planning are read-only.
 
+A same-day read-only autonomous-mow comparison then captured progressive
+`toward` changes through three vendor pivots. Read
+`docs/autonomous-mow-observation-20260813.md`: the one-step item-16 result is
+specific to the bounded manual pulse/report cadence, not all rotation.
+
 ## Hard constraints — violating any of these is a failed change
 
 1. **`LUBA_ACCEPTANCE_PROFILE` in `custom_components/mammotion/www/mammotion-custom-path-card.js` is FROZEN.**

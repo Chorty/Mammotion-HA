@@ -43,3 +43,11 @@ phase. The body-heading versus course-over-ground question therefore remains
 open. Do not proceed to item 18. Plan item 17 (one backward pulse plus
 `RapidState.fuse_status`) is the next hardware discriminator and requires a new
 explicit supervised-motion authorization.
+
+## Same-day autonomous control comparison
+
+A later three-minute read-only capture of the vendor's autonomous mow recorded
+progressive `toward` changes through three complete pivots in both directions.
+See `docs/autonomous-mow-observation-20260813.md`. This refines the conclusion:
+the one-step result above characterizes this bounded manual-pulse/report path;
+it is not a general property of `toward` during every kind of rotation.
