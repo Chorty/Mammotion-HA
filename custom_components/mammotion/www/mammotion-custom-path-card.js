@@ -9,7 +9,7 @@ const MAX_REAL_SEGMENTS = 4;
 const MAX_NUDGE_METRES = 2.0;
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
-const CARD_VERSION = "0.6.4-beta48";
+const CARD_VERSION = "0.6.4-beta49";
 
 // The exact bounded execution profile that passed supervised LUBA acceptance
 // Gate 4 re-pass on 2026-08-05 (three-write zero stop, bounded straight segment,
@@ -105,6 +105,13 @@ const BLOCKER_HELP = Object.freeze({
   path_unset: "Click at least one destination on the map.",
   position_unavailable:
     "No live mower position yet — press Reload map/runtime, and wake the mower if BLE has gone idle.",
+  // The backend's own code for this is position_not_valid_for_motion, which is
+  // what actually appears in the banner; position_unavailable is the card's.
+  // Both are kept because both reach the operator.
+  position_not_valid_for_motion:
+    "The mower's position is not usable for motion — it needs RTK Fix and a zone inside a mapped area.",
+  ble_client_not_connected:
+    "BLE is not connected. Wake the mower (it dozes after ~10 min idle) or move a Bluetooth proxy closer.",
   current_orientation_unavailable:
     "No trustworthy current facing. Course-over-ground is last-travel only and cannot see an in-place turn.",
   path_validation_failed:
@@ -152,6 +159,7 @@ class MammotionCustomPathCard extends HTMLElement {
     this._validation = null;
     this._dryRun = null;
     this._realRun = null;
+    this._realRunAt = null;
     this._loadingMap = false;
     this._loadingRuntime = false;
     this._confirmBladesOff = false;
@@ -222,9 +230,18 @@ class MammotionCustomPathCard extends HTMLElement {
     }
   }
 
+  _lastRunAtKey() {
+    return `mammotion-path-card-last-run-at:${this._config.entity || "unknown"}`;
+  }
+
   _persistLastRun(result) {
+    this._realRunAt = new Date().toISOString();
     try {
       localStorage.setItem(this._lastRunKey(), JSON.stringify(result));
+      // Stored separately so the restored result keeps its exact backend shape
+      // -- wrapping it would break every reader that treats _realRun as the
+      // service response, and older stored runs simply have no timestamp.
+      localStorage.setItem(this._lastRunAtKey(), new Date().toISOString());
     } catch (err) {
       // Full results can be large; ignore quota failures.
     }
@@ -233,10 +250,27 @@ class MammotionCustomPathCard extends HTMLElement {
   _restoreLastRun() {
     try {
       const raw = localStorage.getItem(this._lastRunKey());
+      this._realRunAt = localStorage.getItem(this._lastRunAtKey());
       return raw ? JSON.parse(raw) : null;
     } catch (err) {
       return null;
     }
+  }
+
+  // A restored run is shown on every page load, so it MUST say when it ran.
+  // Without this the card presents a result from a previous day directly under
+  // a "Map loaded" status line, which reads as "this just happened".
+  _runAgeLabel() {
+    if (!this._realRunAt) return "";
+    const then = new Date(this._realRunAt);
+    const ms = Date.now() - then.getTime();
+    if (!Number.isFinite(ms)) return "";
+    const minutes = Math.floor(ms / 60000);
+    if (minutes < 1) return "just now";
+    if (minutes < 60) return `${minutes} min ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} h ago`;
+    return `${then.toLocaleString()}`;
   }
 
   _clearHistory() {
@@ -398,8 +432,9 @@ class MammotionCustomPathCard extends HTMLElement {
       mean == null
         ? ""
         : `<div class="summary-footer">mean landing ${mean.toFixed(4)} m · worst ${worst.toFixed(4)} m · ${landings.length} of ${rows.length} segments measured</div>`;
+    const age = this._runAgeLabel();
     return `<div class="run-summary">
-      <div class="title">Segment landings</div>
+      <div class="title">Segment landings${age ? `<span class="run-age">${this._escapeHtml(age)}</span>` : `<span class="run-age">from a previous session</span>`}</div>
       <div class="summary-scroll"><table>
         <thead><tr><th>#</th><th>ok</th><th>stop reason</th><th>leg</th><th>landing</th><th>tol</th><th>verdict</th><th>pulses</th></tr></thead>
         <tbody>${body}</tbody>
@@ -417,15 +452,16 @@ class MammotionCustomPathCard extends HTMLElement {
       return {
         level: "busy",
         headline: "Run in progress — Real Go and editing are locked.",
-        detail: "Use Abort / Stop to end it early.",
+        details: ["Use Abort / Stop to end it early."],
       };
     }
     const preflight = this._preflight();
     if (!preflight.safe) {
-      // Every blocker gets its explanation, not just the first. Showing only
-      // one hides the deeper problem behind the shallow one -- "click a
-      // destination" reads as the whole story while the motion gate is off.
-      const help = [
+      // Every blocker gets its own explanation on its own line. Showing only
+      // the first hides the deeper problem behind the shallow one -- "click a
+      // destination" reads as the whole story while the motion gate is off --
+      // and running them together as one paragraph is unreadable at five.
+      const details = [
         ...new Set(
           preflight.blockers.map((code) => BLOCKER_HELP[code]).filter(Boolean),
         ),
@@ -433,7 +469,7 @@ class MammotionCustomPathCard extends HTMLElement {
       return {
         level: "blocked",
         headline: `Not ready: ${preflight.blockers.join(", ")}`,
-        detail: help.join(" "),
+        details,
       };
     }
     const missing = [];
@@ -443,14 +479,14 @@ class MammotionCustomPathCard extends HTMLElement {
       return {
         level: "arming",
         headline: `Almost ready — confirm ${missing.join(" and ")}.`,
-        detail: "Both confirmations are required before Real Go will send.",
+        details: ["Both confirmations are required before Real Go will send."],
       };
     }
     const segments = this._segmentCount();
     return {
       level: "ready",
       headline: `Ready — Real Go will drive ${segments} segment${segments === 1 ? "" : "s"}.`,
-      detail: this._profileLabel(),
+      details: [this._profileLabel()],
     };
   }
 
@@ -677,7 +713,9 @@ class MammotionCustomPathCard extends HTMLElement {
           : ["runtime_safety_blocked"]),
       );
     }
-    return blockers;
+    // Same duplicate-source problem as _preflight(): the two backend lists
+    // overlap, and this one feeds the Nudge tooltip.
+    return [...new Set(blockers)];
   }
 
   _preflight() {
@@ -717,7 +755,11 @@ class MammotionCustomPathCard extends HTMLElement {
     }
     return {
       safe: blockers.length === 0,
-      blockers,
+      // The backend reports the same condition on both its experimental_motion
+      // and safety blocker lists -- position_not_valid_for_motion and
+      // rtk_not_precise arrive on each -- so concatenating them printed every
+      // shared code twice. Dedupe while keeping first-seen order.
+      blockers: [...new Set(blockers)],
       runtime,
     };
   }
@@ -1824,7 +1866,8 @@ class MammotionCustomPathCard extends HTMLElement {
            greppable against the backend, with plain English underneath. */
         .banner { margin: 12px 12px 0; padding: 9px 11px; border-radius: 6px; border-left: 4px solid; font-size: 13px; }
         .banner-headline { font-weight: 600; }
-        .banner-detail { margin-top: 3px; font-size: 12px; opacity: 0.85; }
+        .banner-detail { margin: 4px 0 0; padding-left: 18px; font-size: 12px; opacity: 0.85; }
+        .banner-detail li { margin: 2px 0; }
         .banner.ready { border-color: #22c55e; background: rgba(34,197,94,0.12); }
         .banner.arming { border-color: #f59e0b; background: rgba(245,158,11,0.12); }
         .banner.blocked { border-color: #ef4444; background: rgba(239,68,68,0.12); }
@@ -1841,7 +1884,8 @@ class MammotionCustomPathCard extends HTMLElement {
         /* Segment landings: the numbers every run has so far been read out of
            raw JSON by hand. landing vs waypoint_tolerance is the verdict. */
         .run-summary { margin: 0 12px 12px; padding: 8px 10px; border: 1px solid rgba(127,127,127,0.35); border-radius: 6px; font-size: 12px; }
-        .run-summary .title { font-weight: 600; margin-bottom: 6px; }
+        .run-summary .title { font-weight: 600; margin-bottom: 6px; display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+        .run-age { font-weight: 400; font-size: 11px; color: var(--secondary-text-color); }
         .summary-scroll { overflow-x: auto; }
         .run-summary table { border-collapse: collapse; width: 100%; min-width: 460px; }
         .run-summary th { text-align: left; font-weight: 600; color: var(--secondary-text-color); font-size: 11px; padding: 2px 6px 4px 0; white-space: nowrap; }
@@ -1886,7 +1930,11 @@ class MammotionCustomPathCard extends HTMLElement {
       <ha-card header="Mammotion click/go (guarded segment chain)">
         <div class="banner ${readiness.level}">
           <div class="banner-headline">${this._escapeHtml(readiness.headline)}</div>
-          ${readiness.detail ? `<div class="banner-detail">${this._escapeHtml(readiness.detail)}</div>` : ""}
+          ${
+            readiness.details.length
+              ? `<ul class="banner-detail">${readiness.details.map((line) => `<li>${this._escapeHtml(line)}</li>`).join("")}</ul>`
+              : ""
+          }
         </div>
         <div class="toolbar">
           <div class="group">
@@ -1927,8 +1975,8 @@ class MammotionCustomPathCard extends HTMLElement {
         ${this._realRun ? this._runSummaryHtml(this._realRun) : ""}
         <div class="export-bar">
           <span class="group-label">Export</span>
-          <button id="download-real-result" type="button" ${this._realRun ? "" : "disabled"} title="Save the complete Real Go response as a file">⭳ Last run JSON</button>
-          <button id="download-dry-result" type="button" ${this._dryRun ? "" : "disabled"} title="Save the complete dry-run response as a file">⭳ Dry-run JSON</button>
+          <button id="download-real-result" type="button" ${this._realRun ? "" : "disabled"} title="Save the complete Real Go response as a file">Download last run JSON</button>
+          <button id="download-dry-result" type="button" ${this._dryRun ? "" : "disabled"} title="Save the complete dry-run response as a file">Download dry-run JSON</button>
           <button id="copy-yaml" type="button" ${removeDisabled}>Copy YAML</button>
           <button id="copy-json" type="button" ${removeDisabled}>Copy JSON</button>
           <button id="copy-dry-run-yaml" type="button" ${removeDisabled}>Copy dry-run YAML</button>
