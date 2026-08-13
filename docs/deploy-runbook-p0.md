@@ -34,6 +34,32 @@ passes were bought by driving past the waypoint and U-turning back. The next
 motion decision is whether to fix control quality (stop-latency lead, pulse
 sizing) or to accept overshoot-and-recovery — not a Gate 5 attempt.
 
+### beta49 — beta48's live defects, 2026-08-13 ~05:20 UTC
+
+Frontend-only again. `card md5 adaf0b71`, local == both host paths, resource
+`?v=0.6.4-beta49&build=adaf0b71`, API back in 51 s, 132 entities,
+`real_motion_allowed: false`.
+
+🔑 **Four defects were found by looking at the deployed card, none by the test
+suite.** The stubs supply blocker lists the real backend does not.
+
+The duplicate-blocker one is confirmed directly in the live runtime state:
+
+```
+em blockers     ['experimental_motion_disabled', 'position_not_valid_for_motion']
+safety blockers ['position_not_valid_for_motion']
+```
+
+`_preflight()` concatenated those two lists, so the banner printed
+`position_not_valid_for_motion` twice (and `rtk_not_precise` twice, when RTK was
+also down). Both call sites now dedupe. Two emitted codes
+(`position_not_valid_for_motion`, `ble_client_not_connected`) had no help text
+and silently dropped out of the explanation list; a test now pins the full set
+observed on the host.
+
+**Method note.** Render the card against the actual `export_runtime_state`
+output, not the test fixtures, before calling a UI change done.
+
 ### beta48 — card usability and run export, 2026-08-13 ~04:45 UTC
 
 **Frontend-only deploy.** Card + `manifest.json` only; no `services.py` change
