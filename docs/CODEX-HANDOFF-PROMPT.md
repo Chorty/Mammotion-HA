@@ -1,7 +1,7 @@
 # Codex handoff prompt
 
 Paste everything between the rules below into Codex as the opening message.
-Written 2026-08-13 against `0.6.4-beta49` / commit `60c18636`.
+Updated 2026-08-13 for deployed `0.6.4-beta50` night v1.
 
 ⚠️ Codex reads `AGENTS.md` by convention; this repo's instructions live in
 `CLAUDE.md`. The prompt below points at it explicitly, so no rename is needed —
@@ -29,22 +29,15 @@ Working directory is the repo root. Branch:
 2. `docs/NEXT-SESSION.md` — the "2026-08-13 HANDOFF" section at the top.
    **Everything below that section is stale as build state** but still valid as
    measurement evidence.
-3. `docs/night-segment-implementation-plan-v1-20260813.md` — **this is your
-   task.** Concrete file/line anchors, §4 refutation ledger, §5 tests, §7 ordered
-   task list, §8 what needs hardware first.
+3. `docs/night-segment-implementation-plan-v1-20260813.md` — implementation
+   record and hardware sequence. Off-mower items 1–14 are complete.
 
 ## Your task
 
-Implement the **off-mower** items in §7 of that plan: night-mode support for a
-single short segment (`turn_mode: "night"`), the mirror heading conversion scoped
-to that mode, the night gates, and the tests in §5.
-
-**Read §4 before changing anything.** It is a refutation ledger from an
-adversarial design review: 21 defects already fixed and 8 risks knowingly
-accepted. If you think you have spotted an improvement, check whether §4 already
-considered and rejected it, and say so if you still disagree.
-
-Do **not** run motion on the mower. See "Hardware" below.
+The off-mower night implementation and motion-disabled beta50 deployment are
+complete. The next task is §7 item 15: measure the turn quantum through the new
+night branch. **Do not run it without a fresh, explicit supervised-motion
+authorization from the operator.** Until then, review and planning are read-only.
 
 ## Hard constraints — violating any of these is a failed change
 

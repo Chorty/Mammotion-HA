@@ -1020,7 +1020,13 @@ RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("motion_refresh_interval_ms", default=200): vol.All(
             vol.Coerce(int), vol.Range(min=0, max=1000)
         ),
-        vol.Optional("turn_mode", default="vio"): vol.In(["vio", "legacy"]),
+        vol.Optional("turn_mode", default="vio"): vol.In(["vio", "legacy", "night"]),
+        vol.Optional("night_angular_speed", default=500): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=1000)
+        ),
+        vol.Optional("toward_mirror_degrees", default=90.13): vol.All(
+            vol.Coerce(float), vol.Range(min=0.0, max=360.0)
+        ),
         vol.Optional("vio_heading_offset_degrees"): vol.All(
             vol.Coerce(float), vol.Range(min=-180.0, max=360.0)
         ),
@@ -1145,7 +1151,13 @@ RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("motion_refresh_interval_ms", default=200): vol.All(
             vol.Coerce(int), vol.Range(min=0, max=1000)
         ),
-        vol.Optional("turn_mode", default="vio"): vol.In(["vio", "legacy"]),
+        vol.Optional("turn_mode", default="vio"): vol.In(["vio", "legacy", "night"]),
+        vol.Optional("night_angular_speed", default=500): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=1000)
+        ),
+        vol.Optional("toward_mirror_degrees", default=90.13): vol.All(
+            vol.Coerce(float), vol.Range(min=0.0, max=360.0)
+        ),
         vol.Optional("vio_heading_offset_degrees"): vol.All(
             vol.Coerce(float), vol.Range(min=-180.0, max=360.0)
         ),
@@ -10115,6 +10127,35 @@ def _normalized_heading_degrees(value: Any) -> float | None:
         return None
 
 
+#: The map frame is a math angle (CCW from +x) while ``toward`` is a compass
+#: bearing (CW from north), so their relation is a reflection, not an offset.
+#: The 0.13 degree map alignment is measured for this installation; callers can
+#: override it per mower rather than treating it as a universal map constant.
+_TOWARD_MIRROR_DEGREES = 90.13
+
+
+def _map_heading_to_toward_degrees(
+    map_heading_degrees: float,
+    *,
+    toward_mirror_degrees: float = _TOWARD_MIRROR_DEGREES,
+) -> float:
+    """Convert a map-frame bearing into the ``toward`` frame."""
+    return (float(toward_mirror_degrees) - float(map_heading_degrees)) % 360
+
+
+def _toward_to_map_heading_degrees(
+    toward_degrees: float,
+    *,
+    toward_mirror_degrees: float = _TOWARD_MIRROR_DEGREES,
+) -> float:
+    """Convert a ``toward`` reading into a map-frame bearing.
+
+    The reflection is an involution; two names make the call-site direction
+    explicit for review.
+    """
+    return (float(toward_mirror_degrees) - float(toward_degrees)) % 360
+
+
 def _raw_turn_to_heading_status(
     telemetry: dict[str, Any],
     *,
@@ -10849,7 +10890,18 @@ def _normalised_linear_pulse_distance(
     return measured_distance * fallback_nonzero_writes / actual_nonzero_writes
 
 
-_VIO_TURN_MODES = ("vio", "legacy")
+_SEGMENT_TURN_MODES = ("vio", "legacy", "night")
+
+#: Every measured stationary night turn that converged used +/-500 with refresh.
+#: Both tiers deliberately use this value: 180 did not break stationary-pivot
+#: friction, and the slow tier has no separate night measurement.
+_NIGHT_TURN_ANGULAR_SPEED = 500
+
+#: Chosen fixed-budget containment limit, not a measured night reach claim.
+_NIGHT_MAX_SEGMENT_LENGTH_M = 1.0
+
+#: Position-feed noise makes aim estimates from shorter pulses uninformative.
+_NIGHT_MIN_AIM_BASELINE_M = 0.20
 
 
 async def _vio_segment_calibration_drive(  # noqa: C901, PLR0913
@@ -11016,6 +11068,8 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     final_approach_metres_per_pulse: float = _DEFAULT_METRES_PER_LINEAR_PULSE,
     turn_degrees_per_second: float = _DEFAULT_TURN_DEGREES_PER_SECOND,
     turn_mode: str = "vio",
+    night_angular_speed: int = _NIGHT_TURN_ANGULAR_SPEED,
+    toward_mirror_degrees: float = _TOWARD_MIRROR_DEGREES,
     vio_heading_offset_degrees: float | None = None,
     vio_turn_max_commands: int = 8,
     vio_angular_speed: int = 500,
@@ -11091,13 +11145,18 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         if current_point is not None and target is not None
         else None
     )
-    target_reported_heading = (
-        _normalized_heading_degrees(
+    if target_heading is None:
+        target_reported_heading = None
+    elif turn_mode == "night":
+        # Night only: map -> toward is a reflection. The frozen additive
+        # calibration remains deliberately untouched for VIO and legacy paths.
+        target_reported_heading = _map_heading_to_toward_degrees(
+            target_heading, toward_mirror_degrees=toward_mirror_degrees
+        )
+    else:
+        target_reported_heading = _normalized_heading_degrees(
             float(target_heading) - float(calibrated_forward_heading_offset_degrees)
         )
-        if target_heading is not None
-        else None
-    )
     # Let the BLE command queue drain before gating on it. This executor
     # enqueues commands of its own before it evaluates `ble_link_live`, which
     # demands `queue_depth == 0` -- so without this it can fail a fail-closed
@@ -11154,16 +11213,27 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                 "detail": "Vector segment execution requires live position and target heading.",
             }
         )
-    if turn_mode not in _VIO_TURN_MODES:
+    if turn_mode not in _SEGMENT_TURN_MODES:
         gates.append(
             {
                 "name": "turn_mode_valid",
                 "passed": False,
-                "detail": f"turn_mode must be one of {_VIO_TURN_MODES}.",
+                "detail": f"turn_mode must be one of {_SEGMENT_TURN_MODES}.",
             }
         )
-    initial_vio_reading = _vio_reading(coordinator)
-    initial_vio_feed = _vio_feed_liveness(coordinator)
+    if turn_mode == "night":
+        # Night neither gates nor steers on VIO. Keep the response shape useful
+        # without making an unavailable camera feed a hidden dependency.
+        initial_vio_reading = {"vio_state": None, "vision_heading": None}
+        initial_vio_feed = {
+            "live": None,
+            "tracked_features": None,
+            "brightness_raw": None,
+            "brightness_label": None,
+        }
+    else:
+        initial_vio_reading = _vio_reading(coordinator)
+        initial_vio_feed = _vio_feed_liveness(coordinator)
     if turn_mode == "vio" and initial_vio_reading["vio_state"] != _VIO_STATE_ACTIVE:
         # VIO won't initialise in the dark and a cold reading latches
         # heading=0.0 as a valid float. In a BRIGHT scene the calibration
@@ -11201,6 +11271,56 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         # the heading is stale. Block the real run distinctly from the cold-start
         # case above so the operator sees "blind feed", not "warm VIO".
         gates.append(_vio_feed_live_gate(initial_vio_feed, dry_run=dry_run))
+    if turn_mode == "night":
+        # Night has no VIO witness: RTK is the sole source for position and the
+        # `toward` heading loop, so Float is not acceptable here.
+        gates.append(
+            {
+                "name": "night_requires_precise_rtk",
+                "passed": dry_run or not runtime_safety["rtk_degraded"],
+                "detail": (
+                    "Night mode requires RTK Fix; saw "
+                    f"{runtime_safety['rtk_status_label']}."
+                ),
+                "diagnostics": {
+                    "rtk_status_label": runtime_safety["rtk_status_label"],
+                    "rtk_degraded": runtime_safety["rtk_degraded"],
+                },
+            }
+        )
+        gates.append(
+            {
+                "name": "night_linear_loop_unsupported",
+                "passed": dry_run or max_linear_pulse_ceiling is None,
+                "detail": (
+                    "Night runs the fixed max_linear_commands budget; pass "
+                    "max_linear_pulse_ceiling: null."
+                ),
+            }
+        )
+        night_segment_length = (
+            _path_distance([current_point, target])
+            if current_point is not None and target is not None
+            else None
+        )
+        gates.append(
+            {
+                "name": "night_segment_too_long",
+                "passed": dry_run
+                or (
+                    night_segment_length is not None
+                    and night_segment_length <= _NIGHT_MAX_SEGMENT_LENGTH_M
+                ),
+                "detail": (
+                    "Night runs a fixed 3-pulse budget with no mid-drive "
+                    f"correction, so legs must be at most {_NIGHT_MAX_SEGMENT_LENGTH_M} m."
+                ),
+                "diagnostics": {
+                    "segment_length_m": night_segment_length,
+                    "max_segment_length_m": _NIGHT_MAX_SEGMENT_LENGTH_M,
+                },
+            }
+        )
     if runtime_safety["active_mowing_detected"]:
         gates.append(
             {
@@ -11281,6 +11401,14 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         "linear_pulse_duration_ms": linear_pulse_duration_ms,
         "vio_turn_max_commands": vio_turn_max_commands,
         "vio_angular_speed": vio_angular_speed,
+        **(
+            {
+                "night_angular_speed": night_angular_speed,
+                "toward_mirror_degrees": toward_mirror_degrees,
+            }
+            if turn_mode == "night"
+            else {}
+        ),
         "vio_heading_offset_degrees": vio_heading_offset_degrees,
         "sample_delays": list(sample_delays),
         "confirm_blades_off": confirm_blades_off,
@@ -11292,17 +11420,33 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         "target_map_heading_degrees": target_heading,
         "target_reported_heading_degrees": target_reported_heading,
         "target_heading_degrees": target_reported_heading,
-        "heading_calibration": {
-            "formula": (
-                "target_reported_heading = "
-                "target_map_heading - calibrated_forward_heading_offset"
-            ),
-            "target_map_heading_degrees": target_heading,
-            "calibrated_forward_heading_offset_degrees": (
-                calibrated_forward_heading_offset_degrees
-            ),
-            "target_reported_heading_degrees": target_reported_heading,
-        },
+        "heading_calibration": (
+            {
+                "model": "mirror",
+                "formula": (
+                    "target_toward_heading = toward_mirror_degrees - target_map_heading"
+                ),
+                "toward_mirror_degrees": toward_mirror_degrees,
+                "target_map_heading_degrees": target_heading,
+                "calibrated_forward_heading_offset_degrees": (
+                    calibrated_forward_heading_offset_degrees
+                ),
+                "calibrated_forward_heading_offset_applied": False,
+                "target_reported_heading_degrees": target_reported_heading,
+            }
+            if turn_mode == "night"
+            else {
+                "formula": (
+                    "target_reported_heading = "
+                    "target_map_heading - calibrated_forward_heading_offset"
+                ),
+                "target_map_heading_degrees": target_heading,
+                "calibrated_forward_heading_offset_degrees": (
+                    calibrated_forward_heading_offset_degrees
+                ),
+                "target_reported_heading_degrees": target_reported_heading,
+            }
+        ),
         "initial_linear_command_selection": initial_selection,
         "turn_mode": turn_mode,
         "vio": {
@@ -11343,6 +11487,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         ),
         "calibration_commands_sent": 0,
         "realignments": [],
+        **({"night_aim": []} if turn_mode == "night" else {}),
         "command_results": [],
         "samples": [{"label": "initial", "telemetry": initial_telemetry}],
         "phases": [],
@@ -11495,6 +11640,27 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                 ha_state=ha_state,
                 active_route=active_route,
             )
+    elif turn_mode == "night":
+        turn_result = await _raw_pymammotion_turn_to_heading(
+            coordinator,
+            target_heading_degrees=target_reported_heading,
+            heading_tolerance_degrees=heading_tolerance_degrees,
+            angular_speed_fast=night_angular_speed,
+            angular_speed_slow=night_angular_speed,
+            slow_turn_threshold_degrees=slow_turn_threshold_degrees,
+            max_commands=max_turn_commands,
+            min_heading_change_degrees=min_heading_change_degrees,
+            max_translation_distance=max_turn_translation_distance,
+            pulse_duration_ms=turn_pulse_duration_ms,
+            prefer_ble=prefer_ble,
+            motion_refresh_interval_ms=motion_refresh_interval_ms,
+            sample_delays=tuple(sample_delays),
+            dry_run=dry_run,
+            confirm_blades_off=confirm_blades_off,
+            confirm_clear_area=confirm_clear_area,
+            ha_state=ha_state,
+            active_route=active_route,
+        )
     else:
         turn_result = await _raw_pymammotion_turn_to_heading(
             coordinator,
@@ -11597,6 +11763,12 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                 "final_displacement_m": turn_result.get("final_displacement_m"),
                 "direct_refusal": turn_result.get("direct_refusal"),
             }
+        return result
+
+    if turn_mode == "night" and int(turn_result.get("commands_sent") or 0) == 0:
+        # A zero-command success can be a latched ``toward`` reading inside
+        # tolerance. Do not begin the linear phase without an observed turn.
+        result["stop_reason"] = "night_heading_unverified"
         return result
 
     # A nominally in-place VIO turn can translate materially. Gate 4 on
@@ -12261,6 +12433,64 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                     # toward the no-progress abort.
                     consecutive_no_progress = 0
                     continue
+        elif turn_mode == "night":
+            # Both values are map-frame bearings derived from RTK position; VIO
+            # and ``toward`` are not used to decide this per-pulse aim check.
+            movement_heading = progress.get("movement_vector_heading_degrees")
+            night_bearing = progress.get("expected_target_heading_degrees")
+            measured_distance = (progress.get("measured_delta") or {}).get("distance")
+            night_distance_to_target = completion_status.get("distance_to_target")
+            after_toward = (after.get("position") or {}).get("toward")
+            night_aim: dict[str, Any] = {
+                "after_linear_pulse": command_index,
+                "movement_vector_heading_degrees": movement_heading,
+                "bearing_to_target_degrees": night_bearing,
+                "measured_distance_m": measured_distance,
+                "distance_to_target_m": night_distance_to_target,
+                "observed_toward_mirror_degrees": (
+                    (float(movement_heading) + float(after_toward)) % 360
+                    if movement_heading is not None and after_toward is not None
+                    else None
+                ),
+            }
+            if (
+                movement_heading is not None
+                and night_bearing is not None
+                and measured_distance is not None
+                and float(measured_distance) >= _NIGHT_MIN_AIM_BASELINE_M
+            ):
+                aim_error = _heading_error_degrees(
+                    float(movement_heading), float(night_bearing)
+                )
+                night_aim["aim_error_degrees"] = round(aim_error, 3)
+                if _requires_reverse_recovery(aim_error):
+                    night_aim["decision"] = "reverse_recovery_required"
+                    result["night_aim"].append(night_aim)
+                    result["stop_reason"] = "target_requires_reverse_recovery"
+                    return result
+                if night_distance_to_target is not None and not (
+                    _realign_cannot_improve_the_landing(
+                        distance_to_target_m=float(night_distance_to_target),
+                        aim_error_degrees=aim_error,
+                        waypoint_tolerance=waypoint_tolerance,
+                        metres_per_pulse=_effective_metres_per_pulse(
+                            observed_pulse_distances_by_speed.get(
+                                int(selection["linear_speed"]), []
+                            ),
+                            final_approach_metres_per_pulse,
+                        ),
+                    )
+                ):
+                    # Night cannot safely correct this mis-aim yet, so it stops
+                    # rather than suppressing a correction and driving onward.
+                    night_aim["decision"] = "stop_reaim_unavailable"
+                    result["night_aim"].append(night_aim)
+                    result["stop_reason"] = "night_reaim_required_but_unavailable"
+                    return result
+                night_aim["decision"] = "drive_on_projects_inside_tolerance"
+            else:
+                night_aim["decision"] = "below_aim_baseline"
+            result["night_aim"].append(night_aim)
         if not progress["passed"]:
             # A stale feed and a stopped mower both read as "no progress", but only
             # one of them means the mower is fine. Bit-identical coordinates across
@@ -12391,6 +12621,8 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
     final_approach_metres_per_pulse: float = _DEFAULT_METRES_PER_LINEAR_PULSE,
     turn_degrees_per_second: float = _DEFAULT_TURN_DEGREES_PER_SECOND,
     turn_mode: str = "vio",
+    night_angular_speed: int = _NIGHT_TURN_ANGULAR_SPEED,
+    toward_mirror_degrees: float = _TOWARD_MIRROR_DEGREES,
     vio_heading_offset_degrees: float | None = None,
     vio_turn_max_commands: int = 8,
     vio_angular_speed: int = 500,
@@ -12449,7 +12681,16 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
         ha_state=ha_state,
         active_route=active_route,
     )
-    initial_vio_feed = _vio_feed_liveness(coordinator)
+    initial_vio_feed = (
+        {
+            "live": None,
+            "tracked_features": None,
+            "brightness_raw": None,
+            "brightness_label": None,
+        }
+        if turn_mode == "night"
+        else _vio_feed_liveness(coordinator)
+    )
     if (
         turn_mode == "vio"
         and _vio_reading(coordinator)["vio_state"] == _VIO_STATE_ACTIVE
@@ -12643,6 +12884,11 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
         ):
             result["stop_reason"] = "path_turn_infeasible"
             return result
+    elif turn_mode == "night" and total_segments > 1:
+        # Night has no junction feasibility model. Refuse before segment one so
+        # an impossible junction cannot be discovered after motion has begun.
+        result["stop_reason"] = "night_multi_segment_unsupported"
+        return result
 
     carried_vio_offset = vio_heading_offset_degrees
     for segment_offset in range(total_segments):
@@ -12729,6 +12975,8 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
             turn_degrees_per_second=turn_degrees_per_second,
             motion_refresh_interval_ms=motion_refresh_interval_ms,
             turn_mode=turn_mode,
+            night_angular_speed=night_angular_speed,
+            toward_mirror_degrees=toward_mirror_degrees,
             vio_heading_offset_degrees=carried_vio_offset,
             vio_turn_max_commands=vio_turn_max_commands,
             vio_angular_speed=vio_angular_speed,
@@ -15096,6 +15344,8 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             linear_pulse_duration_ms=call.data["linear_pulse_duration_ms"],
             motion_refresh_interval_ms=call.data["motion_refresh_interval_ms"],
             turn_mode=call.data["turn_mode"],
+            night_angular_speed=call.data["night_angular_speed"],
+            toward_mirror_degrees=call.data["toward_mirror_degrees"],
             vio_heading_offset_degrees=call.data.get("vio_heading_offset_degrees"),
             vio_turn_max_commands=call.data["vio_turn_max_commands"],
             vio_angular_speed=call.data["vio_angular_speed"],
@@ -15163,6 +15413,8 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             turn_degrees_per_second=call.data["turn_degrees_per_second"],
             motion_refresh_interval_ms=call.data["motion_refresh_interval_ms"],
             turn_mode=call.data["turn_mode"],
+            night_angular_speed=call.data["night_angular_speed"],
+            toward_mirror_degrees=call.data["toward_mirror_degrees"],
             vio_heading_offset_degrees=call.data.get("vio_heading_offset_degrees"),
             vio_turn_max_commands=call.data["vio_turn_max_commands"],
             vio_angular_speed=call.data["vio_angular_speed"],

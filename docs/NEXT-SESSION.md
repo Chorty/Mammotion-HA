@@ -8,21 +8,29 @@ measurements stand — but do not act on any build/host/gate state they describe
 
 # 🚦 2026-08-13 HANDOFF — read this section, then the plan it points to
 
-## 0. Live state, verified 2026-08-13 ~14:05 local
+## 0. Live state, verified 2026-08-13 ~17:05 local
 
 | | |
 | --- | --- |
-| Branch | `feat/beta31-reach-and-overshoot-ceiling`, **everything committed and pushed** to `origin` = the **Chorty** fork |
-| Version | `0.6.4-beta49` — host and branch **agree**, all four version sites bumped |
-| Card on host | md5 `adaf0b71`, identical at **both** serving paths; resource `?v=0.6.4-beta49&build=adaf0b71` |
+| Branch | `feat/beta31-reach-and-overshoot-ceiling`, publish target `origin` = the **Chorty** fork |
+| Version | `0.6.4-beta50` — host and branch agree; manifest, pyproject, card and lock version sites agree |
+| Card on host | md5 `8510824e`, identical at **both** serving paths; resource `?v=0.6.4-beta50&build=8510824e` |
 | Motion gate | ✅ **DISARMED.** `real_motion_allowed: false`, no active session |
-| Mower | **DOCKED and charging**, `CHARGE_ON` at (4.3539, 3.2035), battery **66%**, RTK **Fix** |
+| Mower | Final deploy readback: `MODE_WORKING`, with active mowing/route blockers. No command was sent by the deploy session. |
 
 ## 1. What to do next
 
-➡️ **`docs/night-segment-implementation-plan-v1-20260813.md`** is the plan. It is
-off-mower work with concrete file/line anchors, a §4 refutation ledger, §5 tests,
-§7 an ordered task list, and §8 what must be measured on hardware first.
+✅ **Night v1 is implemented and deployed motion-disabled as beta50.** It adds an
+explicit `turn_mode: "night"` for one forward-only segment, night-only mirror
+conversion, angular 500 with refresh, fixed-budget/RTK/length/heading/re-aim/
+reverse/multi-segment refusals, and the `--night-segment` harness mode. The
+frozen card profile and VIO/legacy paths remain pinned by tests.
+
+➡️ **Next is §7 item 15** in
+`docs/night-segment-implementation-plan-v1-20260813.md`: measure the turn quantum
+through the deployed night branch. This is real motion and requires separate,
+fresh, supervised authorization. Do not arm or run the harness from this
+handoff alone.
 
 It was produced by a 20-agent adversarial design workflow and **every gate design
 in it was refuted at least once before the plan was written**. Read §4 before
@@ -75,9 +83,10 @@ npm run test:frontend
 .venv/bin/python -m pre_commit run --all-files
 ```
 
-There is **no global `uv`** — use `.venv/bin/python` directly. Current counts:
-**630 pytest, 38 frontend**, all green at `1594d3c0`. Run them; do not quote a
-number you did not produce.
+There is **no global `uv`** — use `.venv/bin/python` directly. Beta50 counts
+personally produced on the final tree: **656 pytest, 39 frontend**, all six
+commands green. Run them again before a later change; do not carry these counts
+forward as if newly measured.
 
 ## 4. Hardware rules — non-negotiable
 

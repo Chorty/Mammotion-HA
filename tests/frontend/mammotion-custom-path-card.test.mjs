@@ -63,6 +63,30 @@ function card() {
   return element;
 }
 
+test("acceptance profile is frozen for the night-mode change", () => {
+  assert.deepEqual(LUBA_ACCEPTANCE_PROFILE, {
+    prefer_ble: true,
+    turn_mode: "vio",
+    max_turn_commands: 4,
+    vio_turn_max_commands: 4,
+    max_linear_commands: 3,
+    max_linear_pulse_ceiling: 14,
+    max_no_progress_pulses: 3,
+    heading_tolerance_degrees: 18,
+    waypoint_tolerance: 0.15,
+    min_progress_distance: 0.0025,
+    max_turn_translation_distance: 0.3,
+    calibrated_forward_heading_offset_degrees: 102.4,
+    turn_pulse_duration_ms: 1500,
+    linear_pulse_duration_ms: 1300,
+    motion_refresh_interval_ms: 200,
+    final_approach_metres_per_pulse: 1.06,
+    turn_degrees_per_second: 37,
+    ble_auto_recover: false,
+    sample_delays: [0, 3],
+  });
+});
+
 test("map clicks accept seven destinations and refuse an eighth", () => {
   const element = card();
   element._mapT = {};

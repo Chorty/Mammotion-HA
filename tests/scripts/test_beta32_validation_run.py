@@ -14,6 +14,8 @@ from typing import Any
 
 import pytest
 
+from custom_components.mammotion.services import _TOWARD_MIRROR_DEGREES
+
 _MODULE_PATH = (
     Path(__file__).resolve().parents[2] / "scripts" / "beta32_validation_run.py"
 )
@@ -78,6 +80,11 @@ def test_mirror_is_not_an_additive_offset() -> None:
     higher = harness.mirror_facing({"toward": 80.0})
     assert lower is not None and higher is not None
     assert higher < lower
+
+
+def test_backend_and_harness_mirror_constants_agree() -> None:
+    """The two consumers must not silently steer with different mirrors."""
+    assert _TOWARD_MIRROR_DEGREES == harness.TOWARD_MIRROR_DEGREES
 
 
 @pytest.mark.parametrize("toward", [None, "unknown"])

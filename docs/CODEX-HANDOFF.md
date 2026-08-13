@@ -1,3 +1,22 @@
+# Handoff — beta50 night v1 deployed motion-disabled
+
+Night v1 off-mower items 1–14 are complete and deployed as `0.6.4-beta50`.
+Both card paths match md5 `8510824e`; Lovelace resource is
+`?v=0.6.4-beta50&build=8510824e`; `services.py` matches local md5
+`d36789b2e622d066873cb396d82e5d76`; pymammotion is `0.8.12.post1`.
+Final local verification produced 656 pytest and 39 frontend tests; ruff,
+format, mypy, and all pre-commit hooks passed. The acceptance-profile values
+were not changed. The motion gate read back `enabled: false`,
+`real_motion_allowed: false`, with no active session, and no movement command
+was sent during deployment.
+
+The next task is plan §7 item 15, a supervised measurement of turn quantum
+through the night branch. It requires separate explicit authorization for that
+physical run. At final deploy readback the mower independently reported
+`MODE_WORKING` with active mowing and route blockers; do not interfere with it.
+
+---
+
 # Handoff prompt — beta30; GATE 5 PASSED, all five gates complete
 
 ## 🏁 2026-08-08 — READ FIRST. Gate 5 passed twice.

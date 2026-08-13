@@ -123,6 +123,20 @@ ACCEPTANCE_PROFILE: dict[str, Any] = {
     "sample_delays": [0, 3],
 }
 
+#: Deliberately not the accepted daylight profile. This is the bounded, single
+#: forward night experiment; it keeps loop-to-tolerance disabled.
+NIGHT_SEGMENT_PROFILE: dict[str, Any] = {
+    "prefer_ble": True,
+    "turn_mode": "night",
+    "max_linear_commands": 3,
+    "max_linear_pulse_ceiling": None,
+    "motion_refresh_interval_ms": 200,
+    "max_turn_commands": 4,
+    "turn_pulse_duration_ms": 1500,
+    "max_turn_translation_distance": 0.30,
+    "ble_auto_recover": False,
+}
+
 #: Hard preflight gates. Each is a (label, predicate, detail) triple evaluated
 #: against the runtime state; every one must pass before --arm proceeds.
 MIN_TRACKED_FEATURES = 70
@@ -734,6 +748,40 @@ def _summarise(result: dict[str, Any]) -> None:
         print(f"\n  {bad}: {'PRESENT -- investigate' if bad in stops else 'none'}")
 
 
+def _log_night_turn_toward(result: dict[str, Any]) -> None:
+    """Print the recorded ``toward`` before and after each night turn pulse."""
+    phase = next(
+        (
+            phase
+            for phase in result.get("phases") or []
+            if phase.get("name") == "turn_to_target_heading"
+        ),
+        {},
+    )
+    turn = phase.get("result") or {}
+    samples = turn.get("samples") or []
+    previous = (
+        (samples[0].get("telemetry") or {}).get("position", {}).get("toward")
+        if samples
+        else None
+    )
+    print("\n  night turn toward by dispatched pulse:")
+    for command in turn.get("command_results") or []:
+        index = command.get("index")
+        command_samples = [
+            sample for sample in samples if sample.get("command_index") == index
+        ]
+        after = (
+            (command_samples[-1].get("telemetry") or {})
+            .get("position", {})
+            .get("toward")
+            if command_samples
+            else None
+        )
+        print(f"    pulse {index}: toward {previous} -> {after}")
+        previous = after
+
+
 def main() -> int:  # noqa: C901
     """Preflight, preview, and -- only with ``--arm`` -- execute and disarm."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -743,6 +791,14 @@ def main() -> int:  # noqa: C901
         help="actually run it: enables the motion gate, executes, then disarms",
     )
     parser.add_argument("--skip-preflight-gate", action="store_true")
+    parser.add_argument(
+        "--night-segment",
+        action="store_true",
+        help=(
+            "run one bounded night-mode vector segment (requires --arm for "
+            "motion; never uses the accepted daylight profile)"
+        ),
+    )
     parser.add_argument(
         "--reposition",
         action="store_true",
@@ -824,7 +880,26 @@ def main() -> int:  # noqa: C901
 
     facing, facing_source = resolve_start_facing(position, args.heading)
 
-    if args.reposition:
+    if args.night_segment and args.reposition:
+        raise SystemExit("--night-segment and --reposition cannot be combined")
+
+    if args.night_segment:
+        points, area_name, initial_heading = build_path(
+            start,
+            polygons,
+            (),
+            prefer_heading=facing,
+            leg_metres=min(float(args.leg), 1.0),
+            segments=1,
+        )
+        print(f"\n== NIGHT SEGMENT == area={area_name}")
+        print(
+            f"  assumed start heading {facing:.1f} deg ({facing_source}); "
+            f"one {args.leg:.2f} m-or-shorter forward leg"
+        )
+        for index, point in enumerate(points):
+            print(f"    p{index}: ({point['x']:.3f}, {point['y']:.3f})")
+    elif args.reposition:
         heading = facing
         points, area_name, final_heading = build_reposition_path(
             start, float(heading), polygons
@@ -901,8 +976,16 @@ def main() -> int:  # noqa: C901
         "max_real_segments": len(points) - 1,
         **ACCEPTANCE_PROFILE,
     }
+    service = "raw_pymammotion_execute_multi_segment"
+    if args.night_segment:
+        payload = {"points": points, **NIGHT_SEGMENT_PROFILE}
+        service = "raw_pymammotion_execute_vector_segment"
     accepted_ceiling = ACCEPTANCE_PROFILE["max_linear_pulse_ceiling"]
-    if args.pulse_ceiling is not None and int(args.pulse_ceiling) != accepted_ceiling:
+    if (
+        not args.night_segment
+        and args.pulse_ceiling is not None
+        and int(args.pulse_ceiling) != accepted_ceiling
+    ):
         # Loop-to-tolerance is now part of the accepted profile, so overriding
         # the ceiling is what leaves it -- the opposite of before 2026-08-12.
         payload["max_linear_pulse_ceiling"] = int(args.pulse_ceiling)
@@ -918,16 +1001,17 @@ def main() -> int:  # noqa: C901
             f"    test geometry: {args.segments} x {args.leg:.2f} m legs "
             f"(default 4 x {LEG_METRES:.2f}) -- geometry only, no profile key."
         )
-    print(
-        f"\n  loop-to-tolerance ON at max_linear_pulse_ceiling="
-        f"{payload['max_linear_pulse_ceiling']} (accepted 2026-08-12). "
-        "⚠️ Gate 5 re-pass on this profile is PENDING."
-    )
+    if args.night_segment:
+        print("\n  night fixed-budget mode: max_linear_pulse_ceiling=null")
+    else:
+        print(
+            f"\n  loop-to-tolerance ON at max_linear_pulse_ceiling="
+            f"{payload['max_linear_pulse_ceiling']} (accepted 2026-08-12). "
+            "⚠️ Gate 5 re-pass on this profile is PENDING."
+        )
 
     print("\n== DRY RUN (zero motion) ==")
-    dry = _call(
-        "raw_pymammotion_execute_multi_segment", {**payload, "dry_run": True}, 180
-    )
+    dry = _call(service, {**payload, "dry_run": True}, 180)
     print(f"  valid={dry.get('valid')} errors={dry.get('errors')}")
     print(f"  stop_reason={dry.get('stop_reason')} would_send={dry.get('would_send')}")
     for junction in dry.get("junction_turn_feasibility") or []:
@@ -987,7 +1071,7 @@ def main() -> int:  # noqa: C901
         print("\n== EXECUTE ==")
         started = time.monotonic()
         result = _call(
-            "raw_pymammotion_execute_multi_segment",
+            service,
             {
                 **payload,
                 "dry_run": False,
@@ -1005,6 +1089,8 @@ def main() -> int:  # noqa: C901
         print(f"  wall clock {time.monotonic() - started:.1f} s")
         print(f"  COMPLETE RESPONSE SAVED -> {out.relative_to(REPO)}")
         _summarise(result)
+        if args.night_segment:
+            _log_night_turn_toward(result)
     except BaseException as err:  # noqa: BLE001
         print(f"\n!! {type(err).__name__}: {err}")
         raise

@@ -6,7 +6,11 @@
 
 # Night segment — implementation plan (v1)
 
-**Status:** off-mower, ready to execute. Written 2026-08-13 against `HEAD = d6a59f78` (branch `feat/beta31-reach-and-overshoot-ceiling`, deployed build `0.6.4-beta49`). Supersedes the task ordering in `docs/night-segment-design-plan-20260813.md`; that document's §1a/§1b/§1c findings are carried forward and its §6b corrections are all discharged below.
+**Status:** off-mower items 1–14 complete; deployed motion-disabled as
+`0.6.4-beta50` on 2026-08-13. Final verification: 656 pytest, 39 frontend, and
+ruff/format/mypy/pre-commit green. No motion command was sent. The next task is
+item 15 and requires separate explicit supervised motion authorization. Written
+originally against `HEAD = d6a59f78` / deployed `0.6.4-beta49`.
 
 Every file/line anchor in this document was read at `d6a59f78` during authoring. Where a claim is inferred rather than read, it says so.
 

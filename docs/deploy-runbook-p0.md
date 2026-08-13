@@ -8,6 +8,21 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta50 — night v1, 2026-08-13 ~17:02 local
+
+`0.6.4-beta50` is deployed motion-disabled. Backup:
+`/config/mammotion-backup-20260813-beta50.tgz`. Local and host checksums agree:
+card `8510824e965f2dbf6b2403c822c54b39` at both serving paths, services
+`d36789b2e622d066873cb396d82e5d76`, manifest
+`78ce64d5138ca68a7283ba0d3d93248d`. Resource read back as
+`?v=0.6.4-beta50&build=8510824e`; container pymammotion is `0.8.12.post1`.
+
+Gate readback after restart: `enabled: false`, `real_motion_allowed: false`, no
+active session. No movement service was called and no motion was commanded. The
+mower independently reported `MODE_WORKING` with active mowing/route blockers
+at final readback; the deploy session did not interfere. Night v1 hardware task
+15 remains unrun and needs separate explicit supervised authorization.
+
 |                         | Host                                                           | Branch         |
 | ----------------------- | -------------------------------------------------------------- | -------------- |
 | Integration version     | `0.6.4-beta32` staging candidate (deployed 2026-08-09, motion-disabled) | `0.6.4-beta32` candidate |

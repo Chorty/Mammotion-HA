@@ -10,18 +10,21 @@ provenance — accurate as a record, but **do not act on any build state it
 describes**, and note that measurement has since refuted several of its claims
 (the "unexplained" turn-rate variance and the turn-budget framing, both below).
 
-## Current build: `0.6.4-beta49` — BETA, profile accepted, gate disarmed
+## Current build: `0.6.4-beta50` — BETA, night v1 deployed, gate disarmed
 
-**Host and branch agree at `0.6.4-beta49`.** Card md5 `adaf0b71` at both serving
-paths, resource `?v=0.6.4-beta49&build=adaf0b71`. Gate **DISARMED**
-(`real_motion_allowed: false`). Mower **docked and charging**, 66%, RTK Fix.
-Everything committed and pushed to the **Chorty** fork. Gates green at
-`1594d3c0`: 630 pytest, 38 frontend, ruff, mypy, pre-commit.
+**Host and branch agree at `0.6.4-beta50`.** Card md5 `8510824e` at both serving
+paths, resource `?v=0.6.4-beta50&build=8510824e`. Gate **DISARMED**
+(`enabled: false`, `real_motion_allowed: false`, no active session). The
+motion-disabled deploy sent no movement command. Final local gates: **656 pytest,
+39 frontend**, ruff, format, mypy and all pre-commit hooks green.
 
-➡️ **Next work is `docs/night-segment-implementation-plan-v1-20260813.md`**
-(off-mower, concrete anchors, refutation ledger, ordered tasks). Live state and
-the traps that bite a cold session are in `docs/NEXT-SESSION.md` → "2026-08-13
-HANDOFF".
+➡️ **Night v1 off-mower work and §7 item 14 are complete.** The next task is
+§7 item 15: measure turn quantum through the night branch. That is a physical
+motion run and requires a new, explicit, supervised operator authorization.
+Do not infer authorization from the deployed code or this handoff. At the final
+deploy readback the mower independently reported `MODE_WORKING` with active
+mowing/route blockers; the gate remained closed and this session did not
+interfere with the route.
 
 **beta48/49 were card-only** — run-record downloads, a per-segment landing table
 (leg / landing / tolerance / verdict / pulses / mean), a readiness banner that
