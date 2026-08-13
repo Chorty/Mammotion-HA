@@ -2256,6 +2256,7 @@ def _export_runtime_state(
         "charge_state_label": telemetry.get("charge_state_label"),
         "position": telemetry.get("position"),
         "position_candidates": telemetry.get("position_candidates"),
+        "rapid_state_fusion": _rapid_state_fusion_snapshot(coordinator),
         "blade": blade,
         "transport": telemetry.get("transport"),
         "active_route_summary": {
@@ -2540,6 +2541,52 @@ def _enum_label(value: Any) -> str | None:
     if value is None:
         return None
     return getattr(value, "name", str(value))
+
+
+_RAPID_FUSE_STATUS_LABELS = {
+    0: "NO_POSE",
+    1: "RTK_FIXED",
+    2: "RTK_EXTENDED_VISION",
+    3: "VISION_EXTENDED",
+    4: "VISION_EXTENDED_FAILED",
+}
+
+
+def _rapid_state_fusion_snapshot(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> dict[str, Any]:
+    """Return rapid-state fusion fields without changing motion responses.
+
+    ``report_data.dev.fuse_status`` is a different, undocumented 0-5 sub-byte
+    from ``vslam_status``. Item 17 needs ``mowing_state.fuse_status``, decoded
+    by pymammotion from tard-state word 16 bits 8-15. Keep both values named by
+    source so a numeric ``1`` cannot be silently interpreted as the wrong enum.
+
+    This helper is consumed only by ``export_runtime_state``. Adding it to the
+    shared custom-path telemetry snapshot would alter every VIO execution
+    response, violating the frozen daylight-path evidence contract.
+    """
+    data = coordinator.data
+    raw_fuse_status = _safe_attr_path(data, "mowing_state.fuse_status")
+    try:
+        fuse_status = int(raw_fuse_status) if raw_fuse_status is not None else None
+    except TypeError, ValueError:
+        fuse_status = None
+    return {
+        "source": "mowing_state.fuse_status (tard_state_data[16] bits 8-15)",
+        "available": fuse_status is not None,
+        "fuse_status": fuse_status,
+        "fuse_status_label": (
+            _RAPID_FUSE_STATUS_LABELS.get(fuse_status, "UNKNOWN")
+            if fuse_status is not None
+            else None
+        ),
+        "vision_state_raw": _safe_attr_path(data, "mowing_state.vision_state_raw"),
+        "device_vslam_fuse_status": _safe_attr_path(
+            data, "report_data.dev.fuse_status"
+        ),
+        "device_vslam_source": "report_data.dev.fuse_status (distinct 0-5 field)",
+    }
 
 
 def _scale_report_position(value: Any) -> float | None:

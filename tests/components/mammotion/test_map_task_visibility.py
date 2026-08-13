@@ -564,6 +564,69 @@ def test_export_runtime_state_reports_blade_on_as_unsafe() -> None:
     assert "blade_reported_on" in exported["safety"]["blockers"]
 
 
+def test_export_runtime_state_reports_rapid_fusion_only_in_runtime_export() -> None:
+    """Export the item-17 source without changing shared VIO telemetry records."""
+    coordinator = _pulse_coordinator()
+    coordinator.data.mowing_state.fuse_status = 2
+    coordinator.data.mowing_state.vision_state_raw = 7
+    coordinator.data.report_data.dev.fuse_status = 5
+
+    telemetry = _custom_path_telemetry_snapshot(coordinator)
+    exported = _export_runtime_state(
+        coordinator,
+        ha_state="paused",
+        active_route={
+            "mow_path_feature_count": 0,
+            "mow_progress_feature_count": 0,
+            "active_progress": None,
+        },
+    )
+
+    assert "rapid_state_fusion" not in telemetry
+    assert exported["rapid_state_fusion"] == {
+        "source": "mowing_state.fuse_status (tard_state_data[16] bits 8-15)",
+        "available": True,
+        "fuse_status": 2,
+        "fuse_status_label": "RTK_EXTENDED_VISION",
+        "vision_state_raw": 7,
+        "device_vslam_fuse_status": 5,
+        "device_vslam_source": "report_data.dev.fuse_status (distinct 0-5 field)",
+    }
+
+
+def test_export_runtime_state_labels_unknown_or_missing_rapid_fusion() -> None:
+    """Unknown codes remain visible and missing old-backend fields stay null."""
+    coordinator = _pulse_coordinator()
+    coordinator.data.mowing_state.fuse_status = 99
+    coordinator.data.mowing_state.vision_state_raw = 4
+    exported = _export_runtime_state(
+        coordinator,
+        ha_state="paused",
+        active_route={
+            "mow_path_feature_count": 0,
+            "mow_progress_feature_count": 0,
+            "active_progress": None,
+        },
+    )
+    assert exported["rapid_state_fusion"]["fuse_status"] == 99
+    assert exported["rapid_state_fusion"]["fuse_status_label"] == "UNKNOWN"
+
+    del coordinator.data.mowing_state.fuse_status
+    del coordinator.data.mowing_state.vision_state_raw
+    exported = _export_runtime_state(
+        coordinator,
+        ha_state="paused",
+        active_route={
+            "mow_path_feature_count": 0,
+            "mow_progress_feature_count": 0,
+            "active_progress": None,
+        },
+    )
+    assert exported["rapid_state_fusion"]["available"] is False
+    assert exported["rapid_state_fusion"]["fuse_status"] is None
+    assert exported["rapid_state_fusion"]["fuse_status_label"] is None
+
+
 def test_export_runtime_state_reports_nonzero_rpm_as_unsafe() -> None:
     """Nonzero cutter RPM blocks motion even if reported blade state is off."""
     coordinator = _pulse_coordinator(blade_state=0, cutter_rpm=2995, work_mode=11)
