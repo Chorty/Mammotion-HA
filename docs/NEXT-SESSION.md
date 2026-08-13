@@ -1,10 +1,115 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
-Updated **2026-08-08 late** after Gate 5 passed. This is the current handoff;
-`docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
-`docs/p0-beta-release.md` are evidence, not current instructions.
+⚠️ **Everything below the "2026-08-13 HANDOFF" section is older and its build
+state is stale.** Those sections remain accurate as *evidence* — the
+measurements stand — but do not act on any build/host/gate state they describe.
 
-## 🚦 START HERE 2026-08-11 night — REACH IS SOLVED. 4 m on one segment, measured.
+---
+
+# 🚦 2026-08-13 HANDOFF — read this section, then the plan it points to
+
+## 0. Live state, verified 2026-08-13 ~14:05 local
+
+| | |
+| --- | --- |
+| Branch | `feat/beta31-reach-and-overshoot-ceiling`, **everything committed and pushed** to `origin` = the **Chorty** fork |
+| Version | `0.6.4-beta49` — host and branch **agree**, all four version sites bumped |
+| Card on host | md5 `adaf0b71`, identical at **both** serving paths; resource `?v=0.6.4-beta49&build=adaf0b71` |
+| Motion gate | ✅ **DISARMED.** `real_motion_allowed: false`, no active session |
+| Mower | **DOCKED and charging**, `CHARGE_ON` at (4.3539, 3.2035), battery **66%**, RTK **Fix** |
+
+## 1. What to do next
+
+➡️ **`docs/night-segment-implementation-plan-v1-20260813.md`** is the plan. It is
+off-mower work with concrete file/line anchors, a §4 refutation ledger, §5 tests,
+§7 an ordered task list, and §8 what must be measured on hardware first.
+
+It was produced by a 20-agent adversarial design workflow and **every gate design
+in it was refuted at least once before the plan was written**. Read §4 before
+changing anything — it records 21 defects already fixed and 8 risks knowingly
+accepted, so a "fix" you invent may already have been considered and rejected.
+
+Companion: `docs/night-segment-design-plan-20260813.md` is the **findings log**
+(what was discovered, and corrections to earlier drafts). ⚠️ Its §2
+runaway-safety claim is **wrong**; the banner at its top says so.
+
+## 2. 🚨 Traps that will bite a session starting cold
+
+1. **The standalone turn service and the segment executor's legacy branch are NOT
+   the same code path.** Five night turns converged by calling
+   `raw_pymammotion_turn_to_heading` **directly**. The segment's legacy branch
+   (`services.py:11498-11517`) supplies *different defaults* for two parameters
+   that decide whether the mower moves at all: it omits
+   `motion_refresh_interval_ms` (primitive default `0`) and passes
+   `angular_speed_fast/slow` at the schema default **180**, which does not break
+   static friction on a stationary pivot (~3°/pulse). **Night must dispatch at
+   angular 500 with refresh forwarded.**
+2. **Two heading-conversion sites CANCEL.** `_raw_vector_readiness_target_points`
+   (`:9448-9465`) builds `toward + offset`; the executor (`:11094-11100`)
+   converts back `map − offset`. Fixing one alone breaks the readiness probe by a
+   *heading-dependent* amount (~4.3° at `toward` 176, ~132° at `toward` 60) — so
+   a half-fix passes review at whatever heading you happen to test. The plan
+   avoids this by scoping the mirror to `turn_mode: "night"` only.
+3. **`LUBA_ACCEPTANCE_PROFILE` (card JS) is frozen.** Changing any key's *value*
+   un-accepts a twice-Gate-5-passed profile and owes a re-pin plus a fresh Gate 5.
+   Night v1 deliberately makes **no card change at all**.
+4. **The card is served from TWO paths.** Deploy to both and bump the Lovelace
+   resource key, or the browser silently loads the stale card.
+   ⚠️ `scripts/ha_set_card_resource.py` does **not** append the `build=` suffix —
+   pass it inside the version argument:
+   `ha_set_card_resource.py "0.6.4-betaNN&build=<md5 prefix>" --apply`.
+5. **Night turns converge but are NOT accurate.** 5/5 reached target, but the
+   pulse quantum is **48.15° ± 5.70** and nothing scales it; four of five
+   converged on luck. Do not read "5/5" as control.
+6. **Verify with per-item records, not aggregates.** This repo has been burned
+   repeatedly by summary fields hiding the truth.
+
+## 3. Running the gates (these are exactly what CI runs)
+
+```sh
+.venv/bin/python -m pytest --cov=custom_components.mammotion --cov-report=term-missing tests
+.venv/bin/python -m ruff check custom_components tests
+.venv/bin/python -m ruff format --check custom_components tests
+.venv/bin/python -m mypy --follow-imports=skip custom_components/mammotion
+npm run test:frontend
+.venv/bin/python -m pre_commit run --all-files
+```
+
+There is **no global `uv`** — use `.venv/bin/python` directly. Current counts:
+**630 pytest, 38 frontend**, all green at `1594d3c0`. Run them; do not quote a
+number you did not produce.
+
+## 4. Hardware rules — non-negotiable
+
+- **Real motion needs explicit per-run authorization from the operator.** Never
+  arm on your own initiative.
+- **Arm immediately before, disarm immediately after, and verify both.** A
+  script that can open the gate must treat *"I called enable"* as what obliges
+  the disarm — never *"enable succeeded"* (that bug left the gate open once,
+  fixed in `c196b8b1`).
+- **Save the complete response JSON** as `docs/evidence-*.json` and commit it
+  **before** writing any prose about the run. The card now has a
+  "Download last run JSON" button for exactly this.
+- Blades OFF. This project never runs blades-on — the goal is point-and-click
+  movement, not mowing.
+- Night turns work, so **most turn measurement no longer needs daylight.** A
+  full closed-loop *segment* has still never run in the dark.
+
+## 5. What is genuinely unsettled
+
+- No closed-loop **segment** has ever run at night. Only turns.
+- The mirror has **never been inside a control loop**, at any hour — every
+  validation is observational.
+- Whether `toward` flips 180° under **reverse** travel is open. Cheapest
+  settling experiment: one backward pulse with `toward` logged before and after.
+- `toward` **latency during rotation** is unmeasured, and it decides how tight a
+  loop can close.
+- **No landing accuracy is evidenced at night.** `waypoint_tolerance: 0.15` is a
+  VIO-path number.
+
+---
+
+## 🚦 (older) START HERE 2026-08-11 night — REACH IS SOLVED. 4 m on one segment, measured.
 
 Host and branch both `0.6.4-beta41`. **Gate DISARMED**, verified after every run.
 Mower is **DOCKED and charging** at (4.3188, 3.2862), `CHARGE_ON`, MODE_READY,

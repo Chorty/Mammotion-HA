@@ -10,7 +10,38 @@ provenance — accurate as a record, but **do not act on any build state it
 describes**, and note that measurement has since refuted several of its claims
 (the "unexplained" turn-rate variance and the turn-budget framing, both below).
 
-## Current build: `0.6.4-beta47` — BETA, profile accepted, gate disarmed
+## Current build: `0.6.4-beta49` — BETA, profile accepted, gate disarmed
+
+**Host and branch agree at `0.6.4-beta49`.** Card md5 `adaf0b71` at both serving
+paths, resource `?v=0.6.4-beta49&build=adaf0b71`. Gate **DISARMED**
+(`real_motion_allowed: false`). Mower **docked and charging**, 66%, RTK Fix.
+Everything committed and pushed to the **Chorty** fork. Gates green at
+`1594d3c0`: 630 pytest, 38 frontend, ruff, mypy, pre-commit.
+
+➡️ **Next work is `docs/night-segment-implementation-plan-v1-20260813.md`**
+(off-mower, concrete anchors, refutation ledger, ordered tasks). Live state and
+the traps that bite a cold session are in `docs/NEXT-SESSION.md` → "2026-08-13
+HANDOFF".
+
+**beta48/49 were card-only** — run-record downloads, a per-segment landing table
+(leg / landing / tolerance / verdict / pulses / mean), a readiness banner that
+names every blocker code *and* explains it, grouped toolbar, collapsed
+diagnostics. No `LUBA_ACCEPTANCE_PROFILE` key touched. ⚠️ beta49 fixed four
+defects that only appeared when the card was rendered against **real**
+`export_runtime_state` output — duplicate blocker codes from two overlapping
+backend lists, two emitted codes with no help text, a restored run presented as
+current, and a tofu-risk glyph. **Render against live state, not fixtures.**
+
+🚨 **A night SEGMENT will not work today, and the reason is two missing
+parameters — not the turn primitive.** The segment executor's legacy branch
+(`services.py:11498-11517`) omits `motion_refresh_interval_ms` (primitive default
+`0`) and passes `angular_speed_fast/slow` at the schema default **180**, which
+does not break static friction on a stationary pivot (~3°/pulse). Every
+converging night turn used **angular 500 with refresh**, by calling the primitive
+**directly**. **The standalone service and the segment's legacy branch are not the
+same code path.** Found by three independent verifiers, confirmed by hand.
+⚠️ `legacy` keeps both defects in the v1 plan (containment, not a fix), so the
+card's **Nudge still turns single-shot in a deadband** — do not let that drop.
 
 🏁 **CLOSED-LOOP TURNS WORK IN THE DARK WITH NO VIO — 5 of 5, 2026-08-12/13.**
 Read `docs/night-closed-loop-turn-works-20260812.md` then
