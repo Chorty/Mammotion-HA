@@ -12,17 +12,31 @@ describes**, and note that measurement has since refuted several of its claims
 
 ## Current build: `0.6.4-beta47` — BETA, profile accepted, gate disarmed
 
-🏁 **A CLOSED-LOOP TURN CONVERGED IN THE DARK WITH NO VIO, 2026-08-12.** Read
-`docs/night-closed-loop-turn-works-20260812.md`. The legacy primitive
-(`raw_pymammotion_turn_to_heading`, closes on `toward`, no `vio_active` gate)
-reached target in **2 commands** at `tracked_features: 0`. Single-variable
+🏁 **CLOSED-LOOP TURNS WORK IN THE DARK WITH NO VIO — 5 of 5, 2026-08-12/13.**
+Read `docs/night-closed-loop-turn-works-20260812.md` then
+`docs/night-turns-converge-but-the-quantum-is-coarse-20260813.md`. The legacy
+primitive (`raw_pymammotion_turn_to_heading`, closes on `toward`, no `vio_active`
+gate) reached `target_heading_reached` on **five armed night turns**, both
+directions, at tolerances 18 and 8, all at `tracked_features: 0`. Single-variable
 against the same run without refresh: 4 commands and 29° of 90° becomes 2
-commands and 82°, ~6× more rotation per command — beta47 wraps that pulse in
-`_motion_refresh_window`. **Daylight-only was never a property of the machine**;
-it was the turn primitive's heading source plus a missing refresh.
-⚠️ n = 1; a turn is not a segment; `vio_active` still refuses `turn_mode: "vio"`;
-and 🚨 **the map→`toward` conversion is wrong by construction** (mirror, not the
-additive 102.4) — the target above was passed by hand to bypass it, and a night
+commands and 82° — beta47 wraps that pulse in `_motion_refresh_window`.
+**Daylight-only was never a property of the machine**; it was the turn
+primitive's heading source plus a missing refresh.
+
+🚨 **But four of those five converged on LUCK, not control.** The refreshed pulse
+quantum is **48.15° ± 5.70** (n = 10) and *nothing scales it*, so the terminal
+error lands wherever the last pulse falls inside the tolerance band — margins of
+1.72 / 1.09 / 0.36°. Run c had 10.89° of error remaining and the smallest
+available action rotated **54.11°**, a 5× over-correction it then spent a command
+undoing. Tightening tolerance 18 → 8 barely moved absolute error (8.92° → 7.28°).
+🔑 **The fix is in our own data:** an *un-refreshed* single shot rotates
+**7.24° ± 1.60**, and both points sit on `rotation ≈ 32.2 °/s·t − 2.4°`. So port
+the VIO path's `_turn_final_approach_pulse_ms` **window scaling** into the legacy
+turn — scale the window, ⚠️ **not** the speed (`angular_speed_slow: 180` sits in
+the stationary deadband; the slow tier has never actually engaged).
+⚠️ A turn is not a segment; `vio_active` still refuses `turn_mode: "vio"`; and
+🚨 **the map→`toward` conversion is wrong by construction** (mirror, not the
+additive 102.4) — every target above was passed by hand to bypass it, and a night
 segment would hit it.
 
 

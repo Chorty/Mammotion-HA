@@ -73,8 +73,14 @@ The primitive already existed. Nothing had to be written except the refresh.
 
 ## 5. What is NOT established
 
-- **n = 1 on the refreshed path.** And the BLE variance is right there in it: 7
-  writes on the first command, 3 on the second.
+- ~~**n = 1 on the refreshed path.**~~ **Closed 2026-08-13** — four more armed
+  night turns, both directions, two tolerances, **5/5 `target_heading_reached`**.
+  See `docs/night-turns-converge-but-the-quantum-is-coarse-20260813.md`. ⚠️ That
+  series also shows most of them converged on **luck rather than control**: the
+  pulse quantum is 48.15° ± 5.70 and nothing scales it, so the terminal error is
+  distributed across the tolerance band rather than driven to zero.
+  The BLE variance is real and visible: 7 writes on the first command, 3 on the
+  second, and that 3-write pulse was the slowest of all ten measured.
 - **A turn is not a segment.** A night *segment* also needs the linear phase, and
   the `vio_active` gate still refuses `turn_mode: "vio"` unconditionally
   regardless of whether a turn is needed. **Nothing has driven a full closed-loop
