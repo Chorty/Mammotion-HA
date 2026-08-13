@@ -538,3 +538,195 @@ test("fresh preflight is fetched and confirmations reset after failure", async (
   assert.equal(element._confirmClearArea, false);
   assert.match(element._status, /failed/);
 });
+
+// ---------------------------------------------------------------------------
+// Run summary, readiness banner and result export (beta48)
+// ---------------------------------------------------------------------------
+
+function segment(index, landing, { passed = true, tolerance = 0.15 } = {}) {
+  return {
+    index,
+    passed,
+    result: {
+      stop_reason: passed ? "target_reached" : "max_linear_commands_reached",
+      distance: 0.8,
+      waypoint_tolerance: tolerance,
+      linear_commands_sent: 2,
+      turn_commands_sent: 1,
+      completion_status: {
+        // The real payload lists the START point first and the waypoint last;
+        // reading [0] would report the distance already travelled, not the miss.
+        waypoint_distances: [
+          { index: 0, distance: 0.867 },
+          { index: 1, distance: landing },
+        ],
+      },
+    },
+  };
+}
+
+test("segment landings are read from the LAST waypoint distance", () => {
+  const element = card();
+  const rows = element._segmentLandingRows({
+    segments: [segment(1, 0.0674), segment(2, 0.1032)],
+  });
+
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].landing, 0.0674);
+  assert.equal(rows[1].landing, 0.1032);
+  assert.equal(rows[0].tolerance, 0.15);
+  assert.equal(rows[0].inside, true);
+  assert.equal(rows[0].planned, 0.8);
+});
+
+test("a landing outside tolerance is flagged even when the segment passed", () => {
+  const element = card();
+  const rows = element._segmentLandingRows({
+    segments: [segment(1, 0.1797)],
+  });
+
+  assert.equal(rows[0].inside, false);
+  assert.match(
+    element._runSummaryHtml({ segments: [segment(1, 0.1797)] }),
+    /OUTSIDE/,
+  );
+});
+
+test("a single-segment result with no segments wrapper still summarises", () => {
+  const element = card();
+  const rows = element._segmentLandingRows(segment(1, 0.09).result);
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].landing, 0.09);
+});
+
+test("run summary reports the mean landing across measured segments", () => {
+  const element = card();
+  const html = element._runSummaryHtml({
+    segments: [
+      segment(1, 0.0674),
+      segment(2, 0.1032),
+      segment(3, 0.0807),
+      segment(4, 0.0607),
+    ],
+  });
+
+  // The Gate 5 re-pass mean, to four places.
+  assert.match(html, /mean landing 0\.0780 m/);
+  assert.match(html, /worst 0\.1032 m/);
+  assert.match(html, /4 of 4 segments measured/);
+});
+
+test("run summary is empty rather than broken when there is nothing to show", () => {
+  const element = card();
+  assert.equal(element._runSummaryHtml(null), "");
+  assert.equal(element._runSummaryHtml({ segments: [] }), "");
+  assert.deepEqual(
+    element._segmentLandingRows({ stop_reason: "safety_gates_failed" }),
+    [],
+  );
+});
+
+test("readiness names the blocker code AND explains it", () => {
+  const element = card();
+  element._waypoints = [{ x: 2, y: 2 }];
+  element._runtimeState.experimental_motion = {
+    real_motion_allowed: false,
+    blockers: ["experimental_motion_disabled"],
+  };
+
+  const readiness = element._readiness();
+
+  assert.equal(readiness.level, "blocked");
+  assert.match(readiness.headline, /experimental_motion_disabled/);
+  assert.match(readiness.detail, /experimental BLE-only manual motion/);
+});
+
+test("every blocker is explained, not just the first", () => {
+  const element = card();
+  // No waypoints AND the motion gate closed. Explaining only path_unset would
+  // send the operator off to click the map while the real problem is the gate.
+  element._runtimeState.experimental_motion = {
+    real_motion_allowed: false,
+    blockers: ["experimental_motion_disabled"],
+  };
+
+  const readiness = element._readiness();
+
+  assert.match(readiness.headline, /path_unset/);
+  assert.match(readiness.detail, /Click at least one destination/);
+  assert.match(readiness.detail, /experimental BLE-only manual motion/);
+});
+
+test("readiness distinguishes missing confirmations from a real blocker", () => {
+  const element = card();
+  element._waypoints = [{ x: 2, y: 2 }];
+
+  const arming = element._readiness();
+  assert.equal(arming.level, "arming");
+  assert.match(arming.headline, /blades off and clear area/);
+
+  element._confirmBladesOff = true;
+  element._confirmClearArea = true;
+  const ready = element._readiness();
+  assert.equal(ready.level, "ready");
+  assert.match(ready.headline, /1 segment\./);
+});
+
+test("readiness reports a live run instead of offering to start another", () => {
+  const element = card();
+  element._waypoints = [{ x: 2, y: 2 }];
+  element._confirmBladesOff = true;
+  element._confirmClearArea = true;
+  element._runtimeState.experimental_motion.active_session = "session-1";
+
+  assert.equal(element._readiness().level, "busy");
+});
+
+test("download filenames are filesystem-safe and name the entity", () => {
+  const element = card();
+  const filename = element._downloadFilename("real-go");
+
+  assert.match(filename, /^mammotion-real-go-lawn-mower-test-[\dTZ-]+\.json$/);
+  // Colons are illegal in Windows filenames, and a dot in the stem would make
+  // the timestamp's milliseconds look like a second extension.
+  assert.ok(!filename.includes(":"));
+  assert.equal(filename.split(".").length, 2);
+});
+
+test("downloading with no result reports it instead of writing an empty file", () => {
+  const element = card();
+  let copied = null;
+  element._copyText = (text) => {
+    copied = text;
+  };
+
+  element._downloadJson(null, "real-go", "Real Go result");
+
+  assert.match(element._status, /No Real Go result to download/);
+  assert.equal(copied, null);
+});
+
+test("history entries carry the landing distance, not just pass/fail", () => {
+  const element = card();
+  const rows = element._segmentLandingRows({ segments: [segment(1, 0.0674)] });
+  const entry = {
+    at: "2026-08-13T02:00:00.000Z",
+    elapsed_seconds: 95,
+    stop_reason: "path_complete",
+    segments: rows.map((row) => ({
+      index: row.index,
+      passed: row.passed,
+      stop_reason: row.stopReason,
+      landing: row.landing,
+      tolerance: row.tolerance,
+    })),
+  };
+  element._loadHistory = () => [entry];
+
+  const html = element._renderHistoryHtml();
+
+  assert.match(html, /0\.067m/);
+  assert.match(html, /mean 0\.0674 m/);
+  assert.match(html, /download-history/);
+});
