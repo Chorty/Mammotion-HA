@@ -1,7 +1,7 @@
 # Codex handoff prompt
 
 Paste everything between the rules below into Codex as the opening message.
-Updated 2026-08-13 after deployed `0.6.4-beta51` night v1 items 15–16.
+Updated 2026-08-13 after deployed `0.6.4-beta52` night v1 items 15–17.
 
 ⚠️ Codex reads `AGENTS.md` by convention; this repo's instructions live in
 `CLAUDE.md`. The prompt below points at it explicitly, so no rename is needed —
@@ -30,19 +30,23 @@ Working directory is the repo root. Branch:
    **Everything below that section is stale as build state** but still valid as
    measurement evidence.
 3. `docs/night-segment-implementation-plan-v1-20260813.md` — implementation
-   record and hardware sequence. Off-mower items 1–14 and items 15–16 are complete.
+   record and hardware sequence. Off-mower items 1–14 and items 15–17 are complete.
 
 ## Your task
 
-The off-mower night implementation, beta51 deployment, and §7 items 15–16 are
+The off-mower night implementation, beta52 deployment, and §7 items 15–17 are
 complete. Item 15 measured a −54.2208° quantum from one angular −500 / 1,500 ms
 refreshed pulse, then the first forward pulse exposed an 81.416° aim mismatch;
 the night guard stopped safely. Read
 `docs/night-segment-turn-quantum-20260813.md`. Item 16 then found `toward`
 arrived as one post-pulse step, with no intermediate values across 73 samples;
-read `docs/night-toward-latency-20260813.md`. Do not proceed to item 18. The
-next discriminator is item 17 and requires fresh, explicit supervised-motion
-authorization from the operator. Until then, review and planning are read-only.
+read `docs/night-toward-latency-20260813.md`. The item-17 backward pulse kept
+`toward` at 173.1023° while moving 0.418536 m almost exactly opposite the
+inferred body heading, settling `toward` as body heading under reverse.
+RapidState `fuse_status` stayed 0 `NO_POSE` in all 81 records and was
+non-informative; read `docs/night-reverse-heading-20260813.md`. Item 18 remains
+unauthorised because item 17 does not explain item 15's separate forward-course
+mismatch. Until fresh authorization, review and planning are read-only.
 
 A same-day read-only autonomous-mow comparison then captured progressive
 `toward` changes through three vendor pivots. Read
@@ -105,8 +109,9 @@ npm run test:frontend
 .venv/bin/python -m pre_commit run --all-files
 ```
 
-Baseline at `60c18636`: **630 pytest, 38 frontend**, all green. **Run them and
-report the counts you actually produced** — do not quote a number you did not
+Beta52 final results personally produced: **662 pytest, 39 frontend**, all six
+commands green. **Run them again after any change and report the counts you
+actually produced** — do not quote a number you did not
 generate. If something fails, paste the real traceback rather than summarising.
 
 ## Hardware — do not touch it
@@ -144,9 +149,11 @@ Your work is entirely off-mower: code, tests, and the CI gates above.
   pulse; this is not a landing-accuracy pass.
 - The mirror relation has now been used by one control loop and disagreed with
   the measured forward course. The cause is not yet established.
-- Whether `toward` flips 180° under **reverse** travel is open. Night v1 is
-  forward-only by construction, which contains the risk without settling it.
-- `toward` **latency during rotation** is unmeasured.
+- `toward` did not flip under item 17's reverse pulse; body-vs-course is settled.
+  What remains open is item 15's separate forward-course/mirror disagreement.
+- One bounded manual turn showed a single post-pulse `toward` step, while
+  continuous vendor turns streamed intermediate headings. Do not generalise
+  either cadence beyond its measured command path.
 - **No landing accuracy is evidenced at night.** `waypoint_tolerance: 0.15` is a
   VIO-path number and must not be presented as a night specification.
 

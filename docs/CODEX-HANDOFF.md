@@ -1,10 +1,11 @@
-# Handoff — beta51 night v1; items 15–16 measured and contained
+# Handoff — beta52 night v1; items 15–17 measured and contained
 
-Night v1 off-mower items 1–14 are complete and deployed as `0.6.4-beta51`.
-Both card paths match md5 `6645732a8e39eae7644bfe84b5be01de`; Lovelace
-resource is `?v=0.6.4-beta51&build=6645732a`; `services.py` matches local md5
-`1857e0ffe118bac5c556aa04c26f9c45`; pymammotion is `0.8.12.post1`.
-Final local verification produced 658 pytest and 39 frontend tests; ruff,
+Night v1 off-mower items 1–14 and the item-17 runtime diagnostics are deployed
+as `0.6.4-beta52`. Both card paths match md5
+`9512f504f4b861488e98f4d29ced6e4f`; Lovelace resource is
+`?v=0.6.4-beta52&build=9512f504`; `services.py` matches local md5
+`7c94607698ce6d9f55a4fd4a1a30f85f`; pymammotion is `0.8.12.post1`.
+Final local verification produced 662 pytest and 39 frontend tests; ruff,
 format, mypy, and all pre-commit hooks passed. The acceptance-profile values
 were not changed. The motion gate read back `enabled: false`,
 `real_motion_allowed: false`, with no active session, and no movement command
@@ -28,9 +29,18 @@ continuous vendor motion; 40 usable moving steps gave `bearing + toward =
 90.57°`, circular SD 2.02°. This narrows the stepwise item-16 result to the
 bounded pulse/report path. See `docs/autonomous-mow-observation-20260813.md`.
 
+Item 17 is complete. One backward-only pulse moved 0.418536 m on bearing
+96.433921° while `toward` remained exactly 173.1023°. The mirror-derived body
+heading was 277.0277°, so reverse was predicted at 97.0277°, only 0.593779°
+from measured course. This settles `toward` as body heading under reverse.
+RapidState `fuse_status` remained 0 `NO_POSE` in all 81 records and was
+non-informative on this manual path. Raw evidence is commit `ff8e1f09`; analysis
+is `docs/night-reverse-heading-20260813.md`.
+
 The gate is off, no session is active, the mower is `MODE_READY`, RTK Fix, BLE
-live, and blades zero. Do not proceed to item 18. Item 17 is the next hardware
-discriminator and needs fresh explicit supervised-motion authorization.
+live, and blades zero. Item 18 remains unauthorised; item 17 does not resolve
+item 15's separate forward-course mismatch. Every further physical run needs
+fresh explicit supervised-motion authorization.
 
 ---
 

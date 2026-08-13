@@ -10,16 +10,25 @@ provenance — accurate as a record, but **do not act on any build state it
 describes**, and note that measurement has since refuted several of its claims
 (the "unexplained" turn-rate variance and the turn-budget framing, both below).
 
-## Current build: `0.6.4-beta51` — BETA, items 15–16 measured, gate disarmed
+## Current build: `0.6.4-beta52` — BETA, items 15–17 measured, gate disarmed
 
-**Host and branch agree at `0.6.4-beta51`.**
-Card md5 `6645732a` at both serving paths, resource
-`?v=0.6.4-beta51&build=6645732a`. Gate **DISARMED**
+**Host and branch agree at `0.6.4-beta52`.**
+Card md5 `9512f504` at both serving paths, resource
+`?v=0.6.4-beta52&build=9512f504`. Gate **DISARMED**
 (`enabled: false`, `real_motion_allowed: false`, no active session). The
-motion-disabled deploy sent no movement command. Beta51 accepts explicit JSON
-`null` for the night fixed-budget ceiling; its final local gates produced
-**658 pytest, 39 frontend**, with ruff, format, mypy and all pre-commit hooks
-green. The later harness evidence-label fix produced 26 focused pytest passes.
+motion-disabled deploy sent no movement command. Beta52 adds runtime-only
+RapidState fusion diagnostics and a fixed backward-only item-17 harness; its
+final local gates produced **662 pytest, 39 frontend**, with ruff, format, mypy
+and all pre-commit hooks green. `LUBA_ACCEPTANCE_PROFILE` values are unchanged.
+
+✅ **§7 item 17 is complete.** One backward-only pulse moved 0.418536 m on map
+bearing 96.433921° while `toward` remained bit-identical at 173.1023°. The
+mirror-derived body heading was 277.0277°, whose reverse is 97.0277°: only
+0.593779° from measured travel. `toward` is therefore body heading, not
+course-over-ground, under reverse. RapidState `fuse_status` stayed 0 `NO_POSE`
+in all 81 records and was non-informative on this manual path. Read
+`docs/night-reverse-heading-20260813.md`. This does not authorize item 18 or
+resolve item 15's separate forward-course disagreement.
 
 ✅ **§7 item 15 is complete.** One night-branch pulse at angular −500, 1,500 ms,
 and 200 ms refresh changed `toward` by −54.2208° with 0.07459 m translation.
@@ -32,8 +41,8 @@ refutes treating the 90.13° mirror as established segment-control truth.
 runtime samples, `toward` stayed bit-identical throughout the 1.551 s refreshed
 pulse and arrived as one post-pulse +36.3064° step; no intermediate heading was
 observed. Read `docs/night-toward-latency-20260813.md`. The next hardware
-discriminator is item 17 and requires a new, explicit, supervised-motion
-authorization.
+discriminator was item 17, now complete as described above. Item 18 remains
+unauthorised because the separate item-15 forward-course mismatch is unresolved.
 
 🔎 **Same-day read-only autonomous-mow comparison:** 291 samples over 179.895 s
 captured three complete vendor pivots. Unlike the bounded manual pulse,

@@ -8,6 +8,22 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta52 — item-17 runtime diagnostics, 2026-08-13
+
+`0.6.4-beta52` is deployed. It adds runtime-export-only RapidState diagnostics
+and the fixed backward-only item-17 harness; it does not add the diagnostics to
+shared VIO telemetry. Backup:
+`/config/mammotion-backup-20260813-beta52-predeploy.tgz`. The deployed archive
+matched local md5 `efa589bc7eaa6bf72e065529f7d44369`. Card md5
+`9512f504f4b861488e98f4d29ced6e4f` matched at both serving paths; services md5
+was `7c94607698ce6d9f55a4fd4a1a30f85f`. Resource read back as
+`?v=0.6.4-beta52&build=9512f504`; pymammotion is `0.8.12.post1`.
+
+The motion-disabled preview sent no command. Item 17 then ran once under
+separate explicit supervision; see `night-reverse-heading-20260813.md`.
+Independent final readback: gate off, no active session, `MODE_READY`, BLE live,
+RTK Fix, blades zero.
+
 ### beta51 — explicit fixed-budget null, 2026-08-13
 
 `0.6.4-beta51` is deployed. It fixes the service schemas so the harness's

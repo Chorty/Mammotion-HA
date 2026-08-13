@@ -8,19 +8,19 @@ measurements stand — but do not act on any build/host/gate state they describe
 
 # 🚦 2026-08-13 HANDOFF — read this section, then the plan it points to
 
-## 0. Live state, verified 2026-08-13 after item 16
+## 0. Live state, verified 2026-08-13 after item 17
 
 | | |
 | --- | --- |
 | Branch | `feat/beta31-reach-and-overshoot-ceiling`, publish target `origin` = the **Chorty** fork |
-| Version | `0.6.4-beta51` — host and branch agree; manifest, pyproject, card and lock version sites agree |
-| Card on host | md5 `6645732a8e39eae7644bfe84b5be01de`, identical at **both** serving paths; resource `?v=0.6.4-beta51&build=6645732a` |
+| Version | `0.6.4-beta52` — host and branch agree; manifest, pyproject, card and lock version sites agree |
+| Card on host | md5 `9512f504f4b861488e98f4d29ced6e4f`, identical at **both** serving paths; resource `?v=0.6.4-beta52&build=9512f504` |
 | Motion gate | ✅ **DISARMED.** `real_motion_allowed: false`, no active session |
-| Mower | Post-run readback: `MODE_READY`, BLE live at −62 dBm, RTK Fix, blades zero |
+| Mower | Post-run readback: `MODE_READY`, BLE live at −64 dBm, RTK Fix, blades zero |
 
 ## 1. What to do next
 
-✅ **Night v1 is implemented and deployed as beta51.** It adds an
+✅ **Night v1 is implemented; item-17 diagnostics are deployed as beta52.** It adds an
 explicit `turn_mode: "night"` for one forward-only segment, night-only mirror
 conversion, angular 500 with refresh, fixed-budget/RTK/length/heading/re-aim/
 reverse/multi-segment refusals, and the `--night-segment` harness mode. The
@@ -39,13 +39,20 @@ refreshed window, then appeared in one step as 79.492 (+36.3064°); no
 intermediate value was observed at the roughly 0.1-second capture cadence. Read
 `docs/night-toward-latency-20260813.md`.
 
-➡️ **Do not proceed to item 18.** The 90.13° mirror did not agree with the
+✅ **§7 item 17 is measured.** One backward-only pulse moved 0.418536 m on
+bearing 96.433921° while `toward` stayed exactly 173.1023°. The body-heading
+prediction for reverse was 97.0277°, only 0.593779° away. This settles
+`toward` as body heading rather than course-over-ground under reverse.
+RapidState `fuse_status` remained 0 `NO_POSE` in all 81 capture records, so it
+was not a useful live fusion discriminator on this manual path. Read
+`docs/night-reverse-heading-20260813.md` and its linked raw JSON.
+
+➡️ **Item 18 remains unauthorised.** The 90.13° mirror did not agree with the
 measured forward course in this control-loop run (`observed` 14.3069°). The
 latency result does not explain that mismatch because the executor waits for
-post-command feedback before driving. The next discriminator is §7 item 17,
-one backward pulse plus `RapidState.fuse_status`. That is new physical motion
-and requires separate, fresh, supervised authorization; this handoff grants
-none.
+post-command feedback before driving. Item 17 settles body-vs-course but does
+not explain that separate item-15 mismatch. Any further physical run requires
+separate, fresh, supervised authorization; this handoff grants none.
 
 🔎 **Autonomous comparison, read-only:** while the mower continued its own
 Backyard Hill route, a 179.895 s capture recorded 291 samples and three complete
@@ -133,8 +140,10 @@ forward as if newly measured.
 - The mirror has now been consumed by one control loop and disagreed with the
   measured forward course by 75.823° (`movement bearing + toward` was 14.3069°
   rather than 90.13°). Cause remains unknown.
-- Whether `toward` flips 180° under **reverse** travel is open. Cheapest
-  settling experiment: one backward pulse with `toward` logged before and after.
+- `toward` does **not** flip under reverse: item 17 held it at 173.1023° while
+  the mower travelled 0.418536 m almost exactly opposite the inferred body
+  heading. The remaining orientation question is why item 15's forward course
+  disagreed with the same mirror relation.
 - On one refreshed turn, `toward` was stepwise rather than live: no intermediate
   value appeared at ~0.1-second cadence. The exact physical-stop-to-report delay
   was not measured at the protocol timestamp.
