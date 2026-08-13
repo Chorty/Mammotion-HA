@@ -1,4 +1,17 @@
-# Night segment: the implementation plan
+# Night segment: the findings log
+
+> ➡️ **THE PLAN TO EXECUTE IS
+> `docs/night-segment-implementation-plan-v1-20260813.md`.** The synthesiser
+> completed after this document was written and supersedes its task ordering.
+> This file is kept as the **findings log**: what the workflow discovered, and
+> what it corrected in my own earlier drafts. Its §1a/§1b/§1c findings are
+> carried forward into the plan; its §6b corrections are all discharged there
+> (see that document's §4 refutation ledger, A11/A12/A14).
+>
+> ⚠️ **§2's runaway-safety claim is WRONG and is corrected in the plan (A12).**
+> `max_no_progress_pulses` is consulted only under `if loop_to_tolerance:`
+> (`services.py:12284`) — verified. In fixed-budget mode, which is what night
+> uses, the bound is `max_linear_commands` ≤ 3, roughly ≤ 1.5 m.
 
 **2026-08-13, off-mower.** Produced by a 20-agent design workflow
 (`wf_3ae33cc2-1cf`): 4 mapping agents read the code, 4 designed independently (one
