@@ -1,10 +1,10 @@
-# Handoff — beta51 night v1; item 15 measured and contained
+# Handoff — beta51 night v1; items 15–16 measured and contained
 
 Night v1 off-mower items 1–14 are complete and deployed as `0.6.4-beta51`.
 Both card paths match md5 `6645732a8e39eae7644bfe84b5be01de`; Lovelace
 resource is `?v=0.6.4-beta51&build=6645732a`; `services.py` matches local md5
 `1857e0ffe118bac5c556aa04c26f9c45`; pymammotion is `0.8.12.post1`.
-Final local verification produced 656 pytest and 39 frontend tests; ruff,
+Final local verification produced 658 pytest and 39 frontend tests; ruff,
 format, mypy, and all pre-commit hooks passed. The acceptance-profile values
 were not changed. The motion gate read back `enabled: false`,
 `real_motion_allowed: false`, with no active session, and no movement command
@@ -16,9 +16,15 @@ translation. The following forward pulse measured 0.43648 m but an 81.416° aim
 error; the night guard refused further motion. Evidence and measured/inferred
 separation are in `docs/night-segment-turn-quantum-20260813.md`.
 
+Item 16 is also complete. One angular-only +500 / 1,500 ms pulse produced 73
+concurrent runtime samples. `toward` remained 43.1856 through the refreshed
+window and then arrived as one +36.3064° step; no intermediate headings were
+observed at roughly 0.1-second cadence. See
+`docs/night-toward-latency-20260813.md`.
+
 The gate is off, no session is active, the mower is `MODE_READY`, RTK Fix, BLE
-live, and blades zero. Do not proceed to item 18. Item 16 is the next diagnostic
-and needs fresh explicit supervised-motion authorization.
+live, and blades zero. Do not proceed to item 18. Item 17 is the next hardware
+discriminator and needs fresh explicit supervised-motion authorization.
 
 ---
 

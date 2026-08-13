@@ -8,7 +8,7 @@ measurements stand — but do not act on any build/host/gate state they describe
 
 # 🚦 2026-08-13 HANDOFF — read this section, then the plan it points to
 
-## 0. Live state, verified 2026-08-13 after item 15
+## 0. Live state, verified 2026-08-13 after item 16
 
 | | |
 | --- | --- |
@@ -16,7 +16,7 @@ measurements stand — but do not act on any build/host/gate state they describe
 | Version | `0.6.4-beta51` — host and branch agree; manifest, pyproject, card and lock version sites agree |
 | Card on host | md5 `6645732a8e39eae7644bfe84b5be01de`, identical at **both** serving paths; resource `?v=0.6.4-beta51&build=6645732a` |
 | Motion gate | ✅ **DISARMED.** `real_motion_allowed: false`, no active session |
-| Mower | Post-run readback: `MODE_READY`, BLE live at −58 dBm, RTK Fix, blades zero, battery 63% |
+| Mower | Post-run readback: `MODE_READY`, BLE live at −62 dBm, RTK Fix, blades zero |
 
 ## 1. What to do next
 
@@ -33,11 +33,19 @@ target direction by 81.416°. The night guard correctly stopped with
 `night_reaim_required_but_unavailable`. Read
 `docs/night-segment-turn-quantum-20260813.md` and the complete JSON it links.
 
+✅ **§7 item 16 is also measured.** One angular-only +500 pulse produced 73
+concurrent runtime samples. `toward` stayed 43.1856 throughout the 1.551 s
+refreshed window, then appeared in one step as 79.492 (+36.3064°); no
+intermediate value was observed at the roughly 0.1-second capture cadence. Read
+`docs/night-toward-latency-20260813.md`.
+
 ➡️ **Do not proceed to item 18.** The 90.13° mirror did not agree with the
 measured forward course in this control-loop run (`observed` 14.3069°). The
-next diagnostic is §7 item 16, high-rate `toward` sampling around one rotation.
-That is new physical motion and requires separate, fresh, supervised
-authorization; this handoff grants none.
+latency result does not explain that mismatch because the executor waits for
+post-command feedback before driving. The next discriminator is §7 item 17,
+one backward pulse plus `RapidState.fuse_status`. That is new physical motion
+and requires separate, fresh, supervised authorization; this handoff grants
+none.
 
 It was produced by a 20-agent adversarial design workflow and **every gate design
 in it was refuted at least once before the plan was written**. Read §4 before
@@ -91,7 +99,7 @@ npm run test:frontend
 ```
 
 There is **no global `uv`** — use `.venv/bin/python` directly. Beta50 counts
-personally produced on the final tree: **656 pytest, 39 frontend**, all six
+personally produced on the final tree: **658 pytest, 39 frontend**, all six
 commands green. Run them again before a later change; do not carry these counts
 forward as if newly measured.
 
@@ -120,8 +128,9 @@ forward as if newly measured.
   rather than 90.13°). Cause remains unknown.
 - Whether `toward` flips 180° under **reverse** travel is open. Cheapest
   settling experiment: one backward pulse with `toward` logged before and after.
-- `toward` **latency during rotation** is unmeasured, and it decides how tight a
-  loop can close.
+- On one refreshed turn, `toward` was stepwise rather than live: no intermediate
+  value appeared at ~0.1-second cadence. The exact physical-stop-to-report delay
+  was not measured at the protocol timestamp.
 - **No landing accuracy is evidenced at night.** `waypoint_tolerance: 0.15` is a
   VIO-path number.
 

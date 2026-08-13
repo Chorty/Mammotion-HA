@@ -10,7 +10,7 @@ provenance — accurate as a record, but **do not act on any build state it
 describes**, and note that measurement has since refuted several of its claims
 (the "unexplained" turn-rate variance and the turn-budget framing, both below).
 
-## Current build: `0.6.4-beta51` — BETA, item 15 measured, gate disarmed
+## Current build: `0.6.4-beta51` — BETA, items 15–16 measured, gate disarmed
 
 **Host and branch agree at `0.6.4-beta51`.**
 Card md5 `6645732a` at both serving paths, resource
@@ -18,7 +18,7 @@ Card md5 `6645732a` at both serving paths, resource
 (`enabled: false`, `real_motion_allowed: false`, no active session). The
 motion-disabled deploy sent no movement command. Beta51 accepts explicit JSON
 `null` for the night fixed-budget ceiling; its final local gates produced
-**656 pytest, 39 frontend**, with ruff, format, mypy and all pre-commit hooks
+**658 pytest, 39 frontend**, with ruff, format, mypy and all pre-commit hooks
 green. The later harness evidence-label fix produced 26 focused pytest passes.
 
 ✅ **§7 item 15 is complete.** One night-branch pulse at angular −500, 1,500 ms,
@@ -28,8 +28,12 @@ the target direction; the night re-aim guard stopped further motion with
 `night_reaim_required_but_unavailable`. Read
 `docs/night-segment-turn-quantum-20260813.md`. This measured disagreement
 refutes treating the 90.13° mirror as established segment-control truth.
-**Do not proceed to item 18.** The next diagnostic is §7 item 16 and requires a
-new, explicit, supervised-motion authorization.
+**Do not proceed to item 18.** §7 item 16 is now complete: across 73 concurrent
+runtime samples, `toward` stayed bit-identical throughout the 1.551 s refreshed
+pulse and arrived as one post-pulse +36.3064° step; no intermediate heading was
+observed. Read `docs/night-toward-latency-20260813.md`. The next hardware
+discriminator is item 17 and requires a new, explicit, supervised-motion
+authorization.
 
 **beta48/49 were card-only** — run-record downloads, a per-segment landing table
 (leg / landing / tolerance / verdict / pulses / mean), a readiness banner that

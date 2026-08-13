@@ -1,7 +1,7 @@
 # Codex handoff prompt
 
 Paste everything between the rules below into Codex as the opening message.
-Updated 2026-08-13 after deployed `0.6.4-beta51` night v1 item 15.
+Updated 2026-08-13 after deployed `0.6.4-beta51` night v1 items 15–16.
 
 ⚠️ Codex reads `AGENTS.md` by convention; this repo's instructions live in
 `CLAUDE.md`. The prompt below points at it explicitly, so no rename is needed —
@@ -30,16 +30,18 @@ Working directory is the repo root. Branch:
    **Everything below that section is stale as build state** but still valid as
    measurement evidence.
 3. `docs/night-segment-implementation-plan-v1-20260813.md` — implementation
-   record and hardware sequence. Off-mower items 1–14 and item 15 are complete.
+   record and hardware sequence. Off-mower items 1–14 and items 15–16 are complete.
 
 ## Your task
 
-The off-mower night implementation, beta51 deployment, and §7 item 15 are
+The off-mower night implementation, beta51 deployment, and §7 items 15–16 are
 complete. Item 15 measured a −54.2208° quantum from one angular −500 / 1,500 ms
 refreshed pulse, then the first forward pulse exposed an 81.416° aim mismatch;
 the night guard stopped safely. Read
-`docs/night-segment-turn-quantum-20260813.md`. Do not proceed to item 18. The
-next diagnostic is item 16 and requires fresh, explicit supervised-motion
+`docs/night-segment-turn-quantum-20260813.md`. Item 16 then found `toward`
+arrived as one post-pulse step, with no intermediate values across 73 samples;
+read `docs/night-toward-latency-20260813.md`. Do not proceed to item 18. The
+next discriminator is item 17 and requires fresh, explicit supervised-motion
 authorization from the operator. Until then, review and planning are read-only.
 
 ## Hard constraints — violating any of these is a failed change

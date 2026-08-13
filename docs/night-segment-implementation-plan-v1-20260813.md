@@ -7,7 +7,7 @@
 # Night segment — implementation plan (v1)
 
 **Status:** off-mower items 1–14 and on-mower item 15 complete; beta51 deployed
-on 2026-08-13. Final beta51 verification: 656 pytest, 39 frontend, and
+on 2026-08-13. Final beta51 verification: 658 pytest, 39 frontend, and
 ruff/format/mypy/pre-commit green. Item 15 measured one supervised pulse; see
 `docs/night-segment-turn-quantum-20260813.md`. Item 16 requires separate explicit
 supervised motion authorization. Written originally against `HEAD = d6a59f78` /
@@ -669,7 +669,12 @@ New file `tests/components/mammotion/test_night_turn_mode.py` unless noted.
     0.07459 m translation. See
     `docs/evidence-night-segment-turn-quantum-20260813T214605Z.json` and
     `docs/night-segment-turn-quantum-20260813.md`.
-16. **[on-mower, night]** **`toward` latency during rotation.** Sample `toward` at a high rate through one dispatched pulse and for ~3 s after it stops. Decides how tight a night loop can close and characterises risk B2.
+16. **[on-mower, night — COMPLETE 2026-08-13]** **`toward` latency during
+    rotation.** Across 73 concurrent runtime samples, `toward` stayed 43.1856
+    through one 1,550.945 ms refreshed window and then appeared as one 79.492
+    step (+36.3064°); no intermediate heading was observed at roughly 0.1 s
+    cadence. Exact physical-stop-to-report latency was not protocol-timestamped.
+    See `docs/night-toward-latency-20260813.md`.
 17. **[on-mower, night]** **Settle the reverse question.** One backward pulse with `toward` logged before and after — the 2026-08-05 linear sweeps already drove six backward pulses and simply did not log the field. Also read `RapidState.fuse_status` during a pivot in the same session; settling body-vs-course settles reverse at the same time. Blocks: any night reverse, and the `current_orientation` producer.
 18. **[on-mower, night]** **First armed night segment.** One segment, leg 0.6–0.8 m, `turn_mode: "night"`, `max_linear_pulse_ceiling: null`, `max_linear_commands: 3`, `heading_tolerance_degrees: 8` (all five night turns reached 8), `motion_refresh_interval_ms: 200`, `max_turn_commands: 4`, `turn_pulse_duration_ms: 1500`, `max_turn_translation_distance: 0.30`, target bearing chosen roughly **perpendicular** to the current facing so a wrong-sign conversion is unmissable rather than accidentally close. Success criteria: the opening turn ends with `toward` within tolerance of `(90.13 − target_map_bearing) % 360`; `night_aim[*].observed_toward_mirror_degrees` clusters near 90.13; landing recorded with no claim attached.
 19. **[on-mower, optional, DAYLIGHT REQUIRED]** A single daylight VIO segment as a belt-and-braces regression check. **Not owed** — no `LUBA_ACCEPTANCE_PROFILE` key changes value, so no Gate 5 re-run and no §4 re-pinning is obligated, and tests 9–15 cover it. Listed only so nobody assumes it was forgotten.
@@ -689,7 +694,7 @@ New file `tests/components/mammotion/test_night_turn_mode.py` unless noted.
 | Must measure | Needed before | Daylight? |
 |---|---|---|
 | Turn quantum and rate through the **night branch** (angular 500, refresh 200, 1500 ms, `max_turn_commands` 4) | **Measured once: 54.2208°, 0.07459 m translation. More samples are still needed before fitting a distribution or correction floor.** | **No** |
-| `toward` latency during rotation | tightening `heading_tolerance_degrees` at night; trusting a one-command turn exit | **No** |
+| `toward` latency during rotation | **Measured once: stepwise after the pulse, with no intermediate value at ~0.1 s cadence. More samples would be needed for a universal latency bound.** | **No** |
 | `toward` under one commanded **backward** pulse (+ `RapidState.fuse_status` during a pivot) | any night reverse; any `current_orientation` producer | **No** |
 | Night landing accuracy, from task 18 | raising `_NIGHT_MAX_SEGMENT_LENGTH_M`; any night tolerance claim | **No** |
 | Nothing | the v1 code in §3 | — |
