@@ -1,7 +1,7 @@
 # Codex handoff prompt
 
 Paste everything between the rules below into Codex as the opening message.
-Updated 2026-08-13 for deployed `0.6.4-beta50` night v1.
+Updated 2026-08-13 after deployed `0.6.4-beta51` night v1 item 15.
 
 ⚠️ Codex reads `AGENTS.md` by convention; this repo's instructions live in
 `CLAUDE.md`. The prompt below points at it explicitly, so no rename is needed —
@@ -30,14 +30,17 @@ Working directory is the repo root. Branch:
    **Everything below that section is stale as build state** but still valid as
    measurement evidence.
 3. `docs/night-segment-implementation-plan-v1-20260813.md` — implementation
-   record and hardware sequence. Off-mower items 1–14 are complete.
+   record and hardware sequence. Off-mower items 1–14 and item 15 are complete.
 
 ## Your task
 
-The off-mower night implementation and motion-disabled beta50 deployment are
-complete. The next task is §7 item 15: measure the turn quantum through the new
-night branch. **Do not run it without a fresh, explicit supervised-motion
-authorization from the operator.** Until then, review and planning are read-only.
+The off-mower night implementation, beta51 deployment, and §7 item 15 are
+complete. Item 15 measured a −54.2208° quantum from one angular −500 / 1,500 ms
+refreshed pulse, then the first forward pulse exposed an 81.416° aim mismatch;
+the night guard stopped safely. Read
+`docs/night-segment-turn-quantum-20260813.md`. Do not proceed to item 18. The
+next diagnostic is item 16 and requires fresh, explicit supervised-motion
+authorization from the operator. Until then, review and planning are read-only.
 
 ## Hard constraints — violating any of these is a failed change
 
@@ -130,9 +133,10 @@ Your work is entirely off-mower: code, tests, and the CI gates above.
 
 ## What is genuinely unsettled — do not paper over these
 
-- No closed-loop **segment** has ever run at night. Only turns.
-- The mirror relation has **never been inside a control loop**, at any hour.
-  Every validation of it is observational.
+- One closed-loop night segment has run and stopped after its first forward
+  pulse; this is not a landing-accuracy pass.
+- The mirror relation has now been used by one control loop and disagreed with
+  the measured forward course. The cause is not yet established.
 - Whether `toward` flips 180° under **reverse** travel is open. Night v1 is
   forward-only by construction, which contains the risk without settling it.
 - `toward` **latency during rotation** is unmeasured.

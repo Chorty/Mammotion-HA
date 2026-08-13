@@ -1032,7 +1032,12 @@ def main() -> int:  # noqa: C901
         return 0
 
     stamp = _now()
-    name = "beta33-reposition" if args.reposition else "beta32-4segment"
+    if args.night_segment:
+        name = "night-segment-turn-quantum"
+    elif args.reposition:
+        name = "beta33-reposition"
+    else:
+        name = "beta32-4segment"
     out = REPO / "docs" / f"evidence-{name}-{stamp}.json"
     # ⚠️ Set BEFORE the enable, never after. This flag does not mean "the gate
     # opened", it means "this script may have touched the gate and therefore

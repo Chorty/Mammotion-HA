@@ -8,6 +8,22 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta51 — explicit fixed-budget null, 2026-08-13
+
+`0.6.4-beta51` is deployed. It fixes the service schemas so the harness's
+explicit JSON `max_linear_pulse_ceiling: null` reaches the fixed-budget night
+executor instead of failing HTTP 400. Backup:
+`/config/mammotion-backup-20260813-beta51-predeploy.tgz`. Local and host
+checksums agreed at deployment: card `6645732a8e39eae7644bfe84b5be01de`
+at both serving paths, services `1857e0ffe118bac5c556aa04c26f9c45`, manifest
+`c85553cc7c6cc536658fe1ea1478e24c`. Resource read back as
+`?v=0.6.4-beta51&build=6645732a`; pymammotion is `0.8.12.post1`.
+
+The motion-disabled dry-run returned `valid: true`, `errors: []`. §7 item 15
+then ran under separate explicit supervision; see
+`night-segment-turn-quantum-20260813.md`. Final independent readback: gate off,
+no active session, `MODE_READY`, BLE live, RTK Fix, blades zero.
+
 ### beta50 — night v1, 2026-08-13 ~17:02 local
 
 `0.6.4-beta50` is deployed motion-disabled. Backup:

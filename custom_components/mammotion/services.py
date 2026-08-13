@@ -959,8 +959,8 @@ RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("max_linear_commands", default=1): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=3)
         ),
-        vol.Optional("max_linear_pulse_ceiling"): vol.All(
-            vol.Coerce(int), vol.Range(min=1, max=200)
+        vol.Optional("max_linear_pulse_ceiling"): vol.Any(
+            None, vol.All(vol.Coerce(int), vol.Range(min=1, max=200))
         ),
         vol.Optional("max_no_progress_pulses", default=3): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=20)
@@ -1094,8 +1094,8 @@ RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("max_linear_commands", default=2): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=3)
         ),
-        vol.Optional("max_linear_pulse_ceiling"): vol.All(
-            vol.Coerce(int), vol.Range(min=1, max=200)
+        vol.Optional("max_linear_pulse_ceiling"): vol.Any(
+            None, vol.All(vol.Coerce(int), vol.Range(min=1, max=200))
         ),
         vol.Optional("max_no_progress_pulses", default=3): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=20)

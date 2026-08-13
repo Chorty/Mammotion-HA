@@ -10,21 +10,26 @@ provenance — accurate as a record, but **do not act on any build state it
 describes**, and note that measurement has since refuted several of its claims
 (the "unexplained" turn-rate variance and the turn-budget framing, both below).
 
-## Current build: `0.6.4-beta50` — BETA, night v1 deployed, gate disarmed
+## Current build: `0.6.4-beta51` — BETA, item 15 measured, gate disarmed
 
-**Host and branch agree at `0.6.4-beta50`.** Card md5 `8510824e` at both serving
-paths, resource `?v=0.6.4-beta50&build=8510824e`. Gate **DISARMED**
+**Host and branch agree at `0.6.4-beta51`.**
+Card md5 `6645732a` at both serving paths, resource
+`?v=0.6.4-beta51&build=6645732a`. Gate **DISARMED**
 (`enabled: false`, `real_motion_allowed: false`, no active session). The
-motion-disabled deploy sent no movement command. Final local gates: **656 pytest,
-39 frontend**, ruff, format, mypy and all pre-commit hooks green.
+motion-disabled deploy sent no movement command. Beta51 accepts explicit JSON
+`null` for the night fixed-budget ceiling; its final local gates produced
+**656 pytest, 39 frontend**, with ruff, format, mypy and all pre-commit hooks
+green. The later harness evidence-label fix produced 26 focused pytest passes.
 
-➡️ **Night v1 off-mower work and §7 item 14 are complete.** The next task is
-§7 item 15: measure turn quantum through the night branch. That is a physical
-motion run and requires a new, explicit, supervised operator authorization.
-Do not infer authorization from the deployed code or this handoff. At the final
-deploy readback the mower independently reported `MODE_WORKING` with active
-mowing/route blockers; the gate remained closed and this session did not
-interfere with the route.
+✅ **§7 item 15 is complete.** One night-branch pulse at angular −500, 1,500 ms,
+and 200 ms refresh changed `toward` by −54.2208° with 0.07459 m translation.
+The following forward pulse travelled 0.43648 m on a bearing 81.416° away from
+the target direction; the night re-aim guard stopped further motion with
+`night_reaim_required_but_unavailable`. Read
+`docs/night-segment-turn-quantum-20260813.md`. This measured disagreement
+refutes treating the 90.13° mirror as established segment-control truth.
+**Do not proceed to item 18.** The next diagnostic is §7 item 16 and requires a
+new, explicit, supervised-motion authorization.
 
 **beta48/49 were card-only** — run-record downloads, a per-segment landing table
 (leg / landing / tolerance / verdict / pulses / mean), a readiness banner that

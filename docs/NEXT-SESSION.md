@@ -8,29 +8,36 @@ measurements stand — but do not act on any build/host/gate state they describe
 
 # 🚦 2026-08-13 HANDOFF — read this section, then the plan it points to
 
-## 0. Live state, verified 2026-08-13 ~17:05 local
+## 0. Live state, verified 2026-08-13 after item 15
 
 | | |
 | --- | --- |
 | Branch | `feat/beta31-reach-and-overshoot-ceiling`, publish target `origin` = the **Chorty** fork |
-| Version | `0.6.4-beta50` — host and branch agree; manifest, pyproject, card and lock version sites agree |
-| Card on host | md5 `8510824e`, identical at **both** serving paths; resource `?v=0.6.4-beta50&build=8510824e` |
+| Version | `0.6.4-beta51` — host and branch agree; manifest, pyproject, card and lock version sites agree |
+| Card on host | md5 `6645732a8e39eae7644bfe84b5be01de`, identical at **both** serving paths; resource `?v=0.6.4-beta51&build=6645732a` |
 | Motion gate | ✅ **DISARMED.** `real_motion_allowed: false`, no active session |
-| Mower | Final deploy readback: `MODE_WORKING`, with active mowing/route blockers. No command was sent by the deploy session. |
+| Mower | Post-run readback: `MODE_READY`, BLE live at −58 dBm, RTK Fix, blades zero, battery 63% |
 
 ## 1. What to do next
 
-✅ **Night v1 is implemented and deployed motion-disabled as beta50.** It adds an
+✅ **Night v1 is implemented and deployed as beta51.** It adds an
 explicit `turn_mode: "night"` for one forward-only segment, night-only mirror
 conversion, angular 500 with refresh, fixed-budget/RTK/length/heading/re-aim/
 reverse/multi-segment refusals, and the `--night-segment` harness mode. The
 frozen card profile and VIO/legacy paths remain pinned by tests.
 
-➡️ **Next is §7 item 15** in
-`docs/night-segment-implementation-plan-v1-20260813.md`: measure the turn quantum
-through the deployed night branch. This is real motion and requires separate,
-fresh, supervised authorization. Do not arm or run the harness from this
-handoff alone.
+✅ **§7 item 15 is measured.** One 1,500 ms angular −500 pulse delivered six
+200 ms refresh writes, changed `toward` by −54.2208°, and translated 0.07459 m.
+The subsequent forward pulse moved 0.43648 m but its movement vector missed the
+target direction by 81.416°. The night guard correctly stopped with
+`night_reaim_required_but_unavailable`. Read
+`docs/night-segment-turn-quantum-20260813.md` and the complete JSON it links.
+
+➡️ **Do not proceed to item 18.** The 90.13° mirror did not agree with the
+measured forward course in this control-loop run (`observed` 14.3069°). The
+next diagnostic is §7 item 16, high-rate `toward` sampling around one rotation.
+That is new physical motion and requires separate, fresh, supervised
+authorization; this handoff grants none.
 
 It was produced by a 20-agent adversarial design workflow and **every gate design
 in it was refuted at least once before the plan was written**. Read §4 before
@@ -106,9 +113,11 @@ forward as if newly measured.
 
 ## 5. What is genuinely unsettled
 
-- No closed-loop **segment** has ever run at night. Only turns.
-- The mirror has **never been inside a control loop**, at any hour — every
-  validation is observational.
+- One closed-loop night segment has now run; it stopped after one forward pulse
+  on `night_reaim_required_but_unavailable`. It is not a landing-accuracy pass.
+- The mirror has now been consumed by one control loop and disagreed with the
+  measured forward course by 75.823° (`movement bearing + toward` was 14.3069°
+  rather than 90.13°). Cause remains unknown.
 - Whether `toward` flips 180° under **reverse** travel is open. Cheapest
   settling experiment: one backward pulse with `toward` logged before and after.
 - `toward` **latency during rotation** is unmeasured, and it decides how tight a

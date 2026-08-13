@@ -6,11 +6,12 @@
 
 # Night segment — implementation plan (v1)
 
-**Status:** off-mower items 1–14 complete; deployed motion-disabled as
-`0.6.4-beta50` on 2026-08-13. Final verification: 656 pytest, 39 frontend, and
-ruff/format/mypy/pre-commit green. No motion command was sent. The next task is
-item 15 and requires separate explicit supervised motion authorization. Written
-originally against `HEAD = d6a59f78` / deployed `0.6.4-beta49`.
+**Status:** off-mower items 1–14 and on-mower item 15 complete; beta51 deployed
+on 2026-08-13. Final beta51 verification: 656 pytest, 39 frontend, and
+ruff/format/mypy/pre-commit green. Item 15 measured one supervised pulse; see
+`docs/night-segment-turn-quantum-20260813.md`. Item 16 requires separate explicit
+supervised motion authorization. Written originally against `HEAD = d6a59f78` /
+deployed `0.6.4-beta49`.
 
 Every file/line anchor in this document was read at `d6a59f78` during authoring. Where a claim is inferred rather than read, it says so.
 
@@ -617,15 +618,24 @@ New file `tests/components/mammotion/test_night_turn_mode.py` unless noted.
 
 ## 6. What is NOT established
 
-- **No closed-loop night SEGMENT has ever run.** Five night *turns* have (2026-08-12/13, both directions, tolerances 18 and 8). A segment adds the linear phase and the turn→drive composition. n = 0.
-- **The mirror has never been consumed by a control loop, at any hour.** Every validation on record is observational — the mirror *predicting* a facing that something else then measured. Under night it *steers*.
+- **Updated after §7 item 15:** one closed-loop night segment has run. Its single
+  turn pulse changed `toward` −54.2208° with 0.07459 m translation; the first
+  forward pulse then measured an 81.416° aim error and the guard stopped on
+  `night_reaim_required_but_unavailable`. This is not a landing-accuracy pass.
+- **Updated after item 15:** the mirror has now been consumed by one control
+  loop. It aimed the turn correctly within the configured tolerance, but after
+  the forward pulse `movement bearing + toward` was 14.3069°, not 90.13°. The
+  disagreement is measured; its cause is not yet established.
 - **The mirror's own pin is weaker than it reads.** The comment at `scripts/beta32_validation_run.py:137-149` says "every calibration drive this project has recorded"; an independent count over `docs/evidence-*.json` found **24** runs carrying both a pre-run `toward` and a VIO calibration heading, worst residual **7.986°**, mean 2.299°, with **six** exceeding the pinned 3.0°. Most of that is the *reference's* own noise (0.066–0.104 m calibration baselines, ~6.4° per cm), not the mirror's. **I did not re-run that count in this pass.** Either widen the pin honestly over the population or re-pin against the low-noise 2026-08-04/07 legs — this plan does the latter (test 3) and leaves the harness pin alone.
 - **The constant's precision.** 90.13 vs an independent re-derivation of **90.205 ± 0.145** over 17 straight runs ≥ 2 m. Immaterial operationally; the two decimals are not supported precision. Unverified in this pass.
 - **Whether 90.13 transfers to another install.** The ~90 is convention; the 0.13 is this map's +y-to-north misalignment. Nothing in the integration, in `pymammotion` (`rapid_state.py:63-65` parses `pos_x`/`pos_y`/`toward` with no frame annotation) or in any doc says whether that misalignment is zero by construction everywhere or surveyed per map.
 - **Whether the mirror flips 180° under REVERSE travel.** Formally open. Every validation is forward. Night is forward-only by construction (`_raw_vector_linear_command_selection` at `services.py:10523-10559` can only return a positive speed, schema-pinned `min=1`) and refuses at ≥90° aim error, which contains it without settling it.
 - **Whether `toward` is course-over-ground or a fused BODY heading.** Indistinguishable on every forward measurement; they differ by exactly 180° under reverse. The 2026-08-12 in-place pivot (+99.55° of `toward` from 3.8 cm of travel) argues strongly for body heading. `RapidState` carries a `fuse_status` field nobody has read during a pivot.
 - **`toward` latency DURING rotation.** Unmeasured. CLAUDE.md names it as the finding that decides how tightly a night loop can close. The five converged turns used generous tolerances and a coarse quantum and do not answer it.
-- **The turn quantum at the segment's own call site.** 48.15° ± 5.70 (n = 5 runs, 10 pulses) was measured through the **standalone service**. The segment's night branch is different code with different defaults; §1c of the prior plan is the whole reason this matters.
+- **The turn quantum at the segment's own call site is now measured once:**
+  54.2208° from one angular-500, 1,500 ms pulse with six 200 ms refresh writes
+  (`n = 1`). This is consistent with, but does not replace, the standalone
+  population of 48.15° ± 5.70 (5 runs, 10 pulses).
 - **No landing accuracy is evidenced at night.** `waypoint_tolerance: 0.15` is a VIO-path number and must not be read as a night specification. Expect `max_linear_commands_reached` and `night_reaim_required_but_unavailable` to be common outcomes, not `target_reached`.
 - **Whether a night correction turn's own translation** (the mechanism behind the daylight accuracy wall, `atan(translation/leg)`) is larger or smaller at the night quantum. Unmeasured, and it works against short legs specifically.
 - **Whether the ~7% BLE run-abort rate changes at night.** That rate is a hint, not a measurement (95% CI 0.2–31.9%).
@@ -653,7 +663,12 @@ New file `tests/components/mammotion/test_night_turn_mode.py` unless noted.
 
 ### On-mower — **none of it needs daylight**
 
-15. **[on-mower, night]** **Measure the turn quantum through the night branch.** A single armed night segment whose opening turn is 40–90° (large enough that a zero-command exit cannot happen, small enough for a 4-command budget), recording per-pulse window, delivered refresh writes, `toward` before/after, and translation. This is the measurement that gates everything in §8. Blocks: any `_night_turn_budget_feasibility`, any correction floor, any window scaling.
+15. **[on-mower, night — COMPLETE 2026-08-13]** **Measure the turn quantum
+    through the night branch.** Measured 54.2208° from one 1,500 ms pulse,
+    angular −500, six 200 ms refresh writes, `toward` 97.4064 → 43.1856, and
+    0.07459 m translation. See
+    `docs/evidence-night-segment-turn-quantum-20260813T214605Z.json` and
+    `docs/night-segment-turn-quantum-20260813.md`.
 16. **[on-mower, night]** **`toward` latency during rotation.** Sample `toward` at a high rate through one dispatched pulse and for ~3 s after it stops. Decides how tight a night loop can close and characterises risk B2.
 17. **[on-mower, night]** **Settle the reverse question.** One backward pulse with `toward` logged before and after — the 2026-08-05 linear sweeps already drove six backward pulses and simply did not log the field. Also read `RapidState.fuse_status` during a pivot in the same session; settling body-vs-course settles reverse at the same time. Blocks: any night reverse, and the `current_orientation` producer.
 18. **[on-mower, night]** **First armed night segment.** One segment, leg 0.6–0.8 m, `turn_mode: "night"`, `max_linear_pulse_ceiling: null`, `max_linear_commands: 3`, `heading_tolerance_degrees: 8` (all five night turns reached 8), `motion_refresh_interval_ms: 200`, `max_turn_commands: 4`, `turn_pulse_duration_ms: 1500`, `max_turn_translation_distance: 0.30`, target bearing chosen roughly **perpendicular** to the current facing so a wrong-sign conversion is unmissable rather than accidentally close. Success criteria: the opening turn ends with `toward` within tolerance of `(90.13 − target_map_bearing) % 360`; `night_aim[*].observed_toward_mirror_degrees` clusters near 90.13; landing recorded with no claim attached.
@@ -673,7 +688,7 @@ New file `tests/components/mammotion/test_night_turn_mode.py` unless noted.
 
 | Must measure | Needed before | Daylight? |
 |---|---|---|
-| Turn quantum and rate through the **night branch** (angular 500, refresh 200, 1500 ms, `max_turn_commands` 4) | any night turn feasibility model, any correction floor, the `_turn_final_approach_pulse_ms` port | **No** |
+| Turn quantum and rate through the **night branch** (angular 500, refresh 200, 1500 ms, `max_turn_commands` 4) | **Measured once: 54.2208°, 0.07459 m translation. More samples are still needed before fitting a distribution or correction floor.** | **No** |
 | `toward` latency during rotation | tightening `heading_tolerance_degrees` at night; trusting a one-command turn exit | **No** |
 | `toward` under one commanded **backward** pulse (+ `RapidState.fuse_status` during a pivot) | any night reverse; any `current_orientation` producer | **No** |
 | Night landing accuracy, from task 18 | raising `_NIGHT_MAX_SEGMENT_LENGTH_M`; any night tolerance claim | **No** |

@@ -4230,6 +4230,19 @@ def test_night_schema_defaults_and_domain() -> None:
         )["turn_mode"]
         == "night"
     )
+    for schema in (
+        RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA,
+        RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA,
+    ):
+        explicit_fixed_budget = schema(
+            {
+                "entity_id": "lawn_mower.test",
+                "points": [{"x": 0, "y": 0}, {"x": 1, "y": 0}],
+                "turn_mode": "night",
+                "max_linear_pulse_ceiling": None,
+            }
+        )
+        assert explicit_fixed_budget["max_linear_pulse_ceiling"] is None
     with pytest.raises(vol.Invalid):
         RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA(
             {

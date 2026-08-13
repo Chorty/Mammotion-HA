@@ -1,19 +1,24 @@
-# Handoff — beta50 night v1 deployed motion-disabled
+# Handoff — beta51 night v1; item 15 measured and contained
 
-Night v1 off-mower items 1–14 are complete and deployed as `0.6.4-beta50`.
-Both card paths match md5 `8510824e`; Lovelace resource is
-`?v=0.6.4-beta50&build=8510824e`; `services.py` matches local md5
-`d36789b2e622d066873cb396d82e5d76`; pymammotion is `0.8.12.post1`.
+Night v1 off-mower items 1–14 are complete and deployed as `0.6.4-beta51`.
+Both card paths match md5 `6645732a8e39eae7644bfe84b5be01de`; Lovelace
+resource is `?v=0.6.4-beta51&build=6645732a`; `services.py` matches local md5
+`1857e0ffe118bac5c556aa04c26f9c45`; pymammotion is `0.8.12.post1`.
 Final local verification produced 656 pytest and 39 frontend tests; ruff,
 format, mypy, and all pre-commit hooks passed. The acceptance-profile values
 were not changed. The motion gate read back `enabled: false`,
 `real_motion_allowed: false`, with no active session, and no movement command
 was sent during deployment.
 
-The next task is plan §7 item 15, a supervised measurement of turn quantum
-through the night branch. It requires separate explicit authorization for that
-physical run. At final deploy readback the mower independently reported
-`MODE_WORKING` with active mowing and route blockers; do not interfere with it.
+Plan §7 item 15 is complete. The one night-branch turn pulse measured −54.2208°
+at angular −500 / 1,500 ms / six 200 ms refresh writes, with 0.07459 m turn
+translation. The following forward pulse measured 0.43648 m but an 81.416° aim
+error; the night guard refused further motion. Evidence and measured/inferred
+separation are in `docs/night-segment-turn-quantum-20260813.md`.
+
+The gate is off, no session is active, the mower is `MODE_READY`, RTK Fix, BLE
+live, and blades zero. Do not proceed to item 18. Item 16 is the next diagnostic
+and needs fresh explicit supervised-motion authorization.
 
 ---
 
