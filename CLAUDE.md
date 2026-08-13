@@ -10,7 +10,21 @@ provenance — accurate as a record, but **do not act on any build state it
 describes**, and note that measurement has since refuted several of its claims
 (the "unexplained" turn-rate variance and the turn-budget framing, both below).
 
-## Current build: `0.6.4-beta46` — BETA, profile accepted, gate disarmed
+## Current build: `0.6.4-beta47` — BETA, profile accepted, gate disarmed
+
+🏁 **A CLOSED-LOOP TURN CONVERGED IN THE DARK WITH NO VIO, 2026-08-12.** Read
+`docs/night-closed-loop-turn-works-20260812.md`. The legacy primitive
+(`raw_pymammotion_turn_to_heading`, closes on `toward`, no `vio_active` gate)
+reached target in **2 commands** at `tracked_features: 0`. Single-variable
+against the same run without refresh: 4 commands and 29° of 90° becomes 2
+commands and 82°, ~6× more rotation per command — beta47 wraps that pulse in
+`_motion_refresh_window`. **Daylight-only was never a property of the machine**;
+it was the turn primitive's heading source plus a missing refresh.
+⚠️ n = 1; a turn is not a segment; `vio_active` still refuses `turn_mode: "vio"`;
+and 🚨 **the map→`toward` conversion is wrong by construction** (mirror, not the
+additive 102.4) — the target above was passed by hand to bypass it, and a night
+segment would hit it.
+
 
 `docs/NEXT-SESSION.md` carries the live mower state; this section carries what
 changed and why.

@@ -18,7 +18,52 @@ blades off, battery 59% when it docked. VIO went 80 → 77 → 59 → **0** betw
 night; only our closed-loop executor needs VIO. That is a night-repositioning
 tool we were not using.)*
 
-## 🚨 START HERE 2026-08-12 night — `toward` TRACKS IN-PLACE ROTATION
+## 🏁 START HERE — A CLOSED-LOOP TURN CONVERGED IN THE DARK, NO VIO
+
+Read `docs/night-closed-loop-turn-works-20260812.md`. `raw_pymammotion_turn_to_heading`
+— the **legacy** primitive, which closes on `toward` and has no `vio_active`
+gate — reached its target in full darkness with `tracked_features: 0`:
+
+```
+stop_reason  target_heading_reached   commands_sent 2
+toward       -156.85 -> 285.37        target 293.15, error 7.78 deg (tol 18)
+cmd1 rotated 44.24 deg (7 writes)     cmd2 rotated 37.98 deg (3 writes)
+```
+
+Single-variable, same service and target offset, only `motion_refresh_interval_ms`
+differing:
+
+| | commands | per-command | outcome |
+| --- | --- | --- | --- |
+| refresh off | 4 | +9.79/+6.77/+5.37/+7.02 | 29° of 90°, `max_commands_reached` |
+| refresh 200 | 2 | **+44.24/+37.98** | 82° of 90°, **`target_heading_reached`** |
+
+**Daylight-only was never a property of the machine. It was the turn primitive's
+choice of heading source, plus a missing refresh.**
+
+### ⚠️ What is NOT done — read before planning a night segment
+
+- **n = 1** on the refreshed path.
+- **A turn is not a segment.** The `vio_active` gate still refuses
+  `turn_mode: "vio"` unconditionally. **No closed-loop segment has run in the
+  dark.**
+- 🚨 **The heading conversion is wrong by construction.** The target above was
+  computed as `current toward + 90` and passed by hand, deliberately bypassing
+  `calibrated_forward_heading_offset_degrees: 102.4`. A night SEGMENT would hit
+  that conversion — `toward` is a compass bearing needing a MIRROR
+  (`map = 90.13 − toward`), not an additive offset. **Fix that first.**
+- `toward`'s latency DURING rotation is unmeasured; all readings are settled.
+- The 7.78° residual sits inside a loose 18° tolerance.
+
+### Next on this thread
+
+1. Repeat the refreshed turn 2–3× for n, both directions.
+2. Sample `toward` during the pulse, not after.
+3. Fix the map-heading conversion (mirror, not offset).
+4. Only then a night segment — and it needs a night MODE that selects the legacy
+   turn and refuses what needs VIO, **not** a bypass of `vio_active`.
+
+## 🚨 (the finding that made it possible) `toward` TRACKS IN-PLACE ROTATION
 
 Read `docs/toward-tracks-in-place-rotation-20260812.md`. Two armed pivots in
 **full darkness with VIO dead** (`tracked_features: 0`):
