@@ -1,11 +1,16 @@
 # Night segment: the implementation plan
 
-**2026-08-13, off-mower.** Produced by a 16-agent design workflow (`wf_3ae33cc2-1cf`):
-4 mapping agents read the code, 4 designed independently (one mirror fix, three
-night-gate architectures). ⚠️ **The 8 adversarial verifiers started but the session
-ended before they returned**, so the judging below is mine, not theirs. Where that
-matters it says so. Raw agent output:
+**2026-08-13, off-mower.** Produced by a 20-agent design workflow
+(`wf_3ae33cc2-1cf`): 4 mapping agents read the code, 4 designed independently (one
+mirror fix, three night-gate architectures), 11 adversarially verified, 1
+synthesised. Raw agent output:
 `~/.claude/projects/.../subagents/workflows/wf_3ae33cc2-1cf/journal.jsonl`.
+
+🚨 **THE VERIFIERS REFUTED EVERY GATE DESIGN, AND THEY WERE RIGHT.** Scores 4–6 of
+10. Read §1c before anything else: **three independent verifiers found a second
+missing parameter that kills the night segment in its opening turn**, and I had
+already written this document claiming there was only one. Two other claims of mine
+are corrected in §7.
 
 ## 1. 🚨 The two findings that change the plan
 
@@ -42,6 +47,39 @@ showed.
 
 ⚠️ Note this is a **live latent defect on a shipped path**, not only a night
 concern. The card's Nudge rides `legacy`.
+
+### 1c. 🚨 And a SECOND missing parameter — angular speed defaults to 180, which does not pivot
+
+Found by **three independent verifiers**. Verified by hand at HEAD:
+
+```
+services.py:974    angular_speed_fast  default 180
+services.py:977    angular_speed_slow  default 180
+services.py:11502-11503   the legacy branch passes both straight through
+card                      sends angular_speed_fast ZERO times -> the 180 applies
+```
+
+**All five converging night turns used `angular ±500`** — confirmed in the raw
+evidence, not the write-up (`docs/evidence-night-turn-*-20260813.json`,
+`selection.angular_speed: 500`). At **180** the 2026-07-25 A/B measured roughly
+**3° total** on a stationary pivot: below the static-friction deadband. A moving
+arc actuates fine at 180 because it only needs a track differential; a stationary
+pivot has to break static friction on both tracks.
+
+**Consequence:** at ~3°/pulse a 40–90° opening turn exhausts `max_turn_commands`,
+the primitive returns `max_commands_reached` (`:10515`), and the segment reports
+`turn_phase_incomplete`. **The night segment dies before the linear phase begins.**
+
+**It also makes the feasibility model lie in the unsafe direction.** A
+`_night_turn_budget_feasibility` built on the 48.15° quantum — measured at
+angular 500 — would admit turns the executor cannot finish at 180. That is exactly
+the beta32 defect (planner and executor disagreeing) reintroduced.
+
+🔑 **The general lesson: the standalone turn service and the segment executor's
+legacy branch are NOT the same code path.** Five successful night turns prove the
+*primitive* works. They prove nothing about the *branch*, which supplies different
+defaults for at least two parameters that decide whether the mower moves at all.
+Any night work must re-verify at the segment call site.
 
 ## 2. The good news: the linear phase is nearly free
 
@@ -102,9 +140,14 @@ defaults stay `"vio"` — an omitted field can never select night.
 2. **Fix BOTH conversion sites together** (§1a) — `:11094-11100` and
    `:9448-9465` — or pin the readiness probe to the additive pair explicitly.
    **Do not fix one alone.**
-3. **Pass `motion_refresh_interval_ms` on the night branch** (§1b). Scope it to
-   night only; leave `legacy` byte-identical so Nudge is untouched, and record
-   that `legacy`'s defect is *contained, not fixed*.
+3. **Pass `motion_refresh_interval_ms` AND a usable angular speed on the night
+   branch** (§1b, §1c). Night must dispatch at **angular 500**, the only value any
+   converging night turn has used; 180 does not break static friction on a
+   stationary pivot. Scope both to night only; leave `legacy` byte-identical so
+   Nudge is untouched, and record that `legacy`'s defects are *contained, not
+   fixed*. ⚠️ **Neither the feasibility model nor any correction floor may be
+   derived until both are in place** — the 48.15° quantum is an angular-500,
+   refreshed figure and does not describe the branch as it stands.
 4. **Schema + tuple:** `_VIO_TURN_MODES` → `("vio","legacy","night")` (rename to
    `_SEGMENT_TURN_MODES`; sole call site is the `turn_mode_valid` gate at `:11157`).
    Both schemas `vol.In([...,"night"])`, defaults unchanged.
@@ -163,7 +206,39 @@ defaults stay `"vio"` — an omitted field can never select night.
   3.0°". If true, the harness's 3.0° limit is not a safe design margin. **Verify
   before relying on either number.**
 
-## 6. 🗑️ One agent claim corrected here
+## 6b. 🗑️ Corrections to THIS document, from the verifiers
+
+Recorded rather than silently edited, because the errors are instructive.
+
+1. **"~205 degrees" was impossible and I repeated it.** §1a originally said a
+   half-fix breaks the readiness probe "by ~205°". A verifier pointed out that a
+   *normalized* heading error cannot exceed 180°. The number came from a design
+   agent and I propagated it without checking. **The finding stands — the two sites
+   do cancel and a half-fix does break the probe — but the magnitude was wrong.**
+   Recompute it before quoting a figure.
+2. **The runaway-safety argument cites the wrong mechanism.** §2's claim that
+   `max_no_progress_pulses: 3` bounds a mis-aimed leg was challenged as "the wrong
+   mechanism, and it misses the right one". **Unresolved — do not rely on the
+   stated bound** until the actual stopping mechanism is read out of the code.
+3. **A 30° correction floor suppresses corrections this project already judged
+   legitimate.** The code's own validation table records
+   `d 0.540  aim 23.30  perp 0.214 m -> correct (was allowed, legitimate)`
+   (`services.py:10690`), and `_realign_cannot_improve_the_landing` documents that
+   it deliberately **fails OPEN** because "suppressing a re-aim is the dangerous
+   direction: a mower that stops correcting its aim keeps driving"
+   (`:10695-10696`). A blanket night floor installs exactly that danger
+   permanently. **The floor must be justified against that comment or dropped.**
+4. **The correction floor was derived from the wrong quantum anyway.** At the
+   segment call site's real parameters (angular 180, no refresh) the quantum is
+   ~7°/pulse, not 48°. Fix §1b and §1c first, *then* derive any floor.
+5. **`night_requires_precise_rtk` cannot be derived as specified.**
+   `_runtime_motion_safety_summary` suppresses the blocker internally at
+   `services.py:2031`, and the vector executor's call at `:11134` does not pass
+   what the gate would need. And the claim that this "refuses runs the operator can
+   currently force" is **false** — `allow_degraded_rtk` is not reachable on the
+   vector-segment path at all.
+
+## 7. 🗑️ One agent claim corrected here
 
 One design lists, under "not established", that the 48.15° quantum "was measured
 WITHOUT the refresh window that night mode adds". **That is wrong.** All five night
