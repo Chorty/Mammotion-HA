@@ -34,6 +34,33 @@ passes were bought by driving past the waypoint and U-turning back. The next
 motion decision is whether to fix control quality (stop-latency lead, pulse
 sizing) or to accept overshoot-and-recovery — not a Gate 5 attempt.
 
+### beta48 — card usability and run export, 2026-08-13 ~04:45 UTC
+
+**Frontend-only deploy.** Card + `manifest.json` only; no `services.py` change
+and **no `LUBA_ACCEPTANCE_PROFILE` key touched**, so the profile stays accepted
+and no §4 re-pinning is owed. Verified:
+
+```
+card md5      fbf4f621bd78eb5425f8beee4a2aa231   local == /config/custom_components/... == /config/www/community/...
+served        /hacsfiles/... and /mammotion/...  both fbf4f621, CARD_VERSION 0.6.4-beta48
+resource      ?v=0.6.4-beta48&build=fbf4f621
+manifest      0.6.4-beta48
+API back      35 s      132 mammotion entities at 153 s
+gate          real_motion_allowed: false   (blockers: experimental_motion_disabled,
+                                            ble_client_not_connected, position_not_valid_for_motion)
+```
+
+⚠️ `ha_set_card_resource.py` takes only a version string and does **not** append
+the `build=` suffix the runbook requires. Pass it as part of the argument —
+`ha_set_card_resource.py "0.6.4-beta48&build=fbf4f621" --apply` — or the
+registered key loses the checksum half of its cache-busting.
+
+What changed: Real Go / dry-run / history JSON **downloads**, a per-segment
+**landing table** (leg, landing, tolerance, verdict, pulses, mean and worst), a
+colour-coded **readiness banner** that keeps blocker codes verbatim and adds
+plain English for every one of them, the toolbar grouped Path / Run / Export, and
+the 14-row diagnostics panel collapsed behind its verdict line.
+
 ### beta43/44 — Gate 5 re-pass and the profile-echo fix, 2026-08-12
 
 **`0.6.4-beta43` deployed motion-disabled 2026-08-12 ~20:35 UTC** and is the
