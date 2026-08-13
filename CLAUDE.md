@@ -24,7 +24,20 @@ before the link dies, and 9 runs have completed every planned segment. The
 residual is ~7% of runs aborting on BLE, which is **a hint, not a measurement**
 (95% CI 0.2–31.9%) — do not fund BLE work on it.
 
-🔑 **ARCS WORK, 2026-08-12 — the night route is open.** Read
+🚨 **`toward` TRACKS IN-PLACE ROTATION, 2026-08-12 — the night premise is
+REFUTED.** Read `docs/toward-tracks-in-place-rotation-20260812.md`. Two pivots in
+full darkness with VIO at zero: `angular +500` moved `toward` **+99.55°** with
+**3.8 cm** of travel; `angular −500` moved it **−61.43°** with 3.0 cm. 99.55°
+cannot come from 3.8 cm when the position noise floor is 2–4 cm. **This kills the
+premise that `toward` is blind to in-place rotation**, which is why every turn is
+forced onto VIO and why closed-loop motion is daylight-only — so the night path
+may be a legacy-style turn rather than an arc controller. Corroborated by a 184 s
+sample of the vendor **mowing in the dark**: straight rows and in-place pivots,
+which also 🗑️ **refutes my inference that the vendor arcs**. ⚠️ n = 2, no closed
+loop has run on `toward`, and its latency DURING rotation is unmeasured — that
+last one decides whether a loop can close at all.
+
+🔑 **ARCS WORK, 2026-08-12 — measured and linear.** Read
 `docs/arcs-work-20260812.md`. Two armed pulses back to back, one variable apart:
 `linear 400 + angular 180` travelled 0.5823 m and rotated its course **+22.20°**;
 `linear 400 + angular 0` travelled 0.5840 m and rotated **+0.00°**. 1.8 mm apart

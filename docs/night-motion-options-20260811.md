@@ -1,5 +1,18 @@
 # Night motion without VIO: what exists, what is closed, and the one real lead
 
+> ## 🚨 §1'S PREMISE IS REFUTED — read `docs/toward-tracks-in-place-rotation-20260812.md`
+>
+> This document says `toward` is course-over-ground and therefore "blind to
+> in-place rotation **at any hour of the day**", and builds the whole arc case on
+> it. **Measured 2026-08-12 in full darkness: a pure in-place pivot moved
+> `toward` by +99.55° with 3.8 cm of travel, and a reverse pivot by −61.43° with
+> 3.0 cm.** `toward` tracks rotation. The night path may therefore be a
+> legacy-style turn rather than an arc controller.
+>
+> §2's closures (IR, ultrasonic, RTK yaw, no vendor go-to-point) still stand, and
+> arcs are real and measured (`docs/arcs-work-20260812.md`) — but §3's claim that
+> an arc is "the only route" does not.
+
 **2026-08-11, off-mower.** Written after the mower docked itself in full darkness
 in ~65 s over ~12 m, which prompted the question: what motion is available to us
 that does not depend on VIO?

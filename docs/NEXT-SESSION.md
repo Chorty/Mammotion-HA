@@ -18,7 +18,51 @@ blades off, battery 59% when it docked. VIO went 80 → 77 → 59 → **0** betw
 night; only our closed-loop executor needs VIO. That is a night-repositioning
 tool we were not using.)*
 
-## 🔑 START HERE 2026-08-12 night — ARCS WORK. The night route is open.
+## 🚨 START HERE 2026-08-12 night — `toward` TRACKS IN-PLACE ROTATION
+
+Read `docs/toward-tracks-in-place-rotation-20260812.md`. Two armed pivots in
+**full darkness with VIO dead** (`tracked_features: 0`):
+
+| | command | translation | `toward` change |
+| --- | --- | --- | --- |
+| pivot 1 | `angular +500` | **0.0382 m** | **+99.55°** |
+| pivot 2 | `angular −500` | **0.0295 m** | **−61.43°** |
+
+Opposite command, opposite sign, ~3 cm of travel each. **99.55° cannot be a
+course-over-ground computed from 3.8 cm** — the position noise floor is 2–4 cm.
+
+🚨 **This refutes the premise that forces every turn onto VIO.**
+`docs/night-motion-options-20260811.md` §1 says `toward` is "blind to in-place
+rotation **at any hour of the day**", which is why `turn_mode: legacy` is
+considered dead and why closed-loop motion is daylight-only. **The night path may
+be a legacy-style turn, not an arc controller** — and that primitive already
+exists.
+
+Corroborated by the vendor: a 184 s passive sample of the mower **mowing in the
+dark** shows 21 course changes with <0.15 m of travel against 6 while
+translating — straight rows and in-place pivots, ~157° in ~0.4 m at each row end.
+🗑️ That also **refutes my own inference that the vendor arcs**.
+
+### ⚠️ Before anyone builds on this
+
+- **n = 2**, and the two rates differ 50% (41.3 vs 27.3 °/s — explained by 8 vs 3
+  refresh writes, which is an explanation, not a measurement).
+- **No closed loop has run on `toward`.** Reporting correctly ≠ steerable.
+- **`toward`'s latency DURING rotation is unmeasured** — these are settled values
+  read after the pulse. That is what decides whether a loop can close.
+- **Why 2026-08-02 disagreed is inferred**: the stale-feed defect (fixed in
+  beta45, and it fooled this session for five minutes) and angular 180 both fit.
+  Nobody has re-run that test.
+
+### Next on this thread
+
+1. **Re-run the 2026-08-02 in-place turn test** with the readback fix, to settle
+   the contradiction rather than infer it.
+2. **Sample `toward` DURING a pivot** at ~200 ms, not after.
+3. Only then a night turn mode — and it needs its own gate story; the
+   `vio_active` refusal exists for good reasons.
+
+## 🔑 (still valid) 2026-08-12 — ARCS WORK, and steering is linear
 
 Read `docs/arcs-work-20260812.md`. Two armed pulses, back to back, same speed and
 window, one variable apart:
