@@ -898,6 +898,9 @@ RAW_PYMAMMOTION_TURN_TO_HEADING_SCHEMA = vol.Schema(
         vol.Optional("slow_turn_threshold_degrees", default=8.0): vol.All(
             vol.Coerce(float), vol.Range(min=1.0, max=45.0)
         ),
+        vol.Optional("motion_refresh_interval_ms", default=0): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=1000)
+        ),
         vol.Optional("max_commands", default=3): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=5)
         ),
@@ -10204,6 +10207,7 @@ async def _raw_pymammotion_turn_to_heading(  # noqa: C901, PLR0913
     max_translation_distance: float = 0.25,
     pulse_duration_ms: float = 300.0,
     prefer_ble: bool = True,
+    motion_refresh_interval_ms: int = 0,
     sample_delays: list[float] | tuple[float, ...] = (0, 5, 10, 20, 30, 45, 60),
     dry_run: bool = True,
     confirm_blades_off: bool = False,
@@ -10285,6 +10289,7 @@ async def _raw_pymammotion_turn_to_heading(  # noqa: C901, PLR0913
         "max_translation_distance": max_translation_distance,
         "prefer_ble": prefer_ble,
         "transport_preference": "ble_preferred" if prefer_ble else "default",
+        "motion_refresh_interval_ms": motion_refresh_interval_ms,
         "sample_delays": list(sample_delays),
         "confirm_blades_off": confirm_blades_off,
         "confirm_clear_area": confirm_clear_area,
@@ -10418,7 +10423,38 @@ async def _raw_pymammotion_turn_to_heading(  # noqa: C901, PLR0913
         if command_result["ok"] is not True:
             result["stop_reason"] = "command_failed"
             return result
-        await _motion_open_sleep(coordinator, pulse_duration_ms / 1000)
+
+        # beta47: hold the pulse open at the app's cadence instead of firing
+        # once and sleeping. Without it the h-watchdog stops the motor almost
+        # immediately and a single-shot angular pulse rotates only a few
+        # degrees -- measured 2026-08-12 night, this loop closed CORRECTLY on
+        # `toward` (+9.79 / +6.77 / +5.37 / +7.02 deg, every command in the
+        # commanded direction, the per-command changes summing exactly to the
+        # reported final heading) and still ran out of budget at 29 deg of a
+        # 90 deg target. The loop was never the problem; the pulse was.
+        #
+        # `refresh_interval_ms <= 0` reproduces the exact legacy behaviour, so
+        # every existing caller is unaffected and the default stays 0.
+        # `kwargs` is bound at definition time on purpose: the closure is
+        # created inside the command loop, and capturing the loop variable would
+        # make a later iteration's kwargs visible to an earlier resend if the
+        # helper ever deferred the call (ruff B023).
+        async def _resend_turn(
+            kwargs: dict[str, Any] = command_result["kwargs"],
+        ) -> None:
+            await _send_manager_command_with_args(
+                coordinator,
+                "send_movement",
+                prefer_ble=prefer_ble,
+                command_kwargs=kwargs,
+            )
+
+        command_result["motion_refresh"] = await _motion_refresh_window(
+            coordinator,
+            resend=_resend_turn,
+            duration_seconds=pulse_duration_ms / 1000,
+            refresh_interval_ms=motion_refresh_interval_ms,
+        )
         command_result["stop_result"] = await _manual_velocity_stop_attempt(
             coordinator, use_wifi=not prefer_ble
         )
@@ -14997,6 +15033,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             max_translation_distance=call.data["max_translation_distance"],
             pulse_duration_ms=call.data["pulse_duration_ms"],
             prefer_ble=call.data["prefer_ble"],
+            motion_refresh_interval_ms=call.data["motion_refresh_interval_ms"],
             sample_delays=tuple(call.data["sample_delays"]),
             dry_run=call.data["dry_run"],
             confirm_blades_off=call.data["confirm_blades_off"],
