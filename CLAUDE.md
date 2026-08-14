@@ -10,7 +10,7 @@ provenance — accurate as a record, but **do not act on any build state it
 describes**, and note that measurement has since refuted several of its claims
 (the "unexplained" turn-rate variance and the turn-budget framing, both below).
 
-## Current build: `0.6.4-beta52` — BETA, items 15–17 measured, gate disarmed
+## Current build: `0.6.4-beta52` — BETA, items 15–18 measured, gate disarmed
 
 **Host and branch agree at `0.6.4-beta52`.**
 Card md5 `9512f504` at both serving paths, resource
@@ -18,8 +18,10 @@ Card md5 `9512f504` at both serving paths, resource
 (`enabled: false`, `real_motion_allowed: false`, no active session). The
 motion-disabled deploy sent no movement command. Beta52 adds runtime-only
 RapidState fusion diagnostics and a fixed backward-only item-17 harness; its
-final local gates produced **662 pytest, 39 frontend**, with ruff, format, mypy
+final integration gates produced **662 pytest, 39 frontend**, with ruff, format, mypy
 and all pre-commit hooks green. `LUBA_ACCEPTANCE_PROFILE` values are unchanged.
+After the item-18 harness-only safety pins, the full suite produced **664 pytest,
+39 frontend**, with the other four commands green.
 
 ✅ **§7 item 17 is complete.** One backward-only pulse moved 0.418536 m on map
 bearing 96.433921° while `toward` remained bit-identical at 173.1023°. The
@@ -30,6 +32,14 @@ in all 81 records and was non-informative on this manual path. Read
 `docs/night-reverse-heading-20260813.md`. This does not authorize item 18 or
 resolve item 15's separate forward-course disagreement.
 
+✅ **§7 item 18 is complete as characterization, not acceptance.** One 0.70 m
+perpendicular night segment reached the 8° turn tolerance in one pulse, sent
+three forward pulses, and stopped on `no_target_progress` at 0.114277 m from
+target. Its per-pulse mirror observations were 92.0720 / 90.7417 / 89.1569°,
+so item 15's 14.3069° result is not stable across all night forward pulses.
+Read `docs/night-segment-item18-20260814.md`. No night landing tolerance or
+accuracy population is established.
+
 ✅ **§7 item 15 is complete.** One night-branch pulse at angular −500, 1,500 ms,
 and 200 ms refresh changed `toward` by −54.2208° with 0.07459 m translation.
 The following forward pulse travelled 0.43648 m on a bearing 81.416° away from
@@ -37,12 +47,12 @@ the target direction; the night re-aim guard stopped further motion with
 `night_reaim_required_but_unavailable`. Read
 `docs/night-segment-turn-quantum-20260813.md`. This measured disagreement
 refutes treating the 90.13° mirror as established segment-control truth.
-**Do not proceed to item 18.** §7 item 16 is now complete: across 73 concurrent
+§7 item 16 is complete: across 73 concurrent
 runtime samples, `toward` stayed bit-identical throughout the 1.551 s refreshed
 pulse and arrived as one post-pulse +36.3064° step; no intermediate heading was
 observed. Read `docs/night-toward-latency-20260813.md`. The next hardware
-discriminator was item 17, now complete as described above. Item 18 remains
-unauthorised because the separate item-15 forward-course mismatch is unresolved.
+discriminator was item 17, now complete as described above. Item 18 is also
+complete as characterization; the separate item-15 mismatch remains unresolved.
 
 🔎 **Same-day read-only autonomous-mow comparison:** 291 samples over 179.895 s
 captured three complete vendor pivots. Unlike the bounded manual pulse,

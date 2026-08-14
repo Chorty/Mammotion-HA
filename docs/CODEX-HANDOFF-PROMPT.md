@@ -1,7 +1,7 @@
 # Codex handoff prompt
 
 Paste everything between the rules below into Codex as the opening message.
-Updated 2026-08-13 after deployed `0.6.4-beta52` night v1 items 15–17.
+Updated 2026-08-14 after deployed `0.6.4-beta52` night v1 items 15–18.
 
 ⚠️ Codex reads `AGENTS.md` by convention; this repo's instructions live in
 `CLAUDE.md`. The prompt below points at it explicitly, so no rename is needed —
@@ -30,11 +30,11 @@ Working directory is the repo root. Branch:
    **Everything below that section is stale as build state** but still valid as
    measurement evidence.
 3. `docs/night-segment-implementation-plan-v1-20260813.md` — implementation
-   record and hardware sequence. Off-mower items 1–14 and items 15–17 are complete.
+   record and hardware sequence. Off-mower items 1–14 and items 15–18 are complete.
 
 ## Your task
 
-The off-mower night implementation, beta52 deployment, and §7 items 15–17 are
+The off-mower night implementation, beta52 deployment, and §7 items 15–18 are
 complete. Item 15 measured a −54.2208° quantum from one angular −500 / 1,500 ms
 refreshed pulse, then the first forward pulse exposed an 81.416° aim mismatch;
 the night guard stopped safely. Read
@@ -44,9 +44,12 @@ read `docs/night-toward-latency-20260813.md`. The item-17 backward pulse kept
 `toward` at 173.1023° while moving 0.418536 m almost exactly opposite the
 inferred body heading, settling `toward` as body heading under reverse.
 RapidState `fuse_status` stayed 0 `NO_POSE` in all 81 records and was
-non-informative; read `docs/night-reverse-heading-20260813.md`. Item 18 remains
-unauthorised because item 17 does not explain item 15's separate forward-course
-mismatch. Until fresh authorization, review and planning are read-only.
+non-informative; read `docs/night-reverse-heading-20260813.md`. Item 18 then ran
+one 0.699963 m perpendicular segment, reached its 8° opening-turn tolerance,
+and stopped after three linear pulses on `no_target_progress` at 0.114277 m. It
+is characterization, not an acceptance pass; read
+`docs/night-segment-item18-20260814.md`. Item 15's separate mismatch remains
+unexplained. Until fresh authorization, further hardware work is read-only.
 
 A same-day read-only autonomous-mow comparison then captured progressive
 `toward` changes through three vendor pivots. Read
@@ -109,7 +112,7 @@ npm run test:frontend
 .venv/bin/python -m pre_commit run --all-files
 ```
 
-Beta52 final results personally produced: **662 pytest, 39 frontend**, all six
+Post-item-18 final results personally produced: **664 pytest, 39 frontend**, all six
 commands green. **Run them again after any change and report the counts you
 actually produced** — do not quote a number you did not
 generate. If something fails, paste the real traceback rather than summarising.

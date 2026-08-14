@@ -1,11 +1,11 @@
-# Handoff — beta52 night v1; items 15–17 measured and contained
+# Handoff — beta52 night v1; items 15–18 measured and contained
 
 Night v1 off-mower items 1–14 and the item-17 runtime diagnostics are deployed
 as `0.6.4-beta52`. Both card paths match md5
 `9512f504f4b861488e98f4d29ced6e4f`; Lovelace resource is
 `?v=0.6.4-beta52&build=9512f504`; `services.py` matches local md5
 `7c94607698ce6d9f55a4fd4a1a30f85f`; pymammotion is `0.8.12.post1`.
-Final local verification produced 662 pytest and 39 frontend tests; ruff,
+Final integration verification produced 662 pytest and 39 frontend tests; ruff,
 format, mypy, and all pre-commit hooks passed. The acceptance-profile values
 were not changed. The motion gate read back `enabled: false`,
 `real_motion_allowed: false`, with no active session, and no movement command
@@ -37,9 +37,18 @@ RapidState `fuse_status` remained 0 `NO_POSE` in all 81 records and was
 non-informative on this manual path. Raw evidence is commit `ff8e1f09`; analysis
 is `docs/night-reverse-heading-20260813.md`.
 
+Item 18 is complete as characterization, not acceptance. A 0.699963 m
+perpendicular night segment reached the 8° turn tolerance in one pulse, sent
+three linear pulses, and stopped on `no_target_progress` at 0.114277 m. Its
+mirror observations were 92.0720 / 90.7417 / 89.1569°. Raw evidence is commit
+`f0803af2`; analysis is `docs/night-segment-item18-20260814.md`.
+
+The item-18 harness-only safety pins raised the final full-suite count to 664
+pytest; frontend remained 39 and ruff, format, mypy, and pre-commit were green.
+
 The gate is off, no session is active, the mower is `MODE_READY`, RTK Fix, BLE
-live, and blades zero. Item 18 remains unauthorised; item 17 does not resolve
-item 15's separate forward-course mismatch. Every further physical run needs
+live, and blades zero. Item 15's separate forward-course mismatch remains
+unexplained. Every further physical run needs
 fresh explicit supervised-motion authorization.
 
 ---

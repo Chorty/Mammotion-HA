@@ -132,6 +132,7 @@ NIGHT_SEGMENT_PROFILE: dict[str, Any] = {
     "max_linear_pulse_ceiling": None,
     "motion_refresh_interval_ms": 200,
     "max_turn_commands": 4,
+    "heading_tolerance_degrees": 8,
     "turn_pulse_duration_ms": 1500,
     "max_turn_translation_distance": 0.30,
     "ble_auto_recover": False,
@@ -325,6 +326,42 @@ def build_path(
     )
 
 
+def build_item18_path(
+    start: tuple[float, float],
+    facing: float,
+    polygons: dict[str, list[tuple[float, float]]],
+    leg_metres: float,
+) -> tuple[list[dict[str, float]], str, float]:
+    """Lay out one mapped leg roughly perpendicular to live body heading.
+
+    Item 18 deliberately makes a wrong-sign conversion conspicuous. Try both
+    perpendicular directions because map containment, not turn preference,
+    decides which side is safe. Refuse if the nearest contained five-degree
+    candidate is not within 20 degrees of perpendicular.
+    """
+    candidates: list[tuple[float, list[dict[str, float]], str, float]] = []
+    for target in ((facing + 90.0) % 360, (facing - 90.0) % 360):
+        points, area_name, initial_heading = build_path(
+            start,
+            polygons,
+            (),
+            prefer_heading=target,
+            leg_metres=leg_metres,
+            segments=1,
+        )
+        opening = abs((initial_heading - facing + 180.0) % 360.0 - 180.0)
+        candidates.append((abs(opening - 90.0), points, area_name, initial_heading))
+    error, points, area_name, initial_heading = min(
+        candidates, key=lambda item: item[0]
+    )
+    if error > 20.0:
+        raise SystemExit(
+            "REFUSING ITEM 18: no 0.6-0.8 m mapped leg is roughly "
+            f"perpendicular to live facing (nearest opening differs by {error:.1f} deg)"
+        )
+    return points, area_name, initial_heading
+
+
 def last_travel_heading() -> float | None:
     """Bearing of the most recent leg this project actually drove, in degrees.
 
@@ -391,12 +428,10 @@ def mirror_facing(position: dict[str, Any]) -> float | None:
     """Map facing implied by the live `toward`, or None if it is unreadable.
 
     See ``TOWARD_MIRROR_DEGREES`` for the relation and its validation. This is
-    only as good as `toward` is fresh: the field is course-over-ground and
-    LATCHES while the mower is stationary, so it reports the direction of the
-    last travel, whoever commanded it. That is exactly what makes it useful
-    here -- an app-driven reposition updates it while `last_travel_heading()`
-    goes silently stale -- and exactly what makes it useless if the mower was
-    carried rather than driven, which nothing on this device can detect.
+    only as good as `toward` is fresh. Item 17 established that the field tracks
+    BODY heading under reverse, not course-over-ground. An app-driven rotation
+    updates it while `last_travel_heading()` goes silently stale; carrying the
+    mower remains undetectable.
     """
     toward = position.get("toward")
     if toward is None:
@@ -884,18 +919,20 @@ def main() -> int:  # noqa: C901
         raise SystemExit("--night-segment and --reposition cannot be combined")
 
     if args.night_segment:
-        points, area_name, initial_heading = build_path(
+        night_leg = min(float(args.leg), 1.0)
+        if not 0.6 <= night_leg <= 0.8:
+            raise SystemExit("REFUSING ITEM 18: --night-segment leg must be 0.6-0.8 m")
+        points, area_name, initial_heading = build_item18_path(
             start,
+            facing,
             polygons,
-            (),
-            prefer_heading=facing,
-            leg_metres=min(float(args.leg), 1.0),
-            segments=1,
+            night_leg,
         )
         print(f"\n== NIGHT SEGMENT == area={area_name}")
+        opening = abs((initial_heading - facing + 180) % 360 - 180)
         print(
             f"  assumed start heading {facing:.1f} deg ({facing_source}); "
-            f"one {args.leg:.2f} m-or-shorter forward leg"
+            f"one {night_leg:.2f} m forward leg; opening turn ~{opening:.1f} deg"
         )
         for index, point in enumerate(points):
             print(f"    p{index}: ({point['x']:.3f}, {point['y']:.3f})")
@@ -1033,7 +1070,7 @@ def main() -> int:  # noqa: C901
 
     stamp = _now()
     if args.night_segment:
-        name = "night-segment-turn-quantum"
+        name = "night-segment-item18"
     elif args.reposition:
         name = "beta33-reposition"
     else:

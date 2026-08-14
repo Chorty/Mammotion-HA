@@ -6,11 +6,12 @@
 
 # Night segment — implementation plan (v1)
 
-**Status:** off-mower items 1–14 and on-mower items 15–17 complete; beta52
-deployed on 2026-08-13. Final beta52 verification: 662 pytest, 39 frontend, and
+**Status:** off-mower items 1–14 and on-mower items 15–18 complete; beta52
+deployed on 2026-08-13. Post-item-18 verification: 664 pytest, 39 frontend, and
 ruff/format/mypy/pre-commit green. Item 17 settled `toward` as body heading
-under reverse; see `docs/night-reverse-heading-20260813.md`. Item 18 has no
-motion authorization. Written originally against `HEAD = d6a59f78` /
+under reverse; see `docs/night-reverse-heading-20260813.md`. Item 18 completed
+as characterization, not a landing-accuracy acceptance pass; see
+`docs/night-segment-item18-20260814.md`. Written originally against `HEAD = d6a59f78` /
 deployed `0.6.4-beta49`.
 
 Every file/line anchor in this document was read at `d6a59f78` during authoring. Where a claim is inferred rather than read, it says so.
@@ -690,7 +691,13 @@ New file `tests/components/mammotion/test_night_turn_mode.py` unless noted.
     pivot-specific transition was observed. See
     `docs/night-reverse-heading-20260813.md` and
     `docs/evidence-night-reverse-fusion-20260813T234313Z.json`.
-18. **[on-mower, night]** **First armed night segment.** One segment, leg 0.6–0.8 m, `turn_mode: "night"`, `max_linear_pulse_ceiling: null`, `max_linear_commands: 3`, `heading_tolerance_degrees: 8` (all five night turns reached 8), `motion_refresh_interval_ms: 200`, `max_turn_commands: 4`, `turn_pulse_duration_ms: 1500`, `max_turn_translation_distance: 0.30`, target bearing chosen roughly **perpendicular** to the current facing so a wrong-sign conversion is unmissable rather than accidentally close. Success criteria: the opening turn ends with `toward` within tolerance of `(90.13 − target_map_bearing) % 360`; `night_aim[*].observed_toward_mirror_degrees` clusters near 90.13; landing recorded with no claim attached.
+18. **[on-mower, night — COMPLETE 2026-08-14]** **First armed night
+    segment.** The 0.699963 m perpendicular leg reached the opening 8° tolerance
+    in one turn pulse. Three linear pulses produced mirror observations 92.0720,
+    90.7417 and 89.1569°, then stopped on `no_target_progress` at 0.114277 m.
+    Landing recorded with no tolerance claim. See
+    `docs/night-segment-item18-20260814.md` and
+    `docs/evidence-night-segment-item18-20260814T000022Z.json`.
 19. **[on-mower, optional, DAYLIGHT REQUIRED]** A single daylight VIO segment as a belt-and-braces regression check. **Not owed** — no `LUBA_ACCEPTANCE_PROFILE` key changes value, so no Gate 5 re-run and no §4 re-pinning is obligated, and tests 9–15 cover it. Listed only so nobody assumes it was forgotten.
 
 ### Follow-ups, explicitly not in v1
@@ -710,7 +717,7 @@ New file `tests/components/mammotion/test_night_turn_mode.py` unless noted.
 | Turn quantum and rate through the **night branch** (angular 500, refresh 200, 1500 ms, `max_turn_commands` 4) | **Measured once: 54.2208°, 0.07459 m translation. More samples are still needed before fitting a distribution or correction floor.** | **No** |
 | `toward` latency during rotation | **Measured once: stepwise after the pulse, with no intermediate value at ~0.1 s cadence. More samples would be needed for a universal latency bound.** | **No** |
 | `toward` under one commanded **backward** pulse | **Measured: body heading stayed fixed; reverse course matched its opposite within 0.593779°. RapidState stayed `NO_POSE` and was non-informative.** | **No** |
-| Night landing accuracy, from task 18 | raising `_NIGHT_MAX_SEGMENT_LENGTH_M`; any night tolerance claim | **No** |
+| Night landing accuracy, from task 18 | **One 0.70 m characterization landed 0.114277 m away on `no_target_progress`; insufficient for any tolerance or population claim.** | **No** |
 | Nothing | the v1 code in §3 | — |
 
 Everything in §3 is writable today. The only thing that needs daylight at all is the optional VIO regression run (task 19), and it is optional.

@@ -8,7 +8,7 @@ measurements stand — but do not act on any build/host/gate state they describe
 
 # 🚦 2026-08-13 HANDOFF — read this section, then the plan it points to
 
-## 0. Live state, verified 2026-08-13 after item 17
+## 0. Live state, verified 2026-08-14 after item 18
 
 | | |
 | --- | --- |
@@ -16,7 +16,7 @@ measurements stand — but do not act on any build/host/gate state they describe
 | Version | `0.6.4-beta52` — host and branch agree; manifest, pyproject, card and lock version sites agree |
 | Card on host | md5 `9512f504f4b861488e98f4d29ced6e4f`, identical at **both** serving paths; resource `?v=0.6.4-beta52&build=9512f504` |
 | Motion gate | ✅ **DISARMED.** `real_motion_allowed: false`, no active session |
-| Mower | Post-run readback: `MODE_READY`, BLE live at −64 dBm, RTK Fix, blades zero |
+| Mower | Post-run readback: `MODE_READY`, BLE live at −58 dBm, RTK Fix, blades zero |
 
 ## 1. What to do next
 
@@ -47,11 +47,17 @@ RapidState `fuse_status` remained 0 `NO_POSE` in all 81 capture records, so it
 was not a useful live fusion discriminator on this manual path. Read
 `docs/night-reverse-heading-20260813.md` and its linked raw JSON.
 
-➡️ **Item 18 remains unauthorised.** The 90.13° mirror did not agree with the
-measured forward course in this control-loop run (`observed` 14.3069°). The
-latency result does not explain that mismatch because the executor waits for
-post-command feedback before driving. Item 17 settles body-vs-course but does
-not explain that separate item-15 mismatch. Any further physical run requires
+✅ **§7 item 18 is measured, but is not an acceptance pass.** One 0.699963 m
+perpendicular night segment reached its opening 8° tolerance in one turn pulse,
+then used all three linear commands and stopped on `no_target_progress` at
+0.114277 m from target. Per-pulse mirror observations were 92.0720 / 90.7417 /
+89.1569°. Read `docs/night-segment-item18-20260814.md` and the raw evidence it
+links. The run does not establish a night tolerance or landing distribution.
+
+⚠️ Item 15's 14.3069° mirror observation remains unexplained, although item 18's
+three observations near 90.13° show it is not stable across all night pulses.
+The latency result does not explain that mismatch because the executor waits
+for post-command feedback before driving. Any further physical run requires
 separate, fresh, supervised authorization; this handoff grants none.
 
 🔎 **Autonomous comparison, read-only:** while the mower continued its own
