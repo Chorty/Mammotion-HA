@@ -10,19 +10,103 @@ provenance — accurate as a record, but **do not act on any build state it
 describes**, and note that measurement has since refuted several of its claims
 (the "unexplained" turn-rate variance and the turn-budget framing, both below).
 
-## Current build: `0.6.4-beta47` — BETA, profile accepted, gate disarmed
+## Current build: `0.6.4-beta52` — BETA, items 15–18 measured, gate disarmed
 
-🏁 **A CLOSED-LOOP TURN CONVERGED IN THE DARK WITH NO VIO, 2026-08-12.** Read
-`docs/night-closed-loop-turn-works-20260812.md`. The legacy primitive
-(`raw_pymammotion_turn_to_heading`, closes on `toward`, no `vio_active` gate)
-reached target in **2 commands** at `tracked_features: 0`. Single-variable
+**Host and branch agree at `0.6.4-beta52`.**
+Card md5 `9512f504` at both serving paths, resource
+`?v=0.6.4-beta52&build=9512f504`. Gate **DISARMED**
+(`enabled: false`, `real_motion_allowed: false`, no active session). The
+motion-disabled deploy sent no movement command. Beta52 adds runtime-only
+RapidState fusion diagnostics and a fixed backward-only item-17 harness; its
+final integration gates produced **662 pytest, 39 frontend**, with ruff, format, mypy
+and all pre-commit hooks green. `LUBA_ACCEPTANCE_PROFILE` values are unchanged.
+After the item-18 harness-only safety pins, the full suite produced **664 pytest,
+39 frontend**, with the other four commands green.
+
+✅ **§7 item 17 is complete.** One backward-only pulse moved 0.418536 m on map
+bearing 96.433921° while `toward` remained bit-identical at 173.1023°. The
+mirror-derived body heading was 277.0277°, whose reverse is 97.0277°: only
+0.593779° from measured travel. `toward` is therefore body heading, not
+course-over-ground, under reverse. RapidState `fuse_status` stayed 0 `NO_POSE`
+in all 81 records and was non-informative on this manual path. Read
+`docs/night-reverse-heading-20260813.md`. It does not resolve item 15's separate
+forward-course disagreement.
+
+✅ **§7 item 18 is complete as characterization, not acceptance.** One 0.70 m
+perpendicular night segment reached the 8° turn tolerance in one pulse, sent
+three forward pulses, and stopped on `no_target_progress` at 0.114277 m from
+target. Its per-pulse mirror observations were 92.0720 / 90.7417 / 89.1569°,
+so item 15's 14.3069° result is not stable across all night forward pulses.
+Read `docs/night-segment-item18-20260814.md`. No night landing tolerance or
+accuracy population is established.
+
+✅ **§7 item 15 is complete.** One night-branch pulse at angular −500, 1,500 ms,
+and 200 ms refresh changed `toward` by −54.2208° with 0.07459 m translation.
+The following forward pulse travelled 0.43648 m on a bearing 81.416° away from
+the target direction; the night re-aim guard stopped further motion with
+`night_reaim_required_but_unavailable`. Read
+`docs/night-segment-turn-quantum-20260813.md`. This measured disagreement
+refutes treating the 90.13° mirror as established segment-control truth.
+§7 item 16 is complete: across 73 concurrent
+runtime samples, `toward` stayed bit-identical throughout the 1.551 s refreshed
+pulse and arrived as one post-pulse +36.3064° step; no intermediate heading was
+observed. Read `docs/night-toward-latency-20260813.md`. The next hardware
+discriminator was item 17, now complete as described above. Item 18 is also
+complete as characterization; the separate item-15 mismatch remains unresolved.
+
+🔎 **Same-day read-only autonomous-mow comparison:** 291 samples over 179.895 s
+captured three complete vendor pivots. Unlike the bounded manual pulse,
+`toward` streamed progressive headings during continuous vendor motion. Forty
+usable moving steps gave `travel bearing + toward = 90.57°` with 2.02° circular
+SD. Read `docs/autonomous-mow-observation-20260813.md`. This narrows item 16's
+stepwise result to the manual pulse/report cadence; it does not settle reverse
+or `fuse_status`.
+
+**beta48/49 were card-only** — run-record downloads, a per-segment landing table
+(leg / landing / tolerance / verdict / pulses / mean), a readiness banner that
+names every blocker code *and* explains it, grouped toolbar, collapsed
+diagnostics. No `LUBA_ACCEPTANCE_PROFILE` key touched. ⚠️ beta49 fixed four
+defects that only appeared when the card was rendered against **real**
+`export_runtime_state` output — duplicate blocker codes from two overlapping
+backend lists, two emitted codes with no help text, a restored run presented as
+current, and a tofu-risk glyph. **Render against live state, not fixtures.**
+
+🚨 **A night SEGMENT will not work today, and the reason is two missing
+parameters — not the turn primitive.** The segment executor's legacy branch
+(`services.py:11498-11517`) omits `motion_refresh_interval_ms` (primitive default
+`0`) and passes `angular_speed_fast/slow` at the schema default **180**, which
+does not break static friction on a stationary pivot (~3°/pulse). Every
+converging night turn used **angular 500 with refresh**, by calling the primitive
+**directly**. **The standalone service and the segment's legacy branch are not the
+same code path.** Found by three independent verifiers, confirmed by hand.
+⚠️ `legacy` keeps both defects in the v1 plan (containment, not a fix), so the
+card's **Nudge still turns single-shot in a deadband** — do not let that drop.
+
+🏁 **CLOSED-LOOP TURNS WORK IN THE DARK WITH NO VIO — 5 of 5, 2026-08-12/13.**
+Read `docs/night-closed-loop-turn-works-20260812.md` then
+`docs/night-turns-converge-but-the-quantum-is-coarse-20260813.md`. The legacy
+primitive (`raw_pymammotion_turn_to_heading`, closes on `toward`, no `vio_active`
+gate) reached `target_heading_reached` on **five armed night turns**, both
+directions, at tolerances 18 and 8, all at `tracked_features: 0`. Single-variable
 against the same run without refresh: 4 commands and 29° of 90° becomes 2
-commands and 82°, ~6× more rotation per command — beta47 wraps that pulse in
-`_motion_refresh_window`. **Daylight-only was never a property of the machine**;
-it was the turn primitive's heading source plus a missing refresh.
-⚠️ n = 1; a turn is not a segment; `vio_active` still refuses `turn_mode: "vio"`;
-and 🚨 **the map→`toward` conversion is wrong by construction** (mirror, not the
-additive 102.4) — the target above was passed by hand to bypass it, and a night
+commands and 82° — beta47 wraps that pulse in `_motion_refresh_window`.
+**Daylight-only was never a property of the machine**; it was the turn
+primitive's heading source plus a missing refresh.
+
+🚨 **But four of those five converged on LUCK, not control.** The refreshed pulse
+quantum is **48.15° ± 5.70** (n = 10) and *nothing scales it*, so the terminal
+error lands wherever the last pulse falls inside the tolerance band — margins of
+1.72 / 1.09 / 0.36°. Run c had 10.89° of error remaining and the smallest
+available action rotated **54.11°**, a 5× over-correction it then spent a command
+undoing. Tightening tolerance 18 → 8 barely moved absolute error (8.92° → 7.28°).
+🔑 **The fix is in our own data:** an *un-refreshed* single shot rotates
+**7.24° ± 1.60**, and both points sit on `rotation ≈ 32.2 °/s·t − 2.4°`. So port
+the VIO path's `_turn_final_approach_pulse_ms` **window scaling** into the legacy
+turn — scale the window, ⚠️ **not** the speed (`angular_speed_slow: 180` sits in
+the stationary deadband; the slow tier has never actually engaged).
+⚠️ A turn is not a segment; `vio_active` still refuses `turn_mode: "vio"`; and
+🚨 **the map→`toward` conversion is wrong by construction** (mirror, not the
+additive 102.4) — every target above was passed by hand to bypass it, and a night
 segment would hit it.
 
 
@@ -369,12 +453,14 @@ correction chain: **internet source → base station (WiFi) → LoRa E22 → mow
 `report_data.basestation_info` — reading only the mower will call a live base
 silent. `MammotionRTKCoordinator` already queries this every tick.
 
-⚠️ **Closed-loop segments cannot run after dark.** The `vio_active` gate keys off
+~~⚠️ **Closed-loop segments cannot run after dark.**~~ **SUPERSEDED by night v1
+items 15–18.** The historical reasoning below led to the later measurements but
+its course-over-ground premise was refuted. The `vio_active` gate keys off
 `turn_mode == "vio"` unconditionally, not off whether a turn is needed, and
 `_VIO_TURN_MODES` is `("vio", "legacy")` only. *(Refined 2026-08-11 — read
 `docs/night-motion-options-20260811.md`. The gate is created ONLY for
 `turn_mode == "vio"` (`services.py:10965`), so `legacy` skips it; but `legacy`
-closes on `position.toward`, which is course-over-ground and therefore blind to
+closes on `position.toward`, which was then believed to be course-over-ground and therefore blind to
 in-place rotation **at any hour**, not just at night. The real constraint is not
 "no heading at night", it is **"no heading while stationary"** — which is why an
 ARC, never once sent by this project despite the wire accepting both axes, is the

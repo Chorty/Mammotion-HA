@@ -9,7 +9,7 @@ const MAX_REAL_SEGMENTS = 4;
 const MAX_NUDGE_METRES = 2.0;
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
-const CARD_VERSION = "0.6.4-beta47";
+const CARD_VERSION = "0.6.4-beta52";
 
 // The exact bounded execution profile that passed supervised LUBA acceptance
 // Gate 4 re-pass on 2026-08-05 (three-write zero stop, bounded straight segment,
@@ -97,6 +97,40 @@ const LUBA_ACCEPTANCE_PROFILE = Object.freeze({
 
 const PROFILE_KEYS = Object.freeze(Object.keys(LUBA_ACCEPTANCE_PROFILE));
 
+// Plain-English text for the blocker codes the backend and preflight emit. The
+// codes are the truth and are always still shown; this only adds the "so what".
+// The commonest support question by far has been a disabled Real Go button with
+// no visible reason, which is almost always experimental_motion_disabled.
+const BLOCKER_HELP = Object.freeze({
+  path_unset: "Click at least one destination on the map.",
+  position_unavailable:
+    "No live mower position yet — press Reload map/runtime, and wake the mower if BLE has gone idle.",
+  // The backend's own code for this is position_not_valid_for_motion, which is
+  // what actually appears in the banner; position_unavailable is the card's.
+  // Both are kept because both reach the operator.
+  position_not_valid_for_motion:
+    "The mower's position is not usable for motion — it needs RTK Fix and a zone inside a mapped area.",
+  ble_client_not_connected:
+    "BLE is not connected. Wake the mower (it dozes after ~10 min idle) or move a Bluetooth proxy closer.",
+  current_orientation_unavailable:
+    "No trustworthy current facing. Course-over-ground is last-travel only and cannot see an in-place turn.",
+  path_validation_failed:
+    "The path failed validation — check the warnings above (usually a point outside the selected area).",
+  experimental_motion_disabled:
+    "Turn on the integration option 'Enable experimental BLE-only manual motion'.",
+  experimental_motion_backend_not_ready:
+    "The backend motion gate is closed. Check the integration options and that BLE is connected.",
+  runtime_safety_blocked: "The backend refuses motion in the current state.",
+  blade_not_safe: "Blades are not confirmed off or are still spinning down.",
+  active_mowing: "A mowing job is running — stop or cancel it first.",
+  active_route: "A planned route is active — cancel it first.",
+  ble_link_not_live:
+    "BLE is not live. Wake the mower, or move a Bluetooth proxy closer.",
+  rtk_not_precise:
+    "RTK is not at Fix. Wait for convergence, or pass allow_degraded_rtk deliberately.",
+  [`real_segment_limit_${MAX_REAL_SEGMENTS}`]: `Real Go runs at most ${MAX_REAL_SEGMENTS} segments. Remove waypoints or run it in two clicks.`,
+});
+
 console.info(
   `%c MAMMOTION-CUSTOM-PATH-CARD %c v${CARD_VERSION} `,
   "background:#22c55e;color:#000;font-weight:bold;",
@@ -125,6 +159,7 @@ class MammotionCustomPathCard extends HTMLElement {
     this._validation = null;
     this._dryRun = null;
     this._realRun = null;
+    this._realRunAt = null;
     this._loadingMap = false;
     this._loadingRuntime = false;
     this._confirmBladesOff = false;
@@ -142,15 +177,26 @@ class MammotionCustomPathCard extends HTMLElement {
         const mins = Math.floor((entry.elapsed_seconds || 0) / 60);
         const secs = String((entry.elapsed_seconds || 0) % 60).padStart(2, "0");
         const segs = (entry.segments || [])
-          .map(
-            (seg) =>
-              `${seg.index}:${seg.passed ? "✓" : "✗"}${seg.stop_reason ? ` ${seg.stop_reason}` : ""}`,
-          )
+          .map((seg) => {
+            // Landing distance is the number that decides whether a run was
+            // good; older history entries predate it, so keep them readable.
+            const landing =
+              typeof seg.landing === "number"
+                ? ` ${seg.landing.toFixed(3)}m`
+                : "";
+            return `${seg.index}:${seg.passed ? "✓" : "✗"}${seg.stop_reason ? ` ${seg.stop_reason}` : ""}${landing}`;
+          })
           .join(", ");
-        return `<div class="history-row"><span class="history-when">${this._escapeHtml(when)} (${mins}:${secs})</span> <span class="history-outcome">${this._escapeHtml(entry.stop_reason || "?")}</span>${segs ? `<div class="history-segs">${this._escapeHtml(segs)}</div>` : ""}</div>`;
+        const landings = (entry.segments || [])
+          .map((seg) => seg.landing)
+          .filter((value) => typeof value === "number");
+        const mean = landings.length
+          ? ` · mean ${(landings.reduce((sum, value) => sum + value, 0) / landings.length).toFixed(4)} m`
+          : "";
+        return `<div class="history-row"><span class="history-when">${this._escapeHtml(when)} (${mins}:${secs})</span> <span class="history-outcome">${this._escapeHtml(entry.stop_reason || "?")}</span>${this._escapeHtml(mean)}${segs ? `<div class="history-segs">${this._escapeHtml(segs)}</div>` : ""}</div>`;
       })
       .join("");
-    return `<details><summary>Run history (${history.length})</summary>${rows}<button id="clear-history" class="history-clear">Clear history</button></details>`;
+    return `<details><summary>Run history (${history.length})</summary>${rows}<div class="history-actions"><button id="download-history" class="history-clear" type="button">Download history JSON</button><button id="clear-history" class="history-clear" type="button">Clear history</button></div></details>`;
   }
 
   _historyKey() {
@@ -184,9 +230,18 @@ class MammotionCustomPathCard extends HTMLElement {
     }
   }
 
+  _lastRunAtKey() {
+    return `mammotion-path-card-last-run-at:${this._config.entity || "unknown"}`;
+  }
+
   _persistLastRun(result) {
+    this._realRunAt = new Date().toISOString();
     try {
       localStorage.setItem(this._lastRunKey(), JSON.stringify(result));
+      // Stored separately so the restored result keeps its exact backend shape
+      // -- wrapping it would break every reader that treats _realRun as the
+      // service response, and older stored runs simply have no timestamp.
+      localStorage.setItem(this._lastRunAtKey(), new Date().toISOString());
     } catch (err) {
       // Full results can be large; ignore quota failures.
     }
@@ -195,10 +250,27 @@ class MammotionCustomPathCard extends HTMLElement {
   _restoreLastRun() {
     try {
       const raw = localStorage.getItem(this._lastRunKey());
+      this._realRunAt = localStorage.getItem(this._lastRunAtKey());
       return raw ? JSON.parse(raw) : null;
     } catch (err) {
       return null;
     }
+  }
+
+  // A restored run is shown on every page load, so it MUST say when it ran.
+  // Without this the card presents a result from a previous day directly under
+  // a "Map loaded" status line, which reads as "this just happened".
+  _runAgeLabel() {
+    if (!this._realRunAt) return "";
+    const then = new Date(this._realRunAt);
+    const ms = Date.now() - then.getTime();
+    if (!Number.isFinite(ms)) return "";
+    const minutes = Math.floor(ms / 60000);
+    if (minutes < 1) return "just now";
+    if (minutes < 60) return `${minutes} min ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} h ago`;
+    return `${then.toLocaleString()}`;
   }
 
   _clearHistory() {
@@ -210,6 +282,212 @@ class MammotionCustomPathCard extends HTMLElement {
     }
     this._status = "Run history cleared.";
     this._render();
+  }
+
+  // ---------------------------------------------------------------------
+  // Result export
+  //
+  // The single most expensive gap in this project's investigation history was
+  // a run whose per-command record existed ONLY in a browser pane and was lost
+  // (see docs/turn-rate-variance-and-reach-analysis-20260808.md). Copy-to-
+  // clipboard is not good enough for a 2000-line result on a phone. This
+  // writes the whole response to a file the operator can hand straight over.
+  // ---------------------------------------------------------------------
+
+  _downloadSlug() {
+    return String(this._config.entity || "mower").replace(/[^a-z0-9]+/gi, "-");
+  }
+
+  _downloadFilename(kind) {
+    // Colons are illegal in filenames on Windows and awkward everywhere.
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    return `mammotion-${kind}-${this._downloadSlug()}-${stamp}.json`;
+  }
+
+  // Falls back to the clipboard rather than failing silently: a browser that
+  // blocks object URLs should still let the operator get the record out.
+  _downloadJson(payload, kind, label) {
+    if (payload == null) {
+      this._status = `No ${label} to download yet.`;
+      this._render();
+      return;
+    }
+    const text = `${JSON.stringify(payload, null, 2)}\n`;
+    const filename = this._downloadFilename(kind);
+    try {
+      const blob = new Blob([text], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      anchor.style.display = "none";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      // Revoke on the next tick; revoking synchronously can cancel the
+      // download in some browsers before it has started reading the blob.
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      this._status = `Downloaded ${filename}`;
+      this._render();
+    } catch (err) {
+      this._copyText(text, `${label} (download unavailable, copied instead)`);
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Run summary
+  //
+  // The number that decides whether a run was good is the landing distance
+  // against waypoint_tolerance, and it is buried at
+  // result.completion_status.waypoint_distances[last].distance. Every session
+  // so far has extracted it by hand from raw JSON. Surface it.
+  // ---------------------------------------------------------------------
+
+  _landingDistance(segmentResult) {
+    const distances = segmentResult?.completion_status?.waypoint_distances;
+    if (!Array.isArray(distances) || !distances.length) return null;
+    const last = distances[distances.length - 1];
+    return typeof last?.distance === "number" ? last.distance : null;
+  }
+
+  _segmentLandingRows(result) {
+    if (!result) return [];
+    const segments =
+      Array.isArray(result.segments) && result.segments.length
+        ? result.segments
+        : // A Nudge or single-segment vector run has no `segments` wrapper; it
+          // IS the segment result. Present it the same way.
+          this._landingDistance(result) != null
+          ? [
+              {
+                index: 1,
+                passed: result.stop_reason === "target_reached",
+                result,
+              },
+            ]
+          : [];
+    return segments.map((segment) => {
+      const inner = segment.result || {};
+      const landing = this._landingDistance(inner);
+      const tolerance =
+        typeof inner.waypoint_tolerance === "number"
+          ? inner.waypoint_tolerance
+          : null;
+      return {
+        index: segment.index,
+        passed: segment.passed === true,
+        stopReason: inner.stop_reason ?? null,
+        planned: typeof inner.distance === "number" ? inner.distance : null,
+        landing,
+        tolerance,
+        inside:
+          landing != null && tolerance != null ? landing <= tolerance : null,
+        linearCommands: inner.linear_commands_sent ?? null,
+        turnCommands: inner.turn_commands_sent ?? null,
+      };
+    });
+  }
+
+  _runSummaryHtml(result) {
+    const rows = this._segmentLandingRows(result);
+    if (!rows.length) return "";
+    const landings = rows
+      .map((row) => row.landing)
+      .filter((value) => typeof value === "number");
+    const mean = landings.length
+      ? landings.reduce((sum, value) => sum + value, 0) / landings.length
+      : null;
+    const worst = landings.length ? Math.max(...landings) : null;
+    const body = rows
+      .map((row) => {
+        const verdict =
+          row.inside === null ? "—" : row.inside ? "inside" : "OUTSIDE";
+        const verdictClass =
+          row.inside === null ? "" : row.inside ? "ok" : "bad";
+        const landing =
+          row.landing == null ? "—" : `${row.landing.toFixed(4)} m`;
+        const tolerance =
+          row.tolerance == null ? "—" : `${row.tolerance.toFixed(2)} m`;
+        const planned =
+          row.planned == null ? "—" : `${row.planned.toFixed(2)} m`;
+        const pulses = [
+          row.turnCommands == null ? null : `${row.turnCommands}T`,
+          row.linearCommands == null ? null : `${row.linearCommands}L`,
+        ]
+          .filter(Boolean)
+          .join(" ");
+        return `<tr>
+          <td>${this._escapeHtml(row.index)}</td>
+          <td class="${row.passed ? "ok" : "bad"}">${row.passed ? "✓" : "✗"}</td>
+          <td>${this._escapeHtml(row.stopReason || "—")}</td>
+          <td class="num">${this._escapeHtml(planned)}</td>
+          <td class="num">${this._escapeHtml(landing)}</td>
+          <td class="num">${this._escapeHtml(tolerance)}</td>
+          <td class="${verdictClass}">${verdict}</td>
+          <td class="num">${this._escapeHtml(pulses || "—")}</td>
+        </tr>`;
+      })
+      .join("");
+    const footer =
+      mean == null
+        ? ""
+        : `<div class="summary-footer">mean landing ${mean.toFixed(4)} m · worst ${worst.toFixed(4)} m · ${landings.length} of ${rows.length} segments measured</div>`;
+    const age = this._runAgeLabel();
+    return `<div class="run-summary">
+      <div class="title">Segment landings${age ? `<span class="run-age">${this._escapeHtml(age)}</span>` : `<span class="run-age">from a previous session</span>`}</div>
+      <div class="summary-scroll"><table>
+        <thead><tr><th>#</th><th>ok</th><th>stop reason</th><th>leg</th><th>landing</th><th>tol</th><th>verdict</th><th>pulses</th></tr></thead>
+        <tbody>${body}</tbody>
+      </table></div>
+      ${footer}
+    </div>`;
+  }
+
+  // ---------------------------------------------------------------------
+  // Readiness banner
+  // ---------------------------------------------------------------------
+
+  _readiness() {
+    if (this._motionRunActive()) {
+      return {
+        level: "busy",
+        headline: "Run in progress — Real Go and editing are locked.",
+        details: ["Use Abort / Stop to end it early."],
+      };
+    }
+    const preflight = this._preflight();
+    if (!preflight.safe) {
+      // Every blocker gets its own explanation on its own line. Showing only
+      // the first hides the deeper problem behind the shallow one -- "click a
+      // destination" reads as the whole story while the motion gate is off --
+      // and running them together as one paragraph is unreadable at five.
+      const details = [
+        ...new Set(
+          preflight.blockers.map((code) => BLOCKER_HELP[code]).filter(Boolean),
+        ),
+      ];
+      return {
+        level: "blocked",
+        headline: `Not ready: ${preflight.blockers.join(", ")}`,
+        details,
+      };
+    }
+    const missing = [];
+    if (!this._confirmBladesOff) missing.push("blades off");
+    if (!this._confirmClearArea) missing.push("clear area");
+    if (missing.length) {
+      return {
+        level: "arming",
+        headline: `Almost ready — confirm ${missing.join(" and ")}.`,
+        details: ["Both confirmations are required before Real Go will send."],
+      };
+    }
+    const segments = this._segmentCount();
+    return {
+      level: "ready",
+      headline: `Ready — Real Go will drive ${segments} segment${segments === 1 ? "" : "s"}.`,
+      details: [this._profileLabel()],
+    };
   }
 
   setConfig(config) {
@@ -435,7 +713,9 @@ class MammotionCustomPathCard extends HTMLElement {
           : ["runtime_safety_blocked"]),
       );
     }
-    return blockers;
+    // Same duplicate-source problem as _preflight(): the two backend lists
+    // overlap, and this one feeds the Nudge tooltip.
+    return [...new Set(blockers)];
   }
 
   _preflight() {
@@ -475,7 +755,11 @@ class MammotionCustomPathCard extends HTMLElement {
     }
     return {
       safe: blockers.length === 0,
-      blockers,
+      // The backend reports the same condition on both its experimental_motion
+      // and safety blocker lists -- position_not_valid_for_motion and
+      // rtk_not_precise arrive on each -- so concatenating them printed every
+      // shared code twice. Dedupe while keeping first-seen order.
+      blockers: [...new Set(blockers)],
       runtime,
     };
   }
@@ -1228,10 +1512,12 @@ class MammotionCustomPathCard extends HTMLElement {
         waypoints: this._waypoints.length,
         stop_reason: this._realRun?.stop_reason ?? null,
         failed_segment_index: this._realRun?.failed_segment_index ?? null,
-        segments: (this._realRun?.segments || []).map((seg) => ({
-          index: seg.index,
-          passed: seg.passed,
-          stop_reason: seg.result?.stop_reason ?? null,
+        segments: this._segmentLandingRows(this._realRun).map((row) => ({
+          index: row.index,
+          passed: row.passed,
+          stop_reason: row.stopReason,
+          landing: row.landing,
+          tolerance: row.tolerance,
         })),
         summary: this._segmentProgressText(this._realRun),
       });
@@ -1538,8 +1824,9 @@ class MammotionCustomPathCard extends HTMLElement {
     const removeDisabled = pathSet && !runActive ? "" : "disabled";
     const preflight = this._preflight();
     const preflightText = preflight.safe
-      ? "Preflight: safe"
-      : `Preflight blockers: ${preflight.blockers.join(", ")}`;
+      ? "Preflight: safe — tap for runtime details"
+      : `Preflight blockers: ${preflight.blockers.join(", ")} — tap for runtime details`;
+    const readiness = this._readiness();
     const runtimePanel = this._runtimePreflightDetails();
     const realGoDisabled =
       !pathSet ||
@@ -1573,9 +1860,44 @@ class MammotionCustomPathCard extends HTMLElement {
     this.shadowRoot.innerHTML = `
       <style>
         ha-card { overflow: hidden; user-select: text; -webkit-user-select: text; }
-        .toolbar { display: flex; gap: 8px; align-items: center; padding: 12px; flex-wrap: wrap; }
+
+        /* Readiness banner: one place that says whether Real Go will go, and
+           if not, why. The blocker codes stay verbatim so they remain
+           greppable against the backend, with plain English underneath. */
+        .banner { margin: 12px 12px 0; padding: 9px 11px; border-radius: 6px; border-left: 4px solid; font-size: 13px; }
+        .banner-headline { font-weight: 600; }
+        .banner-detail { margin: 4px 0 0; padding-left: 18px; font-size: 12px; opacity: 0.85; }
+        .banner-detail li { margin: 2px 0; }
+        .banner.ready { border-color: #22c55e; background: rgba(34,197,94,0.12); }
+        .banner.arming { border-color: #f59e0b; background: rgba(245,158,11,0.12); }
+        .banner.blocked { border-color: #ef4444; background: rgba(239,68,68,0.12); }
+        .banner.busy { border-color: #3b82f6; background: rgba(59,130,246,0.12); }
+
+        .toolbar { display: flex; gap: 10px; align-items: stretch; padding: 12px; flex-wrap: wrap; }
+        .group { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 6px 9px; border: 1px solid rgba(127,127,127,0.3); border-radius: 6px; }
+        .group-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--secondary-text-color); font-weight: 700; }
+        .confirm { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; white-space: nowrap; }
+        button.primary:not([disabled]) { background: #22c55e; color: #06240f; font-weight: 700; border: 1px solid #16a34a; border-radius: 4px; padding: 4px 12px; cursor: pointer; }
+        button.danger:not([disabled]) { background: #ef4444; color: #fff; font-weight: 600; border: 1px solid #dc2626; border-radius: 4px; padding: 4px 10px; cursor: pointer; }
+        .export-bar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 0 12px 12px; }
+
+        /* Segment landings: the numbers every run has so far been read out of
+           raw JSON by hand. landing vs waypoint_tolerance is the verdict. */
+        .run-summary { margin: 0 12px 12px; padding: 8px 10px; border: 1px solid rgba(127,127,127,0.35); border-radius: 6px; font-size: 12px; }
+        .run-summary .title { font-weight: 600; margin-bottom: 6px; display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+        .run-age { font-weight: 400; font-size: 11px; color: var(--secondary-text-color); }
+        .summary-scroll { overflow-x: auto; }
+        .run-summary table { border-collapse: collapse; width: 100%; min-width: 460px; }
+        .run-summary th { text-align: left; font-weight: 600; color: var(--secondary-text-color); font-size: 11px; padding: 2px 6px 4px 0; white-space: nowrap; }
+        .run-summary td { padding: 3px 6px 3px 0; border-top: 1px solid rgba(127,127,127,0.2); white-space: nowrap; }
+        .run-summary td.num { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; text-align: right; }
+        .run-summary .ok { color: #22c55e; font-weight: 600; }
+        .run-summary .bad { color: #ef4444; font-weight: 700; }
+        .summary-footer { margin-top: 6px; color: var(--secondary-text-color); font-size: 11px; }
+
         .status { padding: 0 12px 12px; color: var(--secondary-text-color); font-size: 13px; }
         .card-version { padding: 4px 12px 10px; color: var(--secondary-text-color); font-size: 11px; opacity: 0.6; text-align: right; }
+        .history-actions { display: flex; gap: 6px; flex-wrap: wrap; }
         .history-row { padding: 4px 0; border-bottom: 1px solid rgba(127,127,127,0.2); font-size: 12px; }
         .history-when { color: var(--secondary-text-color); }
         .history-outcome { font-weight: 600; }
@@ -1594,6 +1916,7 @@ class MammotionCustomPathCard extends HTMLElement {
         .coordinate-editor .hint { color: var(--secondary-text-color); margin-top: 5px; }
         .preflight-panel { margin: 0 12px 12px; padding: 8px 10px; border: 1px solid rgba(127,127,127,0.35); border-radius: 6px; font-size: 12px; color: var(--secondary-text-color); }
         .preflight-panel .title { font-weight: 600; margin-bottom: 6px; color: var(--primary-text-color); }
+        .preflight-panel > summary { font-weight: 600; color: var(--primary-text-color); margin-bottom: 6px; }
         .preflight-row { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
         .preflight-row .label { opacity: 0.85; }
         .preflight-row .value { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; text-align: right; }
@@ -1605,28 +1928,42 @@ class MammotionCustomPathCard extends HTMLElement {
         select, button { font: inherit; }
       </style>
       <ha-card header="Mammotion click/go (guarded segment chain)">
+        <div class="banner ${readiness.level}">
+          <div class="banner-headline">${this._escapeHtml(readiness.headline)}</div>
+          ${
+            readiness.details.length
+              ? `<ul class="banner-detail">${readiness.details.map((line) => `<li>${this._escapeHtml(line)}</li>`).join("")}</ul>`
+              : ""
+          }
+        </div>
         <div class="toolbar">
-          <button id="reload" type="button">Reload map/runtime</button>
-          <button id="undo" type="button" ${removeDisabled}>Remove last waypoint</button>
-          <button id="clear" type="button" ${runActive ? "disabled" : ""}>Reset path</button>
-          <button id="copy-yaml" type="button" ${removeDisabled}>Copy YAML</button>
-          <button id="copy-json" type="button" ${removeDisabled}>Copy JSON</button>
-          <button id="copy-dry-run-yaml" type="button" ${removeDisabled}>Copy dry-run YAML</button>
-          <button id="dry-run" type="button" ${pathSet && !runActive ? "" : "disabled"}>Run dry-run</button>
-          <button id="real-go" type="button" ${realGoDisabled ? "disabled" : ""}>Real Go</button>
-          <button id="abort" type="button">Abort / Stop</button>
-          <label><input id="confirm-blades-off" type="checkbox" ${this._confirmBladesOff ? "checked" : ""}/> confirm blades off</label>
-          <label><input id="confirm-clear-area" type="checkbox" ${this._confirmClearArea ? "checked" : ""}/> confirm clear area</label>
-          <label title="Straight line only when trustworthy current orientation is available. Stale course-over-ground is refused.">Nudge
-            <input id="nudge-distance" type="number" min="0.1" max="${MAX_NUDGE_METRES}" step="0.1" value="${this._nudgeMetres().toFixed(1)}" style="width:4.5em"/> m
-          </label>
-          <button id="nudge" type="button" title="${this._escapeHtml(nudgeTitle)}" ${nudgeDisabled ? "disabled" : ""}>Nudge forward</button>
-          <label>Area
-            <select id="area">
-              ${areas.map((area) => `<option value="${this._escapeHtml(area.area_hash)}" ${String(area.area_hash) === String(this._areaHash) ? "selected" : ""}>${this._escapeHtml(area.name || area.area_hash)}</option>`).join("")}
-            </select>
-          </label>
-          <span class="waypoint-counter">Waypoints: ${this._waypoints.length} (segments: ${segmentCount})</span>
+          <div class="group">
+            <span class="group-label">Path</span>
+            <label>Area
+              <select id="area">
+                ${areas.map((area) => `<option value="${this._escapeHtml(area.area_hash)}" ${String(area.area_hash) === String(this._areaHash) ? "selected" : ""}>${this._escapeHtml(area.name || area.area_hash)}</option>`).join("")}
+              </select>
+            </label>
+            <button id="reload" type="button" title="Re-fetch the map and live mower state">Reload</button>
+            <button id="undo" type="button" ${removeDisabled} title="Remove the last destination">Undo point</button>
+            <button id="clear" type="button" ${runActive ? "disabled" : ""} title="Remove all destinations">Reset path</button>
+            <span class="waypoint-counter">${this._waypoints.length}/${MAX_WAYPOINTS} points · ${segmentCount} segment${segmentCount === 1 ? "" : "s"}</span>
+          </div>
+          <div class="group">
+            <span class="group-label">Run</span>
+            <button id="dry-run" type="button" ${pathSet && !runActive ? "" : "disabled"} title="Validate and plan without sending any mower command">Dry-run</button>
+            <label class="confirm"><input id="confirm-blades-off" type="checkbox" ${this._confirmBladesOff ? "checked" : ""}/> blades off</label>
+            <label class="confirm"><input id="confirm-clear-area" type="checkbox" ${this._confirmClearArea ? "checked" : ""}/> clear area</label>
+            <button id="real-go" class="primary" type="button" ${realGoDisabled ? "disabled" : ""} title="${this._escapeHtml(realGoDisabled ? readiness.headline : "Drive the planned path for real")}">▶ Real Go</button>
+            <button id="abort" class="danger" type="button" title="Stop any manual-motion session immediately">■ Abort / Stop</button>
+          </div>
+          <div class="group">
+            <span class="group-label">Nudge</span>
+            <label title="Straight line only when trustworthy current orientation is available. Stale course-over-ground is refused.">
+              <input id="nudge-distance" type="number" min="0.1" max="${MAX_NUDGE_METRES}" step="0.1" value="${this._nudgeMetres().toFixed(1)}" style="width:4.5em"/> m
+            </label>
+            <button id="nudge" type="button" title="${this._escapeHtml(nudgeTitle)}" ${nudgeDisabled ? "disabled" : ""}>Nudge forward</button>
+          </div>
         </div>
         <div class="map-caption">
           <span class="legend"><span class="dot" style="background:#22c55e"></span>Green = mower position; arrow only with trusted live orientation</span>
@@ -1635,9 +1972,17 @@ class MammotionCustomPathCard extends HTMLElement {
         <svg id="path-map"></svg>
         ${coordinateEditor}
         <div class="status">${this._escapeHtml(this._status)}</div>
-        <div class="status">${this._escapeHtml(preflightText)}</div>
-        <div class="preflight-panel">
-          <div class="title">Runtime preflight details</div>
+        ${this._realRun ? this._runSummaryHtml(this._realRun) : ""}
+        <div class="export-bar">
+          <span class="group-label">Export</span>
+          <button id="download-real-result" type="button" ${this._realRun ? "" : "disabled"} title="Save the complete Real Go response as a file">Download last run JSON</button>
+          <button id="download-dry-result" type="button" ${this._dryRun ? "" : "disabled"} title="Save the complete dry-run response as a file">Download dry-run JSON</button>
+          <button id="copy-yaml" type="button" ${removeDisabled}>Copy YAML</button>
+          <button id="copy-json" type="button" ${removeDisabled}>Copy JSON</button>
+          <button id="copy-dry-run-yaml" type="button" ${removeDisabled}>Copy dry-run YAML</button>
+        </div>
+        <details class="preflight-panel">
+          <summary>${this._escapeHtml(preflightText)}</summary>
           <div class="preflight-row"><span class="label">execution profile</span><span class="value">${this._escapeHtml(this._profileLabel())}</span></div>
           <div class="preflight-row"><span class="label">mower orientation</span><span class="value">${this._escapeHtml(this._headingLabel())}</span></div>
           <div class="preflight-row"><span class="label">active_transport</span><span class="value">${this._escapeHtml(runtimePanel.activeTransport)}</span></div>
@@ -1654,7 +1999,7 @@ class MammotionCustomPathCard extends HTMLElement {
           <div class="preflight-row"><span class="label">active session</span><span class="value">${this._escapeHtml(`${runtimePanel.activeSession} (${runtimePanel.sessionPhase})`)}</span></div>
           <div class="preflight-row"><span class="label">last confirmed write</span><span class="value">${this._escapeHtml(runtimePanel.lastDispatch)}</span></div>
           <div class="preflight-row"><span class="label">stop confirmed</span><span class="value">${this._escapeHtml(runtimePanel.stopOutcome)}</span></div>
-        </div>
+        </details>
         ${(this._validation?.warnings || []).length ? `<div class="warnings">Warnings: ${this._escapeHtml(this._validation.warnings.join(", "))}</div>` : ""}
         ${pathSet ? `<details><summary>Preview service YAML</summary><pre>${this._escapeHtml(this._payloadYaml())}</pre></details>` : ""}
         ${pathSet ? `<details><summary>Dry-run service YAML</summary><pre>${this._escapeHtml(this._dryRunYaml())}</pre></details>` : ""}
@@ -1681,6 +2026,23 @@ class MammotionCustomPathCard extends HTMLElement {
     this._q("#real-go")?.addEventListener("click", () => this._runRealGo());
     this._q("#clear-history")?.addEventListener("click", () =>
       this._clearHistory(),
+    );
+    this._q("#download-real-result")?.addEventListener("click", () =>
+      this._downloadJson(this._realRun, "real-go", "Real Go result"),
+    );
+    this._q("#download-dry-result")?.addEventListener("click", () =>
+      this._downloadJson(this._dryRun, "dry-run", "dry-run result"),
+    );
+    this._q("#download-history")?.addEventListener("click", () =>
+      this._downloadJson(
+        {
+          card_version: CARD_VERSION,
+          entity: this._config.entity ?? null,
+          runs: this._loadHistory(),
+        },
+        "run-history",
+        "run history",
+      ),
     );
     this._q("#copy-dry-result")?.addEventListener("click", () =>
       this._copyText(

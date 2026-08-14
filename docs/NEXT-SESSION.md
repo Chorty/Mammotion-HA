@@ -1,10 +1,165 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
-Updated **2026-08-08 late** after Gate 5 passed. This is the current handoff;
-`docs/archive/NEXT-SESSION-2026-07-28.md` and the chronological sections in
-`docs/p0-beta-release.md` are evidence, not current instructions.
+⚠️ **Everything below the "2026-08-13 HANDOFF" section is older and its build
+state is stale.** Those sections remain accurate as *evidence* — the
+measurements stand — but do not act on any build/host/gate state they describe.
 
-## 🚦 START HERE 2026-08-11 night — REACH IS SOLVED. 4 m on one segment, measured.
+---
+
+# 🚦 2026-08-13 HANDOFF — read this section, then the plan it points to
+
+## 0. Live state, verified 2026-08-14 after item 18
+
+| | |
+| --- | --- |
+| Branch | `feat/beta31-reach-and-overshoot-ceiling`, publish target `origin` = the **Chorty** fork |
+| Version | `0.6.4-beta52` — host and branch agree; manifest, pyproject, card and lock version sites agree |
+| Card on host | md5 `9512f504f4b861488e98f4d29ced6e4f`, identical at **both** serving paths; resource `?v=0.6.4-beta52&build=9512f504` |
+| Motion gate | ✅ **DISARMED.** `real_motion_allowed: false`, no active session |
+| Mower | Post-run readback: `MODE_READY`, BLE live at −58 dBm, RTK Fix, blades zero |
+
+## 1. What to do next
+
+✅ **Night v1 is implemented; item-17 diagnostics are deployed as beta52.** It adds an
+explicit `turn_mode: "night"` for one forward-only segment, night-only mirror
+conversion, angular 500 with refresh, fixed-budget/RTK/length/heading/re-aim/
+reverse/multi-segment refusals, and the `--night-segment` harness mode. The
+frozen card profile and VIO/legacy paths remain pinned by tests.
+
+✅ **§7 item 15 is measured.** One 1,500 ms angular −500 pulse delivered six
+200 ms refresh writes, changed `toward` by −54.2208°, and translated 0.07459 m.
+The subsequent forward pulse moved 0.43648 m but its movement vector missed the
+target direction by 81.416°. The night guard correctly stopped with
+`night_reaim_required_but_unavailable`. Read
+`docs/night-segment-turn-quantum-20260813.md` and the complete JSON it links.
+
+✅ **§7 item 16 is also measured.** One angular-only +500 pulse produced 73
+concurrent runtime samples. `toward` stayed 43.1856 throughout the 1.551 s
+refreshed window, then appeared in one step as 79.492 (+36.3064°); no
+intermediate value was observed at the roughly 0.1-second capture cadence. Read
+`docs/night-toward-latency-20260813.md`.
+
+✅ **§7 item 17 is measured.** One backward-only pulse moved 0.418536 m on
+bearing 96.433921° while `toward` stayed exactly 173.1023°. The body-heading
+prediction for reverse was 97.0277°, only 0.593779° away. This settles
+`toward` as body heading rather than course-over-ground under reverse.
+RapidState `fuse_status` remained 0 `NO_POSE` in all 81 capture records, so it
+was not a useful live fusion discriminator on this manual path. Read
+`docs/night-reverse-heading-20260813.md` and its linked raw JSON.
+
+✅ **§7 item 18 is measured, but is not an acceptance pass.** One 0.699963 m
+perpendicular night segment reached its opening 8° tolerance in one turn pulse,
+then used all three linear commands and stopped on `no_target_progress` at
+0.114277 m from target. Per-pulse mirror observations were 92.0720 / 90.7417 /
+89.1569°. Read `docs/night-segment-item18-20260814.md` and the raw evidence it
+links. The run does not establish a night tolerance or landing distribution.
+
+⚠️ Item 15's 14.3069° mirror observation remains unexplained, although item 18's
+three observations near 90.13° show it is not stable across all night pulses.
+The latency result does not explain that mismatch because the executor waits
+for post-command feedback before driving. Any further physical run requires
+separate, fresh, supervised authorization; this handoff grants none.
+
+🔎 **Autonomous comparison, read-only:** while the mower continued its own
+Backyard Hill route, a 179.895 s capture recorded 291 samples and three complete
+pivots. `toward` streamed progressively during those continuous vendor turns;
+40 usable steps gave `bearing + toward = 90.57°`, circular SD 2.02°. This means
+item 16's single post-pulse update characterizes our bounded pulse/report path,
+not all mower rotation. See `docs/autonomous-mow-observation-20260813.md`.
+
+It was produced by a 20-agent adversarial design workflow and **every gate design
+in it was refuted at least once before the plan was written**. Read §4 before
+changing anything — it records 21 defects already fixed and 8 risks knowingly
+accepted, so a "fix" you invent may already have been considered and rejected.
+
+Companion: `docs/night-segment-design-plan-20260813.md` is the **findings log**
+(what was discovered, and corrections to earlier drafts). ⚠️ Its §2
+runaway-safety claim is **wrong**; the banner at its top says so.
+
+## 2. 🚨 Traps that will bite a session starting cold
+
+1. **The standalone turn service and the segment executor's legacy branch are NOT
+   the same code path.** Five night turns converged by calling
+   `raw_pymammotion_turn_to_heading` **directly**. The segment's legacy branch
+   (`services.py:11498-11517`) supplies *different defaults* for two parameters
+   that decide whether the mower moves at all: it omits
+   `motion_refresh_interval_ms` (primitive default `0`) and passes
+   `angular_speed_fast/slow` at the schema default **180**, which does not break
+   static friction on a stationary pivot (~3°/pulse). **Night must dispatch at
+   angular 500 with refresh forwarded.**
+2. **Two heading-conversion sites CANCEL.** `_raw_vector_readiness_target_points`
+   (`:9448-9465`) builds `toward + offset`; the executor (`:11094-11100`)
+   converts back `map − offset`. Fixing one alone breaks the readiness probe by a
+   *heading-dependent* amount (~4.3° at `toward` 176, ~132° at `toward` 60) — so
+   a half-fix passes review at whatever heading you happen to test. The plan
+   avoids this by scoping the mirror to `turn_mode: "night"` only.
+3. **`LUBA_ACCEPTANCE_PROFILE` (card JS) is frozen.** Changing any key's *value*
+   un-accepts a twice-Gate-5-passed profile and owes a re-pin plus a fresh Gate 5.
+   Night v1 deliberately makes **no card change at all**.
+4. **The card is served from TWO paths.** Deploy to both and bump the Lovelace
+   resource key, or the browser silently loads the stale card.
+   ⚠️ `scripts/ha_set_card_resource.py` does **not** append the `build=` suffix —
+   pass it inside the version argument:
+   `ha_set_card_resource.py "0.6.4-betaNN&build=<md5 prefix>" --apply`.
+5. **Night turns converge but are NOT accurate.** 5/5 reached target, but the
+   pulse quantum is **48.15° ± 5.70** and nothing scales it; four of five
+   converged on luck. Do not read "5/5" as control.
+6. **Verify with per-item records, not aggregates.** This repo has been burned
+   repeatedly by summary fields hiding the truth.
+
+## 3. Running the gates (these are exactly what CI runs)
+
+```sh
+.venv/bin/python -m pytest --cov=custom_components.mammotion --cov-report=term-missing tests
+.venv/bin/python -m ruff check custom_components tests
+.venv/bin/python -m ruff format --check custom_components tests
+.venv/bin/python -m mypy --follow-imports=skip custom_components/mammotion
+npm run test:frontend
+.venv/bin/python -m pre_commit run --all-files
+```
+
+There is **no global `uv`** — use `.venv/bin/python` directly. Beta50 counts
+personally produced on the final tree: **658 pytest, 39 frontend**, all six
+commands green. Run them again before a later change; do not carry these counts
+forward as if newly measured.
+
+## 4. Hardware rules — non-negotiable
+
+- **Real motion needs explicit per-run authorization from the operator.** Never
+  arm on your own initiative.
+- **Arm immediately before, disarm immediately after, and verify both.** A
+  script that can open the gate must treat *"I called enable"* as what obliges
+  the disarm — never *"enable succeeded"* (that bug left the gate open once,
+  fixed in `c196b8b1`).
+- **Save the complete response JSON** as `docs/evidence-*.json` and commit it
+  **before** writing any prose about the run. The card now has a
+  "Download last run JSON" button for exactly this.
+- Blades OFF. This project never runs blades-on — the goal is point-and-click
+  movement, not mowing.
+- Night-mode turns work without VIO. Two bounded night-mode segments have run;
+  neither establishes a night landing-accuracy specification.
+
+## 5. What is genuinely unsettled
+
+- Two closed-loop night-mode segments have run. Item 15 stopped after one pulse
+  on `night_reaim_required_but_unavailable`; item 18 stopped after three pulses
+  on `no_target_progress` at 0.114277 m. Neither is a landing-accuracy pass.
+- The mirror has now been consumed by one control loop and disagreed with the
+  measured forward course by 75.823° (`movement bearing + toward` was 14.3069°
+  rather than 90.13°). Cause remains unknown.
+- `toward` does **not** flip under reverse: item 17 held it at 173.1023° while
+  the mower travelled 0.418536 m almost exactly opposite the inferred body
+  heading. The remaining orientation question is why item 15's forward course
+  disagreed with the same mirror relation.
+- On one refreshed turn, `toward` was stepwise rather than live: no intermediate
+  value appeared at ~0.1-second cadence. The exact physical-stop-to-report delay
+  was not measured at the protocol timestamp.
+- **No landing accuracy is evidenced at night.** `waypoint_tolerance: 0.15` is a
+  VIO-path number.
+
+---
+
+## 🚦 (older) START HERE 2026-08-11 night — REACH IS SOLVED. 4 m on one segment, measured.
 
 Host and branch both `0.6.4-beta41`. **Gate DISARMED**, verified after every run.
 Mower is **DOCKED and charging** at (4.3188, 3.2862), `CHARGE_ON`, MODE_READY,

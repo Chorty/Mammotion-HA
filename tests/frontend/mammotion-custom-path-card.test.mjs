@@ -63,6 +63,30 @@ function card() {
   return element;
 }
 
+test("acceptance profile is frozen for the night-mode change", () => {
+  assert.deepEqual(LUBA_ACCEPTANCE_PROFILE, {
+    prefer_ble: true,
+    turn_mode: "vio",
+    max_turn_commands: 4,
+    vio_turn_max_commands: 4,
+    max_linear_commands: 3,
+    max_linear_pulse_ceiling: 14,
+    max_no_progress_pulses: 3,
+    heading_tolerance_degrees: 18,
+    waypoint_tolerance: 0.15,
+    min_progress_distance: 0.0025,
+    max_turn_translation_distance: 0.3,
+    calibrated_forward_heading_offset_degrees: 102.4,
+    turn_pulse_duration_ms: 1500,
+    linear_pulse_duration_ms: 1300,
+    motion_refresh_interval_ms: 200,
+    final_approach_metres_per_pulse: 1.06,
+    turn_degrees_per_second: 37,
+    ble_auto_recover: false,
+    sample_delays: [0, 3],
+  });
+});
+
 test("map clicks accept seven destinations and refuse an eighth", () => {
   const element = card();
   element._mapT = {};
@@ -537,4 +561,302 @@ test("fresh preflight is fetched and confirmations reset after failure", async (
   assert.equal(element._confirmBladesOff, false);
   assert.equal(element._confirmClearArea, false);
   assert.match(element._status, /failed/);
+});
+
+// ---------------------------------------------------------------------------
+// Run summary, readiness banner and result export (beta48)
+// ---------------------------------------------------------------------------
+
+function segment(index, landing, { passed = true, tolerance = 0.15 } = {}) {
+  return {
+    index,
+    passed,
+    result: {
+      stop_reason: passed ? "target_reached" : "max_linear_commands_reached",
+      distance: 0.8,
+      waypoint_tolerance: tolerance,
+      linear_commands_sent: 2,
+      turn_commands_sent: 1,
+      completion_status: {
+        // The real payload lists the START point first and the waypoint last;
+        // reading [0] would report the distance already travelled, not the miss.
+        waypoint_distances: [
+          { index: 0, distance: 0.867 },
+          { index: 1, distance: landing },
+        ],
+      },
+    },
+  };
+}
+
+test("segment landings are read from the LAST waypoint distance", () => {
+  const element = card();
+  const rows = element._segmentLandingRows({
+    segments: [segment(1, 0.0674), segment(2, 0.1032)],
+  });
+
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].landing, 0.0674);
+  assert.equal(rows[1].landing, 0.1032);
+  assert.equal(rows[0].tolerance, 0.15);
+  assert.equal(rows[0].inside, true);
+  assert.equal(rows[0].planned, 0.8);
+});
+
+test("a landing outside tolerance is flagged even when the segment passed", () => {
+  const element = card();
+  const rows = element._segmentLandingRows({
+    segments: [segment(1, 0.1797)],
+  });
+
+  assert.equal(rows[0].inside, false);
+  assert.match(
+    element._runSummaryHtml({ segments: [segment(1, 0.1797)] }),
+    /OUTSIDE/,
+  );
+});
+
+test("a single-segment result with no segments wrapper still summarises", () => {
+  const element = card();
+  const rows = element._segmentLandingRows(segment(1, 0.09).result);
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].landing, 0.09);
+});
+
+test("run summary reports the mean landing across measured segments", () => {
+  const element = card();
+  const html = element._runSummaryHtml({
+    segments: [
+      segment(1, 0.0674),
+      segment(2, 0.1032),
+      segment(3, 0.0807),
+      segment(4, 0.0607),
+    ],
+  });
+
+  // The Gate 5 re-pass mean, to four places.
+  assert.match(html, /mean landing 0\.0780 m/);
+  assert.match(html, /worst 0\.1032 m/);
+  assert.match(html, /4 of 4 segments measured/);
+});
+
+test("run summary is empty rather than broken when there is nothing to show", () => {
+  const element = card();
+  assert.equal(element._runSummaryHtml(null), "");
+  assert.equal(element._runSummaryHtml({ segments: [] }), "");
+  assert.deepEqual(
+    element._segmentLandingRows({ stop_reason: "safety_gates_failed" }),
+    [],
+  );
+});
+
+test("readiness names the blocker code AND explains it", () => {
+  const element = card();
+  element._waypoints = [{ x: 2, y: 2 }];
+  element._runtimeState.experimental_motion = {
+    real_motion_allowed: false,
+    blockers: ["experimental_motion_disabled"],
+  };
+
+  const readiness = element._readiness();
+
+  assert.equal(readiness.level, "blocked");
+  assert.match(readiness.headline, /experimental_motion_disabled/);
+  assert.match(
+    readiness.details.join(" "),
+    /experimental BLE-only manual motion/,
+  );
+});
+
+test("every blocker is explained, not just the first", () => {
+  const element = card();
+  // No waypoints AND the motion gate closed. Explaining only path_unset would
+  // send the operator off to click the map while the real problem is the gate.
+  element._runtimeState.experimental_motion = {
+    real_motion_allowed: false,
+    blockers: ["experimental_motion_disabled"],
+  };
+
+  const readiness = element._readiness();
+
+  assert.match(readiness.headline, /path_unset/);
+  assert.equal(readiness.details.length, 2, "one line per blocker");
+  assert.match(readiness.details.join(" "), /Click at least one destination/);
+  assert.match(
+    readiness.details.join(" "),
+    /experimental BLE-only manual motion/,
+  );
+});
+
+test("readiness distinguishes missing confirmations from a real blocker", () => {
+  const element = card();
+  element._waypoints = [{ x: 2, y: 2 }];
+
+  const arming = element._readiness();
+  assert.equal(arming.level, "arming");
+  assert.match(arming.headline, /blades off and clear area/);
+
+  element._confirmBladesOff = true;
+  element._confirmClearArea = true;
+  const ready = element._readiness();
+  assert.equal(ready.level, "ready");
+  assert.match(ready.headline, /1 segment\./);
+});
+
+test("readiness reports a live run instead of offering to start another", () => {
+  const element = card();
+  element._waypoints = [{ x: 2, y: 2 }];
+  element._confirmBladesOff = true;
+  element._confirmClearArea = true;
+  element._runtimeState.experimental_motion.active_session = "session-1";
+
+  assert.equal(element._readiness().level, "busy");
+});
+
+test("download filenames are filesystem-safe and name the entity", () => {
+  const element = card();
+  const filename = element._downloadFilename("real-go");
+
+  assert.match(filename, /^mammotion-real-go-lawn-mower-test-[\dTZ-]+\.json$/);
+  // Colons are illegal in Windows filenames, and a dot in the stem would make
+  // the timestamp's milliseconds look like a second extension.
+  assert.ok(!filename.includes(":"));
+  assert.equal(filename.split(".").length, 2);
+});
+
+test("downloading with no result reports it instead of writing an empty file", () => {
+  const element = card();
+  let copied = null;
+  element._copyText = (text) => {
+    copied = text;
+  };
+
+  element._downloadJson(null, "real-go", "Real Go result");
+
+  assert.match(element._status, /No Real Go result to download/);
+  assert.equal(copied, null);
+});
+
+test("history entries carry the landing distance, not just pass/fail", () => {
+  const element = card();
+  const rows = element._segmentLandingRows({ segments: [segment(1, 0.0674)] });
+  const entry = {
+    at: "2026-08-13T02:00:00.000Z",
+    elapsed_seconds: 95,
+    stop_reason: "path_complete",
+    segments: rows.map((row) => ({
+      index: row.index,
+      passed: row.passed,
+      stop_reason: row.stopReason,
+      landing: row.landing,
+      tolerance: row.tolerance,
+    })),
+  };
+  element._loadHistory = () => [entry];
+
+  const html = element._renderHistoryHtml();
+
+  assert.match(html, /0\.067m/);
+  assert.match(html, /mean 0\.0674 m/);
+  assert.match(html, /download-history/);
+});
+
+test("blocker codes are deduplicated across the two backend lists", () => {
+  // The backend reports the same condition on BOTH experimental_motion.blockers
+  // and safety.blockers. Concatenating them printed position_not_valid_for_motion
+  // and rtk_not_precise twice each in the live banner (observed on beta48).
+  const element = card();
+  element._waypoints = [{ x: 2, y: 2 }];
+  element._runtimeState.experimental_motion = {
+    real_motion_allowed: false,
+    blockers: ["position_not_valid_for_motion", "rtk_not_precise"],
+  };
+  element._runtimeState.safety = {
+    allowed_for_manual_motion: false,
+    blockers: ["position_not_valid_for_motion", "rtk_not_precise"],
+  };
+
+  const { blockers } = element._preflight();
+
+  assert.deepEqual(blockers, [
+    "position_not_valid_for_motion",
+    "rtk_not_precise",
+  ]);
+  assert.equal(new Set(blockers).size, blockers.length);
+});
+
+test("nudge blockers are deduplicated too", () => {
+  const element = card();
+  element._runtimeState.experimental_motion = {
+    real_motion_allowed: false,
+    blockers: ["ble_link_not_live"],
+  };
+  element._runtimeState.safety = {
+    allowed_for_manual_motion: false,
+    blockers: ["ble_link_not_live"],
+  };
+
+  const blockers = element._motionBackendBlockers();
+
+  assert.equal(
+    blockers.filter((code) => code === "ble_link_not_live").length,
+    1,
+  );
+});
+
+test("a restored run is labelled with its age, never shown as current", () => {
+  const element = card();
+  element._realRun = { segments: [segment(1, 0.0674)] };
+
+  // No stored timestamp: older persisted runs must still be marked as stale
+  // rather than silently reading as "this just happened".
+  assert.match(
+    element._runSummaryHtml(element._realRun),
+    /from a previous session/,
+  );
+
+  element._realRunAt = new Date(Date.now() - 90 * 60 * 1000).toISOString();
+  assert.equal(element._runAgeLabel(), "1 h ago");
+
+  element._realRunAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  assert.equal(element._runAgeLabel(), "5 min ago");
+
+  element._realRunAt = new Date().toISOString();
+  assert.equal(element._runAgeLabel(), "just now");
+  assert.match(element._runSummaryHtml(element._realRun), /just now/);
+});
+
+test("persisting a run stamps the time it completed", () => {
+  const element = card();
+  element._persistLastRun({ stop_reason: "path_complete" });
+
+  assert.ok(element._realRunAt, "the run must carry a completion timestamp");
+  assert.equal(element._runAgeLabel(), "just now");
+});
+
+test("the blocker codes the backend actually emits all have help text", () => {
+  // Observed live on the host, 2026-08-13 beta48 (docked, just restarted).
+  // A code with no entry silently drops out of the banner's explanation list,
+  // which is exactly the "disabled button, no reason" failure this replaced.
+  const observed = [
+    "path_unset",
+    "experimental_motion_disabled",
+    "position_not_valid_for_motion",
+    "rtk_not_precise",
+    "path_validation_failed",
+    "ble_client_not_connected",
+  ];
+  const element = card();
+  element._runtimeState.experimental_motion = {
+    real_motion_allowed: false,
+    blockers: observed.filter((code) => code !== "path_unset"),
+  };
+
+  const { details } = element._readiness();
+
+  // path_unset is added by the card itself, so all six should be explained.
+  assert.equal(details.length, observed.length);
+  assert.match(details.join(" "), /RTK Fix and a zone inside a mapped area/);
+  assert.match(details.join(" "), /dozes after ~10 min idle/);
 });

@@ -14,6 +14,8 @@ from typing import Any
 
 import pytest
 
+from custom_components.mammotion.services import _TOWARD_MIRROR_DEGREES
+
 _MODULE_PATH = (
     Path(__file__).resolve().parents[2] / "scripts" / "beta32_validation_run.py"
 )
@@ -78,6 +80,43 @@ def test_mirror_is_not_an_additive_offset() -> None:
     higher = harness.mirror_facing({"toward": 80.0})
     assert lower is not None and higher is not None
     assert higher < lower
+
+
+def test_backend_and_harness_mirror_constants_agree() -> None:
+    """The two consumers must not silently steer with different mirrors."""
+    assert _TOWARD_MIRROR_DEGREES == harness.TOWARD_MIRROR_DEGREES
+
+
+def test_item18_profile_pins_the_planned_fixed_envelope() -> None:
+    """The first characterization must not inherit the old 18-degree default."""
+    assert harness.NIGHT_SEGMENT_PROFILE == {
+        "prefer_ble": True,
+        "turn_mode": "night",
+        "max_linear_commands": 3,
+        "max_linear_pulse_ceiling": None,
+        "motion_refresh_interval_ms": 200,
+        "max_turn_commands": 4,
+        "heading_tolerance_degrees": 8,
+        "turn_pulse_duration_ms": 1500,
+        "max_turn_translation_distance": 0.30,
+        "ble_auto_recover": False,
+    }
+
+
+def test_item18_path_is_perpendicular_and_one_forward_leg() -> None:
+    """The mapped target makes a wrong-sign conversion conspicuous."""
+    polygons = {"Test": [(-10.0, -10.0), (10.0, -10.0), (10.0, 10.0), (-10.0, 10.0)]}
+    points, area, heading = harness.build_item18_path(
+        (0.0, 0.0), 277.0277, polygons, 0.7
+    )
+    opening = abs((heading - 277.0277 + 180) % 360 - 180)
+
+    assert area == "Test"
+    assert len(points) == 2
+    assert opening == pytest.approx(90.0, abs=2.6)
+    assert (
+        (points[1]["x"] - points[0]["x"]) ** 2 + (points[1]["y"] - points[0]["y"]) ** 2
+    ) ** 0.5 == pytest.approx(0.7, abs=0.001)
 
 
 @pytest.mark.parametrize("toward", [None, "unknown"])

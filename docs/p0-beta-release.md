@@ -13,7 +13,7 @@ Four segments reached target at 0.0674 / 0.1032 / 0.0807 / 0.0607 m against a
 0.15 m tolerance — mean 0.0780, the best four-segment result on record. See
 `docs/gate5-repass-PASSED-20260812.md`.
 
-⚠️ **Reconciled 2026-08-12.** The paragraph this replaces was written on
+⚠️ **Reconciled through 2026-08-14.** The original paragraph was written on
 2026-08-02 and had gone badly stale: it stated that the card "has not completed
 both Gate 5 segments" and that backend acceptance "must not be presented as
 completed UI-to-mower acceptance". Both were superseded within a week and
@@ -443,8 +443,9 @@ The real result stopped at `segment_failed` after executing only segment 1:
 The session cleared, blades remained off, the mower returned `MODE_READY`, and
 experimental motion was disabled immediately. A separate 20-second capture was
 stationary at `(4.8583, -2.1320)`. The scoped BLE report found no disconnect,
-sequence-gap, malformed-frame or dropped-frame event. The release is halted:
-PR #10 must remain draft and no beta release may be dispatched.
+sequence-gap, malformed-frame or dropped-frame event. **Historical disposition,
+now superseded:** the release was halted here and PR #10 had to remain draft.
+Gate 5 later passed twice and PR #10 was merged.
 
 The run refutes the claimed **0.3-0.5 m usable leg band** and the assumption
 that a short refreshed pulse scales proportionally through zero. The isolated
@@ -638,9 +639,12 @@ proposed and then refuted on 2026-07-31.
 **Not acted on, and `LUBA_ACCEPTANCE_PROFILE` is unchanged.** Two caveats block
 a derivation:
 
-- `toward` is course-over-ground and read **167.383 before and after** a 1.36 m
-  drive — it did not update at all. If it is stale, every implied offset above
-  is computed against a stale baseline.
+- **Historical hypothesis, refuted by item 17:** `toward` was interpreted as
+  course-over-ground because it read **167.383 before and after** a 1.36 m
+  drive. A later commanded reverse pulse established that it follows body
+  heading instead. The original unchanged reading still establishes staleness
+  for this particular sample, so every implied offset above used a stale
+  baseline.
 - The implied offset trends upward run to run (111.4 → 113.3 → 115.5), which is
   what a slowly rotating mower would produce if `toward` is not tracking it.
 
@@ -810,7 +814,7 @@ safety one. It is tracked as the headline Alpha-to-Beta item below.
 ## Alpha to Beta
 
 ⚠️ **Reconcile this list against the chronological record above before acting on
-it.** Last reconciled: **2026-08-12 (evening)**. These entries are a summary,
+it.** Last reconciled: **2026-08-14**. These entries are a summary,
 and the results sections are the evidence — when they disagree, the results win.
 This list has already drifted twice: once it asked for a stationary BLE soak that
 had been completed the previous day and recorded 300 lines above, sending a later
@@ -877,7 +881,7 @@ shipped configuration is covered, ⚠️ **but the coverage depends on a fork wh
 that upstream has not merged.** A user who installs against stock pymammotion is
 not protected; the capability probe refuses motion rather than running unsafely.
 
-## 🏁 Disposition: BETA — all three exit criteria met, 2026-08-12
+## 🏁 Disposition: BETA — all three exit criteria met; night scope reconciled 2026-08-14
 
 Every LUBA acceptance gate is passed, Gate 5 twice, the card emits the accepted
 profile and the mower executes it, and all three Beta exit criteria are met on
@@ -892,9 +896,12 @@ finished or that no defect remains. Three things are open and documented:
   (`docs/cross-track-is-set-at-the-start-of-the-leg-20260812.md`). Two candidate
   remedies were proposed and **refuted the same afternoon** — do not tune the
   control law on n = 2.
-- **Daylight only.** Closed-loop motion needs VIO, so this does not work at
-  night. The route out is arcs, never yet attempted
-  (`docs/night-motion-options-20260811.md`).
+- **Night is contained, not card-accepted.** An explicit RTK-only night branch
+  now exists for one forward-only segment. Item 18 reached its 8° opening-turn
+  tolerance and stopped safely at 0.114277 m on `no_target_progress`; this is
+  characterization, not a night landing-tolerance claim. The accepted card
+  profile remains the daylight VIO path and is byte-identical. See
+  `docs/night-segment-item18-20260814.md`.
 - **BLE reliability is a hint, not a number** — see criterion 2.
 
 **Release** remains gated on its own criteria: non-LUBA hardware characterised

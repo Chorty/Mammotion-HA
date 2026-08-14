@@ -1,3 +1,58 @@
+# Handoff — beta52 night v1; items 15–18 measured and contained
+
+Night v1 off-mower items 1–14 and the item-17 runtime diagnostics are deployed
+as `0.6.4-beta52`. Both card paths match md5
+`9512f504f4b861488e98f4d29ced6e4f`; Lovelace resource is
+`?v=0.6.4-beta52&build=9512f504`; `services.py` matches local md5
+`7c94607698ce6d9f55a4fd4a1a30f85f`; pymammotion is `0.8.12.post1`.
+Final integration verification produced 662 pytest and 39 frontend tests; ruff,
+format, mypy, and all pre-commit hooks passed. The acceptance-profile values
+were not changed. The motion gate read back `enabled: false`,
+`real_motion_allowed: false`, with no active session, and no movement command
+was sent during deployment.
+
+Plan §7 item 15 is complete. The one night-branch turn pulse measured −54.2208°
+at angular −500 / 1,500 ms / six 200 ms refresh writes, with 0.07459 m turn
+translation. The following forward pulse measured 0.43648 m but an 81.416° aim
+error; the night guard refused further motion. Evidence and measured/inferred
+separation are in `docs/night-segment-turn-quantum-20260813.md`.
+
+Item 16 is also complete. One angular-only +500 / 1,500 ms pulse produced 73
+concurrent runtime samples. `toward` remained 43.1856 through the refreshed
+window and then arrived as one +36.3064° step; no intermediate headings were
+observed at roughly 0.1-second cadence. See
+`docs/night-toward-latency-20260813.md`.
+
+A later read-only autonomous-mow capture recorded 291 samples over 179.895 s
+and three complete vendor pivots. `toward` streamed progressive headings during
+continuous vendor motion; 40 usable moving steps gave `bearing + toward =
+90.57°`, circular SD 2.02°. This narrows the stepwise item-16 result to the
+bounded pulse/report path. See `docs/autonomous-mow-observation-20260813.md`.
+
+Item 17 is complete. One backward-only pulse moved 0.418536 m on bearing
+96.433921° while `toward` remained exactly 173.1023°. The mirror-derived body
+heading was 277.0277°, so reverse was predicted at 97.0277°, only 0.593779°
+from measured course. This settles `toward` as body heading under reverse.
+RapidState `fuse_status` remained 0 `NO_POSE` in all 81 records and was
+non-informative on this manual path. Raw evidence is commit `ff8e1f09`; analysis
+is `docs/night-reverse-heading-20260813.md`.
+
+Item 18 is complete as characterization, not acceptance. A 0.699963 m
+perpendicular night segment reached the 8° turn tolerance in one pulse, sent
+three linear pulses, and stopped on `no_target_progress` at 0.114277 m. Its
+mirror observations were 92.0720 / 90.7417 / 89.1569°. Raw evidence is commit
+`f0803af2`; analysis is `docs/night-segment-item18-20260814.md`.
+
+The item-18 harness-only safety pins raised the final full-suite count to 664
+pytest; frontend remained 39 and ruff, format, mypy, and pre-commit were green.
+
+The gate is off, no session is active, the mower is `MODE_READY`, RTK Fix, BLE
+live, and blades zero. Item 15's separate forward-course mismatch remains
+unexplained. Every further physical run needs
+fresh explicit supervised-motion authorization.
+
+---
+
 # Handoff prompt — beta30; GATE 5 PASSED, all five gates complete
 
 ## 🏁 2026-08-08 — READ FIRST. Gate 5 passed twice.

@@ -8,6 +8,53 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta52 — item-17 runtime diagnostics, 2026-08-13
+
+`0.6.4-beta52` is deployed. It adds runtime-export-only RapidState diagnostics
+and the fixed backward-only item-17 harness; it does not add the diagnostics to
+shared VIO telemetry. Backup:
+`/config/mammotion-backup-20260813-beta52-predeploy.tgz`. The deployed archive
+matched local md5 `efa589bc7eaa6bf72e065529f7d44369`. Card md5
+`9512f504f4b861488e98f4d29ced6e4f` matched at both serving paths; services md5
+was `7c94607698ce6d9f55a4fd4a1a30f85f`. Resource read back as
+`?v=0.6.4-beta52&build=9512f504`; pymammotion is `0.8.12.post1`.
+
+The motion-disabled preview sent no command. Item 17 then ran once under
+separate explicit supervision; see `night-reverse-heading-20260813.md`.
+Independent final readback: gate off, no active session, `MODE_READY`, BLE live,
+RTK Fix, blades zero.
+
+### beta51 — explicit fixed-budget null, 2026-08-13
+
+`0.6.4-beta51` is deployed. It fixes the service schemas so the harness's
+explicit JSON `max_linear_pulse_ceiling: null` reaches the fixed-budget night
+executor instead of failing HTTP 400. Backup:
+`/config/mammotion-backup-20260813-beta51-predeploy.tgz`. Local and host
+checksums agreed at deployment: card `6645732a8e39eae7644bfe84b5be01de`
+at both serving paths, services `1857e0ffe118bac5c556aa04c26f9c45`, manifest
+`c85553cc7c6cc536658fe1ea1478e24c`. Resource read back as
+`?v=0.6.4-beta51&build=6645732a`; pymammotion is `0.8.12.post1`.
+
+The motion-disabled dry-run returned `valid: true`, `errors: []`. §7 item 15
+then ran under separate explicit supervision; see
+`night-segment-turn-quantum-20260813.md`. Final independent readback: gate off,
+no active session, `MODE_READY`, BLE live, RTK Fix, blades zero.
+
+### beta50 — night v1, 2026-08-13 ~17:02 local
+
+`0.6.4-beta50` is deployed motion-disabled. Backup:
+`/config/mammotion-backup-20260813-beta50.tgz`. Local and host checksums agree:
+card `8510824e965f2dbf6b2403c822c54b39` at both serving paths, services
+`d36789b2e622d066873cb396d82e5d76`, manifest
+`78ce64d5138ca68a7283ba0d3d93248d`. Resource read back as
+`?v=0.6.4-beta50&build=8510824e`; container pymammotion is `0.8.12.post1`.
+
+Gate readback after restart: `enabled: false`, `real_motion_allowed: false`, no
+active session. No movement service was called and no motion was commanded. The
+mower independently reported `MODE_WORKING` with active mowing/route blockers
+at final readback; the deploy session did not interfere. Night v1 hardware task
+15 remains unrun and needs separate explicit supervised authorization.
+
 |                         | Host                                                           | Branch         |
 | ----------------------- | -------------------------------------------------------------- | -------------- |
 | Integration version     | `0.6.4-beta32` staging candidate (deployed 2026-08-09, motion-disabled) | `0.6.4-beta32` candidate |
@@ -33,6 +80,59 @@ reported `target_reached`. That is containment, not regression: the earlier
 passes were bought by driving past the waypoint and U-turning back. The next
 motion decision is whether to fix control quality (stop-latency lead, pulse
 sizing) or to accept overshoot-and-recovery — not a Gate 5 attempt.
+
+### beta49 — beta48's live defects, 2026-08-13 ~05:20 UTC
+
+Frontend-only again. `card md5 adaf0b71`, local == both host paths, resource
+`?v=0.6.4-beta49&build=adaf0b71`, API back in 51 s, 132 entities,
+`real_motion_allowed: false`.
+
+🔑 **Four defects were found by looking at the deployed card, none by the test
+suite.** The stubs supply blocker lists the real backend does not.
+
+The duplicate-blocker one is confirmed directly in the live runtime state:
+
+```
+em blockers     ['experimental_motion_disabled', 'position_not_valid_for_motion']
+safety blockers ['position_not_valid_for_motion']
+```
+
+`_preflight()` concatenated those two lists, so the banner printed
+`position_not_valid_for_motion` twice (and `rtk_not_precise` twice, when RTK was
+also down). Both call sites now dedupe. Two emitted codes
+(`position_not_valid_for_motion`, `ble_client_not_connected`) had no help text
+and silently dropped out of the explanation list; a test now pins the full set
+observed on the host.
+
+**Method note.** Render the card against the actual `export_runtime_state`
+output, not the test fixtures, before calling a UI change done.
+
+### beta48 — card usability and run export, 2026-08-13 ~04:45 UTC
+
+**Frontend-only deploy.** Card + `manifest.json` only; no `services.py` change
+and **no `LUBA_ACCEPTANCE_PROFILE` key touched**, so the profile stays accepted
+and no §4 re-pinning is owed. Verified:
+
+```
+card md5      fbf4f621bd78eb5425f8beee4a2aa231   local == /config/custom_components/... == /config/www/community/...
+served        /hacsfiles/... and /mammotion/...  both fbf4f621, CARD_VERSION 0.6.4-beta48
+resource      ?v=0.6.4-beta48&build=fbf4f621
+manifest      0.6.4-beta48
+API back      35 s      132 mammotion entities at 153 s
+gate          real_motion_allowed: false   (blockers: experimental_motion_disabled,
+                                            ble_client_not_connected, position_not_valid_for_motion)
+```
+
+⚠️ `ha_set_card_resource.py` takes only a version string and does **not** append
+the `build=` suffix the runbook requires. Pass it as part of the argument —
+`ha_set_card_resource.py "0.6.4-beta48&build=fbf4f621" --apply` — or the
+registered key loses the checksum half of its cache-busting.
+
+What changed: Real Go / dry-run / history JSON **downloads**, a per-segment
+**landing table** (leg, landing, tolerance, verdict, pulses, mean and worst), a
+colour-coded **readiness banner** that keeps blocker codes verbatim and adds
+plain English for every one of them, the toolbar grouped Path / Run / Export, and
+the 14-row diagnostics panel collapsed behind its verdict line.
 
 ### beta43/44 — Gate 5 re-pass and the profile-echo fix, 2026-08-12
 
