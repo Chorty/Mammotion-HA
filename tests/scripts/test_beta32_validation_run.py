@@ -8,6 +8,8 @@ the pure functions with literal telemetry.
 from __future__ import annotations
 
 import importlib.util
+import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -18,6 +20,10 @@ from custom_components.mammotion.services import _TOWARD_MIRROR_DEGREES
 
 _MODULE_PATH = (
     Path(__file__).resolve().parents[2] / "scripts" / "beta32_validation_run.py"
+)
+_CARD_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "custom_components/mammotion/www/mammotion-custom-path-card.js"
 )
 
 
@@ -100,6 +106,27 @@ def test_item18_profile_pins_the_planned_fixed_envelope() -> None:
         "turn_pulse_duration_ms": 1500,
         "max_turn_translation_distance": 0.30,
         "ble_auto_recover": False,
+    }
+
+
+def test_card_night_profile_agrees_with_harness_and_backend() -> None:
+    """The card must not silently run a different night experiment."""
+    source = _CARD_PATH.read_text()
+    match = re.search(
+        r"const NIGHT_GO_PROFILE = Object\.freeze\((\{.*?\})\);", source, re.DOTALL
+    )
+    assert match is not None
+    card_profile = {
+        key: json.loads(value)
+        for key, value in re.findall(
+            r"^\s*([a-z_]+):\s*(.+?),\s*$", match.group(1), re.MULTILINE
+        )
+    }
+
+    assert card_profile == {
+        **harness.NIGHT_SEGMENT_PROFILE,
+        "night_angular_speed": 500,
+        "toward_mirror_degrees": _TOWARD_MIRROR_DEGREES,
     }
 
 

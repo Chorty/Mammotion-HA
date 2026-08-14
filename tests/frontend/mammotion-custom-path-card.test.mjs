@@ -37,8 +37,10 @@ globalThis.localStorage = {
 
 const {
   LUBA_ACCEPTANCE_PROFILE,
+  MAX_NIGHT_SEGMENT_METRES,
   MAX_REAL_SEGMENTS,
   MAX_WAYPOINTS,
+  NIGHT_GO_PROFILE,
   PROFILE_KEYS,
   MammotionCustomPathCard,
 } =
@@ -51,7 +53,7 @@ function card() {
     prefer_ble: true,
   };
   element._runtimeState = {
-    position: { x: 1, y: 1 },
+    position: { x: 1, y: 1, rtk_status_label: "Fix" },
     safety: { allowed_for_manual_motion: true, blockers: [] },
     experimental_motion: {
       real_motion_allowed: true,
@@ -85,6 +87,142 @@ test("acceptance profile is frozen for the night-mode change", () => {
     ble_auto_recover: false,
     sample_delays: [0, 3],
   });
+});
+
+test("Night Go has a separate frozen fixed-budget profile", () => {
+  assert.equal(Object.isFrozen(NIGHT_GO_PROFILE), true);
+  assert.deepEqual(NIGHT_GO_PROFILE, {
+    prefer_ble: true,
+    turn_mode: "night",
+    max_linear_commands: 3,
+    max_linear_pulse_ceiling: null,
+    motion_refresh_interval_ms: 200,
+    max_turn_commands: 4,
+    heading_tolerance_degrees: 8,
+    turn_pulse_duration_ms: 1500,
+    max_turn_translation_distance: 0.3,
+    ble_auto_recover: false,
+    night_angular_speed: 500,
+    toward_mirror_degrees: 90.13,
+  });
+  assert.equal(LUBA_ACCEPTANCE_PROFILE.turn_mode, "vio");
+  assert.equal(LUBA_ACCEPTANCE_PROFILE.heading_tolerance_degrees, 18);
+});
+
+test("Night Go emits one backend vector segment and leaves Real Go unchanged", () => {
+  const element = card();
+  element._waypoints = [{ x: 1.7, y: 1 }];
+  element._confirmBladesOff = true;
+  element._confirmClearArea = true;
+  element._confirmNightExperimental = true;
+
+  const night = element._nightMotionPayload(false);
+  const daylight = element._motionPayload(false);
+
+  assert.equal(night.service, "raw_pymammotion_execute_vector_segment");
+  assert.equal(night.payload.turn_mode, "night");
+  assert.equal(night.payload.night_angular_speed, 500);
+  assert.equal(night.payload.toward_mirror_degrees, 90.13);
+  assert.equal(night.payload.heading_tolerance_degrees, 8);
+  assert.equal(night.payload.max_linear_commands, 3);
+  assert.equal(night.payload.motion_refresh_interval_ms, 200);
+  assert.equal("max_linear_pulse_ceiling" in night.payload, false);
+  assert.equal(night.payload.confirm_blades_off, true);
+  assert.equal(night.payload.confirm_clear_area, true);
+  assert.equal(daylight.payload.turn_mode, "vio");
+  assert.equal(daylight.payload.max_linear_pulse_ceiling, 14);
+});
+
+test("Night Go refuses multiple, long, and non-Fix paths in the card", () => {
+  const element = card();
+  element._waypoints = [
+    { x: 1.6, y: 1 },
+    { x: 1.8, y: 1 },
+  ];
+  let preflight = element._nightPreflight();
+  assert.equal(preflight.safe, false);
+  assert.ok(preflight.blockers.includes("night_requires_one_segment"));
+  assert.equal(element._nightMotionPayload(false), null);
+
+  element._waypoints = [{ x: 1 + MAX_NIGHT_SEGMENT_METRES + 0.001, y: 1 }];
+  preflight = element._nightPreflight();
+  assert.ok(preflight.blockers.includes("night_segment_too_long"));
+
+  element._waypoints = [{ x: 1.7, y: 1 }];
+  element._runtimeState.position.rtk_status_label = "Float";
+  preflight = element._nightPreflight();
+  assert.ok(preflight.blockers.includes("night_requires_precise_rtk"));
+});
+
+test("Night Go real execution refreshes checks and resets confirmations", async () => {
+  const element = card();
+  element._waypoints = [{ x: 1.7, y: 1 }];
+  element._confirmBladesOff = true;
+  element._confirmClearArea = true;
+  element._confirmNightExperimental = true;
+  const order = [];
+  element._loadRuntimeState = async () => order.push("runtime");
+  element._validateAndPreview = async () => order.push("preview");
+  element._callService = async (_service, payload) => {
+    order.push(payload.turn_mode);
+    return { stop_reason: "no_target_progress", completion_status: {} };
+  };
+  element._startRunTicker = () => {};
+  element._stopRunTicker = () => {};
+  element._saveRunToHistory = () => {};
+
+  await element._runNightGo();
+
+  assert.deepEqual(order.slice(0, 3), ["runtime", "preview", "night"]);
+  assert.equal(element._realRun.stop_reason, "no_target_progress");
+  assert.equal(element._confirmBladesOff, false);
+  assert.equal(element._confirmClearArea, false);
+  assert.equal(element._confirmNightExperimental, false);
+  assert.match(element._status, /Night Go complete/);
+});
+
+test("Night Go needs its own experimental acknowledgement", async () => {
+  const element = card();
+  element._waypoints = [{ x: 1.7, y: 1 }];
+  element._confirmBladesOff = true;
+  element._confirmClearArea = true;
+  let called = false;
+  element._loadRuntimeState = async () => {};
+  element._validateAndPreview = async () => {};
+  element._callService = async () => {
+    called = true;
+  };
+
+  await element._runNightGo();
+
+  assert.equal(called, false);
+  assert.match(element._status, /all three confirmations/);
+});
+
+test("Night dry-run works with the motion gate off and sends no confirmations", async () => {
+  const element = card();
+  element._waypoints = [{ x: 1.7, y: 1 }];
+  element._runtimeState.experimental_motion = {
+    real_motion_allowed: false,
+    blockers: ["experimental_motion_disabled"],
+  };
+  element._runtimeState.position.rtk_status_label = "Float";
+  let sent = null;
+  element._loadRuntimeState = async () => {};
+  element._validateAndPreview = async () => {};
+  element._callService = async (service, payload) => {
+    sent = { service, payload };
+    return { stop_reason: "dry_run" };
+  };
+
+  await element._runNightDryRun();
+
+  assert.equal(sent.service, "raw_pymammotion_execute_vector_segment");
+  assert.equal(sent.payload.turn_mode, "night");
+  assert.equal(sent.payload.dry_run, true);
+  assert.equal(sent.payload.confirm_blades_off, false);
+  assert.equal(sent.payload.confirm_clear_area, false);
+  assert.match(element._status, /No mower command was sent/);
 });
 
 test("map clicks accept seven destinations and refuse an eighth", () => {
