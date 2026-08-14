@@ -7,6 +7,25 @@ const MAX_REAL_SEGMENTS = 4;
 // with trustworthy, map-aligned current orientation; frozen course-over-ground
 // must never authorize it.
 const MAX_NUDGE_METRES = 2.0;
+// Night v1 is deliberately narrower than Real Go: the backend supports one
+// forward-only segment of at most 1.0 m, with no loop-to-tolerance or junction
+// chaining. Keep this independent from LUBA_ACCEPTANCE_PROFILE so adding the
+// card control cannot alter the hardware-accepted daylight/VIO payload.
+const MAX_NIGHT_SEGMENT_METRES = 1.0;
+const NIGHT_GO_PROFILE = Object.freeze({
+  prefer_ble: true,
+  turn_mode: "night",
+  max_linear_commands: 3,
+  max_linear_pulse_ceiling: null,
+  motion_refresh_interval_ms: 200,
+  max_turn_commands: 4,
+  heading_tolerance_degrees: 8,
+  turn_pulse_duration_ms: 1500,
+  max_turn_translation_distance: 0.3,
+  ble_auto_recover: false,
+  night_angular_speed: 500,
+  toward_mirror_degrees: 90.13,
+});
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
 const CARD_VERSION = "0.6.4-beta53";
@@ -128,6 +147,11 @@ const BLOCKER_HELP = Object.freeze({
     "BLE is not live. Wake the mower, or move a Bluetooth proxy closer.",
   rtk_not_precise:
     "RTK is not at Fix. Wait for convergence, or pass allow_degraded_rtk deliberately.",
+  night_requires_precise_rtk:
+    "Night Go requires RTK Fix; its degraded-RTK override is intentionally unavailable.",
+  night_requires_one_segment:
+    "Night Go supports exactly one waypoint. Remove the additional destinations.",
+  night_segment_too_long: `Night Go is limited to ${MAX_NIGHT_SEGMENT_METRES.toFixed(1)} m. Move the waypoint closer.`,
   [`real_segment_limit_${MAX_REAL_SEGMENTS}`]: `Real Go runs at most ${MAX_REAL_SEGMENTS} segments. Remove waypoints or run it in two clicks.`,
 });
 
@@ -164,6 +188,7 @@ class MammotionCustomPathCard extends HTMLElement {
     this._loadingRuntime = false;
     this._confirmBladesOff = false;
     this._confirmClearArea = false;
+    this._confirmNightExperimental = false;
     this._nudgeDistance = 0.5;
     this._rendered = false;
   }
@@ -764,6 +789,42 @@ class MammotionCustomPathCard extends HTMLElement {
     };
   }
 
+  _nightSegmentDistance() {
+    const points = this._segmentPoints();
+    if (!points || points.length !== 2) return null;
+    return Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
+  }
+
+  _nightPreflight({ dryRun = false } = {}) {
+    const blockers = dryRun
+      ? [
+          ...(!this._currentPositionPoint() ? ["position_unavailable"] : []),
+          ...(!this._waypoints.length ? ["path_unset"] : []),
+          ...(!this._validation?.valid ? ["path_validation_failed"] : []),
+        ]
+      : [...this._preflight().blockers].filter(
+          (blocker) => !blocker.startsWith("real_segment_limit_"),
+        );
+    if (this._segmentCount() !== 1) {
+      blockers.push("night_requires_one_segment");
+    }
+    const rtkLabel = String(
+      this._runtimeState?.position?.rtk_status_label ?? "",
+    ).toLowerCase();
+    if (!dryRun && rtkLabel !== "fix") {
+      blockers.push("night_requires_precise_rtk");
+    }
+    const distance = this._nightSegmentDistance();
+    if (distance != null && distance > MAX_NIGHT_SEGMENT_METRES + 1e-9) {
+      blockers.push("night_segment_too_long");
+    }
+    return {
+      safe: blockers.length === 0,
+      blockers: [...new Set(blockers)],
+      distance,
+    };
+  }
+
   _activeBackendSession() {
     return this._runtimeState?.experimental_motion?.active_session || null;
   }
@@ -1293,6 +1354,39 @@ class MammotionCustomPathCard extends HTMLElement {
     };
   }
 
+  _nightMotionPayload(dryRun) {
+    const points = this._segmentPoints();
+    if (!points || points.length !== 2) return null;
+    const payload = {
+      entity_id: this._config.entity,
+      points,
+      dry_run: dryRun,
+      confirm_blades_off: dryRun ? false : this._confirmBladesOff,
+      confirm_clear_area: dryRun ? false : this._confirmClearArea,
+      prefer_ble: NIGHT_GO_PROFILE.prefer_ble,
+      turn_mode: NIGHT_GO_PROFILE.turn_mode,
+      max_linear_commands: NIGHT_GO_PROFILE.max_linear_commands,
+      motion_refresh_interval_ms: NIGHT_GO_PROFILE.motion_refresh_interval_ms,
+      max_turn_commands: NIGHT_GO_PROFILE.max_turn_commands,
+      heading_tolerance_degrees: NIGHT_GO_PROFILE.heading_tolerance_degrees,
+      turn_pulse_duration_ms: NIGHT_GO_PROFILE.turn_pulse_duration_ms,
+      max_turn_translation_distance:
+        NIGHT_GO_PROFILE.max_turn_translation_distance,
+      ble_auto_recover: NIGHT_GO_PROFILE.ble_auto_recover,
+      night_angular_speed: NIGHT_GO_PROFILE.night_angular_speed,
+      toward_mirror_degrees: NIGHT_GO_PROFILE.toward_mirror_degrees,
+    };
+    // Deliberately OMIT max_linear_pulse_ceiling. Night v1 is fixed-budget;
+    // sending the accepted daylight ceiling would be refused by the backend.
+    if (this._areaHash) {
+      payload.area_hash = String(this._areaHash);
+    }
+    return {
+      service: "raw_pymammotion_execute_vector_segment",
+      payload,
+    };
+  }
+
   _segmentProgressText(result) {
     if (!result) return "";
     if (!Array.isArray(result.segments) || !result.segments.length) {
@@ -1421,7 +1515,28 @@ class MammotionCustomPathCard extends HTMLElement {
     }
   }
 
-  _startRunTicker(segmentCount) {
+  async _runNightDryRun() {
+    await this._loadRuntimeState();
+    await this._validateAndPreview();
+    const preflight = this._nightPreflight({ dryRun: true });
+    const motion = this._nightMotionPayload(true);
+    if (!motion || !preflight.safe) {
+      this._status = `Night dry-run blocked: ${preflight.blockers.join(", ") || "one waypoint and live mower position required"}.`;
+      this._render();
+      return;
+    }
+    this._status = "Running bounded Night Go dry-run…";
+    this._render();
+    try {
+      this._dryRun = await this._callService(motion.service, motion.payload);
+      this._status = `Night dry-run complete. ${this._segmentProgressText(this._dryRun)}. No mower command was sent.`;
+    } catch (err) {
+      this._status = `Night dry-run failed: ${err?.message || err}`;
+    }
+    this._render();
+  }
+
+  _startRunTicker(segmentCount, runLabel = "Real Go") {
     this._runStartedAt = Date.now();
     this._livePosition = null;
     const tick = async () => {
@@ -1448,7 +1563,7 @@ class MammotionCustomPathCard extends HTMLElement {
         lastWrite == null
           ? ""
           : ` — last write ${Number(lastWrite).toFixed(1)}s`;
-      this._status = `Running Real Go (${segmentCount} segment${segmentCount === 1 ? "" : "s"}, ${phase})… ${mins}:${secs}${posText}${lastWriteText}`;
+      this._status = `Running ${runLabel} (${segmentCount} segment${segmentCount === 1 ? "" : "s"}, ${phase})… ${mins}:${secs}${posText}${lastWriteText}`;
       this._render();
     };
     this._runTicker = setInterval(tick, 5000);
@@ -1547,6 +1662,88 @@ class MammotionCustomPathCard extends HTMLElement {
     }
   }
 
+  async _runNightGo() {
+    if (this._motionRunActive()) {
+      this._status =
+        "Night Go blocked: a manual-motion session is already active.";
+      this._render();
+      return;
+    }
+    this._submittingRealRun = true;
+    this._status =
+      "Refreshing runtime and path validation immediately before Night Go…";
+    this._render();
+    await this._loadRuntimeState();
+    await this._validateAndPreview();
+    const preflight = this._nightPreflight();
+    const motion = this._nightMotionPayload(false);
+    if (
+      !motion ||
+      !this._confirmBladesOff ||
+      !this._confirmClearArea ||
+      !this._confirmNightExperimental
+    ) {
+      this._status =
+        "Night Go blocked: select exactly one waypoint and enable all three confirmations, including the night accuracy acknowledgement.";
+      this._submittingRealRun = false;
+      this._render();
+      return;
+    }
+    if (!preflight.safe) {
+      this._status = `Night Go blocked by preflight: ${preflight.blockers.join(", ")}`;
+      this._submittingRealRun = false;
+      this._render();
+      return;
+    }
+    const startedAt = new Date();
+    this._startRunTicker(1, "Night Go");
+    try {
+      this._realRun = await this._callService(motion.service, motion.payload);
+      this._stopRunTicker();
+      this._status = `Night Go complete: ${this._segmentProgressText(this._realRun)}`;
+      this._persistLastRun(this._realRun);
+      this._saveRunToHistory({
+        at: startedAt.toISOString(),
+        elapsed_seconds: Math.round((Date.now() - startedAt.getTime()) / 1000),
+        service: motion.service,
+        run_mode: "night",
+        waypoints: 1,
+        stop_reason: this._realRun?.stop_reason ?? null,
+        failed_segment_index: null,
+        segments: this._segmentLandingRows(this._realRun).map((row) => ({
+          index: row.index,
+          passed: row.passed,
+          stop_reason: row.stopReason,
+          landing: row.landing,
+          tolerance: row.tolerance,
+        })),
+        summary: this._segmentProgressText(this._realRun),
+      });
+    } catch (err) {
+      this._stopRunTicker();
+      this._status = `Night Go failed: ${err?.message || err}`;
+      this._saveRunToHistory({
+        at: startedAt.toISOString(),
+        elapsed_seconds: Math.round((Date.now() - startedAt.getTime()) / 1000),
+        service: motion.service,
+        run_mode: "night",
+        waypoints: 1,
+        stop_reason: `call_failed: ${err?.message || err}`,
+        failed_segment_index: null,
+        segments: [],
+        summary: String(err?.message || err),
+      });
+    } finally {
+      this._submittingRealRun = false;
+      this._confirmBladesOff = false;
+      this._confirmClearArea = false;
+      this._confirmNightExperimental = false;
+      this._stopRunTicker();
+      await this._loadRuntimeState();
+      this._render();
+    }
+  }
+
   disconnectedCallback() {
     this._stopRunTicker();
   }
@@ -1622,6 +1819,7 @@ class MammotionCustomPathCard extends HTMLElement {
       this._status = `Abort result: ${status}; owner exited=${Boolean(abortResult?.owner_exited)}`;
       this._confirmBladesOff = false;
       this._confirmClearArea = false;
+      this._confirmNightExperimental = false;
       await this._loadRuntimeState();
       this._render();
     } catch (err) {
@@ -1834,6 +2032,16 @@ class MammotionCustomPathCard extends HTMLElement {
       !this._confirmBladesOff ||
       !this._confirmClearArea ||
       !preflight.safe;
+    const nightPreflight = this._nightPreflight();
+    const nightGoDisabled =
+      runActive ||
+      !this._confirmBladesOff ||
+      !this._confirmClearArea ||
+      !this._confirmNightExperimental ||
+      !nightPreflight.safe;
+    const nightTitle = nightPreflight.safe
+      ? `One fixed-budget ${Number(nightPreflight.distance).toFixed(3)} m night segment; landing accuracy is not established.`
+      : `Night Go unavailable: ${nightPreflight.blockers.join(", ")}`;
     const nudgeBlockers = this._motionBackendBlockers();
     if (!this._confirmClearArea) nudgeBlockers.push("confirm_clear_area");
     if (runActive) nudgeBlockers.push("motion_session_active");
@@ -1958,6 +2166,13 @@ class MammotionCustomPathCard extends HTMLElement {
             <button id="abort" class="danger" type="button" title="Stop any manual-motion session immediately">■ Abort / Stop</button>
           </div>
           <div class="group">
+            <span class="group-label">Night v1 · experimental</span>
+            <button id="night-dry-run" type="button" ${pathSet && !runActive ? "" : "disabled"} title="Validate one bounded night segment without sending motion">Night dry-run</button>
+            <label class="confirm"><input id="confirm-night-experimental" type="checkbox" ${this._confirmNightExperimental ? "checked" : ""}/> night accuracy unproven</label>
+            <button id="night-go" type="button" ${nightGoDisabled ? "disabled" : ""} title="${this._escapeHtml(nightTitle)}">▶ Night Go ≤ ${MAX_NIGHT_SEGMENT_METRES.toFixed(1)} m</button>
+            <span class="hint">One forward-only segment · RTK Fix · fixed 3-pulse budget · landing accuracy unproven</span>
+          </div>
+          <div class="group">
             <span class="group-label">Nudge</span>
             <label title="Straight line only when trustworthy current orientation is available. Stale course-over-ground is refused.">
               <input id="nudge-distance" type="number" min="0.1" max="${MAX_NUDGE_METRES}" step="0.1" value="${this._nudgeMetres().toFixed(1)}" style="width:4.5em"/> m
@@ -2024,6 +2239,10 @@ class MammotionCustomPathCard extends HTMLElement {
     );
     this._q("#dry-run")?.addEventListener("click", () => this._runDryRun());
     this._q("#real-go")?.addEventListener("click", () => this._runRealGo());
+    this._q("#night-dry-run")?.addEventListener("click", () =>
+      this._runNightDryRun(),
+    );
+    this._q("#night-go")?.addEventListener("click", () => this._runNightGo());
     this._q("#clear-history")?.addEventListener("click", () =>
       this._clearHistory(),
     );
@@ -2070,6 +2289,13 @@ class MammotionCustomPathCard extends HTMLElement {
       this._confirmClearArea = Boolean(event.target.checked);
       this._render();
     });
+    this._q("#confirm-night-experimental")?.addEventListener(
+      "change",
+      (event) => {
+        this._confirmNightExperimental = Boolean(event.target.checked);
+        this._render();
+      },
+    );
     this._q("#area")?.addEventListener("change", (event) => {
       this._areaHash = event.target.value;
       this._validateAndPreview();
@@ -2116,8 +2342,10 @@ if (typeof window !== "undefined") {
 export {
   CARD_VERSION,
   LUBA_ACCEPTANCE_PROFILE,
+  MAX_NIGHT_SEGMENT_METRES,
   MAX_REAL_SEGMENTS,
   MAX_WAYPOINTS,
+  NIGHT_GO_PROFILE,
   PROFILE_KEYS,
   MammotionCustomPathCard,
 };

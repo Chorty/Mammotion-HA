@@ -236,13 +236,28 @@ Nudge therefore remains fail-closed.
 > measured body-heading conversion is installation-specific and is not yet a
 > general card contract.
 
-#### Experimental night segment — service level only
+#### Experimental Night Go
 
-The integration contains an explicit `turn_mode: night` for hardware
-characterization. It is deliberately not part of the card's accepted defaults
-or presented as a normal Night Go control. Night v1 is restricted to one
-forward-only mapped segment of at most 1 m, RTK Fix, a fixed three-pulse linear
-budget, and no multi-segment chaining or reverse recovery.
+The card exposes **Night dry-run** and **Night Go** as a separate experimental
+control. It does not change the accepted Real Go profile: Real Go remains
+`turn_mode: vio`, while Night Go constructs its own `turn_mode: night` payload.
+
+Night Go is deliberately restricted to the backend's measured v1 envelope:
+
+- exactly one forward-only mapped segment, at most **1.0 m**;
+- **RTK Fix** with no degraded-RTK override;
+- angular speed 500 and 200 ms command refresh;
+- an 8° opening-heading tolerance and a fixed three-command linear budget;
+- no loop-to-tolerance ceiling, reverse recovery, mid-drive correction, or
+  multi-segment chaining;
+- the same blades-off and clear-area confirmations and backend motion gates as
+  Real Go, plus a separate acknowledgement that night accuracy is unproven.
+
+This is a characterization control, not accepted navigation. The first 0.7 m
+night run stopped 0.1143 m from its target after three pulses, so night landing
+accuracy and a supported tolerance remain unproven. Use **Night dry-run** first,
+watch the mower continuously, and retain the complete result JSON from every
+physical run.
 
 One supervised 0.70 m night segment reached its opening 8° turn tolerance and
 stopped safely on `no_target_progress` 0.1143 m from target after three forward
