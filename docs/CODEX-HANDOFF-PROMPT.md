@@ -21,9 +21,10 @@ LUBA robot mower to points clicked on a map, **with the blades OFF**. The goal i
 point-and-click movement, not mowing. It is at BETA; five acceptance gates are
 complete and Gate 5 has passed twice.
 
-Working directory is the repo root. Branch: `agent/night-real-go-followup` at
-`801c1798`, clean and pushed; draft PR #14 targets `main`. Raw evidence is in
-preceding commit `dd53e266`. `main`, `origin/main`, and `v0.6.4-beta54` agree at `0bd35160`.
+Working directory is the repo root. Branch: `agent/night-real-go-followup`,
+clean and pushed; draft PR #14 targets `main`. Raw evidence is in commit
+`dd53e266`, implementation/tests in `801c1798`, and later commits only reconcile
+handoff docs. `main`, `origin/main`, and `v0.6.4-beta54` agree at `0bd35160`.
 `origin` is the **Chorty** fork —
 `mikey0000/*` repositories are strictly read-only, never push or comment there.
 

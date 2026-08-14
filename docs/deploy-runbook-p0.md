@@ -19,8 +19,8 @@ One later, separately authorized card-driven night run stopped safely at
 0.117085 m on `no_target_progress`. The motion gate was disarmed afterward. See
 `night-go-card-beta54-20260814.md`. The run exposed a night-only crossed-target
 continuation defect and excessive diagnostic waits. The deployed branch
-contains a verified fix in draft PR #14 (`agent/night-real-go-followup` at
-`801c1798`), and the Real Go path removes additive
+contains a verified fix in draft PR #14 (`agent/night-real-go-followup`; code
+commit `801c1798`), and the Real Go path removes additive
 feedback waits while preserving its payload and safety gates. The first
 supervised Real Go check stopped before its second linear dispatch on
 `command_queue_backlogged`. A bounded post-feedback queue-settle correction was

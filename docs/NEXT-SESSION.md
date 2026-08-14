@@ -12,11 +12,11 @@ measurements stand — but do not act on any build/host/gate state they describe
 
 | | |
 | --- | --- |
-| Branch | `agent/night-real-go-followup` at `801c1798`, pushed to Chorty; draft PR #14 targets `main` at beta54 `0bd35160` |
+| Branch | `agent/night-real-go-followup`, clean and pushed to Chorty; draft PR #14 targets `main` at beta54 `0bd35160` |
 | Released version | `0.6.4-beta54`; manifest, pyproject, card, and lock version sites agree |
-| Working tree | Clean. Evidence commit `dd53e266`, implementation/tests/docs commit `801c1798`; corrected tree is deployed but unreleased |
+| Working tree | Clean. Evidence commit `dd53e266`, implementation/tests commit `801c1798`, followed only by handoff-doc commits; corrected code is deployed but unreleased |
 | Motion gate | ✅ **DISARMED.** `real_motion_allowed: false`, no active session |
-| Last measured mower state | Post-redeploy read-only preflight: `(4.7113, -3.3620)`, `MODE_READY`, BLE −64 dBm, RTK Fix, VIO Light/80, blades zero. This is a dated result, not a claim of current physical position. |
+| Last measured mower state | End of corrected Real Go check: `(4.2954, -3.8079)`, `MODE_READY`, BLE −64 dBm, RTK Fix, blades zero. Gate independently disarmed. This is a dated result, not a claim of current physical position. |
 
 ## 1. What to do next
 

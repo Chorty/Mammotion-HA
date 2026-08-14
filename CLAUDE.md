@@ -26,9 +26,10 @@ The second forward pulse had settled only 0.002661 m outside the configured
 an unnecessary third pulse after crossing the target. Read
 `docs/night-go-card-beta54-20260814.md`.
 
-Branch `agent/night-real-go-followup` is pushed to the Chorty fork at
-`801c1798`; draft PR #14 targets `main`. Raw evidence is isolated in preceding
-commit `dd53e266`. The branch contains a night-only fix: use
+Branch `agent/night-real-go-followup` is pushed to the Chorty fork; draft PR
+#14 targets `main`. Raw evidence is isolated in commit `dd53e266`, and the code
+and tests are in `801c1798`; later commits reconcile handoff documentation. The
+branch contains a night-only fix: use
 the settled post-pulse RTK position for the residual target bearing, allowing
 the existing reverse-recovery refusal to stop after an overshoot. The card and
 harness also send `sample_delays: [0, 3]`; beta54 omitted it and inherited the
@@ -43,8 +44,8 @@ safety gates, legacy/night timing, frozen acceptance-profile values, and all
 Final local verification produced **668 pytest and 46 frontend tests**; ruff
 check, ruff format check, mypy, and all pre-commit hooks passed. Both fixes are
 unreleased. They are deployed motion-disabled for testing. PR #14's Python,
-hassfest, and Socket checks passed; HACS was skipped by workflow policy. The first supervised
-Real Go throughput run safely refused its second linear command because the
+hassfest, and Socket checks passed; HACS was skipped by workflow policy. The
+first supervised Real Go throughput run safely refused its second linear command because the
 position-feedback report requests still occupied the BLE queue. A bounded
 post-feedback queue-settle correction was then deployed. A fresh supervised
 0.70 m Real Go run reached its target in 19.2 s with 0.093100 m landing error;

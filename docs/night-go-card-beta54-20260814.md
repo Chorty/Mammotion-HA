@@ -39,7 +39,7 @@ bearing (9.2578°), so it did not recognize that the settled target was behind
 the mower. This is the identified cause of the unnecessary third pulse; it is
 not evidence that the mower or RTK failed.
 
-The current uncommitted follow-up changes only the night branch to derive its
+The PR #14 follow-up changes only the night branch to derive its
 residual target bearing from the settled post-pulse RTK position. That lets the
 existing night reverse-recovery refusal stop after an overshoot. The shared
 progress diagnostic and the VIO and legacy paths are unchanged. The card and
