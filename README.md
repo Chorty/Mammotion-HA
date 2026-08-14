@@ -206,6 +206,12 @@ Notes on the profile:
   assuming 102.4 transfers.
 - `ble_auto_recover: false` keeps a failed BLE gate a fast failure rather than
   a ~90 s in-run recovery attempt.
+- The current unreleased Real Go throughput fix preserves this exact payload and
+  every mandatory stop. It removes additive feedback waits by using the VIO
+  position-settle result as the post-pulse sample, reduces cold VIO calibration
+  from a 2+4-second wait to one four-second window, and removes a duplicate
+  final card reload. It is verified off-mower but not yet deployed or measured
+  on hardware.
 - `heading_tolerance_degrees: 18` is a known-loose value carried over from the
   July 18 calibration. It is unchanged from the accepted run, but reducing it
   is open beta work.
@@ -259,11 +265,21 @@ accuracy and a supported tolerance remain unproven. Use **Night dry-run** first,
 watch the mower continuously, and retain the complete result JSON from every
 physical run.
 
-One supervised 0.70 m night segment reached its opening 8° turn tolerance and
+One supervised 0.70 m harness segment reached its opening 8° turn tolerance and
 stopped safely on `no_target_progress` 0.1143 m from target after three forward
-pulses. That records feasibility; it does not establish a night accuracy
-tolerance or acceptance population. Use the accepted VIO card profile for
-ordinary click-to-go operation.
+pulses. A later beta54 card-driven 0.739 m run also stopped safely after three
+turn and three forward commands, 0.1171 m from target. In that run the second
+forward pulse was already 0.0827 m away, but a stale pre-pulse target bearing
+allowed a third pulse after the mower crossed the target. See
+`docs/night-go-card-beta54-20260814.md`.
+
+The current local follow-up recomputes that night-only residual bearing from
+the settled post-pulse RTK position and sends `sample_delays: [0, 3]` from Night
+Go to avoid beta54's inherited minute-long diagnostic waits. It is verified
+off-mower but is not yet released, deployed, or hardware-tested. These runs
+record feasibility; they do not establish a night accuracy tolerance or
+acceptance population. Use the accepted VIO card profile for ordinary
+click-to-go operation.
 
 Real motion additionally requires the integration option **Enable experimental
 BLE-only manual motion**, a positively verified PyMammotion backend, a fresh

@@ -136,6 +136,10 @@ NIGHT_SEGMENT_PROFILE: dict[str, Any] = {
     "turn_pulse_duration_ms": 1500,
     "max_turn_translation_distance": 0.30,
     "ble_auto_recover": False,
+    # Measured 2026-08-14: every night-turn `toward` update arrived within
+    # three seconds. Omitting this inherited the backend's 60-second diagnostic
+    # window after every command and stretched six bounded pulses to ~6.5 min.
+    "sample_delays": [0, 3],
 }
 
 #: Hard preflight gates. Each is a (label, predicate, detail) triple evaluated

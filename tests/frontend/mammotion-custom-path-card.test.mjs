@@ -104,6 +104,7 @@ test("Night Go has a separate frozen fixed-budget profile", () => {
     ble_auto_recover: false,
     night_angular_speed: 500,
     toward_mirror_degrees: 90.13,
+    sample_delays: [0, 3],
   });
   assert.equal(LUBA_ACCEPTANCE_PROFILE.turn_mode, "vio");
   assert.equal(LUBA_ACCEPTANCE_PROFILE.heading_tolerance_degrees, 18);
@@ -126,6 +127,7 @@ test("Night Go emits one backend vector segment and leaves Real Go unchanged", (
   assert.equal(night.payload.heading_tolerance_degrees, 8);
   assert.equal(night.payload.max_linear_commands, 3);
   assert.equal(night.payload.motion_refresh_interval_ms, 200);
+  assert.deepEqual(night.payload.sample_delays, [0, 3]);
   assert.equal("max_linear_pulse_ceiling" in night.payload, false);
   assert.equal(night.payload.confirm_blades_off, true);
   assert.equal(night.payload.confirm_clear_area, true);
@@ -699,6 +701,31 @@ test("fresh preflight is fetched and confirmations reset after failure", async (
   assert.equal(element._confirmBladesOff, false);
   assert.equal(element._confirmClearArea, false);
   assert.match(element._status, /failed/);
+});
+
+test("successful Real Go reloads runtime once before and once after execution", async () => {
+  const element = card();
+  element._waypoints = [{ x: 2, y: 2 }];
+  element._confirmBladesOff = true;
+  element._confirmClearArea = true;
+  let runtimeLoads = 0;
+  element._loadRuntimeState = async () => {
+    runtimeLoads += 1;
+  };
+  element._validateAndPreview = async () => {};
+  element._callService = async () => ({
+    stop_reason: "target_reached",
+    completion_status: { complete: true },
+  });
+  element._startRunTicker = () => {};
+  element._stopRunTicker = () => {};
+  element._persistLastRun = () => {};
+  element._saveRunToHistory = () => {};
+
+  await element._runRealGo();
+
+  assert.equal(runtimeLoads, 2);
+  assert.match(element._status, /Real Go complete/);
 });
 
 // ---------------------------------------------------------------------------

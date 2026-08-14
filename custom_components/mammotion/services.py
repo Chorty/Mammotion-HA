@@ -8980,10 +8980,9 @@ async def _settle_linear_position_feed(
     # all returned the exact same coordinates. One poll proves nothing.
     feed_stale = polls >= _STALE_FEED_MIN_POLLS and not observed_jitter
     return {
-        # The settled snapshot. Currently informational: callers re-sample via
-        # their sample_delays for `after`. Reserved as the hook for the deferred
-        # throughput fix (use this directly as `after` and trim sample_delays so
-        # the settle wait and the sampling wait stop being additive).
+        # The settled snapshot is also the VIO path's authoritative post-pulse
+        # sample. Reusing it avoids waiting through `sample_delays` after this
+        # loop has already established both movement and stillness.
         "telemetry": previous,
         "settled": settled,
         "moved": moved,
@@ -11041,8 +11040,13 @@ async def _vio_segment_calibration_drive(  # noqa: C901, PLR0913
             result["command_results"].append(command_result)
             result["reason"] = "stop_failed_aborting"
             return result
+        # Request reports immediately, then give the asynchronous position feed
+        # one total settling window. The refresh helper normally includes its
+        # own two-second sleep; adding the four-second VIO calibration wait made
+        # every cold-start pulse idle for six seconds. Real Go needs the measured
+        # four-second feed-latency window once.
         command_result["feedback_refresh"] = await _refresh_position_after_raw_motion(
-            coordinator
+            coordinator, settle_seconds=0.0
         )
         await asyncio.sleep(max(refresh_wait_seconds, 0.5))
         result["command_results"].append(command_result)
@@ -12171,7 +12175,14 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
             return result
         command_result[
             "post_command_feedback_refresh"
-        ] = await _refresh_position_after_raw_motion(coordinator)
+        ] = await _refresh_position_after_raw_motion(
+            coordinator,
+            # The VIO path immediately enters the bounded position-settle loop,
+            # which requests the same reports once per second. Do not sleep two
+            # seconds here and then start that loop; night and legacy retain
+            # their established timing byte-for-byte.
+            settle_seconds=0.0 if turn_mode == "vio" else 2.0,
+        )
         # The map-local feed lags ~4s and jumps: wait for this pulse's motion to
         # register and settle before sampling, so the samples below (and thus the
         # progress/completion checks) reflect THIS pulse instead of leaking a prior
@@ -12186,6 +12197,24 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         command_result["position_settle_polls"] = position_settle["settle_polls"]
         if position_settle["moved"]:
             feed_moved_earlier = True
+        post_feedback_queue_settle: dict[str, Any] | None = None
+        if turn_mode == "vio":
+            # The position-settle loop requests five reports on every poll.
+            # Those requests share the BLE command queue with motion. The first
+            # hardware run without the old blind three-second wait settled its
+            # position in 2.03 s but refused the next pulse on
+            # `command_queue_backlogged`. Wait for the queue itself instead:
+            # this returns immediately when empty, remains bounded at six
+            # seconds, and never converts a persistent backlog into a pass.
+            queue_started = time.monotonic()
+            post_feedback_queue_settle = await _settle_ble_command_queue(coordinator)
+            command_result["post_feedback_queue_settle"] = {
+                **post_feedback_queue_settle,
+                "duration_ms": round(
+                    (time.monotonic() - queue_started) * 1000,
+                    3,
+                ),
+            }
         # Phantom-motion investigation instrumentation (capture only): log both
         # position sources + RTK quality so a later run can tell a real move from a
         # feed-jump on a no-op pulse.
@@ -12194,19 +12223,55 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         )
 
         command_samples: list[dict[str, Any]] = []
-        previous_delay = 0.0
-        for sample_index, delay in enumerate(sample_delays):
-            await asyncio.sleep(max(0.0, float(delay) - previous_delay))
-            previous_delay = float(delay)
-            sample_telemetry = _custom_path_telemetry_snapshot(coordinator)
+        settled_telemetry = position_settle.get("telemetry")
+        reuse_settled_telemetry = (
+            turn_mode == "vio"
+            and position_settle["settled"] is True
+            and isinstance(settled_telemetry, dict)
+        )
+        if reuse_settled_telemetry:
+            # Real Go has already paid the bounded 1-6 second position-settle
+            # wait. Waiting through [0, 3] afterward sampled the same stopped
+            # mower and made the two feedback windows additive. Keep one
+            # per-command record, but make its source and actual wait explicit.
             sample = {
-                "label": f"linear_{command_index}_sample_{sample_index + 1}_{delay:g}s",
+                "label": f"linear_{command_index}_position_settled",
                 "command_index": command_index,
-                "delay_seconds": float(delay),
-                "telemetry": sample_telemetry,
+                "delay_seconds": position_settle["wait_seconds"],
+                "source": "position_settle",
+                "telemetry": settled_telemetry,
             }
             result["samples"].append(sample)
             command_samples.append(sample)
+            command_result["post_settle_feedback"] = {
+                "source": "position_settle",
+                "additional_wait_seconds": 0.0,
+                "requested_sample_delays_skipped": list(sample_delays),
+            }
+        else:
+            previous_delay = 0.0
+            for sample_index, delay in enumerate(sample_delays):
+                await asyncio.sleep(max(0.0, float(delay) - previous_delay))
+                previous_delay = float(delay)
+                sample_telemetry = _custom_path_telemetry_snapshot(coordinator)
+                sample = {
+                    "label": (
+                        f"linear_{command_index}_sample_{sample_index + 1}_{delay:g}s"
+                    ),
+                    "command_index": command_index,
+                    "delay_seconds": float(delay),
+                    "telemetry": sample_telemetry,
+                }
+                result["samples"].append(sample)
+                command_samples.append(sample)
+            if turn_mode == "vio":
+                command_result["post_settle_feedback"] = {
+                    "source": "post_settle_samples",
+                    "additional_wait_seconds": max(
+                        (float(delay) for delay in sample_delays), default=0.0
+                    ),
+                    "requested_sample_delays_skipped": [],
+                }
 
         after = (
             command_samples[-1]["telemetry"]
@@ -12271,6 +12336,13 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                     },
                 }
             )
+            return result
+        if (
+            post_feedback_queue_settle is not None
+            and not post_feedback_queue_settle.get("live")
+        ):
+            result["stop_reason"] = "ble_link_not_ready_after_feedback"
+            result["post_feedback_queue_settle"] = post_feedback_queue_settle
             return result
         quality = _manual_velocity_quality_degradation(baseline_telemetry, after)
         if quality["degraded"]:
@@ -12483,8 +12555,20 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         elif turn_mode == "night":
             # Both values are map-frame bearings derived from RTK position; VIO
             # and ``toward`` are not used to decide this per-pulse aim check.
+            # The bearing must start at the SETTLED POST-PULSE position. Using
+            # the shared progress diagnostic's pre-pulse bearing misses a target
+            # that the pulse has just passed: measured 2026-08-14, pulse 2
+            # settled 0.08266 m from an 0.08 m target with the residual bearing
+            # at 155.64 deg, but its pre-pulse 9.26 deg bearing allowed a third
+            # forward write that worsened the landing to 0.11708 m. Keep the
+            # shared diagnostic unchanged; this correction is night-only.
             movement_heading = progress.get("movement_vector_heading_degrees")
-            night_bearing = progress.get("expected_target_heading_degrees")
+            night_residual_point = _raw_segment_current_point(after)
+            night_bearing = (
+                _path_heading_degrees(night_residual_point, target)
+                if night_residual_point is not None
+                else None
+            )
             measured_distance = (progress.get("measured_delta") or {}).get("distance")
             night_distance_to_target = completion_status.get("distance_to_target")
             after_toward = (after.get("position") or {}).get("toward")

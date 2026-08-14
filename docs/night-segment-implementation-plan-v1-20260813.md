@@ -6,13 +6,18 @@
 
 # Night segment — implementation plan (v1)
 
-**Status:** off-mower items 1–14 and on-mower items 15–18 complete; beta52
-deployed on 2026-08-13. Post-item-18 verification: 664 pytest, 39 frontend, and
-ruff/format/mypy/pre-commit green. Item 17 settled `toward` as body heading
-under reverse; see `docs/night-reverse-heading-20260813.md`. Item 18 completed
-as characterization, not a landing-accuracy acceptance pass; see
-`docs/night-segment-item18-20260814.md`. Written originally against `HEAD = d6a59f78` /
-deployed `0.6.4-beta49`.
+**Status:** off-mower items 1–14 and on-mower items 15–18 complete; the original
+night branch was deployed beginning with beta50. Beta54 later added a separate
+guarded Night Go card control. One beta54 card-driven run exposed a stale
+pre-pulse-bearing continuation decision; the night-only follow-up is verified,
+uncommitted, and deployed motion-disabled. The same tree includes a separate
+VIO-only Real Go throughput optimization. Its corrected supervised 0.70 m run
+reached the target in 19.2 s with 0.093100 m landing error, after every bounded
+post-feedback queue settle reached depth zero. Current verification: 668 pytest,
+46 frontend, and ruff/format/mypy/pre-commit green. See
+`docs/night-go-card-beta54-20260814.md` and
+`docs/real-go-throughput-hardware-20260814.md`. Written originally against
+`HEAD = d6a59f78` / deployed `0.6.4-beta49`.
 
 Every file/line anchor in this document was read at `d6a59f78` during authoring. Where a claim is inferred rather than read, it says so.
 
@@ -137,7 +142,8 @@ _NIGHT_TURN_ANGULAR_SPEED = 500
 #: max 3) at ~0.34-0.49 m per measured pulse, so >1.0 m is reach night does not
 #: have. It also bounds the lateral excursion from the containment-validated
 #: line: at the profile's 18 deg heading tolerance, 1.0 * sin(18) = 0.31 m.
-#: CHOSEN, not measured. No night segment has ever run.
+#: HISTORICAL AUTHORING NOTE: CHOSEN, not measured. At the time no night segment
+#: had run; items 15/18 and the later beta54 card run now provide measurements.
 _NIGHT_MAX_SEGMENT_LENGTH_M = 1.0
 
 #: Minimum measured pulse displacement before night will CLAIM an aim error.
@@ -700,6 +706,23 @@ New file `tests/components/mammotion/test_night_turn_mode.py` unless noted.
     `docs/evidence-night-segment-item18-20260814T000022Z.json`.
 19. **[on-mower, optional, DAYLIGHT REQUIRED]** A single daylight VIO segment as a belt-and-braces regression check. **Not owed** — no `LUBA_ACCEPTANCE_PROFILE` key changes value, so no Gate 5 re-run and no §4 re-pinning is obligated, and tests 9–15 cover it. Listed only so nobody assumes it was forgotten.
 
+### Post-v1 addendum — beta54 card run, 2026-08-14
+
+Beta54 exposed the contained night branch as a separate card control without
+changing `LUBA_ACCEPTANCE_PROFILE`. Its first supervised card run requested
+0.739138 m, reached heading tolerance after three turns, and stopped safely at
+0.117085 m after three forward pulses. Pulse 2 had settled at 0.082661 m; the
+shared diagnostic's pre-pulse target bearing was then reused by the night
+continuation check after the target had moved behind the mower.
+
+The verified local follow-up scopes the correction to night mode: compute the
+residual bearing from settled post-pulse RTK, then let the existing
+reverse-recovery refusal stop the overshoot. It also pins Night Go and the
+harness to `sample_delays: [0, 3]`, replacing beta54's inherited
+`[0, 5, 10, 20, 30, 45, 60]`. VIO, legacy, the shared progress diagnostic, and
+the frozen profile values remain unchanged. This addendum records later work;
+it does not alter the v1 design/refutation ledger or item-18 evidence.
+
 ### Follow-ups, explicitly not in v1
 
 - **`legacy`'s two latent defects** (no refresh forwarded, angular 180) — a live defect on the shipped Nudge path. Own review. Do not lose it.
@@ -717,7 +740,7 @@ New file `tests/components/mammotion/test_night_turn_mode.py` unless noted.
 | Turn quantum and rate through the **night branch** (angular 500, refresh 200, 1500 ms, `max_turn_commands` 4) | **Measured once: 54.2208°, 0.07459 m translation. More samples are still needed before fitting a distribution or correction floor.** | **No** |
 | `toward` latency during rotation | **Measured once: stepwise after the pulse, with no intermediate value at ~0.1 s cadence. More samples would be needed for a universal latency bound.** | **No** |
 | `toward` under one commanded **backward** pulse | **Measured: body heading stayed fixed; reverse course matched its opposite within 0.593779°. RapidState stayed `NO_POSE` and was non-informative.** | **No** |
-| Night landing accuracy, from task 18 | **One 0.70 m characterization landed 0.114277 m away on `no_target_progress`; insufficient for any tolerance or population claim.** | **No** |
+| Night landing accuracy | **Item 18 landed 0.114277 m away; the later beta54 card run landed 0.117085 m away after an unnecessary crossed-target pulse. Two characterizations remain insufficient for any tolerance or population claim.** | **No** |
 | Nothing | the v1 code in §3 | — |
 
 Everything in §3 is writable today. The only thing that needs daylight at all is the optional VIO regression run (task 19), and it is optional.

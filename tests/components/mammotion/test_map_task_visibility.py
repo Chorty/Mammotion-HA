@@ -4700,6 +4700,27 @@ async def test_night_refuses_reverse_recovery_after_pulse(
 
 
 @pytest.mark.asyncio
+async def test_night_refuses_forward_after_pulse_passes_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The residual bearing catches the beta54 third-pulse overshoot.
+
+    Measured 2026-08-14: pulse 2 crossed the waypoint and settled only 2.66 mm
+    outside tolerance. The old night check reused the PRE-pulse bearing, called
+    the correctly aimed pulse safe, then sent another forward write away from
+    the now-behind target. Replaying that geometry must invoke the existing
+    reverse-recovery refusal before another command can be considered.
+    """
+    result = await _run_one_night_linear_pulse(
+        monkeypatch, after_position=(1.883, 1.0, 90.13)
+    )
+    assert result["stop_reason"] == "target_requires_reverse_recovery"
+    assert result["linear_commands_sent"] == 1
+    assert result["night_aim"][-1]["bearing_to_target_degrees"] == pytest.approx(180.0)
+    assert result["night_aim"][-1]["decision"] == "reverse_recovery_required"
+
+
+@pytest.mark.asyncio
 async def test_night_does_not_claim_aim_below_baseline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -7651,9 +7672,14 @@ async def test_vio_segment_calibration_drive_computes_offset(
     async def no_sleep(_: float) -> None:
         return None
 
+    refresh_settle_seconds: list[float] = []
+
     async def fake_refresh(
         coordinator_arg: MammotionReportUpdateCoordinator,
+        *,
+        settle_seconds: float = 2.0,
     ) -> dict:
+        refresh_settle_seconds.append(settle_seconds)
         # Simulate the post-drive feedback refresh: mower moved +x/+y and the
         # motion woke VIO with a fresh body heading.
         coordinator.data.mowing_state.pos_x += 0.03
@@ -7676,6 +7702,7 @@ async def test_vio_segment_calibration_drive_computes_offset(
     # Motion vector (+0.06, +0.06) -> 45 deg map heading; offset = 45 - 15 = 30.
     assert result["map_motion_heading_degrees"] == pytest.approx(45.0)
     assert result["offset_degrees"] == pytest.approx(30.0)
+    assert refresh_settle_seconds == [0.0, 0.0]
     coordinator.async_stop_manual_motion.assert_awaited()
 
 
@@ -7692,6 +7719,8 @@ async def test_vio_segment_calibration_drive_rejects_offset_on_degraded_feed(
 
     async def fake_refresh(
         coordinator_arg: MammotionReportUpdateCoordinator,
+        *,
+        settle_seconds: float = 2.0,
     ) -> dict:
         # Motion moved the mower, but VIO woke blind: vio_state latched active
         # with 0 tracked features, so the vision heading is untrustworthy and the
@@ -7714,6 +7743,133 @@ async def test_vio_segment_calibration_drive_rejects_offset_on_degraded_feed(
     assert result["reason"] == "vio_feed_degraded"
     assert result["offset_degrees"] is None
     assert result["vio_feed"]["live"] is False
+
+
+@pytest.mark.asyncio
+async def test_vio_linear_pulse_reuses_settled_position_without_sample_wait(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real Go does not wait through samples after position already settled."""
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=0.0, vio_state=2, track_feature_num=100, brightness=100
+    )
+    sleep_delays: list[float] = []
+    refresh_settle_seconds: list[float] = []
+    queue_settles: list[int] = []
+    queue_live = {"value": True}
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_delays.append(delay)
+
+    async def fake_turn(*_args: object, **_kwargs: object) -> dict[str, object]:
+        return {
+            "stop_reason": "target_heading_reached",
+            "commands_sent": 0,
+            "command_results": [],
+        }
+
+    async def fake_refresh(
+        *_args: object, settle_seconds: float = 2.0, **_kwargs: object
+    ) -> dict[str, object]:
+        refresh_settle_seconds.append(settle_seconds)
+        return {"ok": True, "settle_seconds": settle_seconds}
+
+    async def fake_motion_refresh(
+        *_args: object, **_kwargs: object
+    ) -> dict[str, object]:
+        return {
+            "refresh_enabled": True,
+            "refresh_interval_ms": 200,
+            "refresh_commands_sent": 1,
+        }
+
+    async def fake_settle(*_args: object, **_kwargs: object) -> dict[str, object]:
+        coordinator.data.mowing_state.pos_x = 1.45
+        telemetry = _custom_path_telemetry_snapshot(coordinator)
+        return {
+            "telemetry": telemetry,
+            "settled": True,
+            "moved": True,
+            "feed_stale": False,
+            "settle_polls": 2,
+            "wait_seconds": 2.0,
+        }
+
+    async def fake_queue_settle(*_args: object) -> dict[str, object]:
+        queue_settles.append(1)
+        return {
+            "live": queue_live["value"],
+            "reason": None if queue_live["value"] else "command_queue_backlogged",
+            "queue_depth": 0 if queue_live["value"] else 1,
+        }
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(mammotion_services, "_vio_turn_to_heading_staged", fake_turn)
+    monkeypatch.setattr(
+        mammotion_services, "_refresh_position_after_raw_motion", fake_refresh
+    )
+    monkeypatch.setattr(
+        mammotion_services, "_motion_refresh_window", fake_motion_refresh
+    )
+    monkeypatch.setattr(mammotion_services, "_settle_linear_position_feed", fake_settle)
+    monkeypatch.setattr(
+        mammotion_services, "_settle_ble_command_queue", fake_queue_settle
+    )
+
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.5, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        turn_mode="vio",
+        vio_heading_offset_degrees=0.0,
+        max_linear_commands=1,
+        motion_refresh_interval_ms=200,
+        sample_delays=(0, 3),
+    )
+
+    assert result["stop_reason"] == "target_reached"
+    assert refresh_settle_seconds == [0.0]
+    assert sleep_delays == []
+    # One settle at executor entry, one after report-driven position settling.
+    assert queue_settles == [1, 1]
+    linear = next(
+        command
+        for command in result["command_results"]
+        if command.get("phase") == "linear_forward_to_target"
+    )
+    assert linear["post_settle_feedback"] == {
+        "source": "position_settle",
+        "additional_wait_seconds": 0.0,
+        "requested_sample_delays_skipped": [0, 3],
+    }
+    assert linear["post_feedback_queue_settle"]["live"] is True
+    assert result["samples"][-1]["source"] == "position_settle"
+    assert result["samples"][-1]["telemetry"]["position"]["x"] == pytest.approx(1.45)
+
+    # A persistent queue is named and refused before a second pulse, rather
+    # than surfacing as the hardware run's generic command_failed.
+    coordinator.data.mowing_state.pos_x = 1.0
+    queue_live["value"] = False
+    blocked = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.8, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        turn_mode="vio",
+        vio_heading_offset_degrees=0.0,
+        max_linear_commands=2,
+        motion_refresh_interval_ms=200,
+        sample_delays=(0, 3),
+    )
+    assert blocked["stop_reason"] == "ble_link_not_ready_after_feedback"
+    assert blocked["linear_commands_sent"] == 1
+    assert blocked["post_feedback_queue_settle"]["reason"] == (
+        "command_queue_backlogged"
+    )
 
 
 @pytest.mark.asyncio

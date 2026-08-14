@@ -10,18 +10,43 @@ provenance — accurate as a record, but **do not act on any build state it
 describes**, and note that measurement has since refuted several of its claims
 (the "unexplained" turn-rate variance and the turn-budget framing, both below).
 
-## Current build: `0.6.4-beta52` — BETA, items 15–18 measured, gate disarmed
+## Current build: `0.6.4-beta54` released; night follow-up verified locally
 
-**Host and branch agree at `0.6.4-beta52`.**
-Card md5 `9512f504` at both serving paths, resource
-`?v=0.6.4-beta52&build=9512f504`. Gate **DISARMED**
-(`enabled: false`, `real_motion_allowed: false`, no active session). The
-motion-disabled deploy sent no movement command. Beta52 adds runtime-only
-RapidState fusion diagnostics and a fixed backward-only item-17 harness; its
-final integration gates produced **662 pytest, 39 frontend**, with ruff, format, mypy
-and all pre-commit hooks green. `LUBA_ACCEPTANCE_PROFILE` values are unchanged.
-After the item-18 harness-only safety pins, the full suite produced **664 pytest,
-39 frontend**, with the other four commands green.
+`main`, `origin/main`, and tag `v0.6.4-beta54` agree at `0bd35160`. Beta54 adds
+the guarded **Night dry-run** and **Night Go** card controls without changing
+any value in `LUBA_ACCEPTANCE_PROFILE`; Real Go remains the accepted VIO path.
+The beta54 motion-disabled installation and subsequent supervised card run are
+complete. The motion gate was verified **DISARMED** afterward
+(`real_motion_allowed: false`, no active session).
+
+One beta54 card-driven 0.739138 m Night Go stopped safely on
+`no_target_progress` at 0.117085 m after three turn and three forward commands.
+The second forward pulse had settled only 0.002661 m outside the configured
+0.08 m tolerance, but the controller reused a pre-pulse target bearing and sent
+an unnecessary third pulse after crossing the target. Read
+`docs/night-go-card-beta54-20260814.md`.
+
+The working tree contains an **uncommitted** night-only fix: use
+the settled post-pulse RTK position for the residual target bearing, allowing
+the existing reverse-recovery refusal to stop after an overshoot. The card and
+harness also send `sample_delays: [0, 3]`; beta54 omitted it and inherited the
+backend's `[0, 5, 10, 20, 30, 45, 60]`, making the physical run take about 6.5
+minutes. It also contains a Real Go throughput fix: VIO calibration now waits
+one four-second feedback window instead of 2+4 seconds, settled linear telemetry
+is reused instead of adding another three-second sample wait, and the card does
+one final runtime reload instead of two. The dispatched Real Go payload, stops,
+safety gates, legacy/night timing, frozen acceptance-profile values, and all
+`vio_active` construction sites remain unchanged. The VIO response now records
+`post_settle_feedback` and one settled-position sample per successful pulse.
+Final local verification produced **668 pytest and 46 frontend tests**; ruff
+check, ruff format check, mypy, and all pre-commit hooks passed. Both fixes are
+unreleased. They are deployed motion-disabled for testing. The first supervised
+Real Go throughput run safely refused its second linear command because the
+position-feedback report requests still occupied the BLE queue. A bounded
+post-feedback queue-settle correction was then deployed. A fresh supervised
+0.70 m Real Go run reached its target in 19.2 s with 0.093100 m landing error;
+all three queue-settle records were live at depth zero and every movement/stop
+succeeded. Read `docs/real-go-throughput-hardware-20260814.md`.
 
 ✅ **§7 item 17 is complete.** One backward-only pulse moved 0.418536 m on map
 bearing 96.433921° while `toward` remained bit-identical at 173.1023°. The
@@ -71,8 +96,13 @@ defects that only appeared when the card was rendered against **real**
 backend lists, two emitted codes with no help text, a restored run presented as
 current, and a tofu-risk glyph. **Render against live state, not fixtures.**
 
-🚨 **A night SEGMENT will not work today, and the reason is two missing
-parameters — not the turn primitive.** The segment executor's legacy branch
+> **Historical pre-night-v1 finding (superseded by beta50+):** A night segment
+> did not work through the legacy branch because of two missing parameters,
+> not because of the turn primitive. The dedicated `turn_mode: "night"` branch
+> now supplies both and beta54 exposes it through Night Go. The legacy branch
+> remains deliberately unchanged.
+
+The segment executor's legacy branch
 (`services.py:11498-11517`) omits `motion_refresh_interval_ms` (primitive default
 `0`) and passes `angular_speed_fast/slow` at the schema default **180**, which
 does not break static friction on a stationary pivot (~3°/pulse). Every
@@ -105,9 +135,10 @@ the VIO path's `_turn_final_approach_pulse_ms` **window scaling** into the legac
 turn — scale the window, ⚠️ **not** the speed (`angular_speed_slow: 180` sits in
 the stationary deadband; the slow tier has never actually engaged).
 ⚠️ A turn is not a segment; `vio_active` still refuses `turn_mode: "vio"`; and
-🚨 **the map→`toward` conversion is wrong by construction** (mirror, not the
-additive 102.4) — every target above was passed by hand to bypass it, and a night
-segment would hit it.
+🚨 **the shared legacy map→`toward` conversion is wrong by construction**
+(mirror, not the additive 102.4). Night v1 contains this by applying the mirror
+strictly inside `turn_mode: "night"`; the two cancelling legacy conversion sites
+remain deliberately unchanged.
 
 
 `docs/NEXT-SESSION.md` carries the live mower state; this section carries what
