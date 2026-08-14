@@ -1,13 +1,14 @@
 # Handoff — beta54 follow-ups deployed; corrected Real Go check passed
 
-`main`, `origin/main`, and tag `v0.6.4-beta54` agree at `0bd35160` before the
-current working-tree changes. Beta54 contains the guarded Night dry-run and
+`main`, `origin/main`, and tag `v0.6.4-beta54` agree at `0bd35160`. The clean,
+pushed branch `agent/night-real-go-followup` is at `801c1798`; draft PR #14
+targets `main`, with raw evidence isolated in commit `dd53e266`. Beta54 contains the guarded Night dry-run and
 Night Go card controls. It leaves `LUBA_ACCEPTANCE_PROFILE` unchanged and Real
 Go remains `turn_mode: "vio"`. The beta54 motion-disabled install completed
 without a movement command. After the later supervised run, the motion gate was
 verified off with no active session.
 
-The working tree now contains two uncommitted, unreleased changes plus tests.
+The PR branch contains two committed, unreleased changes plus tests.
 The night-only controller derives the residual bearing from settled post-pulse
 RTK, and the card/harness send `sample_delays: [0, 3]`. The Real Go throughput
 change uses one four-second VIO-calibration wait, reuses settled linear telemetry
@@ -20,7 +21,7 @@ still queued. The correction now runs the existing bounded queue-settle check
 after VIO feedback and records `post_feedback_queue_settle`; it never bypasses a
 persistent liveness fault. Final verification produced **668 pytest and 46
 frontend tests**; ruff check, ruff format check, mypy, and every pre-commit hook
-passed. The corrected tree is deployed motion-disabled. A separately authorized
+passed locally and in PR #14's Python/hassfest/Socket checks (HACS skipped). The corrected tree is deployed motion-disabled. A separately authorized
 0.70 m Real Go run then reached its target in 19.2 s with 0.093100 m landing
 error. All three new queue-settle records were live at depth zero, every
 movement/stop succeeded, and the gate was independently verified off. Read

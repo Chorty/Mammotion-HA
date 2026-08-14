@@ -10,7 +10,7 @@
 night branch was deployed beginning with beta50. Beta54 later added a separate
 guarded Night Go card control. One beta54 card-driven run exposed a stale
 pre-pulse-bearing continuation decision; the night-only follow-up is verified,
-uncommitted, and deployed motion-disabled. The same tree includes a separate
+committed on draft PR #14, and deployed motion-disabled. The same branch includes a separate
 VIO-only Real Go throughput optimization. Its corrected supervised 0.70 m run
 reached the target in 19.2 s with 0.093100 m landing error, after every bounded
 post-feedback queue settle reached depth zero. Current verification: 668 pytest,

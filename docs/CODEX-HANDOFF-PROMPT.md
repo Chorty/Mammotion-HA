@@ -2,8 +2,8 @@
 
 Paste everything between the rules below into Codex as the opening message.
 Updated 2026-08-14 after released/deployed `0.6.4-beta54`, its first supervised
-card-driven Night Go, and the verified/deployed but uncommitted Night and Real
-Go follow-ups.
+card-driven Night Go, and the verified/deployed Night and Real Go follow-ups in
+draft PR #14.
 
 ⚠️ Codex reads `AGENTS.md` by convention; this repo's instructions live in
 `CLAUDE.md`. The prompt below points at it explicitly, so no rename is needed —
@@ -21,8 +21,9 @@ LUBA robot mower to points clicked on a map, **with the blades OFF**. The goal i
 point-and-click movement, not mowing. It is at BETA; five acceptance gates are
 complete and Gate 5 has passed twice.
 
-Working directory is the repo root. Branch: `main`; `HEAD`, `origin/main`, and
-`v0.6.4-beta54` agreed at `0bd35160` before the current working-tree changes.
+Working directory is the repo root. Branch: `agent/night-real-go-followup` at
+`801c1798`, clean and pushed; draft PR #14 targets `main`. Raw evidence is in
+preceding commit `dd53e266`. `main`, `origin/main`, and `v0.6.4-beta54` agree at `0bd35160`.
 `origin` is the **Chorty** fork —
 `mikey0000/*` repositories are strictly read-only, never push or comment there.
 
@@ -61,7 +62,7 @@ the target. A pre-pulse bearing was reused after the mower crossed the target,
 causing the unnecessary third pulse. Read
 `docs/night-go-card-beta54-20260814.md`.
 
-The working tree has uncommitted, unreleased night and Real Go fixes. Night
+The PR branch has committed, unreleased night and Real Go fixes. Night
 calculates the residual bearing from settled post-pulse RTK and sends
 `sample_delays: [0, 3]` from the card/harness. Real Go now uses one four-second
 VIO-calibration feedback window, reuses settled linear telemetry instead of
@@ -138,8 +139,8 @@ npm run test:frontend
 .venv/bin/python -m pre_commit run --all-files
 ```
 
-Current follow-up-tree results personally produced: **668 pytest, 46 frontend**,
-all six commands green. **Run them again after any change and report the counts you
+Current PR #14 code results personally produced: **668 pytest, 46 frontend**,
+all six commands green; GitHub Python/hassfest/Socket checks passed. **Run them again after any change and report the counts you
 actually produced** — do not quote a number you did not
 generate. If something fails, paste the real traceback rather than summarising.
 

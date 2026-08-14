@@ -10,7 +10,7 @@ provenance — accurate as a record, but **do not act on any build state it
 describes**, and note that measurement has since refuted several of its claims
 (the "unexplained" turn-rate variance and the turn-budget framing, both below).
 
-## Current build: `0.6.4-beta54` released; night follow-up verified locally
+## Current build: `0.6.4-beta54` released; follow-up is draft PR #14
 
 `main`, `origin/main`, and tag `v0.6.4-beta54` agree at `0bd35160`. Beta54 adds
 the guarded **Night dry-run** and **Night Go** card controls without changing
@@ -26,7 +26,9 @@ The second forward pulse had settled only 0.002661 m outside the configured
 an unnecessary third pulse after crossing the target. Read
 `docs/night-go-card-beta54-20260814.md`.
 
-The working tree contains an **uncommitted** night-only fix: use
+Branch `agent/night-real-go-followup` is pushed to the Chorty fork at
+`801c1798`; draft PR #14 targets `main`. Raw evidence is isolated in preceding
+commit `dd53e266`. The branch contains a night-only fix: use
 the settled post-pulse RTK position for the residual target bearing, allowing
 the existing reverse-recovery refusal to stop after an overshoot. The card and
 harness also send `sample_delays: [0, 3]`; beta54 omitted it and inherited the
@@ -40,7 +42,8 @@ safety gates, legacy/night timing, frozen acceptance-profile values, and all
 `post_settle_feedback` and one settled-position sample per successful pulse.
 Final local verification produced **668 pytest and 46 frontend tests**; ruff
 check, ruff format check, mypy, and all pre-commit hooks passed. Both fixes are
-unreleased. They are deployed motion-disabled for testing. The first supervised
+unreleased. They are deployed motion-disabled for testing. PR #14's Python,
+hassfest, and Socket checks passed; HACS was skipped by workflow policy. The first supervised
 Real Go throughput run safely refused its second linear command because the
 position-feedback report requests still occupied the BLE queue. A bounded
 post-feedback queue-settle correction was then deployed. A fresh supervised

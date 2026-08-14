@@ -12,9 +12,9 @@ measurements stand — but do not act on any build/host/gate state they describe
 
 | | |
 | --- | --- |
-| Branch | `main`; `HEAD`, `origin/main`, and `v0.6.4-beta54` agree at `0bd35160` before the current working-tree changes |
+| Branch | `agent/night-real-go-followup` at `801c1798`, pushed to Chorty; draft PR #14 targets `main` at beta54 `0bd35160` |
 | Released version | `0.6.4-beta54`; manifest, pyproject, card, and lock version sites agree |
-| Working tree | Uncommitted night and VIO-only Real Go throughput fixes, tests, and hardware evidence; corrected tree is deployed but unreleased |
+| Working tree | Clean. Evidence commit `dd53e266`, implementation/tests/docs commit `801c1798`; corrected tree is deployed but unreleased |
 | Motion gate | ✅ **DISARMED.** `real_motion_allowed: false`, no active session |
 | Last measured mower state | Post-redeploy read-only preflight: `(4.7113, -3.3620)`, `MODE_READY`, BLE −64 dBm, RTK Fix, VIO Light/80, blades zero. This is a dated result, not a claim of current physical position. |
 
@@ -65,8 +65,8 @@ away from a target already behind it. See
 reached its target in 19.2 s with 0.093100 m landing error. All three
 post-feedback queue-settle checks reached depth zero in about 100–101 ms and
 every movement/stop succeeded. The gate was independently verified off after
-the run. Next software action: review and publish the currently uncommitted
-corrections. The night change recomputes the residual target bearing from the
+the run. Next software action: review and merge draft PR #14, then prepare the
+next beta. The night change recomputes the residual target bearing from the
 settled post-pulse RTK position, so the existing reverse-recovery refusal can
 stop the crossed-target case. The card/harness set `sample_delays: [0, 3]` to
 replace beta54's inherited 0/5/10/20/30/45/60-second waits. Real Go now avoids
@@ -145,9 +145,9 @@ npm run test:frontend
 .venv/bin/python -m pre_commit run --all-files
 ```
 
-There is **no global `uv`** — use `.venv/bin/python` directly. The current
-uncommitted follow-up tree personally produced **668 pytest, 46 frontend**, all
-six commands green. Run them again after later changes; do not carry these
+There is **no global `uv`** — use `.venv/bin/python` directly. PR #14's code
+commit personally produced **668 pytest, 46 frontend**, all six commands green;
+its Python, hassfest, and Socket GitHub checks also passed. Run them again after later changes; do not carry these
 counts forward as if newly measured.
 
 ## 4. Hardware rules — non-negotiable
