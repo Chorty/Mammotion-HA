@@ -11139,8 +11139,8 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     VIO frame is re-anchored per initialisation, the map->VIO offset is
     derived live from a short forward calibration drive (or accepted via
     ``vio_heading_offset_degrees`` when already known, e.g. carried between
-    multi-segment segments). ``turn_mode="legacy"`` keeps the original
-    course-over-ground turn with the fixed calibrated offset.
+    multi-segment segments). ``turn_mode="legacy"`` keeps the original turn
+    with its fixed additive calibrated-offset conversion.
 
     ``send_movement`` is a continuous-velocity command with no protocol-level
     duration bound -- the mower keeps moving until something explicitly stops

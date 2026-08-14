@@ -4459,6 +4459,40 @@ async def test_night_real_gates_refuse_unsupported_inputs() -> None:
 
 
 @pytest.mark.asyncio
+async def test_night_refuses_degraded_rtk_despite_schema_override() -> None:
+    """The generic degraded-RTK escape hatch is never forwarded into night."""
+    points = [{"x": 1.0, "y": 1.0}, {"x": 1.8, "y": 1.0}]
+    parsed = RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA(
+        {
+            "entity_id": "lawn_mower.test",
+            "points": points,
+            "turn_mode": "night",
+            "allow_degraded_rtk": True,
+            "dry_run": False,
+            "confirm_blades_off": True,
+            "confirm_clear_area": True,
+        }
+    )
+    assert parsed["allow_degraded_rtk"] is True
+
+    coordinator = _pulse_coordinator(
+        position=(1.0, 1.0, 0.0), rtk_status=3, pos_level=1
+    )
+    result = await _raw_pymammotion_execute_vector_segment(
+        coordinator,
+        points,
+        turn_mode=parsed["turn_mode"],
+        dry_run=parsed["dry_run"],
+        confirm_blades_off=parsed["confirm_blades_off"],
+        confirm_clear_area=parsed["confirm_clear_area"],
+    )
+
+    assert "night_requires_precise_rtk" in result["blockers"]
+    assert result["stop_reason"] == "safety_gates_failed"
+    coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_night_length_gate_handles_short_and_missing_position() -> None:
     """Short legs pass the night gate; missing position returns cleanly."""
     short = await _raw_pymammotion_execute_vector_segment(
