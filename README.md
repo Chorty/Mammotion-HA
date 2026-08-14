@@ -107,35 +107,34 @@ feature. Preview and dry-run support up to seven destinations. Real execution
 is limited to four segments and is disabled unless every backend safety gate
 passes.
 
-The bounded backend re-passed the two-leg Gate 4 path on 2026-08-05. The card's
-built-in Real Go defaults match that bounded profile, but the re-pass still
-requires reproduction on a second daylight geometry before Gate 5. The card has
-not itself driven the mower end-to-end: UI-to-mower Real Go is still
-unvalidated, and any run remains operator-supervised.
+The bounded backend re-passed the two-leg Gate 4 path on 2026-08-05. Gate 5 then
+passed twice from the card: two two-segment runs on 2026-08-08 and a
+four-segment reach-enabled run on 2026-08-12. The latter landed 0.0674 / 0.1032 /
+0.0807 / 0.0607 m from its waypoints using the built-in profile below. This is
+supervised click-to-go acceptance on the tested LUBA, not autonomous navigation
+or acceptance for another mower family.
 
 Overriding any motion field in the card YAML leaves the accepted profile. The
 card then labels its **execution profile** row `customised (not
 hardware-accepted)` and names the overridden fields. Treat that state as
 untested.
 
-The mower marker carries a **heading arrow** showing the bearing it would drive
-forward along, with the same number in the preflight panel's
-**facing (map bearing)** row. It is computed the way the backend aims —
-course-over-ground plus `calibrated_forward_heading_offset_degrees` — so the
-arrow points where a Real Go would actually go, not merely where the mower was
-last travelling.
+The mower marker draws a heading arrow only when the backend supplies an
+explicitly trustworthy, map-aligned `current_orientation`. Otherwise the card
+reports current orientation as unavailable and shows any last-travel projection
+as diagnostics only. It never presents that projection as mower orientation.
 
-> ⚠️ `toward` is course-over-ground, **not** a compass heading. While the mower
-> is stationary it reports the bearing of its last movement, so the arrow can be
-> stale after a turn — most visibly right after a VIO pivot. A wrong
-> `calibrated_forward_heading_offset_degrees` rotates the arrow without
-> rotating the mower, so treat a persistently wrong-looking arrow as a signal to
-> re-derive that offset.
+> `toward` is a body-heading observation on the acceptance LUBA: one commanded
+> reverse pulse travelled 0.4185 m almost exactly opposite the heading derived
+> from `toward`, while `toward` itself did not flip. Its map conversion is a
+> mirror, approximately `(90.13 - toward) mod 360` on this installation. The
+> backend does not yet expose that as trusted card orientation, so Nudge remains
+> fail-closed rather than treating a mower-specific measurement as universal.
 
 Add the integration-served JavaScript as a dashboard resource:
 
 ```text
-/mammotion/mammotion-custom-path-card.js?v=0.6.4-beta21
+/mammotion/mammotion-custom-path-card.js?v=<installed-version>
 ```
 
 Use resource type `JavaScript module`. The version query is required because
@@ -196,9 +195,9 @@ Notes on the profile:
   2.95 m short. With it, 2 m / 3 m / 4 m legs reached target at 0.0690 /
   0.0928 / 0.1023 m, every one stopping on tolerance rather than on the
   ceiling. Per-segment reach is ~4 m, per-click ~16 m at four segments.
-  ⚠️ Adopted 2026-08-12; **the Gate 5 re-pass on this profile has not been run
-  yet.** `max_linear_commands` stays at 3 so disabling the ceiling falls back to
-  exactly the Gate 4/5 behaviour.
+  Adopted and card-accepted by the 2026-08-12 Gate 5 re-pass.
+  `max_linear_commands` stays at 3 so disabling the ceiling falls back to the
+  fixed-budget behaviour.
 - A runaway is bounded by distance, not by the pulse count:
   `linear_distance_ceiling_factor` (2.0) stops a segment at twice its leg
   length regardless of how many pulses it has left.
@@ -217,10 +216,11 @@ Notes on the profile:
 backend supplies a trustworthy, map-aligned current orientation.
 
 The earlier implementation treated `toward + calibrated offset` as current
-facing. Live testing disproved that assumption: `toward` is course-over-ground
-and remained frozen after an in-place pivot while the mower physically faced a
-different direction. VIO and RTK yaw were both unavailable in that stationary
-night state. Beta19 therefore refuses Nudge rather than guessing.
+facing. Live testing disproved that additive conversion. Later reverse evidence
+established `toward` as body heading on this LUBA and found a mirror conversion
+for this map, but the integration deliberately does not promote a
+mower-specific measurement into a universal trusted-orientation contract.
+Nudge therefore remains fail-closed.
 
 - Capped at **2 m**, so a mistake is bounded by geometry rather than vigilance.
 - Requires the **clear area** confirmation. The blades-off checkbox is not
@@ -228,12 +228,27 @@ night state. Beta19 therefore refuses Nudge rather than guessing.
   and cutter RPM are still gated separately by `mower_reports_blades_off`.
 - Every other gate is unchanged: BLE liveness, stop primitive, containment,
   ready state.
-- Unavailable when only course-over-ground exists, even if the mower has moved
-  since boot. Last travel is not current body orientation.
+- Unavailable when only last-travel projection or unqualified `toward` telemetry
+  exists. Neither is exposed as portable trusted orientation.
 - Leaves the accepted profile, so the card labels the run accordingly.
 
-> ⚠️ Do not override the orientation blocker with course-over-ground. A
-> stationary mower may have pivoted since that bearing was recorded.
+> ⚠️ Do not override the orientation blocker with last-travel projection. The
+> measured body-heading conversion is installation-specific and is not yet a
+> general card contract.
+
+#### Experimental night segment — service level only
+
+The integration contains an explicit `turn_mode: night` for hardware
+characterization. It is deliberately not part of the card's accepted defaults
+or presented as a normal Night Go control. Night v1 is restricted to one
+forward-only mapped segment of at most 1 m, RTK Fix, a fixed three-pulse linear
+budget, and no multi-segment chaining or reverse recovery.
+
+One supervised 0.70 m night segment reached its opening 8° turn tolerance and
+stopped safely on `no_target_progress` 0.1143 m from target after three forward
+pulses. That records feasibility; it does not establish a night accuracy
+tolerance or acceptance population. Use the accepted VIO card profile for
+ordinary click-to-go operation.
 
 Real motion additionally requires the integration option **Enable experimental
 BLE-only manual motion**, a positively verified PyMammotion backend, a fresh

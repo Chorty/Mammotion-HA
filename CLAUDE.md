@@ -29,8 +29,8 @@ mirror-derived body heading was 277.0277°, whose reverse is 97.0277°: only
 0.593779° from measured travel. `toward` is therefore body heading, not
 course-over-ground, under reverse. RapidState `fuse_status` stayed 0 `NO_POSE`
 in all 81 records and was non-informative on this manual path. Read
-`docs/night-reverse-heading-20260813.md`. This does not authorize item 18 or
-resolve item 15's separate forward-course disagreement.
+`docs/night-reverse-heading-20260813.md`. It does not resolve item 15's separate
+forward-course disagreement.
 
 ✅ **§7 item 18 is complete as characterization, not acceptance.** One 0.70 m
 perpendicular night segment reached the 8° turn tolerance in one pulse, sent
@@ -453,12 +453,14 @@ correction chain: **internet source → base station (WiFi) → LoRa E22 → mow
 `report_data.basestation_info` — reading only the mower will call a live base
 silent. `MammotionRTKCoordinator` already queries this every tick.
 
-⚠️ **Closed-loop segments cannot run after dark.** The `vio_active` gate keys off
+~~⚠️ **Closed-loop segments cannot run after dark.**~~ **SUPERSEDED by night v1
+items 15–18.** The historical reasoning below led to the later measurements but
+its course-over-ground premise was refuted. The `vio_active` gate keys off
 `turn_mode == "vio"` unconditionally, not off whether a turn is needed, and
 `_VIO_TURN_MODES` is `("vio", "legacy")` only. *(Refined 2026-08-11 — read
 `docs/night-motion-options-20260811.md`. The gate is created ONLY for
 `turn_mode == "vio"` (`services.py:10965`), so `legacy` skips it; but `legacy`
-closes on `position.toward`, which is course-over-ground and therefore blind to
+closes on `position.toward`, which was then believed to be course-over-ground and therefore blind to
 in-place rotation **at any hour**, not just at night. The real constraint is not
 "no heading at night", it is **"no heading while stationary"** — which is why an
 ARC, never once sent by this project despite the wire accepting both axes, is the

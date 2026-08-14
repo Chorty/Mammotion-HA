@@ -136,13 +136,14 @@ forward as if newly measured.
   "Download last run JSON" button for exactly this.
 - Blades OFF. This project never runs blades-on — the goal is point-and-click
   movement, not mowing.
-- Night turns work, so **most turn measurement no longer needs daylight.** A
-  full closed-loop *segment* has still never run in the dark.
+- Night-mode turns work without VIO. Two bounded night-mode segments have run;
+  neither establishes a night landing-accuracy specification.
 
 ## 5. What is genuinely unsettled
 
-- One closed-loop night segment has now run; it stopped after one forward pulse
-  on `night_reaim_required_but_unavailable`. It is not a landing-accuracy pass.
+- Two closed-loop night-mode segments have run. Item 15 stopped after one pulse
+  on `night_reaim_required_but_unavailable`; item 18 stopped after three pulses
+  on `no_target_progress` at 0.114277 m. Neither is a landing-accuracy pass.
 - The mirror has now been consumed by one control loop and disagreed with the
   measured forward course by 75.823° (`movement bearing + toward` was 14.3069°
   rather than 90.13°). Cause remains unknown.

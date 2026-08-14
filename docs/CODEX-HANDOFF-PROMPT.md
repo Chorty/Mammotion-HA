@@ -148,8 +148,9 @@ Your work is entirely off-mower: code, tests, and the CI gates above.
 
 ## What is genuinely unsettled — do not paper over these
 
-- One closed-loop night segment has run and stopped after its first forward
-  pulse; this is not a landing-accuracy pass.
+- Two closed-loop night-mode segments have run: item 15 stopped after its first
+  forward pulse, and item 18 stopped after three at 0.114277 m. Neither is a
+  landing-accuracy pass.
 - The mirror relation has now been used by one control loop and disagreed with
   the measured forward course. The cause is not yet established.
 - `toward` did not flip under item 17's reverse pulse; body-vs-course is settled.
