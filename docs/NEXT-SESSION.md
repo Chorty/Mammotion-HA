@@ -6,17 +6,23 @@ measurements stand — but do not act on any build/host/gate state they describe
 
 ---
 
-# 🚦 2026-08-14 HANDOFF — beta54 Night Go and local follow-up
+# 🚦 2026-08-14 HANDOFF — beta55 released; PR #14 reviewed and merged
 
-## 0. Live state, verified 2026-08-14 after the beta54 card run
+## 0. Live state, verified 2026-08-14 after the beta55 motion-disabled install
 
 | | |
 | --- | --- |
-| Branch | `agent/night-real-go-followup`, clean and pushed to Chorty; draft PR #14 targets `main` at beta54 `0bd35160` |
-| Released version | `0.6.4-beta54`; manifest, pyproject, card, and lock version sites agree |
-| Working tree | Clean. Evidence commit `dd53e266`, implementation/tests commit `801c1798`, followed only by handoff-doc commits; corrected code is deployed but unreleased |
-| Motion gate | ✅ **DISARMED.** `real_motion_allowed: false`, no active session |
-| Last measured mower state | End of corrected Real Go check: `(4.2954, -3.8079)`, `MODE_READY`, BLE −64 dBm, RTK Fix, blades zero. Gate independently disarmed. This is a dated result, not a claim of current physical position. |
+| Branch | `main` at `5ef37511`, clean; PR #14 merged as `efa1eda8`. `agent/night-real-go-followup` is merged and can be deleted |
+| Released version | `0.6.4-beta55`, tag `v0.6.4-beta55`; manifest, pyproject, card, and lock version sites agree (`0.6.4-beta55` / `0.6.4b55`) |
+| Host | Running beta55. All 46 files byte-identical, card `9d0ccbad94170b0d16dabde675f81db9` at **both** paths, Lovelace `?v=0.6.4-beta55&build=9d0ccbad`. Backup `/config/mammotion-backup-20260814-2004-pre-beta55.tgz` |
+| Motion gate | ✅ **DISARMED.** `real_motion_allowed: false`, `enabled: false`, no active session, no last session. **No motion was commanded by the release or the install.** |
+| Mower state at install | **Docked** at `(4.3764, 3.1923)`, `CHARGE_ON`, `zone_hash 0`, `MODE_READY`, RTK `Fix`, blades OFF at 0 rpm, BLE active and online. `position_not_valid_for_motion` is expected on the dock and was present before the deploy too. |
+
+⚠️ **The night fix in beta55 has never run on hardware.** It is verified
+off-mower and by replay against the recorded beta54 geometry only. The Real Go
+throughput fix has exactly one supervised pass (0.70 m, 0.093100 m landing) —
+one path, not a reliability population. Any physical run needs fresh, explicit,
+per-run supervised authorization.
 
 ## 1. What to do next
 

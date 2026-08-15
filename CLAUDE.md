@@ -10,14 +10,18 @@ provenance — accurate as a record, but **do not act on any build state it
 describes**, and note that measurement has since refuted several of its claims
 (the "unexplained" turn-rate variance and the turn-budget framing, both below).
 
-## Current build: `0.6.4-beta54` released; follow-up is draft PR #14
+## Current build: `0.6.4-beta55` released and installed motion-disabled
 
-`main`, `origin/main`, and tag `v0.6.4-beta54` agree at `0bd35160`. Beta54 adds
-the guarded **Night dry-run** and **Night Go** card controls without changing
-any value in `LUBA_ACCEPTANCE_PROFILE`; Real Go remains the accepted VIO path.
-The beta54 motion-disabled installation and subsequent supervised card run are
-complete. The motion gate was verified **DISARMED** afterward
-(`real_motion_allowed: false`, no active session).
+`main`, `origin/main`, and tag `v0.6.4-beta55` agree at `5ef37511`. Beta55
+releases the reviewed and merged PR #14 on top of beta54's guarded **Night
+dry-run** and **Night Go** card controls, still without changing any value in
+`LUBA_ACCEPTANCE_PROFILE`; Real Go remains the accepted VIO path. The beta55
+motion-disabled installation is complete and **no motion was commanded by it**.
+The motion gate is verified **DISARMED** (`real_motion_allowed: false`, no
+active session, no last session). The mower is **docked** at
+`(4.3764, 3.1923)`, `CHARGE_ON`, `zone_hash 0`, so `position_not_valid_for_motion`
+is the expected second blocker. Deploy record and exact hashes:
+`docs/deploy-runbook-p0.md` → "beta55".
 
 One beta54 card-driven 0.739138 m Night Go stopped safely on
 `no_target_progress` at 0.117085 m after three turn and three forward commands.
@@ -26,31 +30,46 @@ The second forward pulse had settled only 0.002661 m outside the configured
 an unnecessary third pulse after crossing the target. Read
 `docs/night-go-card-beta54-20260814.md`.
 
-Branch `agent/night-real-go-followup` is pushed to the Chorty fork; draft PR
-#14 targets `main`. Raw evidence is isolated in commit `dd53e266`, and the code
-and tests are in `801c1798`; later commits reconcile handoff documentation. The
-branch contains a night-only fix: use
-the settled post-pulse RTK position for the residual target bearing, allowing
-the existing reverse-recovery refusal to stop after an overshoot. The card and
-harness also send `sample_delays: [0, 3]`; beta54 omitted it and inherited the
-backend's `[0, 5, 10, 20, 30, 45, 60]`, making the physical run take about 6.5
-minutes. It also contains a Real Go throughput fix: VIO calibration now waits
-one four-second feedback window instead of 2+4 seconds, settled linear telemetry
-is reused instead of adding another three-second sample wait, and the card does
-one final runtime reload instead of two. The dispatched Real Go payload, stops,
+PR #14 was independently reviewed and **merged** (`efa1eda8`), then released as
+beta55. It carries a night-only fix: use the settled post-pulse RTK position for
+the residual target bearing, allowing the existing reverse-recovery refusal to
+stop after an overshoot. The card and harness also send `sample_delays: [0, 3]`;
+beta54 omitted it and inherited the backend's `[0, 5, 10, 20, 30, 45, 60]`,
+making the physical run take about 6.5 minutes. It also carries a Real Go
+throughput fix: VIO calibration now waits one four-second feedback window
+instead of 2+4 seconds, settled linear telemetry is reused instead of adding
+another three-second sample wait, and the card does one final runtime reload
+instead of two. Each VIO pulse then runs the existing bounded BLE queue-settle
+check and refuses the next command with `ble_link_not_ready_after_feedback`
+rather than dispatching into a backlog. The dispatched Real Go payload, stops,
 safety gates, legacy/night timing, frozen acceptance-profile values, and all
 `vio_active` construction sites remain unchanged. The VIO response now records
-`post_settle_feedback` and one settled-position sample per successful pulse.
-Final local verification produced **668 pytest and 46 frontend tests**; ruff
-check, ruff format check, mypy, and all pre-commit hooks passed. Both fixes are
-unreleased. They are deployed motion-disabled for testing. PR #14's Python,
-hassfest, and Socket checks passed; HACS was skipped by workflow policy. The
-first supervised Real Go throughput run safely refused its second linear command because the
-position-feedback report requests still occupied the BLE queue. A bounded
-post-feedback queue-settle correction was then deployed. A fresh supervised
-0.70 m Real Go run reached its target in 19.2 s with 0.093100 m landing error;
-all three queue-settle records were live at depth zero and every movement/stop
-succeeded. Read `docs/real-go-throughput-hardware-20260814.md`.
+`post_settle_feedback`, `post_feedback_queue_settle`, and one settled-position
+sample per successful pulse.
+
+The review verified this independently rather than trusting green CI: the
+`LUBA_ACCEPTANCE_PROFILE` literal and the legacy turn branch are each
+byte-identical across beta54 and the PR tip (SHA-256 `0a0ab014…d858ea` and
+`7665c302…8cef2fdbc`); the nine original `turn_mode == "vio"` blocks all survive
+and the four new sites are feedback handling only; the queue-settle refusal at
+`services.py:12340` precedes both the mid-drive re-aim dispatch and the next
+linear dispatch, so no dispatch can follow a non-live queue. Replayed against
+the recorded beta54 geometry, the night fix refuses pulse 3 (residual bearing
+155.636° vs movement heading 0.423°) and lands 0.0827 m out instead of 0.1171 m
+— ⚠️ still outside the 0.08 m tolerance, so it stops on
+`target_requires_reverse_recovery`, **not** `target_reached`. Verification rerun
+after a README correction: **668 pytest (50% coverage), 46 frontend**, ruff
+check, ruff format (58 files), mypy (28 files), and all nine pre-commit hooks
+green, modifying nothing.
+
+The first supervised Real Go throughput run safely refused its second linear
+command because the position-feedback report requests still occupied the BLE
+queue. A bounded post-feedback queue-settle correction was then deployed. A
+fresh supervised 0.70 m Real Go run reached its target in 19.2 s with 0.093100 m
+landing error; all three queue-settle records were live at depth zero and every
+movement/stop succeeded. Read `docs/real-go-throughput-hardware-20260814.md`.
+⚠️ **That is one path, not a reliability population**, and **no night run has
+ever exercised the night fix on hardware.**
 
 ✅ **§7 item 17 is complete.** One backward-only pulse moved 0.418536 m on map
 bearing 96.433921° while `toward` remained bit-identical at 173.1023°. The

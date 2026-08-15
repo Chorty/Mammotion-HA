@@ -8,6 +8,47 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta55 — PR #14 released, motion-disabled install, 2026-08-14 20:04-20:12 EDT
+
+`0.6.4-beta55` releases the reviewed PR #14 (merge `efa1eda8`, version commit
+`5ef37511`, tag `v0.6.4-beta55`). It is beta54 plus the night residual-bearing
+correction, `sample_delays: [0, 3]` on Night Go and the night harness, the Real
+Go feedback-latency removal, and the bounded post-feedback BLE queue-settle
+check. **No `LUBA_ACCEPTANCE_PROFILE` value moved** — the profile literal is
+byte-identical to beta54 (independently hashed both sides), as is the legacy
+turn branch. **No motion was commanded by this deploy.**
+
+Backup `/config/mammotion-backup-20260814-2004-pre-beta55.tgz`. Deployment
+archive SHA-256 `b96259563e460bf5ad0053a1b75577a286dd41ab50898dfae60ff1b6bc404a8f`,
+verified identical after transfer. All **46** integration files byte-identical
+to the local tree, zero AppleDouble entries: services `d6ab89ff4e4286b33d4fa5755bba5b0d`
+(unchanged from the pre-release corrected tree), manifest
+`b32d6f78e90af27e8122db0683bca405`, card `9d0ccbad94170b0d16dabde675f81db9` at
+**both** serving paths. Lovelace resource read back as
+`?v=0.6.4-beta55&build=9d0ccbad`.
+
+HA API returned in **36 s**; **132** Mammotion entities in **119 s**. Config
+entry `loaded`, no `setup_error`. Container `pymammotion 0.8.12.post1` against a
+`0.8.12` minimum, `backend_verified: true`, both probed capabilities true with
+no missing entries. Five Mammotion entities read `unavailable` — the four
+`emergency_nudge_*` buttons and `start_camera_on_mower`; the nudge four are
+unconditionally unavailable by design (`_nudge_available` returns `False`), not
+a deploy fault.
+
+Final readback: `enabled: false`, `real_motion_allowed: false`, no active
+session, no last session, `MODE_READY`, blades `OFF` at 0 rpm with
+`blade_safe_for_motion: true`, BLE the active transport and online, RTK `Fix`.
+The mower is **docked** at `(4.3764, 3.1923)`, `pos_type CHARGE_ON`,
+`zone_hash 0`, so `position_not_valid_for_motion` is the expected second blocker
+and was equally present before the deploy.
+
+A dark-safe dry run confirmed the deployed executor loads and runs: it returned
+`valid: false`, `would_send: false`, `stop_reason: path_validation_failed`,
+`path_points_outside_known_area_geometry`, zero commands — correct for a dock
+position outside mapped area geometry. It also echoed the backend default
+`sample_delays` of `[0, 5, 10, 20, 30, 45, 60]` for a caller that omits the key,
+which is exactly why the card now sends `[0, 3]` from both profiles.
+
 ### beta54 plus unreleased Night/Real Go corrections — 2026-08-14
 
 `0.6.4-beta54` was published from merge commit `2573c29b` and version commit
