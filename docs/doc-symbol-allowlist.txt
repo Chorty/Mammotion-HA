@@ -28,6 +28,7 @@ rtk_signal_quality                              # named as a dead/unpopulated fi
 
 # --- exists UPSTREAM only; deliberately not in our pinned backend ---
 last_report_data_at                             # upstream pymammotion c21ec18; absent from chorty-0.8.12.post1. Cited in CLAUDE.md as the instrument that would close the beta23 cadence gap IF the sensing floor is ever reconsidered
+transport/ble.py                                # a pymammotion path, not one of ours: the file our fork patches for the BLE leak, and the one upstream 47c3c54 also touches
 
 # --- paths and names on the HA host, not in this repo ---
 www/mammotion-custom-path-card.js               # the /config/www/community copy; the repo has only custom_components/mammotion/www/
