@@ -110,3 +110,15 @@ repos:
       - id: mypy
         args: [--follow-imports=skip, --ignore-missing-imports]
         files: ^custom_components/mammotion/.+\.(py|pyi)$
+  - repo: local
+    hooks:
+      # Session-entry docs are read first by every session, so a stale claim in
+      # them is load-bearing. On 2026-08-14 one caused a session to recommend
+      # redoing work that shipped in beta42. Symbol existence is mechanical;
+      # this checks it. It cannot check whether the PROSE is still true.
+      - id: doc-symbols
+        name: session-entry docs cite code that exists
+        entry: .venv/bin/python scripts/check_doc_symbols.py
+        language: system
+        pass_filenames: false
+        files: ^(CLAUDE\.md|docs/(NEXT-SESSION|CODEX-HANDOFF)\.md|docs/doc-symbol-allowlist\.txt|custom_components/.+|scripts/check_doc_symbols\.py)$

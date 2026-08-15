@@ -511,7 +511,10 @@ silent. `MammotionRTKCoordinator` already queries this every tick.
 items 15–18.** The historical reasoning below led to the later measurements but
 its course-over-ground premise was refuted. The `vio_active` gate keys off
 `turn_mode == "vio"` unconditionally, not off whether a turn is needed, and
-`_VIO_TURN_MODES` is `("vio", "legacy")` only. *(Refined 2026-08-11 — read
+`_VIO_TURN_MODES` was `("vio", "legacy")` only. ⚠️ **That symbol no longer
+exists**: it is now `_SEGMENT_TURN_MODES = ("vio", "legacy", "night")`
+(`services.py:10939`), so the "no night-safe mode" half of this argument is
+dead — night v1 added exactly that. *(Refined 2026-08-11 — read
 `docs/night-motion-options-20260811.md`. The gate is created ONLY for
 `turn_mode == "vio"` (`services.py:10965`), so `legacy` skips it; but `legacy`
 closes on `position.toward`, which was then believed to be course-over-ground and therefore blind to
@@ -550,7 +553,9 @@ accepted and no §4 re-pinning is owed.
    unmeasured — and attempt 5's segment 2 already produced the worst landing of
    the four (0.1449 m against 0.15 m).
 2. **A turn overshoot ceiling**, `_VIO_TURN_CONSERVATIVE_MAX_DEGREES_PER_SECOND =
-   60.0`. Caps each turn pulse so that even at 60 °/s it cannot sweep past
+   60.0` — ⚠️ **removed in beta37** ("the turn model, rebuilt on measurement"),
+   so this item and the beta32 objections built on it describe a constant that
+   no longer exists. Caps each turn pulse so that even at 60 °/s it cannot sweep past
    `|error| + tolerance`. ⚠️ It **routinely becomes the active bound** on final
    approach rather than acting as a rare backstop, and it **couples turn dynamics
    to `heading_tolerance_degrees`**, which is a profile key. Below ~12° of

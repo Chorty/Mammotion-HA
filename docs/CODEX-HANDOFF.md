@@ -126,10 +126,16 @@ Worktree clean and pushed to `Chorty`. All four version sites agree at
 `docs/plan-slow-tier-validation-20260807.md` (operator-authorized). It was
 attempted 2026-08-07 night and **refused before any motion command**.
 ⚠️ The `vio_active` gate keys off `turn_mode == "vio"` **unconditionally**, not
-off whether a turn is needed; `_VIO_TURN_MODES` is `("vio", "legacy")` only and
-`passed = dry_run or calibration_will_warm` requires a bright scene. **Closed-loop
-segments cannot run after dark, by design.** 11 of 12 gates passed. Re-run it in
+off whether a turn is needed; `_VIO_TURN_MODES` was `("vio", "legacy")` only and
+`passed = dry_run or calibration_will_warm` requires a bright scene. ~~**Closed-loop
+segments cannot run after dark, by design.**~~ 11 of 12 gates passed. Re-run it in
 daylight, together with the turn-quantum work (VIO is alive only then).
+
+⚠️ **Superseded — do not act on the paragraph above.** `_VIO_TURN_MODES` no
+longer exists; it is `_SEGMENT_TURN_MODES = ("vio", "legacy", "night")`
+(`services.py:10939`). Night v1 added an RTK-only night branch and beta54/55
+expose it as a guarded Night Go card control, so "cannot run after dark" is
+false as a statement about the current build.
 
 **Settled tonight — do not re-litigate:**
 

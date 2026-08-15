@@ -1374,10 +1374,14 @@ night and **refused before any motion command** — see
 
 ⚠️ **Why it failed, so it is not repeated:** the `vio_active` safety gate keys
 off `turn_mode == "vio"` **unconditionally**, not off whether a turn is actually
-needed. `_VIO_TURN_MODES` is `("vio", "legacy")` only — there is no night-safe
+needed. `_VIO_TURN_MODES` was `("vio", "legacy")` only — there was no night-safe
 mode — and the gate is `passed = dry_run or calibration_will_warm`, where
-warming requires a bright scene. **A closed-loop segment cannot run after dark,
-by design.** 11 of 12 gates passed; this was the 12th.
+warming requires a bright scene. ~~**A closed-loop segment cannot run after dark,
+by design.**~~ 11 of 12 gates passed; this was the 12th.
+
+⚠️ **Superseded.** That symbol is now `_SEGMENT_TURN_MODES = ("vio", "legacy",
+"night")` (`services.py:10939`), and night v1 is the night-safe mode this
+paragraph says does not exist.
 
 In daylight it should simply run. The prediction under test: a waypoint approach
 whose final phase is slow-tier lands within **~0.15 m**. Everything else in the

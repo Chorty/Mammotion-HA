@@ -1,0 +1,42 @@
+# Names the session-entry docs may cite even though they are not in the tree.
+#
+# Checked by `scripts/check_doc_symbols.py`. Every entry needs a reason, so a
+# symbol deleted from the code forces a deliberate note here instead of leaving
+# a silently false claim in CLAUDE.md / NEXT-SESSION.md / CODEX-HANDOFF.md.
+#
+# Seeded 2026-08-14 from the first full audit (989 claims checked).
+#
+# An entry here means "the doc may NAME this, because it now says correctly what
+# happened to it" -- not "ignore this". The two genuine defects found that day
+# were fixed by annotating the claim in place, which necessarily keeps the old
+# name in the prose, so they are listed like any other rename.
+
+# --- renamed or removed, where the doc now records what happened ---
+_VIO_TURN_MODES                                 # renamed -> _SEGMENT_TURN_MODES; value gained "night" (night v1). Annotated at all 4 mention sites 2026-08-14
+_VIO_TURN_CONSERVATIVE_MAX_DEGREES_PER_SECOND   # removed in beta37; the beta31/32 sections that discuss it are annotated as history
+per_command_translation_bound_m                 # renamed -> translation_bound_m_per_degree (beta20)
+per_command_translation                         # prose fragment of the same rename note
+_VIO_TURN_CONSERVATIVE_TRANSLATION_M_PER_SECOND # replaced by _..._M_PER_DEGREE (beta20)
+
+# --- options considered and rejected; the doc records why ---
+rtk_not_fixed                                   # rejected hard-blocker name; shipped as rtk_not_precise
+arc_to_point                                    # hypothetical controller, never built
+sync_rtk_and_dock                               # rover-side action tried 2026-08-07; no such symbol exists
+
+# --- fields the docs correctly describe as absent or dead ---
+rtk_signal_quality                              # named as a dead/unpopulated field
+
+# --- paths and names on the HA host, not in this repo ---
+www/mammotion-custom-path-card.js               # the /config/www/community copy; the repo has only custom_components/mammotion/www/
+dashboard_yard                                  # Lovelace dashboard name in /config/.storage backup filenames
+
+# --- external systems: ESPHome, Home Assistant core, tooling ---
+esp32_ble_tracker                               # ESPHome config key
+bluetooth_proxy                                 # ESPHome config key
+setup_error                                     # Home Assistant ConfigEntryState
+_fix_tokens                                     # referenced in a .pre-commit-config.yaml comment
+
+# --- math notation inside formulas, not code identifiers ---
+initial_aim                                     # variable in the landing-error fit
+map_facing                                      # variable in a heading derivation
+toward_first                                    # variable in the --summarise offset formula
