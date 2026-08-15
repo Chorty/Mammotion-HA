@@ -1,15 +1,33 @@
-# Handoff — beta52 night v1; items 15–18 measured and contained
+# Handoff — beta54 follow-ups deployed; corrected Real Go check passed
 
-Night v1 off-mower items 1–14 and the item-17 runtime diagnostics are deployed
-as `0.6.4-beta52`. Both card paths match md5
-`9512f504f4b861488e98f4d29ced6e4f`; Lovelace resource is
-`?v=0.6.4-beta52&build=9512f504`; `services.py` matches local md5
-`7c94607698ce6d9f55a4fd4a1a30f85f`; pymammotion is `0.8.12.post1`.
-Final integration verification produced 662 pytest and 39 frontend tests; ruff,
-format, mypy, and all pre-commit hooks passed. The acceptance-profile values
-were not changed. The motion gate read back `enabled: false`,
-`real_motion_allowed: false`, with no active session, and no movement command
-was sent during deployment.
+`main`, `origin/main`, and tag `v0.6.4-beta54` agree at `0bd35160`. The clean,
+pushed branch `agent/night-real-go-followup` is draft PR #14. Raw evidence is
+isolated in commit `dd53e266`, implementation/tests in `801c1798`, and later
+commits only reconcile handoff docs. Beta54 contains the guarded Night dry-run
+and Night Go card controls. It leaves `LUBA_ACCEPTANCE_PROFILE` unchanged and Real
+Go remains `turn_mode: "vio"`. The beta54 motion-disabled install completed
+without a movement command. After the later supervised run, the motion gate was
+verified off with no active session.
+
+The PR branch contains two committed, unreleased changes plus tests.
+The night-only controller derives the residual bearing from settled post-pulse
+RTK, and the card/harness send `sample_delays: [0, 3]`. The Real Go throughput
+change uses one four-second VIO-calibration wait, reuses settled linear telemetry
+instead of adding a three-second sampling wait, and removes a duplicate final
+card reload. Its dispatched payload, mandatory stops, safety gates, legacy/night
+timing, and frozen profile values are unchanged; the VIO result adds explicit
+settled-feedback provenance. The first supervised Real Go check safely refused
+its second linear command before dispatch because feedback report requests were
+still queued. The correction now runs the existing bounded queue-settle check
+after VIO feedback and records `post_feedback_queue_settle`; it never bypasses a
+persistent liveness fault. Final verification produced **668 pytest and 46
+frontend tests**; ruff check, ruff format check, mypy, and every pre-commit hook
+passed locally and in PR #14's Python/hassfest/Socket checks (HACS skipped). The
+corrected tree is deployed motion-disabled. A separately authorized 0.70 m Real
+Go run then reached its target in 19.2 s with 0.093100 m landing
+error. All three new queue-settle records were live at depth zero, every
+movement/stop succeeded, and the gate was independently verified off. Read
+`docs/real-go-throughput-hardware-20260814.md`.
 
 Plan §7 item 15 is complete. The one night-branch turn pulse measured −54.2208°
 at angular −500 / 1,500 ms / six 200 ms refresh writes, with 0.07459 m turn
@@ -46,10 +64,21 @@ mirror observations were 92.0720 / 90.7417 / 89.1569°. Raw evidence is commit
 The item-18 harness-only safety pins raised the final full-suite count to 664
 pytest; frontend remained 39 and ruff, format, mypy, and pre-commit were green.
 
-The gate is off, no session is active, the mower is `MODE_READY`, RTK Fix, BLE
-live, and blades zero. Item 15's separate forward-course mismatch remains
-unexplained. Every further physical run needs
-fresh explicit supervised-motion authorization.
+After beta54, one supervised card-driven Night Go requested 0.739138 m from
+`(4.954, -2.643)` to `(5.692, -2.602)`. Three turns reached 3.3962° heading
+error. The first two forward pulses settled 0.225639 m and 0.082661 m from the
+target. Because the continuation decision reused the pre-pulse bearing, it sent
+a third pulse after crossing the target and stopped safely on
+`no_target_progress` at 0.117085 m. See
+`docs/night-go-card-beta54-20260814.md` and
+`docs/evidence-night-go-card-beta54-20260814T180345Z.json`. This is
+characterization, not night accuracy acceptance.
+
+The corrected run's final telemetry measured `(4.2954, -3.8079)`, gate off, no
+active session, `MODE_READY`, RTK Fix, BLE live, and blades zero. That is a
+dated result, not authorization or a claim of present physical state. Item 15's separate forward-course mismatch
+remains unexplained. Every further physical run needs fresh explicit
+supervised-motion authorization.
 
 ---
 

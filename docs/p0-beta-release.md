@@ -896,12 +896,17 @@ finished or that no defect remains. Three things are open and documented:
   (`docs/cross-track-is-set-at-the-start-of-the-leg-20260812.md`). Two candidate
   remedies were proposed and **refuted the same afternoon** — do not tune the
   control law on n = 2.
-- **Night is contained, not card-accepted.** An explicit RTK-only night branch
-  now exists for one forward-only segment. Item 18 reached its 8° opening-turn
-  tolerance and stopped safely at 0.114277 m on `no_target_progress`; this is
-  characterization, not a night landing-tolerance claim. The accepted card
-  profile remains the daylight VIO path and is byte-identical. See
-  `docs/night-segment-item18-20260814.md`.
+- **Night is contained and separately exposed, not accepted navigation.** An
+  explicit RTK-only night branch exists for one forward-only segment. Beta54
+  added a distinct guarded Night Go card control without changing the accepted
+  daylight VIO profile. Item 18 stopped at 0.114277 m; the first card-driven
+  run stopped at 0.117085 m and exposed a stale pre-pulse-bearing continuation
+  decision. The night-only correction is verified and deployed motion-disabled,
+  but is not yet released. The same tree's Real Go throughput correction passed
+  one supervised 0.70 m run at 0.093100 m landing error. See
+  `docs/night-segment-item18-20260814.md`,
+  `docs/night-go-card-beta54-20260814.md`, and
+  `docs/real-go-throughput-hardware-20260814.md`.
 - **BLE reliability is a hint, not a number** — see criterion 2.
 
 **Release** remains gated on its own criteria: non-LUBA hardware characterised

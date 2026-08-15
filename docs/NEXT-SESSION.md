@@ -6,21 +6,21 @@ measurements stand — but do not act on any build/host/gate state they describe
 
 ---
 
-# 🚦 2026-08-13 HANDOFF — read this section, then the plan it points to
+# 🚦 2026-08-14 HANDOFF — beta54 Night Go and local follow-up
 
-## 0. Live state, verified 2026-08-14 after item 18
+## 0. Live state, verified 2026-08-14 after the beta54 card run
 
 | | |
 | --- | --- |
-| Branch | `feat/beta31-reach-and-overshoot-ceiling`, publish target `origin` = the **Chorty** fork |
-| Version | `0.6.4-beta52` — host and branch agree; manifest, pyproject, card and lock version sites agree |
-| Card on host | md5 `9512f504f4b861488e98f4d29ced6e4f`, identical at **both** serving paths; resource `?v=0.6.4-beta52&build=9512f504` |
+| Branch | `agent/night-real-go-followup`, clean and pushed to Chorty; draft PR #14 targets `main` at beta54 `0bd35160` |
+| Released version | `0.6.4-beta54`; manifest, pyproject, card, and lock version sites agree |
+| Working tree | Clean. Evidence commit `dd53e266`, implementation/tests commit `801c1798`, followed only by handoff-doc commits; corrected code is deployed but unreleased |
 | Motion gate | ✅ **DISARMED.** `real_motion_allowed: false`, no active session |
-| Mower | Post-run readback: `MODE_READY`, BLE live at −58 dBm, RTK Fix, blades zero |
+| Last measured mower state | End of corrected Real Go check: `(4.2954, -3.8079)`, `MODE_READY`, BLE −64 dBm, RTK Fix, blades zero. Gate independently disarmed. This is a dated result, not a claim of current physical position. |
 
 ## 1. What to do next
 
-✅ **Night v1 is implemented; item-17 diagnostics are deployed as beta52.** It adds an
+✅ **Night v1 is implemented and beta54 adds a guarded card control.** The backend adds an
 explicit `turn_mode: "night"` for one forward-only segment, night-only mirror
 conversion, angular 500 with refresh, fixed-budget/RTK/length/heading/re-aim/
 reverse/multi-segment refusals, and the `--night-segment` harness mode. The
@@ -54,6 +54,32 @@ then used all three linear commands and stopped on `no_target_progress` at
 89.1569°. Read `docs/night-segment-item18-20260814.md` and the raw evidence it
 links. The run does not establish a night tolerance or landing distribution.
 
+✅ **A beta54 card-driven Night Go is also measured.** The 0.739138 m requested
+leg reached its opening heading after three turns. It used three forward pulses
+and stopped safely on `no_target_progress` at 0.117085 m. After pulse 2 it was
+only 0.082661 m away, 0.002661 m outside the configured tolerance; pulse 3 moved
+away from a target already behind it. See
+`docs/night-go-card-beta54-20260814.md` and its linked complete JSON.
+
+✅ **The corrected Real Go check passed.** The separately authorized 0.70 m run
+reached its target in 19.2 s with 0.093100 m landing error. All three
+post-feedback queue-settle checks reached depth zero in about 100–101 ms and
+every movement/stop succeeded. The gate was independently verified off after
+the run. Next software action: review and merge draft PR #14, then prepare the
+next beta. The night change recomputes the residual target bearing from the
+settled post-pulse RTK position, so the existing reverse-recovery refusal can
+stop the crossed-target case. The card/harness set `sample_delays: [0, 3]` to
+replace beta54's inherited 0/5/10/20/30/45/60-second waits. Real Go now avoids
+additive calibration/linear feedback waits and one duplicate card reload while
+preserving its payload, stops, gates, and frozen profile values. The first
+hardware run safely refused its second linear command on
+`command_queue_backlogged`; the correction now explicitly settles that queue
+after feedback and refuses without dispatch if it remains non-live. The final
+local tree produced **668 pytest and 46 frontend tests**, with all six
+verification commands green. It is deployed motion-disabled and hardware-tested,
+but not released. Read
+`docs/real-go-throughput-hardware-20260814.md`.
+
 ⚠️ Item 15's 14.3069° mirror observation remains unexplained, although item 18's
 three observations near 90.13° show it is not stable across all night pulses.
 The latency result does not explain that mismatch because the executor waits
@@ -67,7 +93,7 @@ pivots. `toward` streamed progressively during those continuous vendor turns;
 item 16's single post-pulse update characterizes our bounded pulse/report path,
 not all mower rotation. See `docs/autonomous-mow-observation-20260813.md`.
 
-It was produced by a 20-agent adversarial design workflow and **every gate design
+The original plan was produced by a 20-agent adversarial design workflow and **every gate design
 in it was refuted at least once before the plan was written**. Read §4 before
 changing anything — it records 21 defects already fixed and 8 risks knowingly
 accepted, so a "fix" you invent may already have been considered and rejected.
@@ -95,7 +121,8 @@ runaway-safety claim is **wrong**; the banner at its top says so.
    avoids this by scoping the mirror to `turn_mode: "night"` only.
 3. **`LUBA_ACCEPTANCE_PROFILE` (card JS) is frozen.** Changing any key's *value*
    un-accepts a twice-Gate-5-passed profile and owes a re-pin plus a fresh Gate 5.
-   Night v1 deliberately makes **no card change at all**.
+   Night v1 did not change it. Beta54 later added a separate Night Go card
+   control while leaving every frozen profile value intact.
 4. **The card is served from TWO paths.** Deploy to both and bump the Lovelace
    resource key, or the browser silently loads the stale card.
    ⚠️ `scripts/ha_set_card_resource.py` does **not** append the `build=` suffix —
@@ -118,10 +145,10 @@ npm run test:frontend
 .venv/bin/python -m pre_commit run --all-files
 ```
 
-There is **no global `uv`** — use `.venv/bin/python` directly. Beta50 counts
-personally produced on the final tree: **658 pytest, 39 frontend**, all six
-commands green. Run them again before a later change; do not carry these counts
-forward as if newly measured.
+There is **no global `uv`** — use `.venv/bin/python` directly. PR #14's code
+commit personally produced **668 pytest, 46 frontend**, all six commands green;
+its Python, hassfest, and Socket GitHub checks also passed. Run them again after later changes; do not carry these
+counts forward as if newly measured.
 
 ## 4. Hardware rules — non-negotiable
 
@@ -136,14 +163,16 @@ forward as if newly measured.
   "Download last run JSON" button for exactly this.
 - Blades OFF. This project never runs blades-on — the goal is point-and-click
   movement, not mowing.
-- Night-mode turns work without VIO. Two bounded night-mode segments have run;
-  neither establishes a night landing-accuracy specification.
+- Night-mode turns work without VIO. Item 15, item 18, and one beta54
+  card-driven Night Go have run; none establishes a night landing-accuracy
+  specification.
 
 ## 5. What is genuinely unsettled
 
-- Two closed-loop night-mode segments have run. Item 15 stopped after one pulse
-  on `night_reaim_required_but_unavailable`; item 18 stopped after three pulses
-  on `no_target_progress` at 0.114277 m. Neither is a landing-accuracy pass.
+- Three night-path characterizations have run. Item 15 stopped after one pulse
+  on `night_reaim_required_but_unavailable`; item 18 stopped at 0.114277 m; the
+  beta54 card run stopped at 0.117085 m and exposed the stale pre-pulse-bearing
+  decision. None is a landing-accuracy pass.
 - The mirror has now been consumed by one control loop and disagreed with the
   measured forward course by 75.823° (`movement bearing + toward` was 14.3069°
   rather than 90.13°). Cause remains unknown.

@@ -25,6 +25,12 @@ const NIGHT_GO_PROFILE = Object.freeze({
   ble_auto_recover: false,
   night_angular_speed: 500,
   toward_mirror_degrees: 90.13,
+  // The backend's diagnostic default samples through 60 seconds after EVERY
+  // command. On the first card-driven night run (2026-08-14), all three turn
+  // heading changes were visible within 3 seconds, while the inherited default
+  // stretched 3 turn + 3 linear commands to about 6.5 minutes. Night owns this
+  // value so the frozen daylight profile and its dispatched payload do not move.
+  sample_delays: [0, 3],
 });
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
@@ -1375,6 +1381,7 @@ class MammotionCustomPathCard extends HTMLElement {
       ble_auto_recover: NIGHT_GO_PROFILE.ble_auto_recover,
       night_angular_speed: NIGHT_GO_PROFILE.night_angular_speed,
       toward_mirror_degrees: NIGHT_GO_PROFILE.toward_mirror_degrees,
+      sample_delays: NIGHT_GO_PROFILE.sample_delays,
     };
     // Deliberately OMIT max_linear_pulse_ceiling. Night v1 is fixed-budget;
     // sending the accepted daylight ceiling would be refused by the backend.
@@ -1636,8 +1643,6 @@ class MammotionCustomPathCard extends HTMLElement {
         })),
         summary: this._segmentProgressText(this._realRun),
       });
-      await this._loadRuntimeState();
-      this._render();
     } catch (err) {
       this._stopRunTicker();
       this._status = `Real Go failed: ${err?.message || err}`;

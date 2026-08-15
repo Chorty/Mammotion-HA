@@ -1,17 +1,54 @@
 # P0 deploy and rollback runbook (host 192.168.1.106)
 
-First deployed 2026-07-29 and updated through the 2026-08-06 beta22 containment
-deploy. For
+First deployed 2026-07-29 and updated through the 2026-08-14 corrected
+working-tree deploy after the beta54 Night Go release. For
 any later deploy, work while the mower is stopped and experimental motion is
 off. Restarting HA while BLE is unhealthy has previously left the integration
 in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta54 plus unreleased Night/Real Go corrections — 2026-08-14
+
+`0.6.4-beta54` was published from merge commit `2573c29b` and version commit
+`0bd35160`, then installed with experimental motion disabled. The release adds
+separate Night dry-run and Night Go card controls; it does not change any value
+in `LUBA_ACCEPTANCE_PROFILE`, and Real Go remains the accepted VIO path.
+
+One later, separately authorized card-driven night run stopped safely at
+0.117085 m on `no_target_progress`. The motion gate was disarmed afterward. See
+`night-go-card-beta54-20260814.md`. The run exposed a night-only crossed-target
+continuation defect and excessive diagnostic waits. The deployed branch
+contains a verified fix in draft PR #14 (`agent/night-real-go-followup`; code
+commit `801c1798`), and the Real Go path removes additive
+feedback waits while preserving its payload and safety gates. The first
+supervised Real Go check stopped before its second linear dispatch on
+`command_queue_backlogged`. A bounded post-feedback queue-settle correction was
+then verified and deployed motion-disabled. These working-tree behaviors are
+**not** part of the beta54 release artifact. Full evidence and measured/inferred
+separation: `real-go-throughput-hardware-20260814.md`.
+
+Backup `/config/mammotion-backup-20260814-pre-queue-settle.tgz`; archive SHA-256
+`ec46d8fb0fce6aefcf7b2032c88a17b0693cf14cdd5bce086fb9396da5674b5d`.
+Host MD5s match local: services `d6ab89ff4e4286b33d4fa5755bba5b0d`, card
+`4846aa9b6f9e0eefe67cb95f8326c3ba` at both serving paths, manifest
+`ef8d5273c8e9730bc964579efb63116a`. API returned after 30 s and 132 Mammotion
+entities after 116 s; container pymammotion is `0.8.12.post1`. Final gate
+readback: disabled, `real_motion_allowed: false`, no active session,
+`MODE_READY`.
+
+One separately authorized corrected Real Go run then reached the 0.70 m target
+in 19.2 s with 0.093100 m landing error. It used zero turns and three forward
+pulses. The new per-pulse queue-settle records were all live at depth zero in
+about 100–101 ms; all movement commands and stops succeeded. Final telemetry
+was `(4.2954, -3.8079)`, RTK Fix, `MODE_READY`, BLE −64 dBm, blades off. The
+gate was independently verified disabled with no active session. Evidence:
+`real-go-throughput-hardware-20260814.md` and its linked raw JSON.
+
 ### beta52 — item-17 runtime diagnostics, 2026-08-13
 
-`0.6.4-beta52` is deployed. It adds runtime-export-only RapidState diagnostics
-and the fixed backward-only item-17 harness; it does not add the diagnostics to
+`0.6.4-beta52` was deployed. It added runtime-export-only RapidState diagnostics
+and the fixed backward-only item-17 harness; it did not add the diagnostics to
 shared VIO telemetry. Backup:
 `/config/mammotion-backup-20260813-beta52-predeploy.tgz`. The deployed archive
 matched local md5 `efa589bc7eaa6bf72e065529f7d44369`. Card md5

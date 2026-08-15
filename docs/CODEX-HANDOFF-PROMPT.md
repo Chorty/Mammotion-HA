@@ -1,7 +1,9 @@
 # Codex handoff prompt
 
 Paste everything between the rules below into Codex as the opening message.
-Updated 2026-08-14 after deployed `0.6.4-beta52` night v1 items 15–18.
+Updated 2026-08-14 after released/deployed `0.6.4-beta54`, its first supervised
+card-driven Night Go, and the verified/deployed Night and Real Go follow-ups in
+draft PR #14.
 
 ⚠️ Codex reads `AGENTS.md` by convention; this repo's instructions live in
 `CLAUDE.md`. The prompt below points at it explicitly, so no rename is needed —
@@ -19,8 +21,11 @@ LUBA robot mower to points clicked on a map, **with the blades OFF**. The goal i
 point-and-click movement, not mowing. It is at BETA; five acceptance gates are
 complete and Gate 5 has passed twice.
 
-Working directory is the repo root. Branch:
-`feat/beta31-reach-and-overshoot-ceiling`. `origin` is the **Chorty** fork —
+Working directory is the repo root. Branch: `agent/night-real-go-followup`,
+clean and pushed; draft PR #14 targets `main`. Raw evidence is in commit
+`dd53e266`, implementation/tests in `801c1798`, and later commits only reconcile
+handoff docs. `main`, `origin/main`, and `v0.6.4-beta54` agree at `0bd35160`.
+`origin` is the **Chorty** fork —
 `mikey0000/*` repositories are strictly read-only, never push or comment there.
 
 ## Read these first, in order
@@ -34,7 +39,7 @@ Working directory is the repo root. Branch:
 
 ## Your task
 
-The off-mower night implementation, beta52 deployment, and §7 items 15–18 are
+The off-mower night implementation, beta54 card control, and §7 items 15–18 are
 complete. Item 15 measured a −54.2208° quantum from one angular −500 / 1,500 ms
 refreshed pulse, then the first forward pulse exposed an 81.416° aim mismatch;
 the night guard stopped safely. Read
@@ -49,7 +54,29 @@ one 0.699963 m perpendicular segment, reached its 8° opening-turn tolerance,
 and stopped after three linear pulses on `no_target_progress` at 0.114277 m. It
 is characterization, not an acceptance pass; read
 `docs/night-segment-item18-20260814.md`. Item 15's separate mismatch remains
-unexplained. Until fresh authorization, further hardware work is read-only.
+unexplained.
+
+Beta54 subsequently ran one card-driven 0.739138 m Night Go. It reached heading
+tolerance after three turns, then stopped safely on `no_target_progress` at
+0.117085 m after three forward pulses. Pulse 2 was already only 0.082661 m from
+the target. A pre-pulse bearing was reused after the mower crossed the target,
+causing the unnecessary third pulse. Read
+`docs/night-go-card-beta54-20260814.md`.
+
+The PR branch has committed, unreleased night and Real Go fixes. Night
+calculates the residual bearing from settled post-pulse RTK and sends
+`sample_delays: [0, 3]` from the card/harness. Real Go now uses one four-second
+VIO-calibration feedback window, reuses settled linear telemetry instead of
+adding a three-second sample wait, and performs one final card reload. Its
+payload, mandatory stops, safety gates, legacy/night timing, and frozen profile
+values remain unchanged. One supervised Real Go run safely stopped before its
+second linear dispatch on `command_queue_backlogged`. The subsequent correction
+uses the existing bounded queue-settle check after VIO position feedback. A
+fresh supervised 0.70 m run reached its target in 19.2 s with 0.093100 m landing
+error; all three queue checks reached depth zero and all movement/stops
+succeeded. It is deployed motion-disabled after all six checks passed. Read
+`docs/real-go-throughput-hardware-20260814.md`. Until fresh authorization,
+hardware work is read-only.
 
 A same-day read-only autonomous-mow comparison then captured progressive
 `toward` changes through three vendor pivots. Read
@@ -60,8 +87,9 @@ specific to the bounded manual pulse/report cadence, not all rotation.
 
 1. **`LUBA_ACCEPTANCE_PROFILE` in `custom_components/mammotion/www/mammotion-custom-path-card.js` is FROZEN.**
    Changing any key's *value* un-accepts a hardware-accepted profile and obliges
-   a full re-pin plus a fresh acceptance gate. Night v1 makes **no card change at
-   all**.
+   a full re-pin plus a fresh acceptance gate. Night v1 did not change the card;
+   beta54 later added a separate Night Go control without changing any frozen
+   profile value.
 2. **Do not change behaviour on the VIO daylight path.** It passed Gate 5 twice.
    A `turn_mode: "vio"` run's dispatched payload and response fields must be
    byte-identical after your change.
@@ -112,15 +140,17 @@ npm run test:frontend
 .venv/bin/python -m pre_commit run --all-files
 ```
 
-Post-item-18 final results personally produced: **664 pytest, 39 frontend**, all six
-commands green. **Run them again after any change and report the counts you
+Current PR #14 code results personally produced: **668 pytest, 46 frontend**,
+all six commands green; GitHub Python/hassfest/Socket checks passed. **Run them again after any change and report the counts you
 actually produced** — do not quote a number you did not
 generate. If something fails, paste the real traceback rather than summarising.
 
 ## Hardware — do not touch it
 
-The mower is real, outdoors, and currently docked and charging. A Home Assistant
-host at `192.168.1.106` runs the deployed build.
+The mower is real and outdoors. The last post-run sample was `(4.2954,
+-3.8079)`, `MODE_READY`, RTK Fix, blades off; do not treat that dated
+result as its current position. A Home Assistant host at `192.168.1.106` runs
+the corrected working tree motion-disabled.
 
 - **Do not enable experimental motion, do not arm the motion gate, and do not
   send any movement command.** Real motion requires explicit per-run
@@ -148,8 +178,8 @@ Your work is entirely off-mower: code, tests, and the CI gates above.
 
 ## What is genuinely unsettled — do not paper over these
 
-- Two closed-loop night-mode segments have run: item 15 stopped after its first
-  forward pulse, and item 18 stopped after three at 0.114277 m. Neither is a
+- Item 15, item 18, and the beta54 card-driven run have exercised the night
+  path. The latter two stopped at 0.114277 m and 0.117085 m. None is a
   landing-accuracy pass.
 - The mirror relation has now been used by one control loop and disagreed with
   the measured forward course. The cause is not yet established.

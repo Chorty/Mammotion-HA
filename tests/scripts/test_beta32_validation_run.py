@@ -106,6 +106,7 @@ def test_item18_profile_pins_the_planned_fixed_envelope() -> None:
         "turn_pulse_duration_ms": 1500,
         "max_turn_translation_distance": 0.30,
         "ble_auto_recover": False,
+        "sample_delays": [0, 3],
     }
 
 

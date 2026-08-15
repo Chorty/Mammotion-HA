@@ -40,9 +40,12 @@ stop to report arrival must not be claimed from the local request timestamps.
 This result does not explain away item 15's 81.416° forward-course mismatch:
 the segment executor already waits for post-command feedback before its forward
 phase. The body-heading versus course-over-ground question therefore remains
-open. Do not proceed to item 18. Plan item 17 (one backward pulse plus
-`RapidState.fuse_status`) is the next hardware discriminator and requires a new
-explicit supervised-motion authorization.
+open. **Historical next-step instruction:** at the time, do not proceed to item
+18. Item 17 and item 18 were subsequently completed; see
+`night-reverse-heading-20260813.md` and
+`night-segment-item18-20260814.md`. The original next step was item 17 (one
+backward pulse plus `RapidState.fuse_status`), which required a new explicit
+supervised-motion authorization.
 
 ## Same-day autonomous control comparison
 
