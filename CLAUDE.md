@@ -141,8 +141,22 @@ error (mean 5.5°, already fine); the landing is set by the map-frame error (mea
 - A **90° junction dispatches and completes** — measured, 3 of 4 commands.
 - A single **180° turn is refused pre-dispatch**; the largest that dispatches is
   ~114°. Chain junctions instead (`--reposition`).
-- Per-**click** reach is 4 segments; per-**segment** reach is ~1 m. A 2.0 m leg is
-  not dispatchable.
+- Per-**click** reach is 4 segments (`REAL_CLICK_TO_GO_SEGMENT_LIMIT`).
+- Per-**segment** reach depends on the execution mode, and there is **no hard
+  distance cap on the VIO path** — it is emergent from the pulse budget:
+  - *fixed budget* (`max_linear_pulse_ceiling: null`) — `max_linear_commands` is
+    schema-capped at **3**, so ~1.0–1.3 m, then `max_linear_commands_reached`;
+  - *loop-to-tolerance* (the accepted profile sends **14**) — **4 m measured** in
+    11 pulses at 0.1023 m, stopping on tolerance, the ceiling never binding.
+    Cumulative travel is separately capped at `segment_length ×
+    linear_distance_ceiling_factor` (default 2.0).
+  ⚠️ The old line here read "per-segment reach is ~1 m; a 2.0 m leg is not
+  dispatchable." That was the pre-ceiling number and was left standing under
+  "do not re-derive" through the entire reach programme. Corrected 2026-08-15.
+- **Night is hard-capped at 1.0 m** (`_NIGHT_MAX_SEGMENT_LENGTH_M`), refused
+  pre-dispatch by `night_segment_too_long`, and night also refuses
+  loop-to-tolerance (`night_linear_loop_unsupported`). That 1.0 is chosen, not
+  measured.
 - `turning_mode` (`zero_turn` / `multipoint`, `nav_sys_param_cmd` ID 6) is a
   MOWING-turnaround planner setting. Click-to-path turns bypass it entirely by
   sending raw `DrvMotionCtrl` velocities. Untested but expected irrelevant.
