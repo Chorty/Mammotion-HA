@@ -4,11 +4,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Start here
 
-**Read `docs/NEXT-SESSION.md` first**, then the "Current build" section directly below.
-Those two carry the live state. Everything from "Gate history" down is settled
-provenance — accurate as a record, but **do not act on any build state it
-describes**, and note that measurement has since refuted several of its claims
-(the "unexplained" turn-rate variance and the turn-budget framing, both below).
+Read, in order, and stop at the provenance line:
+
+1. **"Current build"** directly below — what is released and installed.
+2. **"Standing decisions"** — the operator's scope calls. They override any
+   older recommendation in this file.
+3. `docs/NEXT-SESSION.md` §0 for live mower state (its first ~197 lines; the
+   2,700 below are history under their own banner).
+
+⚠️ **Everything from "Build provenance" down is history**, including entries
+that read as open items. It is accurate as a *record* — the measurements stand,
+and several entries usefully record why an approach was rejected — but **do not
+act on any build state, open item, or "next step" it describes.** Measurement
+has since refuted several of its claims, among them the "unexplained" turn-rate
+variance and the turn-budget framing.
+
+**Verify before you act on any claim in this file.** On 2026-08-14 a paragraph
+here described an already-shipped fix as "NOT implemented" for thirteen betas
+and cost a session real work. `scripts/check_doc_symbols.py` (a pre-commit hook)
+now fails when these docs name code that does not exist — but it checks *names*,
+not whether the prose around them is still true. One grep against the tree beats
+this file every time.
 
 ## Current build: `0.6.4-beta55` released and installed motion-disabled
 
@@ -22,13 +38,6 @@ active session, no last session). The mower is **docked** at
 `(4.3764, 3.1923)`, `CHARGE_ON`, `zone_hash 0`, so `position_not_valid_for_motion`
 is the expected second blocker. Deploy record and exact hashes:
 `docs/deploy-runbook-p0.md` → "beta55".
-
-One beta54 card-driven 0.739138 m Night Go stopped safely on
-`no_target_progress` at 0.117085 m after three turn and three forward commands.
-The second forward pulse had settled only 0.002661 m outside the configured
-0.08 m tolerance, but the controller reused a pre-pulse target bearing and sent
-an unnecessary third pulse after crossing the target. Read
-`docs/night-go-card-beta54-20260814.md`.
 
 PR #14 was independently reviewed and **merged** (`efa1eda8`), then released as
 beta55. It carries a night-only fix: use the settled post-pulse RTK position for
@@ -70,6 +79,122 @@ landing error; all three queue-settle records were live at depth zero and every
 movement/stop succeeded. Read `docs/real-go-throughput-hardware-20260814.md`.
 ⚠️ **That is one path, not a reliability population**, and **no night run has
 ever exercised the night fix on hardware.**
+
+The segment executor's legacy branch
+(`services.py:11498-11517`) omits `motion_refresh_interval_ms` (primitive default
+`0`) and passes `angular_speed_fast/slow` at the schema default **180**, which
+does not break static friction on a stationary pivot (~3°/pulse). Every
+converging night turn used **angular 500 with refresh**, by calling the primitive
+**directly**. **The standalone service and the segment's legacy branch are not the
+same code path.** Found by three independent verifiers, confirmed by hand.
+⚠️ `legacy` keeps both defects in the v1 plan (containment, not a fix), so the
+card's **Nudge still turns single-shot in a deadband** — do not let that drop.
+
+🏁 **All five gates complete, Gate 5 passed twice** (2026-08-08 fixed-budget,
+2026-08-12 reach-enabled), and **the branch reached BETA on 2026-08-12** — all
+three exit criteria met, assessed in `docs/p0-beta-release.md` → "Alpha to
+Beta". ⚠️ Criterion 2 ("BLE holds a full path run") turned on an interpretation
+that is written down there rather than assumed: it asks whether a run can finish
+before the link dies, and 9 runs have completed every planned segment. The
+residual is ~7% of runs aborting on BLE, which is **a hint, not a measurement**
+(95% CI 0.2–31.9%) — do not fund BLE work on it.
+
+🚨 **A harness bug left the motion gate OPEN once on 2026-08-11 (fixed,
+`c196b8b1`).** `scripts/beta32_validation_run.py` set its `armed` flag *after*
+the post-enable readback, so an enable that succeeded while `real_motion_allowed`
+came back false — BLE dropping between preflight and arm — returned early
+claiming it had aborted "without sending anything" and never disarmed. **Any
+script that can open the gate must treat "I called enable" as what obliges the
+disarm, never "enable succeeded".** Same commit makes the backend's own
+`blockers` list a hard preflight check: all eight entity-derived checks passed
+while the gate already knew the BLE client was gone.
+
+✅ **The gate is DISARMED and was verified disarmed after every run.** The
+2026-08-10 ARMED-at-rest posture ended with that session; normal posture is
+disarmed, opened only for the ~100 s of a supervised run.
+
+🔑 **THE ACCURACY WALL IS SOLVED, AND IT IS THE TURN'S OWN TRANSLATION.** Read
+`docs/turn-translation-explains-the-landing-wall-20260810.md`. A VIO turn does not
+pivot in place — it displaced the mower 0.028–0.131 m on the 2026-08-10 runs, and
+sideways displacement at the start of a 0.6–0.7 m leg rotates the bearing to the
+target by `atan(translation/leg)`. The turn primitive closes on **VIO body
+heading**, so it cannot see this: the heading did not change, the target's bearing
+moved. Across all five completed segments, map-frame aim error minus VIO-frame
+error equals `atan(translation/leg)` to within **0.02–1.25°**.
+
+**Consequence: `heading_tolerance_degrees` is the WRONG LEVER and lowering it
+18 → 11 would have changed none of those five segments.** It governs the VIO-frame
+error (mean 5.5°, already fine); the landing is set by the map-frame error (mean
+8.0°). The lever that works is **not a profile key** — the post-turn gate is
+`min(heading_tolerance_degrees, vio_realign_threshold_degrees)` = `min(18, 15)` =
+15, and every map-frame error fell inside it. Lowering the backend default
+`vio_realign_threshold_degrees` 15 → ~5 catches all five and moves no frozen key.
+
+**Settled, so do not re-derive:**
+
+- Rotation is **not predictable from duration** better than ~40% at p90 — ten
+  pulses at matched ~200 ms windows spread 5.44–15.20°, 2.79×, with duration,
+  cadence and direction held constant. The estimate can only improve a landing;
+  the bound carries the safety.
+- The "directional turn asymmetry" is **refuted** (three runs: 8/8, 1/1, 1/6;
+  pooled over 33 samples the directions differ by 0.5%).
+- A **90° junction dispatches and completes** — measured, 3 of 4 commands.
+- A single **180° turn is refused pre-dispatch**; the largest that dispatches is
+  ~114°. Chain junctions instead (`--reposition`).
+- Per-**click** reach is 4 segments; per-**segment** reach is ~1 m. A 2.0 m leg is
+  not dispatchable.
+- `turning_mode` (`zero_turn` / `multipoint`, `nav_sys_param_cmd` ID 6) is a
+  MOWING-turnaround planner setting. Click-to-path turns bypass it entirely by
+  sending raw `DrvMotionCtrl` velocities. Untested but expected irrelevant.
+
+
+## Standing decisions — 2026-08-14
+
+These are the operator's, not derivable from the code. They override any older
+recommendation below.
+
+1. **Audience: this yard only.** A bespoke tool for this LUBA. Per-mower
+   constants are fine as they are. `p0-beta-release.md`'s "non-LUBA hardware
+   characterised" release criterion is **moot** — do not treat it as a blocker
+   and do not propose upstream-shaped work (auto-derivation, per-device
+   calibration flows) as required.
+2. **Night is contained exploration and is PARKED.** Not a work queue. The
+   beta55 night fix stays deployed and unexercised on purpose. Do not propose
+   night runs, a night landing population, or resolving item 15's mirror
+   disagreement as next work.
+3. **Accuracy is closed.** Achieved is ~0.089 m mean (n = 16 landings across
+   four multi-segment runs, all inside the 0.15 m tolerance). The
+   `0.62 × leg·sin(initial_aim) + 0.065` fit's **0.065 m intercept is a sensing
+   floor** — 2–4 cm position noise plus ~1031 ms feed staleness — not a tuning
+   target. The report-rate hypothesis is refuted and the stop-lead item dropped;
+   do not reopen either. The one known failure class was the re-aim guard, fixed
+   in beta42.
+4. **The goal is consistency, not precision** — click-to-go reliable enough to
+   trust without watching.
+
+⚠️ **Documentation is the known weak point, not capability.** On 2026-08-14 an
+audit of the three session-entry docs found a paragraph calling an
+already-shipped fix "NOT implemented" (13 betas stale) and a constant removed 18
+betas earlier still framed as a live constraint.
+`scripts/check_doc_symbols.py` now fails a commit when these docs cite code that
+does not exist, but **it only checks names**. A green run does not mean the prose
+is true.
+
+
+## Build provenance — accurate as record, NOT as build state
+
+⚠️ **Everything below this line is history.** It is kept because the
+measurements stand and because several entries record why an approach was
+rejected — but **do not act on any build state, open item, or "next step" it
+describes**. Relocated here 2026-08-14 from a "Current build" section that had
+grown to 393 lines and was hiding stale claims among live ones.
+
+One beta54 card-driven 0.739138 m Night Go stopped safely on
+`no_target_progress` at 0.117085 m after three turn and three forward commands.
+The second forward pulse had settled only 0.002661 m outside the configured
+0.08 m tolerance, but the controller reused a pre-pulse target bearing and sent
+an unnecessary third pulse after crossing the target. Read
+`docs/night-go-card-beta54-20260814.md`.
 
 ✅ **§7 item 17 is complete.** One backward-only pulse moved 0.418536 m on map
 bearing 96.433921° while `toward` remained bit-identical at 173.1023°. The
@@ -125,16 +250,6 @@ current, and a tofu-risk glyph. **Render against live state, not fixtures.**
 > now supplies both and beta54 exposes it through Night Go. The legacy branch
 > remains deliberately unchanged.
 
-The segment executor's legacy branch
-(`services.py:11498-11517`) omits `motion_refresh_interval_ms` (primitive default
-`0`) and passes `angular_speed_fast/slow` at the schema default **180**, which
-does not break static friction on a stationary pivot (~3°/pulse). Every
-converging night turn used **angular 500 with refresh**, by calling the primitive
-**directly**. **The standalone service and the segment's legacy branch are not the
-same code path.** Found by three independent verifiers, confirmed by hand.
-⚠️ `legacy` keeps both defects in the v1 plan (containment, not a fix), so the
-card's **Nudge still turns single-shot in a deadband** — do not let that drop.
-
 🏁 **CLOSED-LOOP TURNS WORK IN THE DARK WITH NO VIO — 5 of 5, 2026-08-12/13.**
 Read `docs/night-closed-loop-turn-works-20260812.md` then
 `docs/night-turns-converge-but-the-quantum-is-coarse-20260813.md`. The legacy
@@ -163,18 +278,6 @@ the stationary deadband; the slow tier has never actually engaged).
 strictly inside `turn_mode: "night"`; the two cancelling legacy conversion sites
 remain deliberately unchanged.
 
-
-`docs/NEXT-SESSION.md` carries the live mower state; this section carries what
-changed and why.
-
-🏁 **All five gates complete, Gate 5 passed twice** (2026-08-08 fixed-budget,
-2026-08-12 reach-enabled), and **the branch reached BETA on 2026-08-12** — all
-three exit criteria met, assessed in `docs/p0-beta-release.md` → "Alpha to
-Beta". ⚠️ Criterion 2 ("BLE holds a full path run") turned on an interpretation
-that is written down there rather than assumed: it asks whether a run can finish
-before the link dies, and 9 runs have completed every planned segment. The
-residual is ~7% of runs aborting on BLE, which is **a hint, not a measurement**
-(95% CI 0.2–31.9%) — do not fund BLE work on it.
 
 🚨 **`toward` TRACKS IN-PLACE ROTATION, 2026-08-12 — the night premise is
 REFUTED.** Read `docs/toward-tracks-in-place-rotation-20260812.md`. Two pivots in
@@ -227,16 +330,6 @@ on the accepted profile they sit 0.7489 / 0.6777 / 1.7919 / **2.9543 m** short o
 segments. **4 m is a demonstrated floor, not a limit** — where it breaks is
 unknown.
 
-🚨 **A harness bug left the motion gate OPEN once on 2026-08-11 (fixed,
-`c196b8b1`).** `scripts/beta32_validation_run.py` set its `armed` flag *after*
-the post-enable readback, so an enable that succeeded while `real_motion_allowed`
-came back false — BLE dropping between preflight and arm — returned early
-claiming it had aborted "without sending anything" and never disarmed. **Any
-script that can open the gate must treat "I called enable" as what obliges the
-disarm, never "enable succeeded".** Same commit makes the backend's own
-`blockers` list a hard preflight check: all eight entity-derived checks passed
-while the gate already knew the BLE client was gone.
-
 ~~⚠️ `max_linear_pulse_ceiling` is a frozen key the card sends as `null`, so
 NEITHER RUN IS ON THE ACCEPTED PROFILE.~~ **SUPERSEDED 2026-08-12.** True when
 the reach runs were measured; the key was adopted (`null` → 14) that day and
@@ -252,17 +345,25 @@ and still landed at 9.3 cm — it just took two more pulses. Against
 rate estimate, but it **is no longer a blocker for reach**. (n = 2 stalled
 pulses: the shape of the effect, not a calibrated number.)
 
-⚠️ **One open defect, well characterised and NOT implemented.** The 2 m run's
-second segment failed on **cross-track, not reach**: the beta38 re-aim guard
-suppressed a correction at a projected 0.1469 m miss against 0.150 m tolerance —
-3.1 mm of margin — and landed 0.1797 m out. The guard projects the miss at the
-**closest approach**, but the mower drives a whole pulse and finished 0.0877 m
-past it; in quadrature that predicts 0.1711 m, which exceeds tolerance and would
-have fired the correction. Over all 13 recorded suppressions the extra term cuts
-mean error 0.0212 → 0.0147 m and the guard under-predicts on **11 of 13**. This
-is **not** the fitted margin dropped on 2026-08-10 — that drop's rationale holds
-for the 0.7 m legs it was written about and is merely incomplete at long legs.
-Touches no profile key. Give it its own review before writing it.
+🏁 **FIXED IN beta42 — this was described as open for thirteen betas.** The 2 m
+run's second segment failed on **cross-track, not reach**: the beta38 re-aim
+guard suppressed a correction at a projected 0.1469 m miss against 0.150 m
+tolerance — 3.1 mm of margin — and landed 0.1797 m out. The guard projected the
+miss at the **closest approach**, but the mower drives a whole pulse and
+finished 0.0877 m past it; in quadrature that predicts 0.1711 m, which exceeds
+tolerance and would have fired the correction.
+
+`_projected_landing_after_next_pulse` (commit `7e1d5afd`, beta42) implements
+exactly that quadrature term and is pinned by seven tests in
+`tests/components/mammotion/test_reaim_guard_next_pulse.py`, including the
+0.1797 m case. ⚠️ **The paragraph that used to sit here said "NOT implemented"
+and was never updated when beta42 shipped**, which on 2026-08-14 caused a
+session to propose redoing finished work. It is the reason
+`scripts/check_doc_symbols.py` exists — and the reason that check is not
+sufficient, because this claim named no symbol at all.
+
+Note what the fix buys: the 0.0212 → 0.0147 m figure is the guard's *prediction*
+error, not landing error. It removes a failure class; it does not shave the mean.
 
 - **beta41** — a segment's **opening turn decomposes instead of refusing**
   (`_vio_turn_to_heading_staged`). It tries the direct turn first and, ONLY on a
@@ -280,10 +381,6 @@ Touches no profile key. Give it its own review before writing it.
   post-turn gate then corrected the +13.557° residual staging left. The two
   changes compose. Evidence:
   `docs/evidence-beta32-4segment-20260811T001250Z.json`.
-
-✅ **The gate is DISARMED and was verified disarmed after every run.** The
-2026-08-10 ARMED-at-rest posture ended with that session; normal posture is
-disarmed, opened only for the ~100 s of a supervised run.
 
 - **beta40** — the post-turn alignment gate gets its **own** tolerance,
   `_POST_TURN_ALIGNMENT_TOLERANCE_DEGREES = 10.0`, instead of borrowing
@@ -334,23 +431,6 @@ error was correctly *not* suppressed and corrected to −1.98°. The 60° run re
 target on **all four segments**. Evidence:
 `docs/evidence-beta32-4segment-20260810T{185433,193833}Z.json`.
 
-🔑 **THE ACCURACY WALL IS SOLVED, AND IT IS THE TURN'S OWN TRANSLATION.** Read
-`docs/turn-translation-explains-the-landing-wall-20260810.md`. A VIO turn does not
-pivot in place — it displaced the mower 0.028–0.131 m on the 2026-08-10 runs, and
-sideways displacement at the start of a 0.6–0.7 m leg rotates the bearing to the
-target by `atan(translation/leg)`. The turn primitive closes on **VIO body
-heading**, so it cannot see this: the heading did not change, the target's bearing
-moved. Across all five completed segments, map-frame aim error minus VIO-frame
-error equals `atan(translation/leg)` to within **0.02–1.25°**.
-
-**Consequence: `heading_tolerance_degrees` is the WRONG LEVER and lowering it
-18 → 11 would have changed none of those five segments.** It governs the VIO-frame
-error (mean 5.5°, already fine); the landing is set by the map-frame error (mean
-8.0°). The lever that works is **not a profile key** — the post-turn gate is
-`min(heading_tolerance_degrees, vio_realign_threshold_degrees)` = `min(18, 15)` =
-15, and every map-frame error fell inside it. Lowering the backend default
-`vio_realign_threshold_degrees` 15 → ~5 catches all five and moves no frozen key.
-
 ⚠️ **Do not act on the paragraph below as a plan — it is kept because its
 measurements stand, but its diagnosis was superseded the same day.** The standing
 fit is
@@ -373,23 +453,6 @@ while this run's **0.6–0.7 m** legs averaged **0.1312 m**. That comparison is
 uncontrolled (six intervening betas, different day) — a warning flag, not a
 refutation. **Do not spend a Gate 5 on either profile key until the mid-leg
 divergence is characterised.**
-
-**Settled, so do not re-derive:**
-
-- Rotation is **not predictable from duration** better than ~40% at p90 — ten
-  pulses at matched ~200 ms windows spread 5.44–15.20°, 2.79×, with duration,
-  cadence and direction held constant. The estimate can only improve a landing;
-  the bound carries the safety.
-- The "directional turn asymmetry" is **refuted** (three runs: 8/8, 1/1, 1/6;
-  pooled over 33 samples the directions differ by 0.5%).
-- A **90° junction dispatches and completes** — measured, 3 of 4 commands.
-- A single **180° turn is refused pre-dispatch**; the largest that dispatches is
-  ~114°. Chain junctions instead (`--reposition`).
-- Per-**click** reach is 4 segments; per-**segment** reach is ~1 m. A 2.0 m leg is
-  not dispatchable.
-- `turning_mode` (`zero_turn` / `multipoint`, `nav_sys_param_cmd` ID 6) is a
-  MOWING-turnaround planner setting. Click-to-path turns bypass it entirely by
-  sending raw `DrvMotionCtrl` velocities. Untested but expected irrelevant.
 
 ## Gate history — all five gates complete
 
