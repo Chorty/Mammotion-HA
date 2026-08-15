@@ -26,6 +26,9 @@ sync_rtk_and_dock                               # rover-side action tried 2026-0
 # --- fields the docs correctly describe as absent or dead ---
 rtk_signal_quality                              # named as a dead/unpopulated field
 
+# --- exists UPSTREAM only; deliberately not in our pinned backend ---
+last_report_data_at                             # upstream pymammotion c21ec18; absent from chorty-0.8.12.post1. Cited in CLAUDE.md as the instrument that would close the beta23 cadence gap IF the sensing floor is ever reconsidered
+
 # --- paths and names on the HA host, not in this repo ---
 www/mammotion-custom-path-card.js               # the /config/www/community copy; the repo has only custom_components/mammotion/www/
 dashboard_yard                                  # Lovelace dashboard name in /config/.storage backup filenames

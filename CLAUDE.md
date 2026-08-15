@@ -183,6 +183,16 @@ recommendation below.
    target. The report-rate hypothesis is refuted and the stop-lead item dropped;
    do not reopen either. The one known failure class was the re-aim guard, fixed
    in beta42.
+   🔑 **If the floor is ever reconsidered, the missing instrument now exists
+   upstream.** The beta23 probe could not measure position-report cadence because
+   `last_report_at` stamps *every* LubaMsg, and it named the fix: stamp arrivals
+   per report type. Upstream pymammotion `c21ec18` ("modifications to report
+   cfg") implements exactly that as `last_report_data_at`, set only on frames
+   carrying `sys.toapp_report_data`. It is **not** in our pinned
+   `chorty-0.8.12.post1`; it would arrive with a backend bump, which also needs
+   our BLE-leak fix rebased (upstream `47c3c54` touches the same
+   `transport/ble.py`). This refutes nothing and reopens nothing — it only means
+   the tooling no longer has to be built. Read-only survey, 2026-08-15.
 4. **The goal is consistency, not precision** — click-to-go reliable enough to
    trust without watching.
 
