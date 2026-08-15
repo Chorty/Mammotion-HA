@@ -130,6 +130,42 @@ error (mean 5.5°, already fine); the landing is set by the map-frame error (mea
 15, and every map-frame error fell inside it. Lowering the backend default
 `vio_realign_threshold_degrees` 15 → ~5 catches all five and moves no frozen key.
 
+🔑 **OPERATING RULE: plan legs at ~0.8 m. Reach is not landing accuracy.**
+Measured 2026-08-15, first four-segment card run on beta55
+(`docs/evidence-real-go-card-beta55-20260815T204747Z.json`). Segment 1 (1.17 m,
+no turn needed) reached target at 0.141665 m — 3.3 mm inside tolerance. Segment
+2 (1.65 m, after a 48.6° junction turn) **diverged and stopped safely** on
+`vio_realign_budget_exhausted` 0.251406 m out.
+
+The mechanism is leg length × the aim error a turn leaves behind, not leg length
+alone. The post-turn gate is allowed to succeed at up to
+`_POST_TURN_ALIGNMENT_TOLERANCE_DEGREES` = 10°, and the landing fit predicted
+the miss almost exactly at that residual:
+`0.62 × 1.65 × sin(9.676°) + 0.065 = 0.237 m` against 0.2514 m measured.
+Inverting the fit at a 0.15 m tolerance and a 10° residual gives **L ≤ 0.79 m** —
+which is the Gate 5 re-pass configuration: 0.8 m legs, 4/4 `target_reached`,
+mean **0.0780 m**, the best result on record. So ~0.8 m is "run the validated
+configuration", not a threshold to trust on faith.
+
+⚠️ **Do not read the 4 m reach result as a licence to plan a 4 m leg.** Reach
+was measured on *straight single segments starting aligned*; it says a segment
+can travel that far stopping on tolerance, not that it lands accurately after a
+junction turn. The two are different properties and only reach is measured at
+that length.
+
+⚠️ The fit **under-predicts the no-turn case by 2×** (segment 1: predicted
+0.070 m, measured 0.1417 m) because aim error develops mid-leg on straight runs.
+Treat it as sound for the post-turn residual case only.
+
+⚠️ **Raising `vio_max_realignments` (default 3, shared by the post-turn gate at
+`services.py:11877` and mid-drive re-aim at `:12507`) is the WRONG fix.** The
+loop was diverging — aim errors grew 16.96 → 21.22 → 24.975° while each
+correction "succeeded" against an 18° turn tolerance, leaving 9.7 / 11.5 / 13.6°
+of residual against a bearing rotating −3.2 / −9.7 / **−15.4°** per pulse and
+accelerating as range closed. More budget buys more corrections chasing a target
+moving away faster, each adding turn translation. beta17 already recorded this
+exact failure.
+
 **Settled, so do not re-derive:**
 
 - Rotation is **not predictable from duration** better than ~40% at p90 — ten
