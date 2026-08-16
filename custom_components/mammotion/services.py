@@ -21,7 +21,11 @@ from homeassistant.helpers import entity_registry as er
 from pymammotion.data.model.hash_list import CommDataCouple, Plan
 from pymammotion.data.model.pool_state import PoolPlan
 from pymammotion.messaging.command_queue import Priority
-from pymammotion.transport.base import TransportType
+from pymammotion.transport.base import (
+    CommandTimeoutError,
+    ConcurrentRequestError,
+    TransportType,
+)
 from pymammotion.utility.constant.device_constant import (
     PosType,
     camera_brightness,
@@ -86,6 +90,7 @@ SERVICE_FORWARD_TWO_PULSE_LATENCY_TEST = "forward_two_pulse_latency_test"
 SERVICE_POSITION_FEEDBACK_DIAGNOSTIC = "position_feedback_diagnostic"
 SERVICE_REPORT_STREAM_PROBE = "report_stream_probe"
 SERVICE_BASESTATION_INFO_PROBE = "basestation_info_probe"
+SERVICE_OTA_INFO_PROBE = "ota_info_probe"
 SERVICE_VIO_MOTION_PROBE = "vio_motion_probe"
 SERVICE_VIO_TURN_PROBE = "vio_turn_probe"
 SERVICE_VIO_TURN_TO_HEADING = "vio_turn_to_heading"
@@ -633,6 +638,23 @@ BASESTATION_INFO_PROBE_SCHEMA = vol.Schema(
         vol.Required(ATTR_ENTITY_ID): cv.entity_id,
         vol.Optional("wait_seconds", default=3.0): vol.All(
             vol.Coerce(float), vol.Range(min=0.5, max=30.0)
+        ),
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
+#: Read-only OTA-info query. Sends one MctlOta.todev_get_info_req(type=IT_OTA)
+#: over the device's own BLE/cloud connection and returns the raw
+#: toapp_get_info_rsp. No install/trigger call is made — this is the same
+#: request/response shape as basestation_info_probe, just for the OTA
+#: message family (EMBED_OTA / SubOtaMsg), which nothing in this integration
+#: or pymammotion currently sends. No movement parameters exist on purpose:
+#: this service cannot command motion.
+OTA_INFO_PROBE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+        vol.Optional("send_timeout", default=5.0): vol.All(
+            vol.Coerce(float), vol.Range(min=1.0, max=30.0)
         ),
     },
     extra=vol.ALLOW_EXTRA,
@@ -4477,6 +4499,72 @@ async def _basestation_info_probe(
             # installation with no separate RTK device has one fewer place to
             # look rather than a fault.
             result["reason"] = "no_query_fields_observed"
+    except Exception as err:  # noqa: BLE001
+        result["reason"] = f"{type(err).__name__}: {err}"
+    return result
+
+
+async def _ota_info_probe(
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    send_timeout: float,
+) -> dict[str, Any]:
+    """Ask the device to report its own OTA info.
+
+    Read-only: sends one ``MctlOta.todev_get_info_req(type=IT_OTA)`` and
+    returns the raw ``toapp_get_info_rsp``. Only ever sends a get-info
+    REQUEST -- never ``fw_download_ctrl``, never ``device/upgrade`` -- so
+    this cannot trigger an install.
+
+    Why this exists: pymammotion's ``MessageOta.get_device_ota_info``
+    (EMBED_OTA / ``SubOtaMsg``) is a real, fully-defined request the
+    device's own protocol supports, but it is never called anywhere in
+    pymammotion or this integration -- nothing has ever exercised this
+    request/response path. The broker already recognises the ``ota`` field
+    group for correlation (``messaging/broker.py``: ``"ota": "SubOtaMsg"``),
+    so ``send_command_and_wait`` resolves it the same way every other
+    probe in this file does.
+
+    ⚠️ The response shape (``GetInfoRsp.ota`` -> ``OtaInfo``:
+    otaid/version/progress/result/message) is the same progress-only shape
+    already seen over the cloud MQTT relay -- it carries no download URL.
+    The URL-bearing variant (``fota_sub_info.sub_img_url``) is a sibling
+    branch of the same oneof, and how pymammotion itself uses it
+    (``send_swimming_pool_device_ota_second``) is to construct and SEND
+    it, i.e. an app-to-device push of a URL the app already obtained via
+    its own cloud fetch -- not something this probe would receive back.
+    Kept as a genuine, unproven read rather than assumed useless: the
+    full raw response is returned so that assumption can be checked
+    against what the hardware actually answers.
+    """
+    result: dict[str, Any] = {
+        "command_sent": False,
+        "answered": False,
+        "response": None,
+        "reason": None,
+    }
+    device = coordinator.manager.get_device_by_name(coordinator.device_name)
+    if device is None or not coordinator.is_online():
+        result["reason"] = "device_offline_or_unavailable"
+        return result
+    try:
+        response = await coordinator.manager.send_command_and_wait(
+            coordinator.device_name,
+            "get_device_ota_info",
+            "toapp_get_info_rsp",
+            send_timeout=send_timeout,
+            prefer_ble=True,
+            log_type=1,
+        )
+        result["command_sent"] = True
+        result["answered"] = True
+        result["response"] = response.to_dict(include_default_values=True)
+        result["reason"] = "answered"
+    except CommandTimeoutError:
+        result["command_sent"] = True
+        result["reason"] = "no_response_within_timeout"
+    except ConcurrentRequestError as exc:
+        result["reason"] = f"concurrent_request: {exc}"
     except Exception as err:  # noqa: BLE001
         result["reason"] = f"{type(err).__name__}: {err}"
     return result
@@ -15600,6 +15688,16 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             rtk_sources=_rtk_base_station_sources(hass),
         )
 
+    async def handle_ota_info_probe(call: ServiceCall) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        return await _ota_info_probe(
+            mower.reporting_coordinator,
+            send_timeout=call.data["send_timeout"],
+        )
+
     async def handle_report_stream_probe(call: ServiceCall) -> dict[str, Any]:
         mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
         if mower is None:
@@ -16144,6 +16242,17 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         SERVICE_BASESTATION_INFO_PROBE,
         handle_basestation_info_probe,
         schema=BASESTATION_INFO_PROBE_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    # Not wrapped in _wrap_exclusive_manual_motion for the same reason as the
+    # basestation probe: this sends a read-only get-info REQUEST only, never
+    # fw_download_ctrl or device/upgrade, so it commands no motion and cannot
+    # trigger an install.
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_OTA_INFO_PROBE,
+        handle_ota_info_probe,
+        schema=OTA_INFO_PROBE_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(

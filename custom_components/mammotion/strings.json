@@ -2320,6 +2320,20 @@
           "description": "How long to wait for the base station's reply before reading it."
         }
       }
+    },
+    "ota_info_probe": {
+      "name": "OTA info probe",
+      "description": "Read-only OTA-info query. Asks the device to report its own OTA status over its own BLE/cloud connection and returns the raw reply. Sends only a get-info request — never a download-control or install command — so it cannot trigger an update. Commands no motion.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        },
+        "send_timeout": {
+          "name": "Timeout",
+          "description": "How long to wait for the device's reply before giving up."
+        }
+      }
     }
   },
   "exceptions": {
