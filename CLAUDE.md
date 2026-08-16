@@ -240,6 +240,27 @@ betas earlier still framed as a live constraint.
 does not exist, but **it only checks names**. A green run does not mean the prose
 is true.
 
+## OTA firmware capture — PAUSED 2026-08-16
+
+Separate thread from the turn/accuracy work above: an attempt to capture a
+readable copy of the mower's OTA firmware for research. **Paused at the
+operator's request** to wait a day or two before the next real attempt — not
+because anything failed unsafely. Full writeup, findings, and a resume
+checklist: `docs/ota-firmware-capture-investigation-20260816.md`.
+
+**Do not act on this as open work without reading that doc first.** Short
+version: the firmware itself was never captured and the remaining wall is
+cryptographic (the mower's own Aliyun device credentials, which no known
+software-only method can obtain) — no amount of better timing changes that.
+One permanent, real capability *did* come out of it: `ota_info_probe`, a
+read-only HA service (deployed `0.6.4-beta56`) that queries the mower's own
+OTA status over BLE — first time this request/response path has ever been
+exercised, confirmed working live, but it structurally cannot carry a
+download URL (see the doc for why). ⚠️ **UniFi Hardware Acceleration is
+currently OFF on the gateway** (a deliberate, real router-performance
+tradeoff made to get passive capture visibility) and the UniFi block-sta API
+is confirmed broken (`api.err.Invalid`) — check both before trusting either.
+
 
 ## Build provenance — accurate as record, NOT as build state
 

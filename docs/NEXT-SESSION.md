@@ -8,15 +8,29 @@ measurements stand — but do not act on any build/host/gate state they describe
 
 # 🚦 2026-08-14 HANDOFF — beta55 released; PR #14 reviewed and merged
 
+⚠️ **Superseded by a beta56 deploy on 2026-08-16** — see the note right below
+this table. The table itself otherwise still reflects the beta55 motion/gate
+state, which beta56 did not touch.
+
 ## 0. Live state, verified 2026-08-14 after the beta55 motion-disabled install
 
 | | |
 | --- | --- |
-| Branch | `main` at `5ef37511`, clean; PR #14 merged as `efa1eda8`. `agent/night-real-go-followup` is merged and can be deleted |
-| Released version | `0.6.4-beta55`, tag `v0.6.4-beta55`; manifest, pyproject, card, and lock version sites agree (`0.6.4-beta55` / `0.6.4b55`) |
-| Host | Running beta55. All 46 files byte-identical, card `9d0ccbad94170b0d16dabde675f81db9` at **both** paths, Lovelace `?v=0.6.4-beta55&build=9d0ccbad`. Backup `/config/mammotion-backup-20260814-2004-pre-beta55.tgz` |
-| Motion gate | ✅ **DISARMED.** `real_motion_allowed: false`, `enabled: false`, no active session, no last session. **No motion was commanded by the release or the install.** |
-| Mower state at install | **Docked** at `(4.3764, 3.1923)`, `CHARGE_ON`, `zone_hash 0`, `MODE_READY`, RTK `Fix`, blades OFF at 0 rpm, BLE active and online. `position_not_valid_for_motion` is expected on the dock and was present before the deploy too. |
+| Branch | `main` at `a2351048` (was `5ef37511` at beta55), clean; PR #14 merged as `efa1eda8`. `agent/night-real-go-followup` is merged and can be deleted |
+| Released version | `0.6.4-beta56`, tag `v0.6.4-beta56`; manifest, pyproject, card, and lock version sites agree (`0.6.4-beta56` / `0.6.4b56`) |
+| Host | Running beta56. All 46 files byte-identical, card `58acc9569907b1a16f4a89e785b0feeb` at **both** paths, Lovelace `?v=0.6.4-beta56&build=58acc956`. Backup `/config/mammotion-backup-20260815-2321-pre-beta56.tgz` |
+| Motion gate | ✅ **DISARMED.** `real_motion_allowed: false`, `enabled: false`, no active session, no last session. **No motion was commanded by the beta56 release or install** — it only added a new read-only service, `ota_info_probe` (see below). |
+| Mower state at install | **Docked**, `MODE_READY`, RTK `Fix` earlier verified; re-verify current position/charge state before any motion work, since beta56 was a backend-only deploy done independent of the motion/turn work below. |
+
+**beta56 (2026-08-16) added exactly one thing to the shipped integration:**
+`ota_info_probe`, a read-only HA service that queries the mower's own OTA
+status over BLE. It is unrelated to the turn/accuracy work in the rest of
+this handoff. Full context, and the paused firmware-capture investigation
+that produced it: `docs/ota-firmware-capture-investigation-20260816.md` and
+the pointer in `CLAUDE.md` right before "Build provenance". ⚠️ That
+investigation also left the UniFi gateway's **Hardware Acceleration
+disabled** and found its **block-sta API broken** — check both before
+relying on either for anything, motion-related or not.
 
 ⚠️ **The night fix in beta55 has never run on hardware.** It is verified
 off-mower and by replay against the recorded beta54 geometry only. The Real Go

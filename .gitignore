@@ -21,11 +21,17 @@ scripts/advert_log.jsonl
 scripts/state_log.jsonl
 
 # OTA firmware capture (scripts/mitm_ota_capture.py, scripts/fetch_ota_firmware.py,
-# scripts/listen_ota_mqtt.py) — contains auth tokens and/or the firmware binary
-# itself, never commit.
+# scripts/listen_ota_mqtt.py, scripts/ota_safety_net.py,
+# scripts/ota_url_probe_burst.py, scripts/probe_ota_endpoints.py) — contains auth
+# tokens and/or the firmware binary itself, never commit.
 scripts/mitm_ota_capture.jsonl
 scripts/ota_mqtt_capture.jsonl
 scripts/firmware/
+
+# Raw packet captures from the OTA investigation (tens of MB each, regenerable
+# by re-running the capture, never firmware content itself since TLS blocks
+# that — see docs/ota-firmware-capture-investigation-20260816.md).
+scripts/ota_captures/
 
 # Coverage data from `pytest --cov` (CI reports to the terminal, never a file)
 .coverage
