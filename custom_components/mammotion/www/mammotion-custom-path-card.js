@@ -18,6 +18,14 @@ const MAX_NIGHT_SEGMENT_METRES = 1.0;
 // 2026-08-17, NOT a measured reach limit: the longest segment ever executed is
 // 4.0 m. NOT a LUBA_ACCEPTANCE_PROFILE key.
 const MAX_REAL_SEGMENT_METRES = 6.1;
+// The card plans waypoint-to-waypoint; the backend measures from LIVE position,
+// which drifts from the plan by the previous segment's landing error. 0.2 m
+// covers a full `waypoint_tolerance` (0.15) landing plus a little, so the card
+// refuses before the backend can. Mirrors `_BUDGET_CHECK_METRES_PER_PULSE`'s
+// role: be the conservative one.
+const SEGMENT_LENGTH_PLANNING_MARGIN_METRES = 0.2;
+// Mirrors the backend's `_BUDGET_CHECK_METRES_PER_PULSE` (services.py).
+const BUDGET_CHECK_METRES_PER_PULSE = 0.3;
 const NIGHT_GO_PROFILE = Object.freeze({
   prefer_ble: true,
   turn_mode: "night",
@@ -786,8 +794,26 @@ class MammotionCustomPathCard extends HTMLElement {
     // it, so the reason appears in the readiness banner instead of arriving as
     // a failed run. The backend keeps its own copy: this one is a courtesy, not
     // the guard.
-    if (this._longestSegmentMetres() > MAX_REAL_SEGMENT_METRES + 1e-9) {
+    // ⚠️ MARGIN, not `+ 1e-9`. The card measures PLANNED waypoint-to-waypoint
+    // geometry; the backend measures LIVE POSITION to target. Those differ by
+    // the previous segment's landing error -- up to `waypoint_tolerance`
+    // (0.15 m), and more if a segment stops early. A path drawn at 6.05 m
+    // therefore passes here and can measure 6.25 m by the time segment 2
+    // dispatches, refusing mid-path with a blocker the card promised would not
+    // occur. Warn at the cap MINUS a landing allowance so the card is the
+    // stricter of the two.
+    if (
+      this._longestSegmentMetres() >
+      MAX_REAL_SEGMENT_METRES - SEGMENT_LENGTH_PLANNING_MARGIN_METRES
+    ) {
       blockers.push("segment_too_long");
+    }
+    // The backend's budget gate is per-segment and never reaches
+    // `_preflight().blockers`, so its BLOCKER_HELP entry could never render.
+    // Mirror the arithmetic here instead of shipping help text for a code the
+    // banner cannot receive.
+    if (this._linearBudgetReachMetres() < this._longestSegmentMetres()) {
+      blockers.push("linear_budget_insufficient_for_segment");
     }
     if (experimental.real_motion_allowed !== true) {
       if (
@@ -824,6 +850,17 @@ class MammotionCustomPathCard extends HTMLElement {
     const points = this._segmentPoints();
     if (!points || points.length !== 2) return null;
     return Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
+  }
+
+  // How far the configured linear pulse budget reaches, in metres. Mirrors the
+  // backend's `linear_budget_insufficient_for_segment`, including its
+  // loop-to-tolerance-only scope: with no ceiling the fixed-budget path fires
+  // full ~1.06 m pulses and this arithmetic does not apply, so report Infinity
+  // rather than a number that would refuse an accepted run.
+  _linearBudgetReachMetres() {
+    const ceiling = this._profileValue("max_linear_pulse_ceiling");
+    if (ceiling == null) return Infinity;
+    return Number(ceiling) * BUDGET_CHECK_METRES_PER_PULSE;
   }
 
   // Longest single leg in the planned path, in metres. The cap is per-SEGMENT,
@@ -1224,11 +1261,19 @@ class MammotionCustomPathCard extends HTMLElement {
     return `current orientation unavailable; last-travel projection ${heading.toFixed(1)}° (course-over-ground ${Number(pos.toward).toFixed(1)}° + offset ${Number(this._profileValue("calibrated_forward_heading_offset_degrees")).toFixed(1)}°; not mower orientation)`;
   }
 
+  // ⚠️ The default branch must NOT claim hardware acceptance while it isn't
+  // true. `_profileOverrides()` diffs the payload against LUBA_ACCEPTANCE_PROFILE,
+  // so raising `max_linear_pulse_ceiling` 14 -> 22 inside that constant on
+  // 2026-08-17 moved the accepted value itself: overrides read empty and the
+  // banner went on printing "Gate 5 re-pass 2026-08-12" for a profile no Gate 5
+  // has ever run. The un-acceptance has to be stated here, where the operator
+  // reads it, not only in a doc.
   _profileLabel() {
     const overrides = this._profileOverrides();
-    return overrides.length
-      ? `customised (not hardware-accepted): ${overrides.join(", ")}`
-      : "LUBA acceptance profile + reach (Gate 4 re-pass 2026-08-05; tolerance 2026-08-08; reach + Gate 5 re-pass 2026-08-12)";
+    if (overrides.length) {
+      return `customised (not hardware-accepted): ${overrides.join(", ")}`;
+    }
+    return "reach profile — NOT hardware-accepted (max_linear_pulse_ceiling 22 since 2026-08-17; owes a Gate 5). Last accepted: ceiling 14, Gate 5 re-pass 2026-08-12";
   }
 
   // Straight-line nudge along trustworthy CURRENT orientation only. The old

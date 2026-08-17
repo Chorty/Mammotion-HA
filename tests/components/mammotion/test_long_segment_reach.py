@@ -24,6 +24,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from custom_components.mammotion import services as mammotion_services
 from custom_components.mammotion.services import (
     _BUDGET_CHECK_METRES_PER_PULSE,
     _MAX_SEGMENT_LENGTH_M,
@@ -33,6 +34,7 @@ from custom_components.mammotion.services import (
     _mid_drive_realign_decision,
     _raw_pymammotion_execute_vector_segment,
 )
+from custom_components.mammotion.services import asyncio as mammotion_services_asyncio
 
 from .test_map_task_visibility import _pulse_coordinator
 
@@ -314,3 +316,91 @@ async def test_the_fixed_budget_path_keeps_its_accepted_behaviour() -> None:
     assert "linear_budget_insufficient_for_segment" not in (
         result.get("blockers") or []
     )
+
+
+@pytest.mark.asyncio
+async def test_the_divergence_detector_actually_stops_a_diverging_segment() -> None:
+    """The wiring test the arithmetic tests above cannot provide.
+
+    The detector is this change's whole answer to CLAUDE.md's "raising
+    `vio_max_realignments` is the WRONG fix". Without a test that drives the
+    executor, the entire block could be deleted and every other test here would
+    still pass -- which was true of the first version of this file.
+
+    The mower is walked along a path where the aim error GROWS between
+    successive correction decisions, the 2026-08-15 signature. It must stop on
+    `vio_realign_diverging` well inside the budget of 10, not spend the budget.
+    """
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    # facing = vision_heading + offset(-90), bearing to target = 0, so the
+    # map-frame aim error IS `heading - 90`. Starting at 75 gives -15 deg and
+    # every correction drives it 6 deg further away -- monotonic divergence,
+    # comfortably past the 1.0 deg margin, and never reaching the 90 deg
+    # reverse-recovery boundary within the budget.
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=75.0, vio_state=2
+    )
+    heading_holder = {"heading": 75.0}
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    async def fake_calibration(
+        coordinator_arg: object, **kwargs: object
+    ) -> dict[str, object]:
+        return {
+            "passed": True,
+            "reason": "calibrated",
+            "offset_degrees": -90.0,
+            "map_motion_heading_degrees": 280.0,
+            "vision_heading": 10.0,
+            "vio_state": 2,
+            "distance_m": 0.06,
+            "pulses_sent": 1,
+            "command_results": [],
+        }
+
+    async def fake_vio_turn(
+        coordinator_arg: object, **kwargs: object
+    ) -> dict[str, object]:
+        # A correction that "succeeds" every time -- exactly what the 2026-08-15
+        # run recorded, and why success alone is not evidence of convergence.
+        heading_holder["heading"] -= 6.0
+        coordinator.data.report_data.vision_info = SimpleNamespace(
+            heading=heading_holder["heading"], vio_state=2
+        )
+        return {
+            "stop_reason": "target_heading_reached",
+            "commands_sent": 1,
+            "command_results": [],
+        }
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(mammotion_services_asyncio, "sleep", no_sleep)
+    monkeypatch.setattr(
+        mammotion_services, "_vio_segment_calibration_drive", fake_calibration
+    )
+    monkeypatch.setattr(mammotion_services, "_vio_turn_to_heading", fake_vio_turn)
+    try:
+        result = await _raw_pymammotion_execute_vector_segment(
+            coordinator,
+            [{"x": 1.0, "y": 1.0}, {"x": 4.0, "y": 1.0}],
+            dry_run=False,
+            confirm_blades_off=True,
+            confirm_clear_area=True,
+            turn_mode="vio",
+            max_linear_pulse_ceiling=22,
+            vio_max_realignments=10,
+            sample_delays=(0,),
+        )
+    finally:
+        monkeypatch.undo()
+
+    assert result["stop_reason"] == "vio_realign_diverging"
+    divergence = result["realign_divergence"]
+    assert divergence["reason"] == "aim_error_grew_across_corrections"
+    assert abs(divergence["aim_error_degrees"]) > abs(
+        divergence["previous_aim_error_degrees"]
+    )
+    # Stopped on the SIGNAL, not by running the budget out.
+    assert divergence["realignments_used"] < 10
