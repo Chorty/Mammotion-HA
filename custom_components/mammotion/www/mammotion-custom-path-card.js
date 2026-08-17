@@ -18,12 +18,6 @@ const MAX_NIGHT_SEGMENT_METRES = 1.0;
 // 2026-08-17, NOT a measured reach limit: the longest segment ever executed is
 // 4.0 m. NOT a LUBA_ACCEPTANCE_PROFILE key.
 const MAX_REAL_SEGMENT_METRES = 6.1;
-// The card plans waypoint-to-waypoint; the backend measures from LIVE position,
-// which drifts from the plan by the previous segment's landing error. 0.2 m
-// covers a full `waypoint_tolerance` (0.15) landing plus a little, so the card
-// refuses before the backend can. Mirrors `_BUDGET_CHECK_METRES_PER_PULSE`'s
-// role: be the conservative one.
-const SEGMENT_LENGTH_PLANNING_MARGIN_METRES = 0.2;
 // Mirrors the backend's `_BUDGET_CHECK_METRES_PER_PULSE` (services.py).
 const BUDGET_CHECK_METRES_PER_PULSE = 0.3;
 const NIGHT_GO_PROFILE = Object.freeze({
@@ -794,18 +788,17 @@ class MammotionCustomPathCard extends HTMLElement {
     // it, so the reason appears in the readiness banner instead of arriving as
     // a failed run. The backend keeps its own copy: this one is a courtesy, not
     // the guard.
-    // ⚠️ MARGIN, not `+ 1e-9`. The card measures PLANNED waypoint-to-waypoint
-    // geometry; the backend measures LIVE POSITION to target. Those differ by
-    // the previous segment's landing error -- up to `waypoint_tolerance`
-    // (0.15 m), and more if a segment stops early. A path drawn at 6.05 m
-    // therefore passes here and can measure 6.25 m by the time segment 2
-    // dispatches, refusing mid-path with a blocker the card promised would not
-    // occur. Warn at the cap MINUS a landing allowance so the card is the
-    // stricter of the two.
-    if (
-      this._longestSegmentMetres() >
-      MAX_REAL_SEGMENT_METRES - SEGMENT_LENGTH_PLANNING_MARGIN_METRES
-    ) {
+    // ⚠️ NO PLANNING MARGIN HERE, deliberately. A margin was tried on
+    // 2026-08-17 to cover the card measuring PLANNED waypoint-to-waypoint
+    // geometry while the backend measures LIVE POSITION to target -- they
+    // differ by the previous segment's landing error. But a 0.2 m margin
+    // refuses a 6.096 m (20 ft) leg, which is the exact length the cap exists
+    // to allow, and segment 1 starts AT the live position so there is no drift
+    // for it to cover. A later segment that drifts past the cap is refused by
+    // the backend with `segment_too_long` and a diagnostics block naming the
+    // measured length; that is the honest failure, and it beats pre-refusing a
+    // legal leg.
+    if (this._longestSegmentMetres() > MAX_REAL_SEGMENT_METRES + 1e-9) {
       blockers.push("segment_too_long");
     }
     // The backend's budget gate is per-segment and never reaches

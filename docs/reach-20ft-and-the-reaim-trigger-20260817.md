@@ -72,47 +72,51 @@ Leg length only hurts when the mower **stops** correcting. That is what
 | 2 | `linear_budget_insufficient_for_segment` — refuse when the pulse ceiling cannot reach the leg. **Loop-to-tolerance only** | `services.py` |
 | 3 | `_mid_drive_realign_decision` — trigger is the projected miss, gated by the smallest correctable angle | `services.py` |
 | 4 | Mid-drive corrections close to 10°, not 18° | `services.py` |
-| 5 | Divergence detector — stop when a correction leaves the aim worse | `services.py` |
-| 6 | `vio_max_realignments` default 3 → 10; `vio_realign_threshold_degrees` 15 → 10 | `services.py` |
-| 7 | `max_linear_pulse_ceiling` 14 → 22 | card, README, frontend tests |
-| 8 | Card mirrors the cap (`MAX_REAL_SEGMENT_METRES`) and explains both new blockers | card |
+| 5 | `max_linear_pulse_ceiling` 14 → 22 | card, README, frontend tests |
+| 6 | Card mirrors both gates and stops claiming an acceptance the profile no longer has | card |
 
-### On item 6, and CLAUDE.md
+### 🚨 Scope was cut, and the cut is the most useful thing here
 
-CLAUDE.md says plainly that **raising `vio_max_realignments` is the WRONG fix**,
-and on the evidence available in 2026-08-15 it was: the 1.65 m segment's aim
-errors grew **16.96 → 21.22 → 24.975°** while every correction reported
-`target_heading_reached`, so more budget would only have bought more corrections
-chasing a target moving away faster. beta17 recorded the same shape.
+An earlier version of this branch also raised `vio_max_realignments` **3 → 10**
+and added a **divergence detector** to make that safe. Both are gone. The budget
+is back at the accepted 3.
 
-That objection is answered rather than ignored:
+Two rounds of review found the detector wrong **twice, for two different
+reasons**, and neither would have been caught by a test:
 
-- **Item 4 removes the cause.** Those corrections were not failing — they were
-  *succeeding* against an 18° tolerance too loose to converge, leaving
-  9.7 / 11.5 / 13.6° of residual against a bearing rotating −3.2 / −9.7 /
-  −15.4° per pulse.
-- **Item 5 detects the symptom.** If the aim error at one correction decision is
-  worse than at the previous one by more than
-  `_REALIGN_DIVERGENCE_MARGIN_DEGREES` (1.0°), the segment stops on
-  `vio_realign_diverging`. The measured signature worsened by 4.26° and 3.75°
-  per step, so it is caught on the second correction.
+1. **v1 compared before-vs-after within one correction.** But a correction turn
+   translates the mower up to 0.30 m, and translation rotates the bearing by
+   `atan(translation / range)` — 7.6° at 0.75 m of range, against a 1.0° margin
+   justified by 2–4 cm of position noise. It measured the correction's own
+   translation and called it divergence.
+2. **v2 compared successive pre-correction errors.** But aim error inflates
+   geometrically as range closes — `atan(c/d)` grows as `d` shrinks — so a
+   perfectly healthy 6 m leg yields ~10.7 → 11.1 → 11.6 → 12.6 → 16.8 and trips
+   every margin. It measured normal terminal geometry and called it divergence.
 
-  🚨 **It compares successive PRE-correction errors, never before-vs-after
-  within one correction.** The first version did the latter and **was wrong** —
-  caught in review before any hardware ran. The correction turn itself
-  translates the mower up to `max_turn_translation_distance` (0.30 m), and
-  translation rotates the bearing to the target by `atan(translation / range)`
-  — the mechanism in
-  `docs/turn-translation-explains-the-landing-wall-20260810.md`. At 0.75 m of
-  range a 0.10 m translation is **7.6°**, seven times the margin, so a perfectly
-  good correction would have aborted the run on `vio_realign_diverging`. Both
-  samples are now taken at the same point in the cycle — after a full drive
-  pulse, before correcting — which is also exactly how the 16.96 / 21.22 /
-  24.975 signature was recorded in the first place.
+Both would have aborted good runs. Five of the six second-round findings existed
+*only* because the budget went to 10 — the detector, the missing deadband, the
+skipped stale-feed and no-progress aborts, unbounded correction translation, and
+a zero-command re-aim loop introduced by the fix for a first-round finding.
 
-**The budget raise is safe only because of the detector. They ship together or
-not at all.** A 6 m leg drives ~17 pulses; 3 corrections across that is the same
-"stops correcting" failure in a new place.
+**The trigger fix was implicated in none of them.** So it ships and the budget
+does not. If a 6 m leg exhausts 3 corrections it stops safely on
+`vio_realign_budget_exhausted` — which is a *measurement*, and a far better
+basis for raising the budget than either geometry argument was.
+
+### The deadband, and why the far-field win is smaller than it looks
+
+`vio_realign_threshold_degrees` stays at its accepted **15**, not 10. The
+correction turn closes to 10°, and a trigger floor equal to that tolerance means
+a correction ending at 9.9° re-fires next pulse, while an error just past the
+floor makes the turn primitive return `target_heading_reached` having sent
+nothing. The 5° gap is the deadband.
+
+⚠️ **So the far-field improvement is 18° → 15°, not 18° → 10°.** At 6 m that is
+a 1.55 m miss now corrected where it took 1.85 m before. Real, but modest. The
+turn primitive cannot hold better than 10°, and a deadband above that is
+mandatory — closing the rest of the gap needs a shorter actuation floor, not a
+smaller threshold.
 
 ### On item 2, and a bug the existing tests caught
 
@@ -127,21 +131,28 @@ loop-to-tolerance only and the accepted fixed-budget path is untouched.
 Worth recording as a method note: the failure was caught by tests that existed
 to protect the accepted profile, not by review.
 
-## 2a. Review round 1 — eight findings, all real
+## 2a. Review rounds 1 and 2 — fourteen findings
+
+Two high-effort review passes before any deploy. **Round 2 found that two of
+round 1's own fixes were wrong**, which is what triggered the scope cut above.
+Round 1's table is kept in full because the superseded entries are the record of
+how the detector failed.
+
+### Round 1 — eight findings, all real
 
 Reviewed at high effort before any deploy. Every finding held up; several were
 defects that would have shown up as bad hardware runs rather than as failures.
 
 | # | Finding | Fix |
 | --- | --- | --- |
-| 1 | **Divergence detector tripped on the correction turn's own translation** — 7.6° at 0.75 m range against a 1.0° margin. Would abort healthy runs. | Compare successive pre-correction errors (above) |
-| 2 | `vio_max_realignments` default 10 **was the schema maximum**, leaving no headroom on a leg needing ~17 pulses | Schema max 10 → 25 |
+| 1 | **Divergence detector tripped on the correction turn's own translation** — 7.6° at 0.75 m range against a 1.0° margin. Would abort healthy runs. | ~~Compare successive pre-correction errors~~ — that fix was ALSO wrong (round 2); detector removed |
+| 2 | `vio_max_realignments` default 10 **was the schema maximum**, leaving no headroom on a leg needing ~17 pulses | ~~Schema max 10 → 25~~ — budget reverted to 3, schema back to 10 |
 | 3 | Card banner still printed "LUBA acceptance profile … Gate 5 re-pass 2026-08-12" **for a profile no Gate 5 has run** | Default label now states the un-acceptance |
-| 4 | Divergence detector had **no wiring test** — deleting the whole block left 689 tests green | Executor-driven test added |
+| 4 | Divergence detector had **no wiring test** — deleting the whole block left 689 tests green | ~~Executor-driven test added~~ — detector removed |
 | 5 | `current_point = current_after_realign` was dead (last read before the linear loop) | Block removed with fix 1 |
-| 6 | Trigger floor (10°) **equals** the correction tolerance (10°), so an error just past it burns a slot on a zero-command turn | Charge a slot only when the turn actually dispatched |
+| 6 | Trigger floor (10°) **equals** the correction tolerance (10°), so an error just past it burns a slot on a zero-command turn | ~~Charge a slot only when dispatched~~ — that fix removed the only bound on ineffective re-aims (round 2). Fixed properly by keeping the threshold at 15, restoring a 5° deadband |
 | 7 | `linear_budget_insufficient_for_segment` help text **could never render** — `BLOCKER_HELP` only serves `_preflight().blockers` | Card mirrors the budget arithmetic |
-| 8 | Backend measures **live position → target**; card measured **waypoint → waypoint**. A 6.05 m plan can measure 6.25 m after the previous landing, refusing mid-path | Card refuses at cap − 0.2 m |
+| 8 | Backend measures **live position → target**; card measured **waypoint → waypoint**. A 6.05 m plan can measure 6.25 m after the previous landing, refusing mid-path | ~~Card refuses at cap − 0.2 m~~ — that margin refused the 6.096 m leg the cap exists to allow (round 2). Card keeps the exact cap; a drifted later segment is refused by the backend with diagnostics |
 
 Findings 1 and 6 are the ones worth remembering: both are cases where the code
 was *internally* consistent and still wrong about the machine — 1 because a turn
@@ -161,8 +172,10 @@ is not a pivot, 6 because a correction is an angle with a minimum size.
 
 - **Any leg longer than 4.0 m.** 6.10 m is an authorization number.
 - Whether the projected-miss trigger converges on hardware.
-- Whether the divergence detector's 1.0° margin is right. It separates the one
-  recorded divergence from position noise; that is a sample of one.
+- **Whether 3 corrections is enough for a 6 m leg.** This is the single most
+  useful thing the first run can tell us. The new trigger fires earlier and more
+  often, so 3 could be spent in the far field with none left for the approach —
+  a real interaction, with a bounded failure (`vio_realign_budget_exhausted`).
 - Whether 10° mid-drive corrections enter the `sweep_exceeds_any_pulse` regime
   more often than 18° ones did. The post-turn gate has run at 10° without it,
   which is the reason for confidence, not a proof.

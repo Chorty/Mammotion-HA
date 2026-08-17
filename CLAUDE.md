@@ -35,17 +35,19 @@ backend-only deploy adding the read-only `ota_info_probe` and changed nothing in
 the motion path, so every motion claim written under "beta55" below still
 describes what is running.
 
-🚨 **UNCOMMITTED, UNRELEASED, UNDEPLOYED WORK IS IN THE TREE (2026-08-17), AND
-IT UN-ACCEPTS THE PROFILE.** `LUBA_ACCEPTANCE_PROFILE.max_linear_pulse_ceiling`
-moved **14 → 22** to reach a 20 ft leg, which owes the §4 re-pinning in
-`docs/gate4-repass-20260805.md` and **another Gate 5**. Also changed: a
-pre-dispatch `segment_too_long` cap at **6.10 m** (the daylight path had no
-length gate at all), the mid-drive re-aim trigger (angle → projected miss), the
-mid-drive correction tolerance (18° → 10°), a new divergence detector, and
-`vio_max_realignments` 3 → 10.
-**Read `docs/reach-20ft-and-the-reaim-trigger-20260817.md` before acting on any
-of it.** Full CI suite green (689 pytest, 46 frontend, all nine hooks);
-**no motion has run on any of it.**
+🚨 **UNRELEASED, UNDEPLOYED WORK ON `agent/reach-20ft-reaim-trigger` (PR #15,
+2026-08-17), AND IT UN-ACCEPTS THE PROFILE.**
+`LUBA_ACCEPTANCE_PROFILE.max_linear_pulse_ceiling` moved **14 → 22** to reach a
+20 ft leg, which owes the §4 re-pinning in `docs/gate4-repass-20260805.md` and
+**another Gate 5**. Also changed: a pre-dispatch `segment_too_long` cap at
+**6.10 m** (the daylight path had no length gate at all), a
+`linear_budget_insufficient_for_segment` gate, the mid-drive re-aim trigger
+(angle → projected miss), and the mid-drive correction tolerance (18° → 10°).
+⚠️ `vio_max_realignments` **stays at 3** — a raise was attempted, reviewed twice,
+and reverted; see the note further down. **Read
+`docs/reach-20ft-and-the-reaim-trigger-20260817.md` before acting on any of it.**
+Full CI suite green (687 pytest, 46 frontend, all nine hooks); **no motion has
+run on any of it, and the host is still beta56.**
 
 ⚠️ Two entries below are now qualified by that work — the "~0.8 m leg" operating
 rule and the "raising `vio_max_realignments` is the WRONG fix" warning. Both are
@@ -192,16 +194,18 @@ that length.
 0.070 m, measured 0.1417 m) because aim error develops mid-leg on straight runs.
 Treat it as sound for the post-turn residual case only.
 
-⚠️ **QUALIFIED 2026-08-17, NOT REFUTED — the default is now 10, and the reasoning
-below is exactly why that needed two other changes first.** The diagnosis stands:
-the loop was diverging, and more budget alone buys more corrections chasing a
-receding target. What changed is that the CAUSE was addressed (mid-drive
-corrections now close to 10°, not 18° — those corrections were *succeeding* at a
-tolerance too loose to converge) and the SYMPTOM is now detected (a correction
-that leaves the aim worse stops the segment on `vio_realign_diverging`). A 6 m
-leg drives ~17 pulses, so 3 corrections is the same "stops correcting" failure in
-a new place. **Without the divergence detector, the warning below is still
-correct — do not raise the budget on its own.**
+✅ **REINFORCED 2026-08-17 — this warning was tested and it won.** A branch tried
+raising the default 3 → 10, guarded by a "divergence detector" meant to make it
+safe. Two review rounds found the detector wrong **twice, for two different
+reasons**: v1 compared before-vs-after within one correction and so measured the
+correction turn's own translation (`atan(0.10/0.75)` = 7.6° against a 1.0°
+margin); v2 compared successive pre-correction errors and so measured the
+geometric inflation of aim error as range closes (`atan(c/d)` grows as `d`
+shrinks), which happens on a **perfectly healthy leg**. Both would have aborted
+good runs. **The budget stayed at 3.** Five of six second-round findings existed
+only because the budget had been raised. If you think you have a way to make a
+bigger budget safe, assume it is wrong until hardware says otherwise — and note
+that a leg exhausting the budget stops safely, which is a measurement.
 `docs/reach-20ft-and-the-reaim-trigger-20260817.md`.
 
 ⚠️ **Raising `vio_max_realignments` (default 3, shared by the post-turn gate at

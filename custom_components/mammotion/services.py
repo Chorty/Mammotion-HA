@@ -1061,16 +1061,11 @@ RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("vio_calibration_pulse_count", default=2): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=5)
         ),
-        vol.Optional("vio_realign_threshold_degrees", default=10.0): vol.All(
+        vol.Optional("vio_realign_threshold_degrees", default=15.0): vol.All(
             vol.Coerce(float), vol.Range(min=5.0, max=90.0)
         ),
-        vol.Optional("vio_max_realignments", default=10): vol.All(
-            # max 25, not 10: the default is 10 and a default pinned AT the
-            # schema ceiling leaves an operator no way to raise it. A 6 m leg
-            # drives ~17 pulses, so a leg that needs a correction most pulses
-            # would exhaust the budget short of target with no recourse.
-            vol.Coerce(int),
-            vol.Range(min=0, max=25),
+        vol.Optional("vio_max_realignments", default=3): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=10)
         ),
         vol.Optional("sample_delays", default=[0, 5, 10, 20, 30, 45, 60]): vol.All(
             cv.ensure_list,
@@ -1197,16 +1192,11 @@ RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("vio_calibration_pulse_count", default=2): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=5)
         ),
-        vol.Optional("vio_realign_threshold_degrees", default=10.0): vol.All(
+        vol.Optional("vio_realign_threshold_degrees", default=15.0): vol.All(
             vol.Coerce(float), vol.Range(min=5.0, max=90.0)
         ),
-        vol.Optional("vio_max_realignments", default=10): vol.All(
-            # max 25, not 10: the default is 10 and a default pinned AT the
-            # schema ceiling leaves an operator no way to raise it. A 6 m leg
-            # drives ~17 pulses, so a leg that needs a correction most pulses
-            # would exhaust the budget short of target with no recourse.
-            vol.Coerce(int),
-            vol.Range(min=0, max=25),
+        vol.Optional("vio_max_realignments", default=3): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=10)
         ),
         vol.Optional("sample_delays", default=[0, 5, 10, 20, 30, 45, 60]): vol.All(
             cv.ensure_list,
@@ -11172,21 +11162,6 @@ _BUDGET_CHECK_METRES_PER_PULSE = 0.30
 #: floor or a tighter sweep bound, NOT a smaller number here.
 _MIN_CORRECTABLE_AIM_ERROR_DEGREES = 10.0
 
-#: How much the aim error may grow BETWEEN SUCCESSIVE mid-drive correction
-#: decisions before the segment is judged to be diverging and stops, in degrees.
-#:
-#: Separates real divergence from position noise. The measured divergence
-#: (2026-08-15, 1.65 m segment) worsened by 4.26 and 3.75 deg per correction;
-#: the position feed's own 2-4 cm noise is well under a degree at the ranges
-#: where corrections fire.
-#:
-#: ⚠️ Read "successive decisions" literally. This margin is ONLY defensible
-#: because both samples are taken at the same point in the cycle. Comparing
-#: before-vs-after within ONE correction -- which this detector did in its first
-#: version -- puts the correction turn's own translation inside the comparison,
-#: and `atan(0.10 m / 0.75 m)` is 7.6 deg, seven times this number. See the
-#: detector itself.
-_REALIGN_DIVERGENCE_MARGIN_DEGREES = 1.0
 
 #: Position-feed noise makes aim estimates from shorter pulses uninformative.
 _NIGHT_MIN_AIM_BASELINE_M = 0.20
@@ -11367,8 +11342,8 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     vio_turn_max_commands: int = 8,
     vio_angular_speed: int = 500,
     vio_calibration_pulse_count: int = 2,
-    vio_realign_threshold_degrees: float = 10.0,
-    vio_max_realignments: int = 10,
+    vio_realign_threshold_degrees: float = 15.0,
+    vio_max_realignments: int = 3,
     sample_delays: list[float] | tuple[float, ...] = (0, 5, 10, 20, 30, 45, 60),
     motion_refresh_interval_ms: int = 0,
     ha_state: str | None = None,
@@ -11884,9 +11859,6 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     # translate the mower enough to change the bearing to a short waypoint; the
     # correction budget must cover that pre-linear case as well as later drift.
     realignments_used = 0
-    #: Aim error at the PREVIOUS mid-drive correction decision, for the
-    #: divergence detector. None until the first correction fires.
-    last_realign_aim_error: float | None = None
     turn_result: dict[str, Any]
     if turn_mode == "vio":
         vio_info = result["vio"]
@@ -12843,52 +12815,10 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                         }
                     )
                 if needs_correction:
-                    # 🚨 DIVERGENCE DETECTOR -- read this before raising
-                    # `vio_max_realignments` any further.
-                    #
-                    # CLAUDE.md says plainly that raising that budget is the
-                    # WRONG fix, and on the 2026-08-15 evidence it was: the
-                    # 1.65 m segment's aim errors GREW 16.96 -> 21.22 -> 24.975
-                    # deg while every correction reported success, so more budget
-                    # only buys more corrections chasing a target moving away
-                    # faster. beta17 recorded the same shape. A 6 m leg drives
-                    # ~17 pulses, so 3 corrections is that same "stops
-                    # correcting" failure in a new place -- hence budget 10, and
-                    # hence this.
-                    #
-                    # ⚠️ COMPARE SUCCESSIVE **PRE-CORRECTION** ERRORS, NEVER
-                    # BEFORE-VS-AFTER WITHIN ONE CORRECTION. The first version of
-                    # this detector did the latter and was wrong: the correction
-                    # turn itself translates the mower up to
-                    # `max_turn_translation_distance` (0.30 m), and translation
-                    # rotates the bearing to the target by
-                    # `atan(translation / range)` -- the mechanism in
-                    # docs/turn-translation-explains-the-landing-wall-20260810.md.
-                    # At 0.75 m of range a 0.10 m translation is 7.6 deg, seven
-                    # times this margin, so a perfectly good correction would
-                    # have aborted the run. Both samples here are taken at the
-                    # same point in the cycle (after a full drive pulse, before
-                    # correcting), which is also exactly how the 16.96 / 21.22 /
-                    # 24.975 signature was recorded.
-                    if last_realign_aim_error is not None and abs(aim_error) > (
-                        abs(last_realign_aim_error) + _REALIGN_DIVERGENCE_MARGIN_DEGREES
-                    ):
-                        result["realign_divergence"] = {
-                            "after_linear_pulse": command_index,
-                            "previous_aim_error_degrees": round(
-                                last_realign_aim_error, 3
-                            ),
-                            "aim_error_degrees": round(aim_error, 3),
-                            "margin_degrees": _REALIGN_DIVERGENCE_MARGIN_DEGREES,
-                            "realignments_used": realignments_used,
-                            "reason": "aim_error_grew_across_corrections",
-                        }
-                        result["stop_reason"] = "vio_realign_diverging"
-                        return result
-                    last_realign_aim_error = aim_error
                     if realignments_used >= vio_max_realignments:
                         result["stop_reason"] = "vio_realign_budget_exhausted"
                         return result
+                    realignments_used += 1
                     realign_target = _normalized_heading_degrees(
                         bearing - float(offset_now)
                     )
@@ -12916,6 +12846,24 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                         # tolerance is 15% of margin, while 0.41 * sin(10 deg) =
                         # 0.071 m is comfortable. That is what makes a 6 m leg
                         # credible at all.
+                        #
+                        # 🔑 AND IT IS WHAT CREATES THE DEADBAND. The trigger
+                        # floor is `max(vio_realign_threshold_degrees, 10)` = 15
+                        # on the default; this closes to 10. That 5 deg gap is
+                        # not slack, it is the reason a correction cannot
+                        # immediately re-trigger itself. Setting the threshold to
+                        # 10 was tried on 2026-08-17 and reverted: floor equal to
+                        # tolerance means a correction ending at 9.9 deg fires
+                        # again next pulse, and an error just past the floor
+                        # makes the primitive's entry check return
+                        # `target_heading_reached` having sent nothing.
+                        #
+                        # ⚠️ So the far-field improvement this change buys is
+                        # 18 deg -> 15 deg, NOT 18 -> 10. The turn primitive
+                        # cannot hold better than 10 deg, and a deadband is
+                        # mandatory above that. Do not "finish the job" by
+                        # lowering the threshold without first shortening the
+                        # actuation floor.
                         heading_tolerance_degrees=min(
                             float(heading_tolerance_degrees),
                             _POST_TURN_ALIGNMENT_TOLERANCE_DEGREES,
@@ -12933,16 +12881,6 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                         active_route=active_route,
                     )
                     realign_commands = int(realign_result.get("commands_sent") or 0)
-                    # Charge a slot only for a correction that actually turned.
-                    # The trigger floor (10 deg) is also the tolerance this turn
-                    # closes to, so an aim error just past the floor makes the
-                    # primitive's entry check return `target_heading_reached`
-                    # having sent nothing. Charging for that burns the budget a
-                    # long leg depends on and adds no rotation -- the same
-                    # wasted-slot regression an earlier build fixed for the
-                    # threshold/tolerance gap.
-                    if realign_commands > 0:
-                        realignments_used += 1
                     result["turn_commands_sent"] += realign_commands
                     result["commands_sent"] += realign_commands
                     result["motion_refresh_commands_sent"] += int(
@@ -13173,8 +13111,8 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
     vio_turn_max_commands: int = 8,
     vio_angular_speed: int = 500,
     vio_calibration_pulse_count: int = 2,
-    vio_realign_threshold_degrees: float = 10.0,
-    vio_max_realignments: int = 10,
+    vio_realign_threshold_degrees: float = 15.0,
+    vio_max_realignments: int = 3,
     sample_delays: list[float] | tuple[float, ...] = (0, 5, 10, 20, 30, 45, 60),
     motion_refresh_interval_ms: int = 0,
     ha_state: str | None = None,

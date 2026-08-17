@@ -15,10 +15,11 @@ changes a frozen profile key. **Read
 | | |
 | --- | --- |
 | Host | Still **beta56**, unchanged. Nothing was deployed. |
-| Tree | Modified and **uncommitted** — `services.py`, the card, README, frontend tests, plus a new `tests/components/mammotion/test_long_segment_reach.py` |
+| Branch | `agent/reach-20ft-reaim-trigger`, **PR #15**, pushed. Not merged, not released, not deployed |
 | Motion gate | **DISARMED**, untouched. **No motion has run on any of this work.** |
 | Profile | 🚨 `max_linear_pulse_ceiling` **14 → 22**, so `LUBA_ACCEPTANCE_PROFILE` is **un-accepted**; owes §4 re-pinning and another Gate 5 |
-| CI | Green: 689 pytest (50% coverage), 46 frontend, ruff check/format, mypy, all nine pre-commit hooks |
+| CI | Green: 687 pytest, 46 frontend, ruff check/format, mypy, all nine pre-commit hooks |
+| Review | **Two high-effort rounds, 14 findings, all real.** Round 2 found two of round 1's own fixes wrong, which forced a scope cut: `vio_max_realignments` stays at the accepted **3** and the divergence detector was removed entirely |
 
 **What it does:** adds the daylight path's first pre-dispatch length cap
 (`segment_too_long`, 6.10 m = 20 ft) and changes the mid-drive re-aim trigger

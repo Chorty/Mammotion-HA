@@ -1,16 +1,27 @@
 """Pins the 2026-08-17 long-segment reach work.
 
-Four things ship together and only make sense together, so they are pinned
-together:
+Three things ship together:
 
 1. `_MAX_SEGMENT_LENGTH_M` -- a pre-dispatch length cap the daylight/VIO path
    never had. The ~0.8 m operating rule was documentation only.
 2. `_mid_drive_realign_decision` -- the re-aim trigger, changed from an angle
    test to a projected-miss test gated by the smallest correctable angle.
-3. The divergence detector, which is the ONLY reason raising
-   `vio_max_realignments` 3 -> 10 is safe. CLAUDE.md says plainly that raising
-   that budget is the wrong fix, and on the 2026-08-15 evidence it was.
-4. `linear_budget_insufficient_for_segment`, loop-to-tolerance only.
+3. `linear_budget_insufficient_for_segment`, loop-to-tolerance only.
+
+⚠️ **SCOPE WAS CUT ON 2026-08-17, DELIBERATELY.** An earlier version of this
+branch also raised `vio_max_realignments` 3 -> 10 and added a divergence
+detector to make that safe. Two rounds of review found the detector wrong twice,
+for two different reasons -- first it compared before-vs-after within one
+correction and so measured the correction turn's own translation
+(`atan(0.10/0.75)` = 7.6 deg against a 1.0 deg margin); then it compared
+successive pre-correction errors and so measured the geometric inflation of aim
+error as range closes (`atan(c/d)` grows as d shrinks), which happens on a
+PERFECTLY HEALTHY leg. Both would have aborted good runs.
+
+The budget is back at the accepted 3 and the detector is gone. If a 6 m leg
+exhausts 3 corrections it stops safely on `vio_realign_budget_exhausted`, which
+is a measurement, and a far better basis for raising the budget than either
+geometry argument was.
 
 ⚠️ NONE OF THIS HAS RUN ON HARDWARE. These tests pin intent and arithmetic, not
 behaviour of the mower. The 6.10 m cap is an authorization number; the longest
@@ -24,24 +35,20 @@ from types import SimpleNamespace
 
 import pytest
 
-from custom_components.mammotion import services as mammotion_services
 from custom_components.mammotion.services import (
     _BUDGET_CHECK_METRES_PER_PULSE,
     _MAX_SEGMENT_LENGTH_M,
     _MIN_CORRECTABLE_AIM_ERROR_DEGREES,
     _POST_TURN_ALIGNMENT_TOLERANCE_DEGREES,
-    _REALIGN_DIVERGENCE_MARGIN_DEGREES,
     _mid_drive_realign_decision,
     _raw_pymammotion_execute_vector_segment,
 )
-from custom_components.mammotion.services import asyncio as mammotion_services_asyncio
 
 from .test_map_task_visibility import _pulse_coordinator
 
 _MIN_FLOOR = _MIN_CORRECTABLE_AIM_ERROR_DEGREES
 _MAX_SEGMENT = _MAX_SEGMENT_LENGTH_M
 _PER_PULSE = _BUDGET_CHECK_METRES_PER_PULSE
-_MARGIN = _REALIGN_DIVERGENCE_MARGIN_DEGREES
 
 
 def _decide(distance_m: float, aim_degrees: float, **kwargs: float) -> dict:
@@ -50,7 +57,7 @@ def _decide(distance_m: float, aim_degrees: float, **kwargs: float) -> dict:
         aim_error_degrees=aim_degrees,
         waypoint_tolerance=kwargs.get("waypoint_tolerance", 0.15),
         metres_per_pulse=kwargs.get("metres_per_pulse", 0.41),
-        realign_threshold_degrees=kwargs.get("realign_threshold_degrees", 10.0),
+        realign_threshold_degrees=kwargs.get("realign_threshold_degrees", 15.0),
     )
 
 
@@ -121,37 +128,13 @@ def test_the_suppression_record_survives_the_new_trigger() -> None:
     suppression would silently vanish from the run record. It keys off
     `past_correctable_floor` instead; this pins that such a case exists.
     """
-    decision = _decide(0.4, 12.0)
+    # 0.35 m out at 16 deg: past the 15 deg floor, but the projection lands
+    # 0.097 m out -- inside the 0.15 tolerance, so correcting buys nothing.
+    decision = _decide(0.35, 16.0)
 
     assert decision["past_correctable_floor"] is True
     assert decision["already_lands_inside"] is True
     assert decision["needs_correction"] is False
-
-
-def test_the_1_65_m_divergence_signature_is_what_the_detector_looks_for() -> None:
-    """The measured 2026-08-15 divergence, as the detector sees it.
-
-    Aim errors grew 16.96 -> 21.22 -> 24.975 deg while every correction reported
-    `target_heading_reached`. Each step is worse by more than the noise margin,
-    so the detector stops the segment on the first one instead of spending a
-    10-correction budget chasing a receding target.
-    """
-    margin = _MARGIN
-    observed = [16.96, 21.22, 24.975]
-
-    worsening = [
-        abs(after) > abs(before) + margin
-        for before, after in zip(observed, observed[1:], strict=False)
-    ]
-    assert all(worsening)
-    # And ordinary convergence must NOT read as divergence.
-    assert not (abs(9.0) > abs(16.96) + margin)
-
-
-def test_position_noise_does_not_read_as_divergence() -> None:
-    """The margin exists so 2-4 cm of position noise cannot stop a healthy run."""
-    margin = _MARGIN
-    assert not (abs(12.4) > abs(12.0) + margin)
 
 
 @pytest.mark.parametrize(
@@ -316,91 +299,3 @@ async def test_the_fixed_budget_path_keeps_its_accepted_behaviour() -> None:
     assert "linear_budget_insufficient_for_segment" not in (
         result.get("blockers") or []
     )
-
-
-@pytest.mark.asyncio
-async def test_the_divergence_detector_actually_stops_a_diverging_segment() -> None:
-    """The wiring test the arithmetic tests above cannot provide.
-
-    The detector is this change's whole answer to CLAUDE.md's "raising
-    `vio_max_realignments` is the WRONG fix". Without a test that drives the
-    executor, the entire block could be deleted and every other test here would
-    still pass -- which was true of the first version of this file.
-
-    The mower is walked along a path where the aim error GROWS between
-    successive correction decisions, the 2026-08-15 signature. It must stop on
-    `vio_realign_diverging` well inside the budget of 10, not spend the budget.
-    """
-    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
-    # facing = vision_heading + offset(-90), bearing to target = 0, so the
-    # map-frame aim error IS `heading - 90`. Starting at 75 gives -15 deg and
-    # every correction drives it 6 deg further away -- monotonic divergence,
-    # comfortably past the 1.0 deg margin, and never reaching the 90 deg
-    # reverse-recovery boundary within the budget.
-    coordinator.data.report_data.vision_info = SimpleNamespace(
-        heading=75.0, vio_state=2
-    )
-    heading_holder = {"heading": 75.0}
-
-    async def no_sleep(_: float) -> None:
-        return None
-
-    async def fake_calibration(
-        coordinator_arg: object, **kwargs: object
-    ) -> dict[str, object]:
-        return {
-            "passed": True,
-            "reason": "calibrated",
-            "offset_degrees": -90.0,
-            "map_motion_heading_degrees": 280.0,
-            "vision_heading": 10.0,
-            "vio_state": 2,
-            "distance_m": 0.06,
-            "pulses_sent": 1,
-            "command_results": [],
-        }
-
-    async def fake_vio_turn(
-        coordinator_arg: object, **kwargs: object
-    ) -> dict[str, object]:
-        # A correction that "succeeds" every time -- exactly what the 2026-08-15
-        # run recorded, and why success alone is not evidence of convergence.
-        heading_holder["heading"] -= 6.0
-        coordinator.data.report_data.vision_info = SimpleNamespace(
-            heading=heading_holder["heading"], vio_state=2
-        )
-        return {
-            "stop_reason": "target_heading_reached",
-            "commands_sent": 1,
-            "command_results": [],
-        }
-
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr(mammotion_services_asyncio, "sleep", no_sleep)
-    monkeypatch.setattr(
-        mammotion_services, "_vio_segment_calibration_drive", fake_calibration
-    )
-    monkeypatch.setattr(mammotion_services, "_vio_turn_to_heading", fake_vio_turn)
-    try:
-        result = await _raw_pymammotion_execute_vector_segment(
-            coordinator,
-            [{"x": 1.0, "y": 1.0}, {"x": 4.0, "y": 1.0}],
-            dry_run=False,
-            confirm_blades_off=True,
-            confirm_clear_area=True,
-            turn_mode="vio",
-            max_linear_pulse_ceiling=22,
-            vio_max_realignments=10,
-            sample_delays=(0,),
-        )
-    finally:
-        monkeypatch.undo()
-
-    assert result["stop_reason"] == "vio_realign_diverging"
-    divergence = result["realign_divergence"]
-    assert divergence["reason"] == "aim_error_grew_across_corrections"
-    assert abs(divergence["aim_error_degrees"]) > abs(
-        divergence["previous_aim_error_degrees"]
-    )
-    # Stopped on the SIGNAL, not by running the budget out.
-    assert divergence["realignments_used"] < 10
