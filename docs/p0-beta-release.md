@@ -1,5 +1,24 @@
 # P0 beta release status
 
+🚨 **2026-08-17 — THE PROFILE IN THE TREE IS NO LONGER THE ACCEPTED PROFILE.**
+`max_linear_pulse_ceiling` moved 14 → 22 (uncommitted, unreleased, undeployed)
+to reach a 20 ft leg, alongside a pre-dispatch length cap and four control-law
+changes. It owes the §4 re-pinning in `docs/gate4-repass-20260805.md` and
+**another Gate 5**. Everything below describes the state BEFORE that change, and
+the Gate 5 re-pass it rests on was run on `max_linear_pulse_ceiling: 14`. Read
+`docs/reach-20ft-and-the-reaim-trigger-20260817.md`. No motion has run on the
+new profile.
+
+⚠️ **Release criterion 1 is closable on paper and has not been closed.** Standing
+decision 1 (CLAUDE.md, 2026-08-14) — *"Audience: this yard only"* — is exactly
+the "explicitly refused" branch of *"non-LUBA hardware characterized or
+explicitly refused"*. That refusal was never written into this document, which
+still says "Neither is satisfied". It is a documentation gap, not engineering
+work. The second criterion (no open safety defect) is the one that needs a
+decision, and the length cap above closes the largest gap in it: until
+2026-08-17 nothing stopped a click dispatching a leg of any length, including a
+geometry already measured diverging.
+
 ## Maturity stage
 
 🏁 **This branch is at BETA as of 2026-08-12** — all three Beta exit criteria

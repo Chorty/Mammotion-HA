@@ -12,6 +12,12 @@ const MAX_NUDGE_METRES = 2.0;
 // chaining. Keep this independent from LUBA_ACCEPTANCE_PROFILE so adding the
 // card control cannot alter the hardware-accepted daylight/VIO payload.
 const MAX_NIGHT_SEGMENT_METRES = 1.0;
+// Mirrors the backend's `_MAX_SEGMENT_LENGTH_M` (services.py). Keep the two in
+// step or the card offers a leg the backend refuses -- the same trap that
+// MAX_REAL_SEGMENTS documents. This is an AUTHORIZATION cap of 20 ft chosen on
+// 2026-08-17, NOT a measured reach limit: the longest segment ever executed is
+// 4.0 m. NOT a LUBA_ACCEPTANCE_PROFILE key.
+const MAX_REAL_SEGMENT_METRES = 6.1;
 const NIGHT_GO_PROFILE = Object.freeze({
   prefer_ble: true,
   turn_mode: "night",
@@ -79,24 +85,33 @@ const LUBA_ACCEPTANCE_PROFILE = Object.freeze({
   // reach goes ~1 m -> 4 m, per-click ~4 m -> ~16 m at four segments.
   // docs/loop-to-tolerance-reach-20260811.md.
   //
-  // **Why 14 and not 11.** The ceiling is a loop bound, not the runaway guard --
-  // `linear_distance_ceiling_factor: 2.0` stops a segment at twice its leg
-  // length whatever the pulse count does. So the number only has to survive a
-  // bad link. A healthy pulse travels ~0.41 m and a BLE-stalled one ~0.22 m
-  // (measured, n=2); the 4 m leg needed 11 pulses with 2 of 11 stalled. At
-  // double that stall rate a 4 m leg needs ~12, at a 50% stall rate ~13. 14
-  // clears the worst of those and still bounds a segment near 5.7 m.
+  // 🚨 RAISED 14 → 22 ON 2026-08-17, AND THIS PROFILE IS THEREFORE NO LONGER
+  // HARDWARE-ACCEPTED. It owes the §4 re-pinning in docs/gate4-repass-20260805.md
+  // and another Gate 5 before any run on it may be described as accepted. The
+  // operator asked for a 20 ft (6.096 m) single-waypoint move and chose this
+  // route knowing the cost; that decision is recorded in
+  // docs/reach-20ft-and-the-reaim-trigger-20260817.md.
   //
-  // 🏁 GATE 5 RE-PASSED ON THIS PROFILE, 2026-08-12, card-driven: four segments
+  // **Why 22.** Same arithmetic that chose 14, applied to 6.096 m instead of
+  // 4 m. The ceiling is a loop bound, not the runaway guard --
+  // `linear_distance_ceiling_factor: 2.0` stops a segment at twice its leg
+  // length whatever the pulse count does -- so the number only has to survive a
+  // bad link. A healthy pulse travels ~0.41 m and a BLE-stalled one ~0.22 m
+  // (measured, n=2), and the 4 m leg needed 11 pulses with 2 of 11 stalled. At
+  // that stall rate 6.096 m needs ~17 pulses, at double it ~18, at a 50% stall
+  // rate ~20. 22 clears all three.
+  //
+  // ⚠️ The backend refuses pre-dispatch if this ceiling cannot reach the leg
+  // (`linear_budget_insufficient_for_segment`), so lowering it no longer
+  // strands a run mid-leg -- it declines it up front.
+  //
+  // 🏁 What the SUPERSEDED value of 14 earned, kept because it is the last
+  // accepted state: GATE 5 RE-PASSED, 2026-08-12, card-driven, four segments
   // target_reached at 0.0674 / 0.1032 / 0.0807 / 0.0607 m against a 0.15
   // tolerance — mean 0.0780, the best four-segment result on record. Zero
-  // reverse-recovery, zero budget exhaustion, and the payload carried this key,
-  // so profile identity is proven in fact.
+  // reverse-recovery, zero budget exhaustion, and the payload carried the key.
   // docs/evidence-gate5-repass-2-20260812.json.
-  //
-  // ⚠️ CHANGING THIS UN-ACCEPTS THE PROFILE again. It would owe the §4
-  // re-pinning in docs/gate4-repass-20260805.md and another Gate 5.
-  max_linear_pulse_ceiling: 14,
+  max_linear_pulse_ceiling: 22,
   max_no_progress_pulses: 3,
   heading_tolerance_degrees: 18,
   // 0.15, not 0.08, on hardware evidence from 2026-08-08: three 1.0 m segments
@@ -158,6 +173,9 @@ const BLOCKER_HELP = Object.freeze({
   night_requires_one_segment:
     "Night Go supports exactly one waypoint. Remove the additional destinations.",
   night_segment_too_long: `Night Go is limited to ${MAX_NIGHT_SEGMENT_METRES.toFixed(1)} m. Move the waypoint closer.`,
+  segment_too_long: `A single leg is capped at ${MAX_REAL_SEGMENT_METRES.toFixed(1)} m (20 ft). Move the waypoint closer, or add an intermediate one to split the leg.`,
+  linear_budget_insufficient_for_segment:
+    "This leg is longer than its linear pulse budget can reach. Shorten it, or raise max_linear_pulse_ceiling (which leaves the accepted profile).",
   [`real_segment_limit_${MAX_REAL_SEGMENTS}`]: `Real Go runs at most ${MAX_REAL_SEGMENTS} segments. Remove waypoints or run it in two clicks.`,
 });
 
@@ -764,6 +782,13 @@ class MammotionCustomPathCard extends HTMLElement {
     if (this._segmentCount() > MAX_REAL_SEGMENTS) {
       blockers.push(`real_segment_limit_${MAX_REAL_SEGMENTS}`);
     }
+    // Refuse an over-long leg HERE rather than letting the backend gate catch
+    // it, so the reason appears in the readiness banner instead of arriving as
+    // a failed run. The backend keeps its own copy: this one is a courtesy, not
+    // the guard.
+    if (this._longestSegmentMetres() > MAX_REAL_SEGMENT_METRES + 1e-9) {
+      blockers.push("segment_too_long");
+    }
     if (experimental.real_motion_allowed !== true) {
       if (
         Array.isArray(experimental.blockers) &&
@@ -799,6 +824,25 @@ class MammotionCustomPathCard extends HTMLElement {
     const points = this._segmentPoints();
     if (!points || points.length !== 2) return null;
     return Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
+  }
+
+  // Longest single leg in the planned path, in metres. The cap is per-SEGMENT,
+  // not per-path: four legs of 6 m are four separate control problems, while
+  // one leg of 24 m is the one thing no run has ever done.
+  _longestSegmentMetres() {
+    const points = this._segmentPoints();
+    if (!points || points.length < 2) return 0;
+    let longest = 0;
+    for (let i = 1; i < points.length; i += 1) {
+      longest = Math.max(
+        longest,
+        Math.hypot(
+          points[i].x - points[i - 1].x,
+          points[i].y - points[i - 1].y,
+        ),
+      );
+    }
+    return longest;
   }
 
   _nightPreflight({ dryRun = false } = {}) {

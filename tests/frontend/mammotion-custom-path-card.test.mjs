@@ -72,7 +72,7 @@ test("acceptance profile is frozen for the night-mode change", () => {
     max_turn_commands: 4,
     vio_turn_max_commands: 4,
     max_linear_commands: 3,
-    max_linear_pulse_ceiling: 14,
+    max_linear_pulse_ceiling: 22,
     max_no_progress_pulses: 3,
     heading_tolerance_degrees: 18,
     waypoint_tolerance: 0.15,
@@ -132,7 +132,7 @@ test("Night Go emits one backend vector segment and leaves Real Go unchanged", (
   assert.equal(night.payload.confirm_blades_off, true);
   assert.equal(night.payload.confirm_clear_area, true);
   assert.equal(daylight.payload.turn_mode, "vio");
-  assert.equal(daylight.payload.max_linear_pulse_ceiling, 14);
+  assert.equal(daylight.payload.max_linear_pulse_ceiling, 22);
 });
 
 test("Night Go refuses multiple, long, and non-Fix paths in the card", () => {
@@ -326,8 +326,8 @@ test("the accepted profile enables loop-to-tolerance and sends the ceiling", () 
 
   // Adopted 2026-08-12. This is the key that makes reach real for a card user:
   // without it a segment stops after three pulses at roughly 1 m.
-  assert.equal(LUBA_ACCEPTANCE_PROFILE.max_linear_pulse_ceiling, 14);
-  assert.equal(payload.max_linear_pulse_ceiling, 14);
+  assert.equal(LUBA_ACCEPTANCE_PROFILE.max_linear_pulse_ceiling, 22);
+  assert.equal(payload.max_linear_pulse_ceiling, 22);
   // max_linear_commands stays at the Gate 4/5 value so that turning the ceiling
   // off anywhere falls back to exactly the accepted fixed-budget behaviour.
   assert.equal(payload.max_linear_commands, 3);
@@ -347,7 +347,7 @@ test("an explicitly null ceiling falls back to the accepted value, not omission"
   element._config.max_linear_pulse_ceiling = null;
 
   const { payload } = element._motionPayload(false);
-  assert.equal(payload.max_linear_pulse_ceiling, 14);
+  assert.equal(payload.max_linear_pulse_ceiling, 22);
 });
 
 test("profile label reports acceptance by default and names any override", () => {

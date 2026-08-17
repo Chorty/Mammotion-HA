@@ -6,6 +6,33 @@ measurements stand — but do not act on any build/host/gate state they describe
 
 ---
 
+## 🚧 2026-08-17 — UNCOMMITTED REACH WORK IN THE TREE; PROFILE UN-ACCEPTED
+
+The working tree no longer matches the deployed beta56, and the difference
+changes a frozen profile key. **Read
+`docs/reach-20ft-and-the-reaim-trigger-20260817.md` first.**
+
+| | |
+| --- | --- |
+| Host | Still **beta56**, unchanged. Nothing was deployed. |
+| Tree | Modified and **uncommitted** — `services.py`, the card, README, frontend tests, plus a new `tests/components/mammotion/test_long_segment_reach.py` |
+| Motion gate | **DISARMED**, untouched. **No motion has run on any of this work.** |
+| Profile | 🚨 `max_linear_pulse_ceiling` **14 → 22**, so `LUBA_ACCEPTANCE_PROFILE` is **un-accepted**; owes §4 re-pinning and another Gate 5 |
+| CI | Green: 689 pytest (50% coverage), 46 frontend, ruff check/format, mypy, all nine pre-commit hooks |
+
+**What it does:** adds the daylight path's first pre-dispatch length cap
+(`segment_too_long`, 6.10 m = 20 ft) and changes the mid-drive re-aim trigger
+from an angle test to a projected-miss test. The finding behind it: the trigger
+was `abs(aim) > 18°` while the objective is `range × sin(aim)`, so a 17° error
+with 14 m to run — a **4.09 m miss** — fired no correction at all. That, not
+distance, is what limited leg length.
+
+**The next action is a supervised run, and it is NOT the 20 ft leg.** Repeat the
+1.65 m post-turn geometry from 2026-08-15 first: it is the only case with a
+recorded counterfactual. See §4 of that doc.
+
+---
+
 # 🚦 2026-08-14 HANDOFF — beta55 released; PR #14 reviewed and merged
 
 ⚠️ **Superseded by a beta56 deploy on 2026-08-16** — see the note right below

@@ -169,7 +169,7 @@ turn_mode: vio
 max_turn_commands: 4
 vio_turn_max_commands: 4
 max_linear_commands: 3
-max_linear_pulse_ceiling: 14
+max_linear_pulse_ceiling: 22
 max_no_progress_pulses: 3
 heading_tolerance_degrees: 18
 waypoint_tolerance: 0.15
@@ -189,7 +189,7 @@ sample_delays:
 
 Notes on the profile:
 
-- `max_linear_pulse_ceiling: 14` enables **loop-to-tolerance**, and it is what
+- `max_linear_pulse_ceiling: 22` enables **loop-to-tolerance**, and it is what
   makes per-click reach usable. Without it a segment stops after three linear
   commands at roughly 1 m; four measured legs stopped 0.68 / 0.68 / 1.79 /
   2.95 m short. With it, 2 m / 3 m / 4 m legs reached target at 0.0690 /

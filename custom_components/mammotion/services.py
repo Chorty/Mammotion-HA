@@ -1061,10 +1061,10 @@ RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("vio_calibration_pulse_count", default=2): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=5)
         ),
-        vol.Optional("vio_realign_threshold_degrees", default=15.0): vol.All(
+        vol.Optional("vio_realign_threshold_degrees", default=10.0): vol.All(
             vol.Coerce(float), vol.Range(min=5.0, max=90.0)
         ),
-        vol.Optional("vio_max_realignments", default=3): vol.All(
+        vol.Optional("vio_max_realignments", default=10): vol.All(
             vol.Coerce(int), vol.Range(min=0, max=10)
         ),
         vol.Optional("sample_delays", default=[0, 5, 10, 20, 30, 45, 60]): vol.All(
@@ -1192,10 +1192,10 @@ RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA = vol.Schema(
         vol.Optional("vio_calibration_pulse_count", default=2): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=5)
         ),
-        vol.Optional("vio_realign_threshold_degrees", default=15.0): vol.All(
+        vol.Optional("vio_realign_threshold_degrees", default=10.0): vol.All(
             vol.Coerce(float), vol.Range(min=5.0, max=90.0)
         ),
-        vol.Optional("vio_max_realignments", default=3): vol.All(
+        vol.Optional("vio_max_realignments", default=10): vol.All(
             vol.Coerce(int), vol.Range(min=0, max=10)
         ),
         vol.Optional("sample_delays", default=[0, 5, 10, 20, 30, 45, 60]): vol.All(
@@ -10830,6 +10830,69 @@ def _projected_landing_after_next_pulse(
     return math.hypot(perpendicular, overshoot)
 
 
+def _mid_drive_realign_decision(
+    *,
+    distance_to_target_m: float,
+    aim_error_degrees: float,
+    waypoint_tolerance: float,
+    metres_per_pulse: float,
+    realign_threshold_degrees: float,
+) -> dict[str, Any]:
+    """Decide whether a mid-drive re-aim should fire, and say why.
+
+    🔑 **THE TRIGGER IS A DISTANCE GATED BY AN ANGLE, AND THAT ORDER MATTERS.**
+    Through beta56 it was the other way round -- ``abs(aim) >
+    vio_realign_threshold_degrees and abs(aim) > heading_tolerance_degrees``,
+    an angle test whose effective value was 18 deg on the accepted profile. The
+    projected-landing helpers existed (beta42) but could only ever SUPPRESS a
+    correction, never fire one.
+
+    That asymmetry is what limited leg length, and it is worth stating exactly,
+    because "long legs are inaccurate" was the wrong diagnosis:
+
+        aim error   range     miss      old trigger   new trigger
+        17 deg      14.0 m    4.09 m    no  (17<18)   yes
+        17 deg       0.8 m    0.23 m    no  (17<18)   yes
+        12 deg       0.5 m    0.10 m    no             no (lands inside)
+
+    The miss is ``range * sin(aim)``, so the SAME angle means wildly different
+    things at different ranges. A controller triggering on the angle alone is
+    tuned for exactly one range -- which is why ~0.8 m legs behaved and a 1.65 m
+    leg after a turn did not.
+
+    The angle survives only as a floor. A correction is an angle, and the turn
+    primitive cannot make an arbitrarily small one: at the 200 ms actuation
+    floor the affine sweep bound still permits 20 deg, so asking for a 3 deg
+    correction leaves the mower worse aimed than it started. See
+    ``_MIN_CORRECTABLE_AIM_ERROR_DEGREES``.
+
+    ``max``, not ``min``, against the caller's threshold: an operator may make
+    the controller less twitchy, but may not ask for a correction below what the
+    hardware can deliver.
+    """
+    correctable_floor = max(
+        float(realign_threshold_degrees), _MIN_CORRECTABLE_AIM_ERROR_DEGREES
+    )
+    past_correctable_floor = abs(float(aim_error_degrees)) >= correctable_floor
+    already_lands_inside = _realign_cannot_improve_the_landing(
+        distance_to_target_m=distance_to_target_m,
+        aim_error_degrees=aim_error_degrees,
+        waypoint_tolerance=waypoint_tolerance,
+        metres_per_pulse=metres_per_pulse,
+    )
+    return {
+        "correctable_floor_degrees": correctable_floor,
+        "past_correctable_floor": past_correctable_floor,
+        "already_lands_inside": already_lands_inside,
+        "needs_correction": past_correctable_floor and not already_lands_inside,
+        "projected_landing_m": _projected_landing_after_next_pulse(
+            distance_to_target_m=distance_to_target_m,
+            aim_error_degrees=aim_error_degrees,
+            metres_per_pulse=metres_per_pulse,
+        ),
+    }
+
+
 def _realign_cannot_improve_the_landing(
     *,
     distance_to_target_m: float,
@@ -11034,6 +11097,80 @@ _NIGHT_TURN_ANGULAR_SPEED = 500
 #: Chosen fixed-budget containment limit, not a measured night reach claim.
 _NIGHT_MAX_SEGMENT_LENGTH_M = 1.0
 
+#: Longest single segment the daylight/VIO path will dispatch, in metres.
+#:
+#: ⚠️ **This is an AUTHORIZATION cap, not a physics claim.** 6.10 m is 20 ft,
+#: chosen by the operator on 2026-08-17. It is deliberately larger than anything
+#: measured and smaller than anything asked for, and it exists so that the leg
+#: length a run may dispatch is a decision on the record rather than whatever a
+#: click happens to produce.
+#:
+#: WHAT THE MEASUREMENTS ACTUALLY SAY, so nobody reads 6.10 as evidence:
+#:
+#:   * 4.0 m is the longest segment ever executed -- 11 pulses, landing 0.1023 m,
+#:     stopping on TOLERANCE with the ceiling never binding
+#:     (docs/loop-to-tolerance-reach-20260811.md). n = 1, straight, starting
+#:     aligned. "A demonstrated floor, not a limit."
+#:   * 1.65 m DIVERGED after a 48.6 deg junction turn, stopping safely on
+#:     `vio_realign_budget_exhausted` 0.2514 m out
+#:     (docs/evidence-real-go-card-beta55-20260815T204747Z.json).
+#:
+#: Those two are not in conflict and the difference is not distance. The 4 m run
+#: re-aimed while it still had range to spare; the 1.65 m run spent its whole
+#: 3-correction budget on a final approach whose bearing was rotating faster
+#: than an 18 deg correction could track. Leg length is only dangerous when the
+#: mower STOPS correcting, which is what `vio_max_realignments: 3` and the old
+#: angle-only re-aim trigger both caused. Both are addressed above; 6.10 m is
+#: still beyond measurement and OWES A GATE 5 before it is an accepted path.
+_MAX_SEGMENT_LENGTH_M = 6.10
+
+#: Conservative per-pulse travel used ONLY to check a segment's pulse budget
+#: before dispatch, in metres.
+#:
+#: Not the same question as `final_approach_metres_per_pulse` (1.06), which is
+#: the planner's model of a full-length pulse. This is "what does a pulse travel
+#: when the link is having a bad day", because a budget that only survives a
+#: healthy link strands the mower mid-leg on `max_linear_pulse_ceiling_reached`.
+#:
+#: Measured 2026-08-11 on the reach runs: a healthy pulse travelled ~0.41 m and
+#: a BLE-stalled one ~0.22 m, with 2 of 11 pulses stalled on the 4 m leg. At
+#: double that stall rate the mean is ~0.34 m/pulse and at a 50% stall rate
+#: ~0.315. 0.30 sits under all three.
+_BUDGET_CHECK_METRES_PER_PULSE = 0.30
+
+#: Smallest aim error a mid-drive correction can usefully act on, in degrees.
+#:
+#: 🔑 THIS IS WHY THE RE-AIM TRIGGER HAS AN ANGLE TERM AT ALL, and getting that
+#: wrong is what limited leg length. The OBJECTIVE is a distance (land inside
+#: `waypoint_tolerance`), but a correction is an ANGLE, and the turn primitive
+#: cannot make an arbitrarily small one: the anti-overshoot bound is affine
+#: (`40 deg/s * t + 12 deg`) and at the 200 ms actuation floor the shortest safe
+#: pulse can still sweep 20 deg. Asking for a 3 deg correction gets a 11-20 deg
+#: sweep and leaves the mower worse aimed than it started.
+#:
+#: So the angle term belongs, but it must be the SMALLEST CORRECTABLE ANGLE --
+#: not, as it was through beta56, `heading_tolerance_degrees` (18). That test
+#: asked "is the bearing far off" when the question is "will I miss the disc",
+#: and the two diverge exactly as range grows: 17 deg of aim error with 14 m
+#: still to run is a 4.1 m miss that fired NO correction, because 17 < 18. At
+#: 0.8 m of range the same 17 deg is 0.23 m and the machinery worked, which is
+#: the whole reason ~0.8 m legs behaved and longer ones did not.
+#:
+#: 10 is the same floor, derived the same way, as
+#: `_POST_TURN_ALIGNMENT_TOLERANCE_DEGREES` -- see that constant for the
+#: `error + tolerance >= 20` argument. Tightening it needs a shorter actuation
+#: floor or a tighter sweep bound, NOT a smaller number here.
+_MIN_CORRECTABLE_AIM_ERROR_DEGREES = 10.0
+
+#: How much worse a mid-drive correction may leave the aim before the segment is
+#: judged to be diverging and stops, in degrees.
+#:
+#: Separates real divergence from position noise. The measured divergence
+#: (2026-08-15, 1.65 m segment) worsened by 4.26 and 3.75 deg per correction;
+#: the position feed's own 2-4 cm noise is well under a degree at the ranges
+#: where corrections fire. See the detector itself for why this exists.
+_REALIGN_DIVERGENCE_MARGIN_DEGREES = 1.0
+
 #: Position-feed noise makes aim estimates from shorter pulses uninformative.
 _NIGHT_MIN_AIM_BASELINE_M = 0.20
 
@@ -11213,8 +11350,8 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     vio_turn_max_commands: int = 8,
     vio_angular_speed: int = 500,
     vio_calibration_pulse_count: int = 2,
-    vio_realign_threshold_degrees: float = 15.0,
-    vio_max_realignments: int = 3,
+    vio_realign_threshold_degrees: float = 10.0,
+    vio_max_realignments: int = 10,
     sample_delays: list[float] | tuple[float, ...] = (0, 5, 10, 20, 30, 45, 60),
     motion_refresh_interval_ms: int = 0,
     ha_state: str | None = None,
@@ -11410,6 +11547,82 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         # the heading is stale. Block the real run distinctly from the cold-start
         # case above so the operator sees "blind feed", not "warm VIO".
         gates.append(_vio_feed_live_gate(initial_vio_feed, dry_run=dry_run))
+    planned_segment_length = (
+        _path_distance([current_point, target])
+        if current_point is not None and target is not None
+        else None
+    )
+    if turn_mode != "night":
+        # Night owns a tighter cap of its own (`night_segment_too_long`, 1.0 m)
+        # and a fixed 3-pulse budget, so these two would be dead weight there.
+        #
+        # ⚠️ Until 2026-08-17 the daylight/VIO path had NO length gate at all.
+        # The ~0.8 m operating rule was documentation only, so a click could
+        # dispatch a leg of any length the map allowed -- including the 1.65 m
+        # geometry that had already been measured diverging. Nothing unsafe
+        # happened (every failure stopped inside a bounded gate), but "the
+        # operator remembers the rule" is not a gate.
+        gates.append(
+            {
+                "name": "segment_too_long",
+                "passed": dry_run
+                or (
+                    planned_segment_length is not None
+                    and planned_segment_length <= _MAX_SEGMENT_LENGTH_M
+                ),
+                "detail": (
+                    "Segment length is capped at "
+                    f"{_MAX_SEGMENT_LENGTH_M} m by authorization, not by a "
+                    "measured reach limit; the longest segment ever executed "
+                    "is 4.0 m."
+                ),
+                "diagnostics": {
+                    "segment_length_m": planned_segment_length,
+                    "max_segment_length_m": _MAX_SEGMENT_LENGTH_M,
+                },
+            }
+        )
+        # A leg longer than its pulse budget does not fail safely-but-usefully;
+        # it drives most of the way and stops on
+        # `max_linear_pulse_ceiling_reached`, leaving the mower somewhere in the
+        # middle of the yard with the run recorded as a failure. Catch it while
+        # it is still arithmetic.
+        #
+        # ⚠️ LOOP-TO-TOLERANCE ONLY, and the distinction is not cosmetic. The two
+        # linear modes have different per-pulse travel: fixed budget fires full
+        # `linear_pulse_duration_ms` pulses measured at 1.0785 / 1.0449 m
+        # (2026-08-01), while loop-to-tolerance shortens pulses on final
+        # approach and averaged ~0.36 m across the reach runs. Applying the
+        # conservative loop figure to the fixed-budget path refuses runs that
+        # Gate 4 and Gate 5 both PASSED -- caught here by nine existing tests on
+        # 2026-08-17, which is exactly what they are for. The fixed-budget path
+        # keeps its accepted `max_linear_commands_reached` behaviour untouched.
+        if max_linear_pulse_ceiling is not None:
+            budget_reach = max_linear_pulse_ceiling * _BUDGET_CHECK_METRES_PER_PULSE
+            gates.append(
+                {
+                    "name": "linear_budget_insufficient_for_segment",
+                    "passed": dry_run
+                    or (
+                        planned_segment_length is not None
+                        and planned_segment_length <= budget_reach
+                    ),
+                    "detail": (
+                        f"{max_linear_pulse_ceiling} linear pulses reach about "
+                        f"{budget_reach:.2f} m at a stall-tolerant "
+                        f"{_BUDGET_CHECK_METRES_PER_PULSE} m/pulse, short of "
+                        "this segment."
+                    ),
+                    "diagnostics": {
+                        "segment_length_m": planned_segment_length,
+                        "linear_pulse_ceiling": max_linear_pulse_ceiling,
+                        "budget_check_metres_per_pulse": (
+                            _BUDGET_CHECK_METRES_PER_PULSE
+                        ),
+                        "budget_reach_m": round(budget_reach, 4),
+                    },
+                }
+            )
     if turn_mode == "night":
         # Night has no VIO witness: RTK is the sole source for position and the
         # `toward` heading loop, so Float is not acceptable here.
@@ -11437,11 +11650,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                 ),
             }
         )
-        night_segment_length = (
-            _path_distance([current_point, target])
-            if current_point is not None and target is not None
-            else None
-        )
+        night_segment_length = planned_segment_length
         gates.append(
             {
                 "name": "night_segment_too_long",
@@ -12515,28 +12724,19 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                     }
                     result["stop_reason"] = "target_requires_reverse_recovery"
                     return result
-                # The realignment threshold (15 by default) is INDEPENDENT of the
-                # turn primitive's own tolerance (18 on the accepted profile), so
-                # an aim error in (threshold, tolerance] used to dispatch a turn
-                # that returned `target_heading_reached` at its entry check
-                # without sending a single command -- burning a realignment slot
-                # for nothing. Skip it: there is no correction to make.
-                #
-                # Be clear about what this changes, because it is more than slot
-                # accounting. Whenever `heading_tolerance_degrees` exceeds
-                # `vio_realign_threshold_degrees` -- which is the case on the
-                # accepted profile, 18 against 15 -- the EFFECTIVE trigger is now
-                # the tolerance, and the threshold parameter is inert in the gap
-                # between them. Mower behaviour is unchanged (those dispatches
-                # never sent a command), but the run record no longer shows a
-                # realignment entry for them and the remaining budget is larger.
-                # To make the threshold live again, lower the tolerance below it.
-                #
                 # A re-aim is skipped when driving straight on would still land
                 # inside the tolerance disc: correcting then spends turn commands
                 # and adds turn translation to buy nothing. Recorded rather than
                 # silent -- a suppressed re-aim is a decision worth seeing in the
                 # run record.
+                #
+                # ⚠️ The suppression record is kept on its ORIGINAL condition
+                # (aim error past the correctable floor, but the projection lands
+                # inside) even though that can no longer coincide with a fired
+                # correction. Since 2026-08-17 `needs_correction` REQUIRES
+                # `not already_lands_inside`, so a naive `needs_correction and
+                # already_lands_inside` would be dead code and every suppression
+                # would silently vanish from the run record.
                 distance_to_target = math.hypot(
                     float(target["x"]) - float(current_now["x"]),
                     float(target["y"]) - float(current_now["y"]),
@@ -12565,11 +12765,42 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                     waypoint_tolerance=waypoint_tolerance,
                     metres_per_pulse=guard_metres_per_pulse,
                 )
-                needs_correction = (
-                    abs(aim_error) > vio_realign_threshold_degrees
-                    and abs(aim_error) > heading_tolerance_degrees
+                # 🔑 THE TRIGGER IS A DISTANCE, NOT AN ANGLE (2026-08-17).
+                #
+                # This read `abs(aim_error) > vio_realign_threshold_degrees and
+                # abs(aim_error) > heading_tolerance_degrees` -- pure angle,
+                # effective threshold 18 deg. But the quantity that decides the
+                # run is the MISS, `remaining_range * sin(aim_error)`, and the
+                # two diverge with range. `already_lands_inside` (beta42) has
+                # always reasoned in projected metres, yet it could only ever
+                # SUPPRESS a correction, never fire one -- so the controller was
+                # blind in precisely the long-leg regime: 17 deg of aim error
+                # with 14 m to run is a 4.1 m miss and fired nothing, because
+                # 17 < 18.
+                #
+                # Now the projection decides, and the angle term is only the
+                # floor below which a correction cannot help
+                # (`_MIN_CORRECTABLE_AIM_ERROR_DEGREES` -- read it before
+                # touching this). Short legs are close to unaffected: inside
+                # ~1 m the suppression guard was already the binding term and
+                # still is. What changes is that a leg can now be corrected
+                # while it still has the range to make correcting cheap.
+                #
+                # The decision itself lives in `_mid_drive_realign_decision` so
+                # it can be inspected without driving a mower through a
+                # 1,500-line executor. It was inline until 2026-08-17, and the
+                # nine tests covering this branch all still passed when the
+                # trigger changed meaning -- because none of them could reach a
+                # long-range geometry.
+                decision = _mid_drive_realign_decision(
+                    distance_to_target_m=distance_to_target,
+                    aim_error_degrees=aim_error,
+                    waypoint_tolerance=waypoint_tolerance,
+                    metres_per_pulse=guard_metres_per_pulse,
+                    realign_threshold_degrees=float(vio_realign_threshold_degrees),
                 )
-                if needs_correction and already_lands_inside:
+                needs_correction = decision["needs_correction"]
+                if decision["past_correctable_floor"] and already_lands_inside:
                     result.setdefault("realignments_suppressed", []).append(
                         {
                             "after_linear_pulse": command_index,
@@ -12591,7 +12822,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                             "reason": "already_lands_inside_tolerance",
                         }
                     )
-                if needs_correction and not already_lands_inside:
+                if needs_correction:
                     if realignments_used >= vio_max_realignments:
                         result["stop_reason"] = "vio_realign_budget_exhausted"
                         return result
@@ -12602,7 +12833,31 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                     realign_result = await _vio_turn_to_heading(
                         coordinator,
                         target_vision_heading=float(realign_target or 0.0),
-                        heading_tolerance_degrees=heading_tolerance_degrees,
+                        # 🔑 Corrects to the SAME floor the post-turn gate uses
+                        # (10 deg), not to `heading_tolerance_degrees` (18 on the
+                        # accepted profile). Changed 2026-08-17 with the
+                        # projected-miss trigger above, and the two belong
+                        # together.
+                        #
+                        # An 18 deg close is what let the 1.65 m segment diverge
+                        # on 2026-08-15: every correction returned
+                        # `target_heading_reached` while leaving 9.7 / 11.5 /
+                        # 13.6 deg of residual against a bearing rotating
+                        # -3.2 / -9.7 / -15.4 deg per pulse. The corrections were
+                        # not failing -- they were succeeding at a tolerance too
+                        # loose to converge.
+                        #
+                        # It also sets the terminal accuracy of a long leg. With
+                        # a correction available every pulse the landing is
+                        # ~`pulse_length * sin(residual)`, INDEPENDENT of leg
+                        # length: 0.41 * sin(18 deg) = 0.127 m against an 0.15
+                        # tolerance is 15% of margin, while 0.41 * sin(10 deg) =
+                        # 0.071 m is comfortable. That is what makes a 6 m leg
+                        # credible at all.
+                        heading_tolerance_degrees=min(
+                            float(heading_tolerance_degrees),
+                            _POST_TURN_ALIGNMENT_TOLERANCE_DEGREES,
+                        ),
                         angular_speed=vio_angular_speed,
                         max_commands=min(6, vio_turn_max_commands),
                         motion_refresh_interval_ms=motion_refresh_interval_ms,
@@ -12636,6 +12891,66 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                     if realign_result.get("stop_reason") != "target_heading_reached":
                         result["stop_reason"] = "vio_realign_incomplete"
                         return result
+                    # 🚨 DIVERGENCE DETECTOR -- read this before raising
+                    # `vio_max_realignments` any further.
+                    #
+                    # CLAUDE.md says plainly that raising that budget is the
+                    # WRONG fix, and on the evidence available in 2026-08-15 it
+                    # was: the 1.65 m segment's aim errors GREW 16.96 -> 21.22 ->
+                    # 24.975 deg while every correction reported success, so more
+                    # budget would only have bought more corrections chasing a
+                    # target moving away faster. beta17 recorded the same shape.
+                    #
+                    # A long leg nevertheless needs more than 3 corrections --
+                    # a 6 m leg drives ~17 pulses -- so the budget rises to 10
+                    # and THIS is what makes that safe. It answers the objection
+                    # rather than ignoring it: the failure mode is not "too many
+                    # corrections", it is "corrections that do not converge", and
+                    # that is directly observable. If a correction leaves the aim
+                    # error worse than it found it, the loop is diverging and the
+                    # segment stops -- bounded, with the mower where it is.
+                    #
+                    # The margin keeps position noise (2-4 cm, which at close
+                    # range is degrees) from reading as divergence. The measured
+                    # signature worsened by 4.26 and 3.75 deg per correction, so
+                    # 1.0 separates them comfortably.
+                    after_realign = _custom_path_telemetry_snapshot(coordinator)
+                    result["final_telemetry"] = after_realign
+                    current_after_realign = _raw_segment_current_point(after_realign)
+                    reading_after_realign = _vio_reading(coordinator)
+                    if (
+                        current_after_realign is not None
+                        and target is not None
+                        and reading_after_realign["vio_state"] == _VIO_STATE_ACTIVE
+                        and reading_after_realign["vision_heading"] is not None
+                    ):
+                        settled_facing = (
+                            float(reading_after_realign["vision_heading"])
+                            + float(offset_now)
+                        ) % 360
+                        settled_bearing = _path_heading_degrees(
+                            current_after_realign, target
+                        )
+                        settled_aim_error = _heading_error_degrees(
+                            settled_facing, settled_bearing
+                        )
+                        result["realignments"][-1]["settled_aim_error_degrees"] = round(
+                            settled_aim_error, 3
+                        )
+                        if abs(settled_aim_error) > (
+                            abs(aim_error) + _REALIGN_DIVERGENCE_MARGIN_DEGREES
+                        ):
+                            result["realign_divergence"] = {
+                                "after_linear_pulse": command_index,
+                                "aim_error_before_degrees": round(aim_error, 3),
+                                "aim_error_after_degrees": round(settled_aim_error, 3),
+                                "margin_degrees": (_REALIGN_DIVERGENCE_MARGIN_DEGREES),
+                                "realignments_used": realignments_used,
+                                "reason": "correction_made_the_aim_worse",
+                            }
+                            result["stop_reason"] = "vio_realign_diverging"
+                            return result
+                        current_point = current_after_realign
                     # Course corrected: the off-bearing pulse should not count
                     # toward the no-progress abort.
                     consecutive_no_progress = 0
@@ -12846,8 +13161,8 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
     vio_turn_max_commands: int = 8,
     vio_angular_speed: int = 500,
     vio_calibration_pulse_count: int = 2,
-    vio_realign_threshold_degrees: float = 15.0,
-    vio_max_realignments: int = 3,
+    vio_realign_threshold_degrees: float = 10.0,
+    vio_max_realignments: int = 10,
     sample_delays: list[float] | tuple[float, ...] = (0, 5, 10, 20, 30, 45, 60),
     motion_refresh_interval_ms: int = 0,
     ha_state: str | None = None,
