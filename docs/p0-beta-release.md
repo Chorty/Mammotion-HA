@@ -1,7 +1,7 @@
 # P0 beta release status
 
 🚨 **2026-08-17 — THE PROFILE IN THE TREE IS NO LONGER THE ACCEPTED PROFILE.**
-`max_linear_pulse_ceiling` moved 14 → 22 (uncommitted, unreleased, undeployed)
+`max_linear_pulse_ceiling` moved 14 → 22 on PR #15 (unmerged, unreleased, undeployed)
 to reach a 20 ft leg, alongside a pre-dispatch length cap and four control-law
 changes. It owes the §4 re-pinning in `docs/gate4-repass-20260805.md` and
 **another Gate 5**. Everything below describes the state BEFORE that change, and

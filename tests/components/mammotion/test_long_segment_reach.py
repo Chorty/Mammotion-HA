@@ -40,6 +40,7 @@ from custom_components.mammotion.services import (
     _MAX_SEGMENT_LENGTH_M,
     _MIN_CORRECTABLE_AIM_ERROR_DEGREES,
     _POST_TURN_ALIGNMENT_TOLERANCE_DEGREES,
+    _REALIGN_DEADBAND_DEGREES,
     _mid_drive_realign_decision,
     _raw_pymammotion_execute_vector_segment,
 )
@@ -49,6 +50,7 @@ from .test_map_task_visibility import _pulse_coordinator
 _MIN_FLOOR = _MIN_CORRECTABLE_AIM_ERROR_DEGREES
 _MAX_SEGMENT = _MAX_SEGMENT_LENGTH_M
 _PER_PULSE = _BUDGET_CHECK_METRES_PER_PULSE
+_DEADBAND = _REALIGN_DEADBAND_DEGREES
 
 
 def _decide(distance_m: float, aim_degrees: float, **kwargs: float) -> dict:
@@ -178,23 +180,47 @@ def test_the_budget_check_metres_per_pulse_stays_under_the_measured_stall_rate()
     assert stalled < _PER_PULSE
 
 
-def test_the_correctable_floor_matches_the_post_turn_gate() -> None:
-    """Both are the same physical floor derived the same way; drift is a bug."""
-    assert _MIN_FLOOR == _POST_TURN_ALIGNMENT_TOLERANCE_DEGREES
+def test_the_trigger_floor_keeps_a_deadband_over_the_correction_tolerance() -> None:
+    """The floor is the correction tolerance PLUS a deadband, and must stay so.
+
+    A mid-drive correction closes to `_POST_TURN_ALIGNMENT_TOLERANCE_DEGREES`.
+    If the trigger floor equalled that, a correction ending at 9.95 deg would
+    re-fire next pulse, and an error a hair past the floor would make the turn
+    primitive return `target_heading_reached` having sent nothing -- with the
+    slot already charged. Three slots burn, correcting nothing.
+
+    Derived, not chosen: collapsing this to equality is the configuration that
+    was tried and reverted on 2026-08-17.
+    """
+    assert _MIN_FLOOR == _POST_TURN_ALIGNMENT_TOLERANCE_DEGREES + _DEADBAND
+    assert _MIN_FLOOR > _POST_TURN_ALIGNMENT_TOLERANCE_DEGREES
 
 
 def test_terminal_accuracy_is_set_by_the_pulse_not_by_the_leg() -> None:
     """Why a 6 m leg is credible at all.
 
     With a correction available every pulse the landing is
-    ~`pulse_length * sin(residual)`, INDEPENDENT of leg length. Correcting to
-    18 deg leaves only 15% of margin against an 0.15 m tolerance; correcting to
-    the 10 deg floor is comfortable. That is why the mid-drive correction
-    tolerance moved with the trigger.
+    ~`pulse_length * sin(residual)`, INDEPENDENT of leg length -- which is why a
+    6 m leg is credible at all.
+
+    The residual is bracketed by the control law, so pin BOTH ends honestly:
+
+      * best case: the pulse fires straight after a correction, so the residual
+        is the correction tolerance (10 deg) -> 0.071 m;
+      * worst case: the error has drifted back up to the trigger floor without
+        re-firing, so the residual is 15 deg -> 0.106 m.
+
+    Both sit inside the 0.15 m tolerance, the worst case with 29% of margin. The
+    superseded 18 deg close left only 15%.
     """
     pulse = 0.41
+    best = pulse * math.sin(math.radians(_POST_TURN_ALIGNMENT_TOLERANCE_DEGREES))
+    worst = pulse * math.sin(math.radians(_MIN_FLOOR))
+    assert best == pytest.approx(0.071, abs=0.002)
+    assert worst == pytest.approx(0.106, abs=0.002)
+    assert worst < 0.15
+    # The tolerance this change replaced.
     assert pulse * math.sin(math.radians(18.0)) == pytest.approx(0.127, abs=0.002)
-    assert pulse * math.sin(math.radians(_MIN_FLOOR)) == pytest.approx(0.071, abs=0.002)
 
 
 @pytest.mark.asyncio

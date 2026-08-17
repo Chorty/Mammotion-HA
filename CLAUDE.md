@@ -54,7 +54,11 @@ rule and the "raising `vio_max_realignments` is the WRONG fix" warning. Both are
 marked in place. Neither is deleted: they were correct for the control law as it
 stood, and the second is still correct without the divergence detector.
 
-`main`, `origin/main`, and tag `v0.6.4-beta55` agree at `5ef37511`. Beta55
+⚠️ *The paragraph below is the beta55 record and its head/tag line is stale —
+`main` is now at `a2351048` with tag `v0.6.4-beta56`. Kept because everything it
+says about the motion path is still what is running.*
+
+`main`, `origin/main`, and tag `v0.6.4-beta55` agreed at `5ef37511`. Beta55
 releases the reviewed and merged PR #14 on top of beta54's guarded **Night
 dry-run** and **Night Go** card controls, still without changing any value in
 `LUBA_ACCEPTANCE_PROFILE`; Real Go remains the accepted VIO path. The beta55
@@ -107,7 +111,8 @@ movement/stop succeeded. Read `docs/real-go-throughput-hardware-20260814.md`.
 ever exercised the night fix on hardware.**
 
 The segment executor's legacy branch
-(`services.py:11498-11517`) omits `motion_refresh_interval_ms` (primitive default
+(`services.py:12023-12045`, the `else` arm; line numbers verified 2026-08-17)
+omits `motion_refresh_interval_ms` (primitive default
 `0`) and passes `angular_speed_fast/slow` at the schema default **180**, which
 does not break static friction on a stationary pivot (~3°/pulse). Every
 converging night turn used **angular 500 with refresh**, by calling the primitive
@@ -209,7 +214,7 @@ that a leg exhausting the budget stops safely, which is a measurement.
 `docs/reach-20ft-and-the-reaim-trigger-20260817.md`.
 
 ⚠️ **Raising `vio_max_realignments` (default 3, shared by the post-turn gate at
-`services.py:11877` and mid-drive re-aim at `:12507`) is the WRONG fix.** The
+`services.py:12185` and mid-drive re-aim at `:12831`; line numbers verified 2026-08-17) is the WRONG fix.** The
 loop was diverging — aim errors grew 16.96 → 21.22 → 24.975° while each
 correction "succeeded" against an 18° turn tolerance, leaving 9.7 / 11.5 / 13.6°
 of residual against a bearing rotating −3.2 / −9.7 / **−15.4°** per pulse and

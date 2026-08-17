@@ -6,10 +6,10 @@ measurements stand — but do not act on any build/host/gate state they describe
 
 ---
 
-## 🚧 2026-08-17 — UNCOMMITTED REACH WORK IN THE TREE; PROFILE UN-ACCEPTED
+## 🚧 2026-08-17 — REACH WORK ON PR #15, UNMERGED; PROFILE UN-ACCEPTED
 
-The working tree no longer matches the deployed beta56, and the difference
-changes a frozen profile key. **Read
+`agent/reach-20ft-reaim-trigger` (PR #15) no longer matches the deployed
+beta56, and the difference changes a frozen profile key. **Read
 `docs/reach-20ft-and-the-reaim-trigger-20260817.md` first.**
 
 | | |

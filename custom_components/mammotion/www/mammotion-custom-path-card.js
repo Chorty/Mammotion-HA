@@ -883,7 +883,16 @@ class MammotionCustomPathCard extends HTMLElement {
           ...(!this._validation?.valid ? ["path_validation_failed"] : []),
         ]
       : [...this._preflight().blockers].filter(
-          (blocker) => !blocker.startsWith("real_segment_limit_"),
+          (blocker) =>
+            !blocker.startsWith("real_segment_limit_") &&
+            // Real Go's length and budget gates are not night's. The backend
+            // skips BOTH for `turn_mode: "night"` (night owns the tighter
+            // `night_segment_too_long` at 1.0 m and runs a fixed budget), so
+            // leaking them here blocks a legal night leg on a gate that would
+            // never fire -- e.g. a 0.95 m night segment refused because a
+            // configured Real Go ceiling of 3 reaches only 0.9 m.
+            blocker !== "segment_too_long" &&
+            blocker !== "linear_budget_insufficient_for_segment",
         );
     if (this._segmentCount() !== 1) {
       blockers.push("night_requires_one_segment");

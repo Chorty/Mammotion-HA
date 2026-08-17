@@ -11120,8 +11120,14 @@ _NIGHT_MAX_SEGMENT_LENGTH_M = 1.0
 #: 3-correction budget on a final approach whose bearing was rotating faster
 #: than an 18 deg correction could track. Leg length is only dangerous when the
 #: mower STOPS correcting, which is what `vio_max_realignments: 3` and the old
-#: angle-only re-aim trigger both caused. Both are addressed above; 6.10 m is
-#: still beyond measurement and OWES A GATE 5 before it is an accepted path.
+#: angle-only re-aim trigger both caused.
+#:
+#: ⚠️ ONLY THE TRIGGER WAS FIXED. A raise of `vio_max_realignments` was attempted
+#: on 2026-08-17 and reverted (see that parameter), so the budget is still the 3
+#: that the 1.65 m divergence above exhausted. Whether 3 corrections carry a 6 m
+#: leg is THE open question this cap exists to let us ask safely -- exhausting
+#: the budget stops the segment, which is a measurement, not a hazard. 6.10 m is
+#: beyond anything measured and OWES A GATE 5 before it is an accepted path.
 _MAX_SEGMENT_LENGTH_M = 6.10
 
 #: Conservative per-pulse travel used ONLY to check a segment's pulse budget
@@ -11156,11 +11162,24 @@ _BUDGET_CHECK_METRES_PER_PULSE = 0.30
 #: 0.8 m of range the same 17 deg is 0.23 m and the machinery worked, which is
 #: the whole reason ~0.8 m legs behaved and longer ones did not.
 #:
-#: 10 is the same floor, derived the same way, as
-#: `_POST_TURN_ALIGNMENT_TOLERANCE_DEGREES` -- see that constant for the
-#: `error + tolerance >= 20` argument. Tightening it needs a shorter actuation
-#: floor or a tighter sweep bound, NOT a smaller number here.
-_MIN_CORRECTABLE_AIM_ERROR_DEGREES = 10.0
+#: 🚨 IT IS DERIVED, NOT CHOSEN, AND THE DEADBAND TERM IS LOAD-BEARING. A
+#: mid-drive correction closes to `min(heading_tolerance_degrees,
+#: _POST_TURN_ALIGNMENT_TOLERANCE_DEGREES)` = 10 deg. A trigger floor EQUAL to
+#: that tolerance is unstable in both directions: a correction ending at 9.95 deg
+#: re-fires on the next pulse, and an error a hair past the floor makes the turn
+#: primitive's entry check return `target_heading_reached` having sent nothing --
+#: while the slot has already been charged. Three slots burn and the segment
+#: aborts on `vio_realign_budget_exhausted` having corrected nothing.
+#:
+#: That configuration was actually tried on 2026-08-17 (threshold defaulted to
+#: 10) and reverted. It was reverted by moving a DEFAULT, which left the hole
+#: open for anyone passing `vio_realign_threshold_degrees: 5` -- the schema
+#: still allows it. So the deadband now lives here, where no caller can collapse
+#: it: `max(caller_threshold, this)` can only ever raise the floor.
+_REALIGN_DEADBAND_DEGREES = 5.0
+_MIN_CORRECTABLE_AIM_ERROR_DEGREES = (
+    _POST_TURN_ALIGNMENT_TOLERANCE_DEGREES + _REALIGN_DEADBAND_DEGREES
+)
 
 
 #: Position-feed noise makes aim estimates from shorter pulses uninformative.
@@ -12746,17 +12765,6 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                     ),
                     final_approach_metres_per_pulse,
                 )
-                projected_landing = _projected_landing_after_next_pulse(
-                    distance_to_target_m=distance_to_target,
-                    aim_error_degrees=aim_error,
-                    metres_per_pulse=guard_metres_per_pulse,
-                )
-                already_lands_inside = _realign_cannot_improve_the_landing(
-                    distance_to_target_m=distance_to_target,
-                    aim_error_degrees=aim_error,
-                    waypoint_tolerance=waypoint_tolerance,
-                    metres_per_pulse=guard_metres_per_pulse,
-                )
                 # 🔑 THE TRIGGER IS A DISTANCE, NOT AN ANGLE (2026-08-17).
                 #
                 # This read `abs(aim_error) > vio_realign_threshold_degrees and
@@ -12792,7 +12800,10 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                     realign_threshold_degrees=float(vio_realign_threshold_degrees),
                 )
                 needs_correction = decision["needs_correction"]
-                if decision["past_correctable_floor"] and already_lands_inside:
+                if (
+                    decision["past_correctable_floor"]
+                    and decision["already_lands_inside"]
+                ):
                     result.setdefault("realignments_suppressed", []).append(
                         {
                             "after_linear_pulse": command_index,
@@ -12808,7 +12819,9 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                             "perpendicular_miss_m": round(perpendicular_miss, 4),
                             # What it decides on now -- the miss at the end of
                             # the next pulse, not at the closest approach.
-                            "projected_landing_m": round(projected_landing, 4),
+                            "projected_landing_m": round(
+                                decision["projected_landing_m"], 4
+                            ),
                             "metres_per_pulse": round(guard_metres_per_pulse, 4),
                             "waypoint_tolerance": waypoint_tolerance,
                             "reason": "already_lands_inside_tolerance",
