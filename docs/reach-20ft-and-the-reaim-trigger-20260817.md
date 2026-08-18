@@ -172,13 +172,70 @@ is not a pivot, 6 because a correction is an angle with a minimum size.
 
 - **Any leg longer than 4.0 m.** 6.10 m is an authorization number.
 - Whether the projected-miss trigger converges on hardware.
-- **Whether 3 corrections is enough for a 6 m leg.** This is the single most
-  useful thing the first run can tell us. The new trigger fires earlier and more
-  often, so 3 could be spent in the far field with none left for the approach —
-  a real interaction, with a bounded failure (`vio_realign_budget_exhausted`).
+- **Whether 3 corrections is enough AT 6 m.** Partially answered by replay
+  below — but the corpus has no leg over 4 m, so the regime the change was built
+  for still has no data. The first run is still the useful instrument.
 - Whether 10° mid-drive corrections enter the `sweep_exceeds_any_pulse` regime
   more often than 18° ones did. The post-turn gate has run at 10° without it,
   which is the reason for confidence, not a proof.
+
+## 3a. Replayed against 62 recorded segments — 2026-08-17
+
+`scripts/replay_reaim_trigger.py` replays BOTH triggers against the per-pulse
+geometry of every recorded VIO-path segment in `docs/evidence-*.json`. It
+imports the shipped `_mid_drive_realign_decision` rather than reimplementing it,
+models the four executor gates that stand in front of the re-aim block
+(`target_reached`, `command_index < effective_linear_ceiling`,
+`_requires_reverse_recovery`, and the shared budget), and self-validates by
+replaying the OLD rule and requiring it to reproduce what each run recorded.
+
+**Result: `vio_max_realignments: 3` holds on this corpus. 0 of 62 segments
+exceed it; the maximum is 3**, on the 1.65 m beta55 segment, at the same pulses
+the old trigger fired. Corpus-wide the new trigger adds **4 fires (18 → 22)**,
+all one pulse earlier on the longest legs:
+
+| segment | leg | old | new | the added decision |
+| --- | --- | --- | --- | --- |
+| `…20260812T001116Z#0` | 4.00 m | [9] | [8,9] | 0.846 m out, −16.72°, projects 0.246 m |
+| `…20260812T002804Z#0` | 4.00 m | [9] | [8,9] | 0.915 m out, −16.23°, projects 0.258 m |
+| `…20260811T235945Z#0` | 3.00 m | [6] | [5,6] | 0.979 m out, −17.06°, projects 0.291 m |
+| `…20260812T185603Z#1` | 1.91 m | [3] | [2,3] | 1.128 m out, +15.49°, projects 0.301 m |
+
+Every one is an aim error **under the old 18° gate** projecting a 0.25–0.30 m
+landing against a 0.15 m tolerance — precisely the blind spot the change targets.
+
+**Why believe it.** Self-validation is 55/62, but the ratio is not the load-
+bearing evidence — two independent cross-checks are. Reconstructed
+`facing`/`bearing`/`aim_error`/`distance` reproduce the executor's own recorded
+values at **all 35 recorded decision points to 0.000497° and 4.5e-05 m** (the
+`round(x, 3)` residual), and `metres_per_pulse` matches the 6 recorded values at
+**0.0**. The 7 residual segments are law-version skew across a fourteen-beta
+corpus, six of them identified structurally from their own records (beta36
+`min_distance`, beta38 pre-quadrature `perpendicular_miss`, and two 2026-08-02
+runs recording a re-aim at `effective_linear_ceiling` that the shipped gate
+makes impossible); the seventh predates the suppression guard entirely.
+
+⚠️ **THREE LIMITS, AND THE FIRST IS DECISIVE.**
+
+1. **No leg in the corpus exceeds 4 m.** The authorized cap is 6.10 m. The
+   regime this change exists for has no data, and no amount of replay creates
+   any. Only hardware closes this.
+2. **This is a counterfactual on a FIXED trajectory.** "Would have fired at K of
+   N measured decision points" is sound; "the landing would have been X" is not,
+   and the harness never claims it.
+3. **The bias runs toward over-estimation, consistently.** These trajectories
+   were produced by the old, under-correcting trigger, so they are systematically
+   worse-aimed than trajectories the new trigger would produce; and an extra
+   correction at pulse 8 changes pulse 9's geometry, likely removing the second
+   fire. So "0 of 62 exceed 3" is the conservative direction.
+
+🔑 **WHAT THE REASSURING NUMBER DOES NOT COVER — WATCH THIS ON THE RUN.**
+A leg that follows a junction turn has an effective mid-drive budget of **2, not
+3**: the post-turn alignment gate at `services.py:12184` spends the *same*
+counter, and on beta55 segment 1 it took 1 of 3 before the linear loop started.
+Nothing else binds first on a 6.10 m leg — the pulse ceiling is 22 against ~17
+needed, and `linear_distance_ceiling` is 2 x the leg. If anything binds, it is
+this, and the corpus figure says nothing about it.
 
 ## 4. What is owed before this is an accepted path
 
