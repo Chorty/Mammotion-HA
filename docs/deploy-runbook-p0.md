@@ -8,6 +8,56 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta57 — 2026-08-18 17:15-17:22 EDT, motion-disabled
+
+`0.6.4-beta57`, tag `v0.6.4-beta57` at `eae4acb8` (release commit on top of the
+squashed PR #15, `5d9aa759`). Version quartet agrees: manifest / pyproject /
+`CARD_VERSION` `0.6.4-beta57`, `uv.lock` `0.6.4b57`.
+
+| | |
+| --- | --- |
+| Archive SHA-256 | `121189b32cd09f27972ff4f53a03090cc4c211537fdf0ae5c29dc3efedf9f397`, identical local and host |
+| Files | **46 of 46 byte-identical** after CRLF normalisation |
+| Card md5 | `b987b7dedd9b6c7d42ffe22bea7e0a42` at **both** paths and locally; 0 AppleDouble files |
+| Lovelace | `?v=0.6.4-beta57&build=b987b7de`, written and read back |
+| Backup | `/config/mammotion-backup-20260818-1715-pre-beta57.tgz` |
+| Restart | API up after 81 s, 133 mammotion entities, 165 s total |
+| Backend | pymammotion `0.8.12.post1` (matches the pin) |
+| Gate before | ⚠️ found `enabled: True` — **disarmed before deploying** |
+| Gate after | ✅ `enabled: false`, `real_motion_allowed: false`, no active session |
+
+🚨 **THIS RELEASE UN-ACCEPTS `LUBA_ACCEPTANCE_PROFILE`.**
+`max_linear_pulse_ceiling` 14 → 22. It owes the §4 re-pinning in
+`docs/gate4-repass-20260805.md` and **another Gate 5**. The `Beta Release`
+workflow's `confirmed_luba_acceptance` input was set true on the beta42
+precedent — that build likewise adopted a profile change, shipped, and had its
+Gate 5 re-passed afterward. CI passed; supervised acceptance on this profile has
+not, and the debt is tracked, not discharged.
+
+⚠️ **Found on the pre-deploy check: experimental motion was already ON**
+(`enabled: True`, `real_motion_allowed: false` only because the mower was
+docked). The docked position was the sole thing between that and an armed gate.
+Disarmed before touching the host, per the runbook precondition. Normal posture
+is disarmed; if a session finds it enabled at rest, turn it off and say so.
+
+**Verified live, not just on disk.** A zero-motion dry run through
+`raw_pymammotion_execute_vector_segment` returned both new gates executing on
+the host with correct diagnostics:
+
+    segment_too_long                        segment_length_m 19.930, max 6.1
+    linear_budget_insufficient_for_segment  budget_reach_m 6.60 (22 x 0.30)
+
+Note the 19.930: the backend measures **live position → target**, not the
+planned 9 m in the request. That is the live-vs-planned asymmetry recorded in
+`docs/reach-20ft-and-the-reaim-trigger-20260817.md`, confirmed on hardware.
+
+🚨 **The mower began an autonomous mow during this deploy.** It was docked and
+`MODE_READY` at 17:15; by 17:22 it read `MODE_WORKING`, blades on, in "Backyard
+Hill", moving 0.28 m between two samples 20 s apart. Not the blade-RPM latch —
+real motion, confirmed by position change. `active_mowing_detected` and
+`blade_reported_on` correctly block the executor. **No supervised run is
+possible until the mow ends.**
+
 ### beta55 — PR #14 released, motion-disabled install, 2026-08-14 20:04-20:12 EDT
 
 `0.6.4-beta55` releases the reviewed PR #14 (merge `efa1eda8`, version commit

@@ -26,7 +26,7 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: `0.6.4-beta56` released and installed motion-disabled
+## Current build: `0.6.4-beta57` released and installed motion-disabled
 
 ⚠️ **The heading below this one said `beta55` until 2026-08-17** — stale since
 the beta56 release on 2026-08-16, and it made a session ask which build was
@@ -35,8 +35,9 @@ backend-only deploy adding the read-only `ota_info_probe` and changed nothing in
 the motion path, so every motion claim written under "beta55" below still
 describes what is running.
 
-🚨 **UNRELEASED, UNDEPLOYED WORK ON `agent/reach-20ft-reaim-trigger` (PR #15,
-2026-08-17), AND IT UN-ACCEPTS THE PROFILE.**
+🚨 **beta57 SHIPS THE REACH WORK AND IT UN-ACCEPTS THE PROFILE.** PR #15 merged
+(`5d9aa759`), released and deployed motion-disabled 2026-08-18; deploy record and
+exact hashes in `docs/deploy-runbook-p0.md` → "beta57".
 `LUBA_ACCEPTANCE_PROFILE.max_linear_pulse_ceiling` moved **14 → 22** to reach a
 20 ft leg, which owes the §4 re-pinning in `docs/gate4-repass-20260805.md` and
 **another Gate 5**. Also changed: a pre-dispatch `segment_too_long` cap at
@@ -46,8 +47,16 @@ describes what is running.
 ⚠️ `vio_max_realignments` **stays at 3** — a raise was attempted, reviewed twice,
 and reverted; see the note further down. **Read
 `docs/reach-20ft-and-the-reaim-trigger-20260817.md` before acting on any of it.**
-Full CI suite green (687 pytest, 46 frontend, all nine hooks); **no motion has
-run on any of it, and the host is still beta56.**
+Full CI suite green (687 pytest, 46 frontend, all nine hooks). **The host runs
+beta57 and NO MOTION HAS RUN ON THE NEW CONTROL LAW.** Both new gates are
+verified executing live by a zero-motion dry run.
+
+🔑 **The open question "is `vio_max_realignments: 3` enough" is now ANSWERED ON
+REPLAY, not on hardware**: 0 of 62 recorded segments exceed 3, maximum is 3
+(`scripts/replay_reaim_trigger.py`, §3a of the reach doc). ⚠️ The corpus has **no
+leg over 4 m** against a 6.10 m cap, so the regime the change exists for still
+has no data. And a leg following a junction turn has an effective mid-drive
+budget of **2, not 3** — the post-turn gate spends the same counter.
 
 ⚠️ Two entries below are now qualified by that work — the "~0.8 m leg" operating
 rule and the "raising `vio_max_realignments` is the WRONG fix" warning. Both are
