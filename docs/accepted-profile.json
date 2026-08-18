@@ -1,0 +1,29 @@
+{
+  "_comment": "The exact profile that last passed supervised LUBA acceptance. Regenerate ONLY after a Gate 5 pass, with scripts/check_accepted_profile.py --write-accepted <evidence file>.",
+  "accepted_on": "2026-08-12",
+  "evidence": "docs/evidence-gate5-repass-2-20260812.json",
+  "profile": {
+    "ble_auto_recover": false,
+    "calibrated_forward_heading_offset_degrees": 102.4,
+    "final_approach_metres_per_pulse": 1.06,
+    "heading_tolerance_degrees": 18,
+    "linear_pulse_duration_ms": 1300,
+    "max_linear_commands": 3,
+    "max_linear_pulse_ceiling": 14,
+    "max_no_progress_pulses": 3,
+    "max_turn_commands": 4,
+    "max_turn_translation_distance": 0.3,
+    "min_progress_distance": 0.0025,
+    "motion_refresh_interval_ms": 200,
+    "prefer_ble": true,
+    "sample_delays": [
+      0,
+      3
+    ],
+    "turn_degrees_per_second": 37,
+    "turn_mode": "vio",
+    "turn_pulse_duration_ms": 1500,
+    "vio_turn_max_commands": 4,
+    "waypoint_tolerance": 0.15
+  }
+}

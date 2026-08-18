@@ -1,5 +1,16 @@
 # P0 beta release status
 
+✅ **This is now derived, not asserted.** `scripts/check_accepted_profile.py`
+diffs the card's `LUBA_ACCEPTANCE_PROFILE` against the snapshot in
+`docs/accepted-profile.json` (the Gate 5 re-pass of 2026-08-12), and the
+`Beta Release` workflow embeds the verdict in every release body. A build that
+ships an unaccepted profile now says so on its own release page instead of the
+claim living only in prose that a later session might not read.
+
+⚠️ The workflow's `confirmed_luba_acceptance` input never did this and cannot:
+it is a job-level `if:` guard, written nowhere, verifying nothing, and true by
+construction whenever the release job runs.
+
 🚨 **2026-08-17 — THE PROFILE IN THE TREE IS NO LONGER THE ACCEPTED PROFILE.**
 `max_linear_pulse_ceiling` moved 14 → 22 on PR #15 (unmerged, unreleased, undeployed)
 to reach a 20 ft leg, alongside a pre-dispatch length cap and four control-law

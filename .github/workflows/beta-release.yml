@@ -133,6 +133,20 @@ jobs:
           git tag ${{ steps.version.outputs.tag }}
           git push origin ${{ steps.version.outputs.tag }}
 
+      - name: Derive execution-profile acceptance
+        id: profile
+        run: |
+          # The `confirmed_luba_acceptance` input cannot answer this. It gates
+          # this job with an `if:`, so it is true by construction whenever we
+          # get here -- echoing it would print "true" on every release. Derive
+          # the answer from the code instead.
+          {
+            echo 'markdown<<PROFILE_EOF'
+            python3 scripts/check_accepted_profile.py --markdown
+            echo 'PROFILE_EOF'
+          } >> "$GITHUB_OUTPUT"
+          python3 scripts/check_accepted_profile.py
+
       - name: Get previous release tag
         id: previous_tag
         run: |
@@ -166,6 +180,8 @@ jobs:
             [![Discord](https://img.shields.io/discord/1247286396297678879)](https://discord.gg/vpZdWhJX8x)
 
             > ⚠️ **This is a beta release.** To install via HACS, enable "Show beta versions" in your HACS settings.
+
+            ${{ steps.profile.outputs.markdown }}
 
             ## Changes since last stable release
 
