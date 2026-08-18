@@ -6,6 +6,75 @@ measurements stand — but do not act on any build/host/gate state they describe
 
 ---
 
+## 🐛 OPEN — the click-to-go card locks up Home Assistant on iPhone/mobile
+
+**Reported by the operator 2026-08-18. Not reproduced, not diagnosed, no cause
+identified.** Recorded here so it is not lost; do not treat anything below as a
+finding.
+
+Symptom as reported: opening/using the Mammotion custom path card in the Home
+Assistant **mobile app on iPhone** locks up HA. Desktop is not reported as
+affected.
+
+⚠️ **Two obvious hypotheses were checked and are already REFUTED**, so do not
+spend the session re-deriving them:
+
+- *Run ticker leaking after navigation* — REFUTED. `disconnectedCallback()`
+  exists and calls `_stopRunTicker()`.
+- *`set hass` re-rendering on every state tick* — REFUTED. It renders once,
+  guarded by `this._rendered`.
+
+What is factually true about the card, offered only as a starting point:
+`_render()` rebuilds the entire card through a single `innerHTML` assignment and
+is called from roughly fourteen sites, including after every map load, runtime
+reload, waypoint edit and run-state change. The map is inline SVG with per-point
+`pointerdown` listeners re-attached on each rebuild. Whether any of that is the
+cause is **unknown**.
+
+**Capture this before changing anything:**
+
+1. Does it lock up on card *load*, on *interaction* (tapping the map), or only
+   during a *run*?
+2. Safari Web Inspector against the iPhone (Settings → Safari → Advanced → Web
+   Inspector) — is it a JS exception, an infinite loop, or memory growth?
+3. Does it reproduce in mobile Safari at the Lovelace URL directly, or only
+   inside the HA app's webview?
+4. How many waypoints/areas are on screen? The SVG size scales with the map.
+
+⚠️ This is a **card-only** defect report. It has no bearing on the motion gate,
+the control law, or the reach work below, and it must not be allowed to delay or
+contaminate the supervised hardware run.
+
+---
+
+## 🚧 2026-08-17 — REACH WORK ON PR #15, UNMERGED; PROFILE UN-ACCEPTED
+
+`agent/reach-20ft-reaim-trigger` (PR #15) no longer matches the deployed
+beta56, and the difference changes a frozen profile key. **Read
+`docs/reach-20ft-and-the-reaim-trigger-20260817.md` first.**
+
+| | |
+| --- | --- |
+| Host | Still **beta56**, unchanged. Nothing was deployed. |
+| Branch | `agent/reach-20ft-reaim-trigger`, **PR #15**, pushed. Not merged, not released, not deployed |
+| Motion gate | **DISARMED**, untouched. **No motion has run on any of this work.** |
+| Profile | 🚨 `max_linear_pulse_ceiling` **14 → 22**, so `LUBA_ACCEPTANCE_PROFILE` is **un-accepted**; owes §4 re-pinning and another Gate 5 |
+| CI | Green: 687 pytest, 46 frontend, ruff check/format, mypy, all nine pre-commit hooks |
+| Review | **Two high-effort rounds, 14 findings, all real.** Round 2 found two of round 1's own fixes wrong, which forced a scope cut: `vio_max_realignments` stays at the accepted **3** and the divergence detector was removed entirely |
+
+**What it does:** adds the daylight path's first pre-dispatch length cap
+(`segment_too_long`, 6.10 m = 20 ft) and changes the mid-drive re-aim trigger
+from an angle test to a projected-miss test. The finding behind it: the trigger
+was `abs(aim) > 18°` while the objective is `range × sin(aim)`, so a 17° error
+with 14 m to run — a **4.09 m miss** — fired no correction at all. That, not
+distance, is what limited leg length.
+
+**The next action is a supervised run, and it is NOT the 20 ft leg.** Repeat the
+1.65 m post-turn geometry from 2026-08-15 first: it is the only case with a
+recorded counterfactual. See §4 of that doc.
+
+---
+
 # 🚦 2026-08-14 HANDOFF — beta55 released; PR #14 reviewed and merged
 
 ⚠️ **Superseded by a beta56 deploy on 2026-08-16** — see the note right below

@@ -12,6 +12,14 @@ const MAX_NUDGE_METRES = 2.0;
 // chaining. Keep this independent from LUBA_ACCEPTANCE_PROFILE so adding the
 // card control cannot alter the hardware-accepted daylight/VIO payload.
 const MAX_NIGHT_SEGMENT_METRES = 1.0;
+// Mirrors the backend's `_MAX_SEGMENT_LENGTH_M` (services.py). Keep the two in
+// step or the card offers a leg the backend refuses -- the same trap that
+// MAX_REAL_SEGMENTS documents. This is an AUTHORIZATION cap of 20 ft chosen on
+// 2026-08-17, NOT a measured reach limit: the longest segment ever executed is
+// 4.0 m. NOT a LUBA_ACCEPTANCE_PROFILE key.
+const MAX_REAL_SEGMENT_METRES = 6.1;
+// Mirrors the backend's `_BUDGET_CHECK_METRES_PER_PULSE` (services.py).
+const BUDGET_CHECK_METRES_PER_PULSE = 0.3;
 const NIGHT_GO_PROFILE = Object.freeze({
   prefer_ble: true,
   turn_mode: "night",
@@ -79,24 +87,33 @@ const LUBA_ACCEPTANCE_PROFILE = Object.freeze({
   // reach goes ~1 m -> 4 m, per-click ~4 m -> ~16 m at four segments.
   // docs/loop-to-tolerance-reach-20260811.md.
   //
-  // **Why 14 and not 11.** The ceiling is a loop bound, not the runaway guard --
-  // `linear_distance_ceiling_factor: 2.0` stops a segment at twice its leg
-  // length whatever the pulse count does. So the number only has to survive a
-  // bad link. A healthy pulse travels ~0.41 m and a BLE-stalled one ~0.22 m
-  // (measured, n=2); the 4 m leg needed 11 pulses with 2 of 11 stalled. At
-  // double that stall rate a 4 m leg needs ~12, at a 50% stall rate ~13. 14
-  // clears the worst of those and still bounds a segment near 5.7 m.
+  // 🚨 RAISED 14 → 22 ON 2026-08-17, AND THIS PROFILE IS THEREFORE NO LONGER
+  // HARDWARE-ACCEPTED. It owes the §4 re-pinning in docs/gate4-repass-20260805.md
+  // and another Gate 5 before any run on it may be described as accepted. The
+  // operator asked for a 20 ft (6.096 m) single-waypoint move and chose this
+  // route knowing the cost; that decision is recorded in
+  // docs/reach-20ft-and-the-reaim-trigger-20260817.md.
   //
-  // 🏁 GATE 5 RE-PASSED ON THIS PROFILE, 2026-08-12, card-driven: four segments
+  // **Why 22.** Same arithmetic that chose 14, applied to 6.096 m instead of
+  // 4 m. The ceiling is a loop bound, not the runaway guard --
+  // `linear_distance_ceiling_factor: 2.0` stops a segment at twice its leg
+  // length whatever the pulse count does -- so the number only has to survive a
+  // bad link. A healthy pulse travels ~0.41 m and a BLE-stalled one ~0.22 m
+  // (measured, n=2), and the 4 m leg needed 11 pulses with 2 of 11 stalled. At
+  // that stall rate 6.096 m needs ~17 pulses, at double it ~18, at a 50% stall
+  // rate ~20. 22 clears all three.
+  //
+  // ⚠️ The backend refuses pre-dispatch if this ceiling cannot reach the leg
+  // (`linear_budget_insufficient_for_segment`), so lowering it no longer
+  // strands a run mid-leg -- it declines it up front.
+  //
+  // 🏁 What the SUPERSEDED value of 14 earned, kept because it is the last
+  // accepted state: GATE 5 RE-PASSED, 2026-08-12, card-driven, four segments
   // target_reached at 0.0674 / 0.1032 / 0.0807 / 0.0607 m against a 0.15
   // tolerance — mean 0.0780, the best four-segment result on record. Zero
-  // reverse-recovery, zero budget exhaustion, and the payload carried this key,
-  // so profile identity is proven in fact.
+  // reverse-recovery, zero budget exhaustion, and the payload carried the key.
   // docs/evidence-gate5-repass-2-20260812.json.
-  //
-  // ⚠️ CHANGING THIS UN-ACCEPTS THE PROFILE again. It would owe the §4
-  // re-pinning in docs/gate4-repass-20260805.md and another Gate 5.
-  max_linear_pulse_ceiling: 14,
+  max_linear_pulse_ceiling: 22,
   max_no_progress_pulses: 3,
   heading_tolerance_degrees: 18,
   // 0.15, not 0.08, on hardware evidence from 2026-08-08: three 1.0 m segments
@@ -158,6 +175,9 @@ const BLOCKER_HELP = Object.freeze({
   night_requires_one_segment:
     "Night Go supports exactly one waypoint. Remove the additional destinations.",
   night_segment_too_long: `Night Go is limited to ${MAX_NIGHT_SEGMENT_METRES.toFixed(1)} m. Move the waypoint closer.`,
+  segment_too_long: `A single leg is capped at ${MAX_REAL_SEGMENT_METRES.toFixed(1)} m (20 ft). Move the waypoint closer, or add an intermediate one to split the leg.`,
+  linear_budget_insufficient_for_segment:
+    "This leg is longer than its linear pulse budget can reach. Shorten it, or raise max_linear_pulse_ceiling (which leaves the accepted profile).",
   [`real_segment_limit_${MAX_REAL_SEGMENTS}`]: `Real Go runs at most ${MAX_REAL_SEGMENTS} segments. Remove waypoints or run it in two clicks.`,
 });
 
@@ -764,6 +784,30 @@ class MammotionCustomPathCard extends HTMLElement {
     if (this._segmentCount() > MAX_REAL_SEGMENTS) {
       blockers.push(`real_segment_limit_${MAX_REAL_SEGMENTS}`);
     }
+    // Refuse an over-long leg HERE rather than letting the backend gate catch
+    // it, so the reason appears in the readiness banner instead of arriving as
+    // a failed run. The backend keeps its own copy: this one is a courtesy, not
+    // the guard.
+    // ⚠️ NO PLANNING MARGIN HERE, deliberately. A margin was tried on
+    // 2026-08-17 to cover the card measuring PLANNED waypoint-to-waypoint
+    // geometry while the backend measures LIVE POSITION to target -- they
+    // differ by the previous segment's landing error. But a 0.2 m margin
+    // refuses a 6.096 m (20 ft) leg, which is the exact length the cap exists
+    // to allow, and segment 1 starts AT the live position so there is no drift
+    // for it to cover. A later segment that drifts past the cap is refused by
+    // the backend with `segment_too_long` and a diagnostics block naming the
+    // measured length; that is the honest failure, and it beats pre-refusing a
+    // legal leg.
+    if (this._longestSegmentMetres() > MAX_REAL_SEGMENT_METRES + 1e-9) {
+      blockers.push("segment_too_long");
+    }
+    // The backend's budget gate is per-segment and never reaches
+    // `_preflight().blockers`, so its BLOCKER_HELP entry could never render.
+    // Mirror the arithmetic here instead of shipping help text for a code the
+    // banner cannot receive.
+    if (this._linearBudgetReachMetres() < this._longestSegmentMetres()) {
+      blockers.push("linear_budget_insufficient_for_segment");
+    }
     if (experimental.real_motion_allowed !== true) {
       if (
         Array.isArray(experimental.blockers) &&
@@ -801,6 +845,36 @@ class MammotionCustomPathCard extends HTMLElement {
     return Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
   }
 
+  // How far the configured linear pulse budget reaches, in metres. Mirrors the
+  // backend's `linear_budget_insufficient_for_segment`, including its
+  // loop-to-tolerance-only scope: with no ceiling the fixed-budget path fires
+  // full ~1.06 m pulses and this arithmetic does not apply, so report Infinity
+  // rather than a number that would refuse an accepted run.
+  _linearBudgetReachMetres() {
+    const ceiling = this._profileValue("max_linear_pulse_ceiling");
+    if (ceiling == null) return Infinity;
+    return Number(ceiling) * BUDGET_CHECK_METRES_PER_PULSE;
+  }
+
+  // Longest single leg in the planned path, in metres. The cap is per-SEGMENT,
+  // not per-path: four legs of 6 m are four separate control problems, while
+  // one leg of 24 m is the one thing no run has ever done.
+  _longestSegmentMetres() {
+    const points = this._segmentPoints();
+    if (!points || points.length < 2) return 0;
+    let longest = 0;
+    for (let i = 1; i < points.length; i += 1) {
+      longest = Math.max(
+        longest,
+        Math.hypot(
+          points[i].x - points[i - 1].x,
+          points[i].y - points[i - 1].y,
+        ),
+      );
+    }
+    return longest;
+  }
+
   _nightPreflight({ dryRun = false } = {}) {
     const blockers = dryRun
       ? [
@@ -809,7 +883,16 @@ class MammotionCustomPathCard extends HTMLElement {
           ...(!this._validation?.valid ? ["path_validation_failed"] : []),
         ]
       : [...this._preflight().blockers].filter(
-          (blocker) => !blocker.startsWith("real_segment_limit_"),
+          (blocker) =>
+            !blocker.startsWith("real_segment_limit_") &&
+            // Real Go's length and budget gates are not night's. The backend
+            // skips BOTH for `turn_mode: "night"` (night owns the tighter
+            // `night_segment_too_long` at 1.0 m and runs a fixed budget), so
+            // leaking them here blocks a legal night leg on a gate that would
+            // never fire -- e.g. a 0.95 m night segment refused because a
+            // configured Real Go ceiling of 3 reaches only 0.9 m.
+            blocker !== "segment_too_long" &&
+            blocker !== "linear_budget_insufficient_for_segment",
         );
     if (this._segmentCount() !== 1) {
       blockers.push("night_requires_one_segment");
@@ -1180,11 +1263,19 @@ class MammotionCustomPathCard extends HTMLElement {
     return `current orientation unavailable; last-travel projection ${heading.toFixed(1)}° (course-over-ground ${Number(pos.toward).toFixed(1)}° + offset ${Number(this._profileValue("calibrated_forward_heading_offset_degrees")).toFixed(1)}°; not mower orientation)`;
   }
 
+  // ⚠️ The default branch must NOT claim hardware acceptance while it isn't
+  // true. `_profileOverrides()` diffs the payload against LUBA_ACCEPTANCE_PROFILE,
+  // so raising `max_linear_pulse_ceiling` 14 -> 22 inside that constant on
+  // 2026-08-17 moved the accepted value itself: overrides read empty and the
+  // banner went on printing "Gate 5 re-pass 2026-08-12" for a profile no Gate 5
+  // has ever run. The un-acceptance has to be stated here, where the operator
+  // reads it, not only in a doc.
   _profileLabel() {
     const overrides = this._profileOverrides();
-    return overrides.length
-      ? `customised (not hardware-accepted): ${overrides.join(", ")}`
-      : "LUBA acceptance profile + reach (Gate 4 re-pass 2026-08-05; tolerance 2026-08-08; reach + Gate 5 re-pass 2026-08-12)";
+    if (overrides.length) {
+      return `customised (not hardware-accepted): ${overrides.join(", ")}`;
+    }
+    return "reach profile — NOT hardware-accepted (max_linear_pulse_ceiling 22 since 2026-08-17; owes a Gate 5). Last accepted: ceiling 14, Gate 5 re-pass 2026-08-12";
   }
 
   // Straight-line nudge along trustworthy CURRENT orientation only. The old

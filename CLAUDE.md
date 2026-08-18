@@ -26,9 +26,39 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: `0.6.4-beta55` released and installed motion-disabled
+## Current build: `0.6.4-beta56` released and installed motion-disabled
 
-`main`, `origin/main`, and tag `v0.6.4-beta55` agree at `5ef37511`. Beta55
+⚠️ **The heading below this one said `beta55` until 2026-08-17** — stale since
+the beta56 release on 2026-08-16, and it made a session ask which build was
+real. All four version sites and tag `v0.6.4-beta56` agree; beta56 was a
+backend-only deploy adding the read-only `ota_info_probe` and changed nothing in
+the motion path, so every motion claim written under "beta55" below still
+describes what is running.
+
+🚨 **UNRELEASED, UNDEPLOYED WORK ON `agent/reach-20ft-reaim-trigger` (PR #15,
+2026-08-17), AND IT UN-ACCEPTS THE PROFILE.**
+`LUBA_ACCEPTANCE_PROFILE.max_linear_pulse_ceiling` moved **14 → 22** to reach a
+20 ft leg, which owes the §4 re-pinning in `docs/gate4-repass-20260805.md` and
+**another Gate 5**. Also changed: a pre-dispatch `segment_too_long` cap at
+**6.10 m** (the daylight path had no length gate at all), a
+`linear_budget_insufficient_for_segment` gate, the mid-drive re-aim trigger
+(angle → projected miss), and the mid-drive correction tolerance (18° → 10°).
+⚠️ `vio_max_realignments` **stays at 3** — a raise was attempted, reviewed twice,
+and reverted; see the note further down. **Read
+`docs/reach-20ft-and-the-reaim-trigger-20260817.md` before acting on any of it.**
+Full CI suite green (687 pytest, 46 frontend, all nine hooks); **no motion has
+run on any of it, and the host is still beta56.**
+
+⚠️ Two entries below are now qualified by that work — the "~0.8 m leg" operating
+rule and the "raising `vio_max_realignments` is the WRONG fix" warning. Both are
+marked in place. Neither is deleted: they were correct for the control law as it
+stood, and the second is still correct without the divergence detector.
+
+⚠️ *The paragraph below is the beta55 record and its head/tag line is stale —
+`main` is now at `a2351048` with tag `v0.6.4-beta56`. Kept because everything it
+says about the motion path is still what is running.*
+
+`main`, `origin/main`, and tag `v0.6.4-beta55` agreed at `5ef37511`. Beta55
 releases the reviewed and merged PR #14 on top of beta54's guarded **Night
 dry-run** and **Night Go** card controls, still without changing any value in
 `LUBA_ACCEPTANCE_PROFILE`; Real Go remains the accepted VIO path. The beta55
@@ -81,7 +111,8 @@ movement/stop succeeded. Read `docs/real-go-throughput-hardware-20260814.md`.
 ever exercised the night fix on hardware.**
 
 The segment executor's legacy branch
-(`services.py:11498-11517`) omits `motion_refresh_interval_ms` (primitive default
+(`services.py:12023-12045`, the `else` arm; line numbers verified 2026-08-17)
+omits `motion_refresh_interval_ms` (primitive default
 `0`) and passes `angular_speed_fast/slow` at the schema default **180**, which
 does not break static friction on a stationary pivot (~3°/pulse). Every
 converging night turn used **angular 500 with refresh**, by calling the primitive
@@ -130,6 +161,17 @@ error (mean 5.5°, already fine); the landing is set by the map-frame error (mea
 15, and every map-frame error fell inside it. Lowering the backend default
 `vio_realign_threshold_degrees` 15 → ~5 catches all five and moves no frozen key.
 
+⚠️ **QUALIFIED 2026-08-17 — the rule below was correct for the control law as it
+stood, but the mechanism was misattributed to distance.** The re-aim trigger was
+an ANGLE (`aim > 18°`) while the objective is a DISTANCE
+(`range × sin(aim)`), so corrections never fired in the far field: 17° with 14 m
+to run is a 4.09 m miss that fired nothing. ~0.8 m is where an angle-triggered
+controller happens to work. The trigger is now the projected miss and the cap is
+a pre-dispatch gate at 6.10 m — **untested on hardware**, so keep planning legs
+at ~0.8 m until a supervised run says otherwise. Read
+`docs/reach-20ft-and-the-reaim-trigger-20260817.md`. Everything below still
+stands as measurement.
+
 🔑 **OPERATING RULE: plan legs at ~0.8 m. Reach is not landing accuracy.**
 Measured 2026-08-15, first four-segment card run on beta55
 (`docs/evidence-real-go-card-beta55-20260815T204747Z.json`). Segment 1 (1.17 m,
@@ -157,8 +199,22 @@ that length.
 0.070 m, measured 0.1417 m) because aim error develops mid-leg on straight runs.
 Treat it as sound for the post-turn residual case only.
 
+✅ **REINFORCED 2026-08-17 — this warning was tested and it won.** A branch tried
+raising the default 3 → 10, guarded by a "divergence detector" meant to make it
+safe. Two review rounds found the detector wrong **twice, for two different
+reasons**: v1 compared before-vs-after within one correction and so measured the
+correction turn's own translation (`atan(0.10/0.75)` = 7.6° against a 1.0°
+margin); v2 compared successive pre-correction errors and so measured the
+geometric inflation of aim error as range closes (`atan(c/d)` grows as `d`
+shrinks), which happens on a **perfectly healthy leg**. Both would have aborted
+good runs. **The budget stayed at 3.** Five of six second-round findings existed
+only because the budget had been raised. If you think you have a way to make a
+bigger budget safe, assume it is wrong until hardware says otherwise — and note
+that a leg exhausting the budget stops safely, which is a measurement.
+`docs/reach-20ft-and-the-reaim-trigger-20260817.md`.
+
 ⚠️ **Raising `vio_max_realignments` (default 3, shared by the post-turn gate at
-`services.py:11877` and mid-drive re-aim at `:12507`) is the WRONG fix.** The
+`services.py:12185` and mid-drive re-aim at `:12831`; line numbers verified 2026-08-17) is the WRONG fix.** The
 loop was diverging — aim errors grew 16.96 → 21.22 → 24.975° while each
 correction "succeeded" against an 18° turn tolerance, leaving 9.7 / 11.5 / 13.6°
 of residual against a bearing rotating −3.2 / −9.7 / **−15.4°** per pulse and
