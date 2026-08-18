@@ -192,10 +192,30 @@ Gates 1-4 while the card emitted a *different* profile is exactly the gap that
   card is served from two paths (`/mammotion/` and `/hacsfiles/`); deploying one
   and loading the other silently serves the stale card, which would test the old
   profile while the log says otherwise.
-- The card's **execution profile** row must read
-  `LUBA acceptance profile (Gate 4 re-pass, 2026-08-05)`. If it reads
-  `customised (not hardware-accepted)`, the dashboard YAML is overriding the
-  profile and the run does not count as Gate 5 — remove the overrides first.
+- The card's **execution profile** row must show **no dashboard overrides**.
+  ⚠️ **CORRECTED 2026-08-18 — this used to demand the row read `LUBA acceptance
+  profile (…)`, which made Gate 5 unreachable by construction.** A profile
+  awaiting acceptance cannot display an acceptance label, so the rule as written
+  meant **no new profile could ever be accepted** — the gate that grants
+  acceptance required acceptance as a precondition. It was written when the
+  label was a proxy for "no YAML overrides" and the only profile in existence
+  was already accepted; the beta57 ceiling change (14 → 22) broke that
+  coincidence.
+
+  What actually matters is unchanged: **the dashboard YAML must not be
+  overriding the profile.** The card reports that directly — the row reads
+  `customised (not hardware-accepted): <keys>` when and only when
+  `_profileOverrides()` is non-empty. So:
+
+  - row names specific overridden **keys** → **stop**, remove them from the
+    dashboard YAML, the run does not count;
+  - row states the profile is **not yet hardware-accepted** but names no keys →
+    **proceed**. That is the candidate-profile case, and running Gate 5 on it is
+    precisely how it becomes accepted.
+
+  On a pass, re-snapshot with
+  `scripts/check_accepted_profile.py --write-accepted <evidence file>
+  --accepted-on <date>` so the release page and this document agree from then on.
 - Run preview, then dry-run, then Real Go, in that order, from the same card
   instance without editing waypoints between dry-run and Real Go.
 - Record the emitted payload (the card's "copy JSON" control) alongside the

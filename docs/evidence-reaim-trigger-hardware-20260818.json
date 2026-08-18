@@ -1,0 +1,4940 @@
+{
+ "valid": true,
+ "errors": [],
+ "warnings": [],
+ "coordinate_system": "mower_map_xy",
+ "blade_mode": "off",
+ "speed": 0.2,
+ "area_hash": null,
+ "point_count": 3,
+ "distance": 2.6237316241846305,
+ "points": [
+  {
+   "x": 7.1134,
+   "y": -3.898
+  },
+  {
+   "x": 8.0,
+   "y": -4.3
+  },
+  {
+   "x": 8.499,
+   "y": -5.873
+  }
+ ],
+ "geojson": {
+  "type": "FeatureCollection",
+  "features": [
+   {
+    "type": "Feature",
+    "properties": {
+     "type_name": "custom_path_start",
+     "Name": "Start",
+     "marker": "start"
+    },
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      7.1134,
+      -3.898
+     ]
+    }
+   },
+   {
+    "type": "Feature",
+    "properties": {
+     "type_name": "custom_path",
+     "Name": "Custom path",
+     "valid": true,
+     "distance": 2.6237316241846305,
+     "color": "#22c55e",
+     "weight": 3
+    },
+    "geometry": {
+     "type": "LineString",
+     "coordinates": [
+      [
+       7.1134,
+       -3.898
+      ],
+      [
+       8.0,
+       -4.3
+      ],
+      [
+       8.499,
+       -5.873
+      ]
+     ]
+    }
+   },
+   {
+    "type": "Feature",
+    "properties": {
+     "type_name": "custom_path_end",
+     "Name": "End",
+     "marker": "end"
+    },
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      8.499,
+      -5.873
+     ]
+    }
+   }
+  ]
+ },
+ "path": {
+  "coordinate_system": "mower_map_xy",
+  "points": [
+   {
+    "x": 7.1134,
+    "y": -3.898
+   },
+   {
+    "x": 8.0,
+    "y": -4.3
+   },
+   {
+    "x": 8.499,
+    "y": -5.873
+   }
+  ],
+  "distance": 2.6237316241846305
+ },
+ "service": "raw_pymammotion_execute_multi_segment",
+ "mode": "real_raw_multi_segment",
+ "dry_run": false,
+ "would_send": true,
+ "real_execution_scope": "guarded_multi_segment_vector_chain",
+ "full_path_execution_allowed": false,
+ "ready_for_multi_point": false,
+ "ready_for_multi_segment": true,
+ "initial_vio_feed": {
+  "live": true,
+  "tracked_features": 80,
+  "brightness_raw": 1,
+  "brightness_label": "Light"
+ },
+ "prefer_ble": true,
+ "transport_preference": "ble_preferred",
+ "ble_auto_recover": false,
+ "ble_recovery": null,
+ "max_real_segments": 2,
+ "max_turn_commands": 4,
+ "max_linear_commands": 3,
+ "linear_speed_fast": 400,
+ "linear_speed_slow": 200,
+ "slow_linear_threshold": 0.15,
+ "heading_tolerance_degrees": 18.0,
+ "angular_speed_fast": 180,
+ "angular_speed_slow": 180,
+ "slow_turn_threshold_degrees": 8.0,
+ "waypoint_tolerance": 0.15,
+ "min_progress_distance": 0.0025,
+ "min_heading_change_degrees": 0.5,
+ "max_turn_translation_distance": 0.3,
+ "calibrated_forward_heading_offset_degrees": 102.4,
+ "turn_mode": "vio",
+ "vio_heading_offset_degrees": null,
+ "turn_pulse_duration_ms": 1500.0,
+ "linear_pulse_duration_ms": 1300.0,
+ "final_approach_metres_per_pulse": 1.06,
+ "turn_degrees_per_second": 37.0,
+ "vio_turn_max_commands": 4,
+ "vio_angular_speed": 500,
+ "max_linear_pulse_ceiling": 22,
+ "max_no_progress_pulses": 3,
+ "motion_refresh_interval_ms": 200,
+ "sample_delays": [
+  0.0,
+  3.0
+ ],
+ "confirm_blades_off": true,
+ "confirm_clear_area": true,
+ "total_segments": 2,
+ "segments_planned": 2,
+ "segments_executed": 2,
+ "real_segments_executed": 2,
+ "segments": [
+  {
+   "index": 1,
+   "points": [
+    {
+     "x": 7.1134,
+     "y": -3.898
+    },
+    {
+     "x": 8.0,
+     "y": -4.3
+    }
+   ],
+   "real_segment": true,
+   "passed": true,
+   "result": {
+    "valid": true,
+    "errors": [],
+    "warnings": [],
+    "coordinate_system": "mower_map_xy",
+    "blade_mode": "off",
+    "speed": 0.2,
+    "area_hash": null,
+    "point_count": 2,
+    "distance": 0.9734801281998514,
+    "points": [
+     {
+      "x": 7.1134,
+      "y": -3.898
+     },
+     {
+      "x": 8.0,
+      "y": -4.3
+     }
+    ],
+    "geojson": {
+     "type": "FeatureCollection",
+     "features": [
+      {
+       "type": "Feature",
+       "properties": {
+        "type_name": "custom_path_start",
+        "Name": "Start",
+        "marker": "start"
+       },
+       "geometry": {
+        "type": "Point",
+        "coordinates": [
+         7.1134,
+         -3.898
+        ]
+       }
+      },
+      {
+       "type": "Feature",
+       "properties": {
+        "type_name": "custom_path",
+        "Name": "Custom path",
+        "valid": true,
+        "distance": 0.9734801281998514,
+        "color": "#22c55e",
+        "weight": 3
+       },
+       "geometry": {
+        "type": "LineString",
+        "coordinates": [
+         [
+          7.1134,
+          -3.898
+         ],
+         [
+          8.0,
+          -4.3
+         ]
+        ]
+       }
+      },
+      {
+       "type": "Feature",
+       "properties": {
+        "type_name": "custom_path_end",
+        "Name": "End",
+        "marker": "end"
+       },
+       "geometry": {
+        "type": "Point",
+        "coordinates": [
+         8.0,
+         -4.3
+        ]
+       }
+      }
+     ]
+    },
+    "path": {
+     "coordinate_system": "mower_map_xy",
+     "points": [
+      {
+       "x": 7.1134,
+       "y": -3.898
+      },
+      {
+       "x": 8.0,
+       "y": -4.3
+      }
+     ],
+     "distance": 0.9734801281998514
+    },
+    "service": "raw_pymammotion_execute_vector_segment",
+    "mode": "real_raw_vector_segment",
+    "dry_run": false,
+    "would_send": true,
+    "real_execution_scope": "one_segment_turn_then_forward_only",
+    "full_path_execution_allowed": false,
+    "ready_for_multi_point": false,
+    "prefer_ble": true,
+    "transport_preference": "ble_preferred",
+    "ble_auto_recover": false,
+    "ble_recovery": null,
+    "linear_speed_fast": 400,
+    "linear_speed_slow": 200,
+    "slow_linear_threshold": 0.15,
+    "max_turn_commands": 4,
+    "max_linear_commands": 3,
+    "heading_tolerance_degrees": 18.0,
+    "angular_speed_fast": 180,
+    "angular_speed_slow": 180,
+    "slow_turn_threshold_degrees": 8.0,
+    "waypoint_tolerance": 0.15,
+    "min_progress_distance": 0.0025,
+    "min_heading_change_degrees": 0.5,
+    "max_turn_translation_distance": 0.3,
+    "calibrated_forward_heading_offset_degrees": 102.4,
+    "max_linear_pulse_ceiling": 22,
+    "max_no_progress_pulses": 3,
+    "final_approach_metres_per_pulse": 1.06,
+    "turn_degrees_per_second": 37.0,
+    "turn_pulse_duration_ms": 1500.0,
+    "linear_pulse_duration_ms": 1300.0,
+    "vio_turn_max_commands": 4,
+    "vio_angular_speed": 500,
+    "vio_heading_offset_degrees": null,
+    "sample_delays": [
+     0.0,
+     3.0
+    ],
+    "confirm_blades_off": true,
+    "confirm_clear_area": true,
+    "advisory_start": {
+     "x": 7.1134,
+     "y": -3.898
+    },
+    "true_start": {
+     "x": 7.1134,
+     "y": -3.898
+    },
+    "target": {
+     "x": 8.0,
+     "y": -4.3
+    },
+    "target_map_heading_degrees": 342.161132443805,
+    "target_reported_heading_degrees": 233.20962634883355,
+    "target_heading_degrees": 233.20962634883355,
+    "heading_calibration": {
+     "formula": "target_reported_heading = target_map_heading - calibrated_forward_heading_offset",
+     "target_map_heading_degrees": 335.60962634883356,
+     "calibrated_forward_heading_offset_degrees": 102.4,
+     "target_reported_heading_degrees": 233.20962634883355
+    },
+    "initial_linear_command_selection": {
+     "command": "send_movement",
+     "linear_speed": 400,
+     "angular_speed": 0,
+     "distance_to_target": 0.9734801281998514,
+     "speed_tier": "fast",
+     "slow_linear_threshold": 0.15,
+     "reason": "target_remaining"
+    },
+    "turn_mode": "vio",
+    "vio": {
+     "initial_vio_state": 2,
+     "initial_vio_feed": {
+      "live": true,
+      "tracked_features": 80,
+      "brightness_raw": 1,
+      "brightness_label": "Light"
+     },
+     "initial_vision_heading": -101.14020358402631,
+     "provided_offset_degrees": null,
+     "offset_degrees": 0.8436130546885465,
+     "offset_source": "linear_refresh",
+     "target_vision_heading": 342.60713038234337,
+     "calibration": {
+      "passed": true,
+      "reason": "calibrated",
+      "offset_degrees": 357.2958662550136,
+      "map_motion_heading_degrees": 256.191,
+      "vision_heading": -101.10467150168733,
+      "vio_state": 2,
+      "vio_feed": {
+       "live": true,
+       "tracked_features": 80,
+       "brightness_raw": 1,
+       "brightness_label": "Light"
+      },
+      "distance_m": 0.07331909710300558,
+      "pulses_sent": 1,
+      "command_results": [
+       {
+        "index": 1,
+        "phase": "vio_calibration_drive",
+        "command": "send_movement",
+        "kwargs": {
+         "linear_speed": 400,
+         "angular_speed": 0
+        },
+        "sent_at_utc": "2026-08-18T23:24:15.868688+00:00",
+        "ok": true,
+        "error": null,
+        "stop_result": {
+         "attempted": true,
+         "ok": true,
+         "error": null,
+         "coordinator_method": "async_stop_manual_motion",
+         "use_wifi": false,
+         "transport_preference": "ble_preferred",
+         "ack": {
+          "movement_ok": true
+         },
+         "duration_ms": 183.431
+        },
+        "feedback_refresh": {
+         "method": "request_reports_count_5",
+         "settle_seconds": 0.0,
+         "ok": true,
+         "error": null,
+         "duration_ms": 0.609
+        }
+       }
+      ]
+     },
+     "formula": "target_vision_heading = target_map_heading - (map_motion_heading - vision_heading)"
+    },
+    "initial_telemetry": {
+     "online": true,
+     "work_mode": 11,
+     "work_mode_label": "MODE_READY",
+     "charge_state": 0,
+     "charge_state_label": "not_charging",
+     "position": {
+      "x": 7.1134,
+      "y": -3.898,
+      "toward": -168.8465,
+      "source": "report_data.locations[0]",
+      "pos_level": 1,
+      "pos_level_label": "SINGLE",
+      "rtk_status": 4,
+      "rtk_status_label": "Fix",
+      "pos_type": 1,
+      "pos_type_label": "AREA_INSIDE",
+      "zone_hash": "1343645155037768237",
+      "map_bol_hash": "5126959670531450704",
+      "area_name": "Backyard Right",
+      "valid_for_motion": true
+     },
+     "position_candidates": [
+      {
+       "source": "mowing_state",
+       "x": 0.0,
+       "y": 0.0,
+       "toward": 0.0,
+       "pos_level": 0,
+       "pos_level_label": "FIX",
+       "rtk_status": 0,
+       "rtk_status_label": "None",
+       "pos_type": 0,
+       "pos_type_label": "AREA_OUT",
+       "zone_hash": 0,
+       "area_name": null,
+       "stale_zero_area_out": true,
+       "valid_for_motion": false
+      },
+      {
+       "source": "report_data.locations[0]",
+       "x": 7.1134,
+       "y": -3.898,
+       "toward": -168.8465,
+       "pos_level": null,
+       "pos_level_label": null,
+       "rtk_status": null,
+       "rtk_status_label": null,
+       "pos_type": 1,
+       "pos_type_label": "AREA_INSIDE",
+       "zone_hash": null,
+       "area_name": null,
+       "stale_zero_area_out": false,
+       "valid_for_motion": false
+      },
+      {
+       "source": "location_metadata",
+       "x": null,
+       "y": null,
+       "toward": -168,
+       "pos_level": null,
+       "pos_level_label": null,
+       "rtk_status": null,
+       "rtk_status_label": null,
+       "pos_type": 1,
+       "pos_type_label": "AREA_INSIDE",
+       "zone_hash": "1343645155037768237",
+       "area_name": "Backyard Right",
+       "stale_zero_area_out": false,
+       "valid_for_motion": false
+      },
+      {
+       "source": "report_data.rtk",
+       "x": null,
+       "y": null,
+       "toward": null,
+       "pos_level": 1,
+       "pos_level_label": "SINGLE",
+       "rtk_status": 4,
+       "rtk_status_label": "Fix",
+       "pos_type": null,
+       "pos_type_label": null,
+       "zone_hash": null,
+       "area_name": null,
+       "stale_zero_area_out": false,
+       "valid_for_motion": false
+      }
+     ],
+     "blade": {
+      "reported_state": 0,
+      "reported_state_label": "OFF",
+      "knife_status": null,
+      "current_cutter_mode": 0,
+      "current_cutter_rpm": 0
+     },
+     "transport": {
+      "ble_rssi": -66,
+      "wifi_rssi": -51,
+      "wifi_connect_status": null,
+      "iot_connect_status": null,
+      "connection_label": "WIFI/BLE"
+     }
+    },
+    "final_telemetry": {
+     "online": true,
+     "work_mode": 11,
+     "work_mode_label": "MODE_READY",
+     "charge_state": 0,
+     "charge_state_label": "not_charging",
+     "position": {
+      "x": 7.8976,
+      "y": -4.2381,
+      "toward": 106.2648,
+      "source": "report_data.locations[0]",
+      "pos_level": 1,
+      "pos_level_label": "SINGLE",
+      "rtk_status": 4,
+      "rtk_status_label": "Fix",
+      "pos_type": 1,
+      "pos_type_label": "AREA_INSIDE",
+      "zone_hash": "1343645155037768237",
+      "map_bol_hash": "5126959670531450704",
+      "area_name": "Backyard Right",
+      "valid_for_motion": true
+     },
+     "position_candidates": [
+      {
+       "source": "mowing_state",
+       "x": 0.0,
+       "y": 0.0,
+       "toward": 0.0,
+       "pos_level": 0,
+       "pos_level_label": "FIX",
+       "rtk_status": 0,
+       "rtk_status_label": "None",
+       "pos_type": 0,
+       "pos_type_label": "AREA_OUT",
+       "zone_hash": 0,
+       "area_name": null,
+       "stale_zero_area_out": true,
+       "valid_for_motion": false
+      },
+      {
+       "source": "report_data.locations[0]",
+       "x": 7.8976,
+       "y": -4.2381,
+       "toward": 106.2648,
+       "pos_level": null,
+       "pos_level_label": null,
+       "rtk_status": null,
+       "rtk_status_label": null,
+       "pos_type": 1,
+       "pos_type_label": "AREA_INSIDE",
+       "zone_hash": null,
+       "area_name": null,
+       "stale_zero_area_out": false,
+       "valid_for_motion": false
+      },
+      {
+       "source": "location_metadata",
+       "x": null,
+       "y": null,
+       "toward": 106,
+       "pos_level": null,
+       "pos_level_label": null,
+       "rtk_status": null,
+       "rtk_status_label": null,
+       "pos_type": 1,
+       "pos_type_label": "AREA_INSIDE",
+       "zone_hash": "1343645155037768237",
+       "area_name": "Backyard Right",
+       "stale_zero_area_out": false,
+       "valid_for_motion": false
+      },
+      {
+       "source": "report_data.rtk",
+       "x": null,
+       "y": null,
+       "toward": null,
+       "pos_level": 1,
+       "pos_level_label": "SINGLE",
+       "rtk_status": 4,
+       "rtk_status_label": "Fix",
+       "pos_type": null,
+       "pos_type_label": null,
+       "zone_hash": null,
+       "area_name": null,
+       "stale_zero_area_out": false,
+       "valid_for_motion": false
+      }
+     ],
+     "blade": {
+      "reported_state": 0,
+      "reported_state_label": "OFF",
+      "knife_status": null,
+      "current_cutter_mode": 0,
+      "current_cutter_rpm": 0
+     },
+     "transport": {
+      "ble_rssi": -70,
+      "wifi_rssi": -64,
+      "wifi_connect_status": null,
+      "iot_connect_status": null,
+      "connection_label": "WIFI/BLE"
+     }
+    },
+    "runtime_safety": {
+     "allowed_for_manual_motion": true,
+     "blockers": [],
+     "blade_safe_for_motion": true,
+     "active_mowing_detected": false,
+     "active_route_detected": false,
+     "active_route_status": {
+      "route_present": false,
+      "progress_present": false,
+      "progress_is_active": false,
+      "blocks_motion": false,
+      "reason": "no_route",
+      "ha_state": "paused",
+      "work_mode_label": "MODE_READY"
+     },
+     "position_valid_for_motion": true,
+     "rtk_report_age_seconds": null,
+     "rtk_report_quiet_threshold_seconds": 1800.0,
+     "rtk_report_quiet": false,
+     "rtk_status_label": "Fix",
+     "rtk_degraded": false,
+     "rtk_degraded_override": false
+    },
+    "queue_settle": {
+     "live": true,
+     "reason": null,
+     "is_connected": true,
+     "is_usable": true,
+     "cooldown_active": false,
+     "cooldown_remaining_seconds": 0.0,
+     "last_send_age_seconds": 2.1,
+     "queue_depth": 0,
+     "queue_dispatch_paused": false,
+     "saga_active": false,
+     "stall_threshold_seconds": 15.0,
+     "queue_depth_limit": 0
+    },
+    "safety_gates": [
+     {
+      "name": "stop_primitive_available",
+      "passed": true,
+      "detail": "Coordinator must expose async_stop_manual_motion()."
+     },
+     {
+      "name": "ble_transport_required",
+      "passed": true,
+      "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+     },
+     {
+      "name": "ble_link_live",
+      "passed": true,
+      "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+      "diagnostics": {
+       "live": true,
+       "reason": null,
+       "is_connected": true,
+       "is_usable": true,
+       "cooldown_active": false,
+       "cooldown_remaining_seconds": 0.0,
+       "last_send_age_seconds": 2.1,
+       "queue_depth": 0,
+       "queue_dispatch_paused": false,
+       "saga_active": false,
+       "stall_threshold_seconds": 15.0,
+       "queue_depth_limit": 0
+      }
+     },
+     {
+      "name": "operator_confirmed_blades_off",
+      "passed": true,
+      "detail": "Real pulse requires confirm_blades_off=true."
+     },
+     {
+      "name": "operator_confirmed_clear_area",
+      "passed": true,
+      "detail": "Real pulse requires confirm_clear_area=true."
+     },
+     {
+      "name": "mower_reports_blades_off",
+      "passed": true,
+      "detail": "Real pulse requires blade state off and cutter RPM zero/unknown."
+     },
+     {
+      "name": "mower_ready",
+      "passed": true,
+      "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+     },
+     {
+      "name": "not_docked_or_charging",
+      "passed": true,
+      "detail": "Real pulse requires the mower to be off the dock and not charging."
+     },
+     {
+      "name": "live_map_position_available",
+      "passed": true,
+      "detail": "Real pulse requires live map-local mower position."
+     },
+     {
+      "name": "position_area_inside",
+      "passed": true,
+      "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+     },
+     {
+      "name": "map_position_nonzero",
+      "passed": true,
+      "detail": "Real pulse requires nonzero map-local x/y coordinates."
+     },
+     {
+      "name": "segment_too_long",
+      "passed": true,
+      "detail": "Segment length is capped at 6.1 m by authorization, not by a measured reach limit; the longest segment ever executed is 4.0 m.",
+      "diagnostics": {
+       "segment_length_m": 0.9734801281998514,
+       "max_segment_length_m": 6.1
+      }
+     },
+     {
+      "name": "linear_budget_insufficient_for_segment",
+      "passed": true,
+      "detail": "22 linear pulses reach about 6.60 m at a stall-tolerant 0.3 m/pulse, short of this segment.",
+      "diagnostics": {
+       "segment_length_m": 0.9734801281998514,
+       "linear_pulse_ceiling": 22,
+       "budget_check_metres_per_pulse": 0.3,
+       "budget_reach_m": 6.6
+      }
+     }
+    ],
+    "blockers": [],
+    "commands_sent": 6,
+    "turn_commands_sent": 1,
+    "linear_commands_sent": 4,
+    "motion_refresh_interval_ms": 200,
+    "motion_refresh_commands_sent": 23,
+    "app_speed_scale": {
+     "available": true,
+     "linear_speed": 400,
+     "angular_speed": 500,
+     "app_max_linear_speed": 850,
+     "app_max_angular_speed": 382,
+     "linear_fraction_of_app_max": 0.471,
+     "angular_fraction_of_app_max": 1.309,
+     "linear_above_app_max": false,
+     "angular_above_app_max": true
+    },
+    "calibration_commands_sent": 1,
+    "realignments": [],
+    "command_results": [
+     {
+      "index": 1,
+      "phase": "vio_calibration_drive",
+      "command": "send_movement",
+      "kwargs": {
+       "linear_speed": 400,
+       "angular_speed": 0
+      },
+      "sent_at_utc": "2026-08-18T23:24:15.868688+00:00",
+      "ok": true,
+      "error": null,
+      "stop_result": {
+       "attempted": true,
+       "ok": true,
+       "error": null,
+       "coordinator_method": "async_stop_manual_motion",
+       "use_wifi": false,
+       "transport_preference": "ble_preferred",
+       "ack": {
+        "movement_ok": true
+       },
+       "duration_ms": 183.431
+      },
+      "feedback_refresh": {
+       "method": "request_reports_count_5",
+       "settle_seconds": 0.0,
+       "ok": true,
+       "error": null,
+       "duration_ms": 0.609
+      }
+     },
+     {
+      "index": 1,
+      "angular_speed": -500,
+      "pulse_duration_ms": 1500.0,
+      "before_vision_heading": -101.10467150168733,
+      "heading_error_before": 83.712,
+      "command": "send_movement",
+      "sent_at_utc": "2026-08-18T23:24:22.186751+00:00",
+      "ok": true,
+      "error": null,
+      "stop_ack": {
+       "movement_ok": true
+      },
+      "after_vision_heading": -17.501770442798627,
+      "measured_change_degrees": 83.603,
+      "heading_error_after": 0.109,
+      "progress_degrees": 83.603,
+      "displacement_m": 0.044298645577489484,
+      "heading_poll_seconds": 2.0,
+      "heading_went_fresh": true,
+      "motion_refresh": {
+       "refresh_enabled": true,
+       "refresh_interval_ms": 200,
+       "refresh_commands_sent": 7,
+       "refresh_command_limit": null,
+       "refresh_write_durations_ms": [
+        386.887,
+        188.315,
+        132.143,
+        178.165,
+        199.034,
+        142.221,
+        293.548
+       ],
+       "max_refresh_commands": 7,
+       "elapsed_ms": 1720.94
+      },
+      "final_approach": {
+       "applied": false,
+       "reason": "cruising_full_pulse_fits",
+       "heading_error_degrees": 83.7118018840307,
+       "heading_tolerance_degrees": 18.0,
+       "degrees_per_second": 37.0,
+       "degrees_per_second_source": "default",
+       "sweep_bound_degrees_per_second": 40.0,
+       "sweep_bound_offset_degrees": 12.0,
+       "max_allowed_sweep_degrees": 101.712,
+       "ceiling_pulse_duration_ms": 2242.8,
+       "pulse_duration_ms": 1500.0,
+       "ceiling_below_actuation_floor": false,
+       "sweep_exceeds_any_pulse": false
+      },
+      "heading_poll_count": 1,
+      "heading_poll_feed_alive": true,
+      "longest_refresh_write_ms": 386.887,
+      "refresh_cadence_broken": false
+     },
+     {
+      "index": 1,
+      "phase": "linear_forward_to_target",
+      "attempted": true,
+      "ok": true,
+      "ack": null,
+      "error": null,
+      "duration_ms": 184.848,
+      "command": "send_movement",
+      "sent_at_utc": "2026-08-18T23:24:26.507715+00:00",
+      "prefer_ble": true,
+      "kwargs": {
+       "linear_speed": 400,
+       "angular_speed": 0
+      },
+      "selection": {
+       "command": "send_movement",
+       "linear_speed": 400,
+       "angular_speed": 0,
+       "distance_to_target": 0.9848498058079719,
+       "speed_tier": "fast",
+       "slow_linear_threshold": 0.15,
+       "reason": "target_remaining"
+      },
+      "final_approach": {
+       "applied": true,
+       "reason": "final_approach_bounded_by_refresh_count",
+       "distance_to_target": 0.9848498058079719,
+       "metres_per_pulse": 1.06,
+       "metres_per_pulse_source": "default",
+       "pulse_duration_ms": 1300.0,
+       "refresh_command_limit": 10,
+       "full_pulse_refresh_commands": 10,
+       "target_nonzero_writes": 11
+      },
+      "motion_refresh": {
+       "refresh_enabled": true,
+       "refresh_interval_ms": 200,
+       "refresh_commands_sent": 6,
+       "refresh_command_limit": 10,
+       "refresh_write_durations_ms": [
+        376.847,
+        97.597,
+        104.942,
+        232.993,
+        151.459,
+        89.103
+       ],
+       "max_refresh_commands": 6,
+       "elapsed_ms": 1289.728
+      },
+      "stop_result": {
+       "attempted": true,
+       "ok": true,
+       "error": null,
+       "coordinator_method": "async_stop_manual_motion",
+       "use_wifi": false,
+       "transport_preference": "ble_preferred",
+       "ack": {
+        "movement_ok": true
+       },
+       "duration_ms": 96.901
+      },
+      "post_command_feedback_refresh": {
+       "method": "request_reports_count_5",
+       "settle_seconds": 0.0,
+       "ok": true,
+       "error": null,
+       "duration_ms": 0.538
+      },
+      "position_settled": true,
+      "position_moved": true,
+      "position_settle_wait_seconds": 3.01,
+      "position_feed_stale": false,
+      "position_settle_polls": 3,
+      "post_feedback_queue_settle": {
+       "live": true,
+       "reason": null,
+       "is_connected": true,
+       "is_usable": true,
+       "cooldown_active": false,
+       "cooldown_remaining_seconds": 0.0,
+       "last_send_age_seconds": 0.1,
+       "queue_depth": 0,
+       "queue_dispatch_paused": false,
+       "saga_active": false,
+       "stall_threshold_seconds": 15.0,
+       "queue_depth_limit": 0,
+       "duration_ms": 100.486
+      },
+      "position_source_comparison": {
+       "locations_xy": [
+        7.3227,
+        -4.0778
+       ],
+       "locations_stale_zero": false,
+       "mowing_state_xy": [
+        0.0,
+        0.0
+       ],
+       "agreement_m": 8.3816,
+       "rtk_status": 0,
+       "pos_level": 0,
+       "pos_type": 0,
+       "zone_hash": 0
+      },
+      "post_settle_feedback": {
+       "source": "position_settle",
+       "additional_wait_seconds": 0.0,
+       "requested_sample_delays_skipped": [
+        0.0,
+        3.0
+       ]
+      },
+      "final_approach_observation": {
+       "measured_distance": 0.27207405241955746,
+       "nonzero_writes": 7,
+       "normalised_metres_per_eleven_writes": 0.4275
+      }
+     },
+     {
+      "index": 2,
+      "phase": "linear_forward_to_target",
+      "attempted": true,
+      "ok": true,
+      "ack": null,
+      "error": null,
+      "duration_ms": 509.614,
+      "command": "send_movement",
+      "sent_at_utc": "2026-08-18T23:24:31.186933+00:00",
+      "prefer_ble": true,
+      "kwargs": {
+       "linear_speed": 400,
+       "angular_speed": 0
+      },
+      "selection": {
+       "command": "send_movement",
+       "linear_speed": 400,
+       "angular_speed": 0,
+       "distance_to_target": 0.7128170382363203,
+       "speed_tier": "fast",
+       "slow_linear_threshold": 0.15,
+       "reason": "target_remaining"
+      },
+      "final_approach": {
+       "applied": true,
+       "reason": "final_approach_bounded_by_refresh_count",
+       "distance_to_target": 0.7128170382363203,
+       "metres_per_pulse": 1.06,
+       "metres_per_pulse_source": "default_conservative_floor",
+       "pulse_duration_ms": 1300.0,
+       "refresh_command_limit": 7,
+       "full_pulse_refresh_commands": 10,
+       "observed_metres_per_pulse": 0.4275,
+       "target_nonzero_writes": 8
+      },
+      "motion_refresh": {
+       "refresh_enabled": true,
+       "refresh_interval_ms": 200,
+       "refresh_commands_sent": 6,
+       "refresh_command_limit": 7,
+       "refresh_write_durations_ms": [
+        205.455,
+        73.853,
+        84.631,
+        188.366,
+        82.02,
+        325.028
+       ],
+       "max_refresh_commands": 6,
+       "elapsed_ms": 1525.946
+      },
+      "stop_result": {
+       "attempted": true,
+       "ok": true,
+       "error": null,
+       "coordinator_method": "async_stop_manual_motion",
+       "use_wifi": false,
+       "transport_preference": "ble_preferred",
+       "ack": {
+        "movement_ok": true
+       },
+       "duration_ms": 191.686
+      },
+      "post_command_feedback_refresh": {
+       "method": "request_reports_count_5",
+       "settle_seconds": 0.0,
+       "ok": true,
+       "error": null,
+       "duration_ms": 0.603
+      },
+      "position_settled": true,
+      "position_moved": true,
+      "position_settle_wait_seconds": 3.01,
+      "position_feed_stale": false,
+      "position_settle_polls": 3,
+      "post_feedback_queue_settle": {
+       "live": true,
+       "reason": null,
+       "is_connected": true,
+       "is_usable": true,
+       "cooldown_active": false,
+       "cooldown_remaining_seconds": 0.0,
+       "last_send_age_seconds": 0.1,
+       "queue_depth": 0,
+       "queue_dispatch_paused": false,
+       "saga_active": false,
+       "stall_threshold_seconds": 15.0,
+       "queue_depth_limit": 0,
+       "duration_ms": 101.118
+      },
+      "position_source_comparison": {
+       "locations_xy": [
+        7.6859,
+        -4.1771
+       ],
+       "locations_stale_zero": false,
+       "mowing_state_xy": [
+        0.0,
+        0.0
+       ],
+       "agreement_m": 8.7476,
+       "rtk_status": 0,
+       "pos_level": 0,
+       "pos_type": 0,
+       "zone_hash": 0
+      },
+      "post_settle_feedback": {
+       "source": "position_settle",
+       "additional_wait_seconds": 0.0,
+       "requested_sample_delays_skipped": [
+        0.0,
+        3.0
+       ]
+      },
+      "final_approach_observation": {
+       "measured_distance": 0.3765298527341492,
+       "nonzero_writes": 7,
+       "normalised_metres_per_eleven_writes": 0.5917
+      }
+     },
+     {
+      "index": 3,
+      "phase": "linear_forward_to_target",
+      "attempted": true,
+      "ok": true,
+      "ack": null,
+      "error": null,
+      "duration_ms": 259.637,
+      "command": "send_movement",
+      "sent_at_utc": "2026-08-18T23:24:36.523060+00:00",
+      "prefer_ble": true,
+      "kwargs": {
+       "linear_speed": 400,
+       "angular_speed": 0
+      },
+      "selection": {
+       "command": "send_movement",
+       "linear_speed": 400,
+       "angular_speed": 0,
+       "distance_to_target": 0.33728803714332917,
+       "speed_tier": "fast",
+       "slow_linear_threshold": 0.15,
+       "reason": "target_remaining"
+      },
+      "final_approach": {
+       "applied": true,
+       "reason": "final_approach_bounded_by_refresh_count",
+       "distance_to_target": 0.33728803714332917,
+       "metres_per_pulse": 1.06,
+       "metres_per_pulse_source": "default_conservative_floor",
+       "pulse_duration_ms": 1300.0,
+       "refresh_command_limit": 3,
+       "full_pulse_refresh_commands": 10,
+       "observed_metres_per_pulse": 0.5096,
+       "target_nonzero_writes": 4
+      },
+      "motion_refresh": {
+       "refresh_enabled": true,
+       "refresh_interval_ms": 200,
+       "refresh_commands_sent": 3,
+       "refresh_command_limit": 3,
+       "refresh_write_durations_ms": [
+        242.76,
+        173.786,
+        124.654
+       ],
+       "max_refresh_commands": 3,
+       "elapsed_ms": 742.168
+      },
+      "stop_result": {
+       "attempted": true,
+       "ok": true,
+       "error": null,
+       "coordinator_method": "async_stop_manual_motion",
+       "use_wifi": false,
+       "transport_preference": "ble_preferred",
+       "ack": {
+        "movement_ok": true
+       },
+       "duration_ms": 181.22
+      },
+      "post_command_feedback_refresh": {
+       "method": "request_reports_count_5",
+       "settle_seconds": 0.0,
+       "ok": true,
+       "error": null,
+       "duration_ms": 0.487
+      },
+      "position_settled": true,
+      "position_moved": true,
+      "position_settle_wait_seconds": 3.01,
+      "position_feed_stale": false,
+      "position_settle_polls": 3,
+      "post_feedback_queue_settle": {
+       "live": true,
+       "reason": null,
+       "is_connected": true,
+       "is_usable": true,
+       "cooldown_active": false,
+       "cooldown_remaining_seconds": 0.0,
+       "last_send_age_seconds": 0.1,
+       "queue_depth": 0,
+       "queue_dispatch_paused": false,
+       "saga_active": false,
+       "stall_threshold_seconds": 15.0,
+       "queue_depth_limit": 0,
+       "duration_ms": 101.967
+      },
+      "position_source_comparison": {
+       "locations_xy": [
+        7.8483,
+        -4.2234
+       ],
+       "locations_stale_zero": false,
+       "mowing_state_xy": [
+        0.0,
+        0.0
+       ],
+       "agreement_m": 8.9125,
+       "rtk_status": 0,
+       "pos_level": 0,
+       "pos_type": 0,
+       "zone_hash": 0
+      },
+      "post_settle_feedback": {
+       "source": "position_settle",
+       "additional_wait_seconds": 0.0,
+       "requested_sample_delays_skipped": [
+        0.0,
+        3.0
+       ]
+      },
+      "final_approach_observation": {
+       "measured_distance": 0.16887110469230643,
+       "nonzero_writes": 4,
+       "normalised_metres_per_eleven_writes": 0.4644
+      }
+     },
+     {
+      "index": 4,
+      "phase": "linear_forward_to_target",
+      "attempted": true,
+      "ok": true,
+      "ack": null,
+      "error": null,
+      "duration_ms": 475.133,
+      "command": "send_movement",
+      "sent_at_utc": "2026-08-18T23:24:40.815900+00:00",
+      "prefer_ble": true,
+      "kwargs": {
+       "linear_speed": 400,
+       "angular_speed": 0
+      },
+      "selection": {
+       "command": "send_movement",
+       "linear_speed": 400,
+       "angular_speed": 0,
+       "distance_to_target": 0.16994249027244476,
+       "speed_tier": "fast",
+       "slow_linear_threshold": 0.15,
+       "reason": "target_remaining"
+      },
+      "final_approach": {
+       "applied": true,
+       "reason": "final_approach_bounded_by_refresh_count",
+       "distance_to_target": 0.16994249027244476,
+       "metres_per_pulse": 1.06,
+       "metres_per_pulse_source": "default_conservative_floor",
+       "pulse_duration_ms": 1300.0,
+       "refresh_command_limit": 1,
+       "full_pulse_refresh_commands": 10,
+       "observed_metres_per_pulse": 0.4945,
+       "target_nonzero_writes": 2
+      },
+      "motion_refresh": {
+       "refresh_enabled": true,
+       "refresh_interval_ms": 200,
+       "refresh_commands_sent": 1,
+       "refresh_command_limit": 1,
+       "refresh_write_durations_ms": [
+        103.8
+       ],
+       "max_refresh_commands": 1,
+       "elapsed_ms": 304.201
+      },
+      "stop_result": {
+       "attempted": true,
+       "ok": true,
+       "error": null,
+       "coordinator_method": "async_stop_manual_motion",
+       "use_wifi": false,
+       "transport_preference": "ble_preferred",
+       "ack": {
+        "movement_ok": true
+       },
+       "duration_ms": 100.814
+      },
+      "post_command_feedback_refresh": {
+       "method": "request_reports_count_5",
+       "settle_seconds": 0.0,
+       "ok": true,
+       "error": null,
+       "duration_ms": 0.483
+      },
+      "position_settled": true,
+      "position_moved": true,
+      "position_settle_wait_seconds": 3.01,
+      "position_feed_stale": false,
+      "position_settle_polls": 3,
+      "post_feedback_queue_settle": {
+       "live": true,
+       "reason": null,
+       "is_connected": true,
+       "is_usable": true,
+       "cooldown_active": false,
+       "cooldown_remaining_seconds": 0.0,
+       "last_send_age_seconds": 0.1,
+       "queue_depth": 0,
+       "queue_dispatch_paused": false,
+       "saga_active": false,
+       "stall_threshold_seconds": 15.0,
+       "queue_depth_limit": 0,
+       "duration_ms": 101.433
+      },
+      "position_source_comparison": {
+       "locations_xy": [
+        7.8976,
+        -4.2381
+       ],
+       "locations_stale_zero": false,
+       "mowing_state_xy": [
+        0.0,
+        0.0
+       ],
+       "agreement_m": 8.9629,
+       "rtk_status": 0,
+       "pos_level": 0,
+       "pos_type": 0,
+       "zone_hash": 0
+      },
+      "post_settle_feedback": {
+       "source": "position_settle",
+       "additional_wait_seconds": 0.0,
+       "requested_sample_delays_skipped": [
+        0.0,
+        3.0
+       ]
+      },
+      "final_approach_observation": {
+       "measured_distance": 0.0514449220040227,
+       "nonzero_writes": 2,
+       "normalised_metres_per_eleven_writes": 0.2829
+      }
+     }
+    ],
+    "samples": [
+     {
+      "label": "initial",
+      "telemetry": {
+       "online": true,
+       "work_mode": 11,
+       "work_mode_label": "MODE_READY",
+       "charge_state": 0,
+       "charge_state_label": "not_charging",
+       "position": {
+        "x": 7.1134,
+        "y": -3.898,
+        "toward": -168.8465,
+        "source": "report_data.locations[0]",
+        "pos_level": 1,
+        "pos_level_label": "SINGLE",
+        "rtk_status": 4,
+        "rtk_status_label": "Fix",
+        "pos_type": 1,
+        "pos_type_label": "AREA_INSIDE",
+        "zone_hash": "1343645155037768237",
+        "map_bol_hash": "5126959670531450704",
+        "area_name": "Backyard Right",
+        "valid_for_motion": true
+       },
+       "position_candidates": [
+        {
+         "source": "mowing_state",
+         "x": 0.0,
+         "y": 0.0,
+         "toward": 0.0,
+         "pos_level": 0,
+         "pos_level_label": "FIX",
+         "rtk_status": 0,
+         "rtk_status_label": "None",
+         "pos_type": 0,
+         "pos_type_label": "AREA_OUT",
+         "zone_hash": 0,
+         "area_name": null,
+         "stale_zero_area_out": true,
+         "valid_for_motion": false
+        },
+        {
+         "source": "report_data.locations[0]",
+         "x": 7.1134,
+         "y": -3.898,
+         "toward": -168.8465,
+         "pos_level": null,
+         "pos_level_label": null,
+         "rtk_status": null,
+         "rtk_status_label": null,
+         "pos_type": 1,
+         "pos_type_label": "AREA_INSIDE",
+         "zone_hash": null,
+         "area_name": null,
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        },
+        {
+         "source": "location_metadata",
+         "x": null,
+         "y": null,
+         "toward": -168,
+         "pos_level": null,
+         "pos_level_label": null,
+         "rtk_status": null,
+         "rtk_status_label": null,
+         "pos_type": 1,
+         "pos_type_label": "AREA_INSIDE",
+         "zone_hash": "1343645155037768237",
+         "area_name": "Backyard Right",
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        },
+        {
+         "source": "report_data.rtk",
+         "x": null,
+         "y": null,
+         "toward": null,
+         "pos_level": 1,
+         "pos_level_label": "SINGLE",
+         "rtk_status": 4,
+         "rtk_status_label": "Fix",
+         "pos_type": null,
+         "pos_type_label": null,
+         "zone_hash": null,
+         "area_name": null,
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        }
+       ],
+       "blade": {
+        "reported_state": 0,
+        "reported_state_label": "OFF",
+        "knife_status": null,
+        "current_cutter_mode": 0,
+        "current_cutter_rpm": 0
+       },
+       "transport": {
+        "ble_rssi": -66,
+        "wifi_rssi": -51,
+        "wifi_connect_status": null,
+        "iot_connect_status": null,
+        "connection_label": "WIFI/BLE"
+       }
+      }
+     },
+     {
+      "label": "linear_1_position_settled",
+      "command_index": 1,
+      "delay_seconds": 3.01,
+      "source": "position_settle",
+      "telemetry": {
+       "online": true,
+       "work_mode": 11,
+       "work_mode_label": "MODE_READY",
+       "charge_state": 0,
+       "charge_state_label": "not_charging",
+       "position": {
+        "x": 7.3227,
+        "y": -4.0778,
+        "toward": 107.5119,
+        "source": "report_data.locations[0]",
+        "pos_level": 1,
+        "pos_level_label": "SINGLE",
+        "rtk_status": 4,
+        "rtk_status_label": "Fix",
+        "pos_type": 1,
+        "pos_type_label": "AREA_INSIDE",
+        "zone_hash": "1343645155037768237",
+        "map_bol_hash": "5126959670531450704",
+        "area_name": "Backyard Right",
+        "valid_for_motion": true
+       },
+       "position_candidates": [
+        {
+         "source": "mowing_state",
+         "x": 0.0,
+         "y": 0.0,
+         "toward": 0.0,
+         "pos_level": 0,
+         "pos_level_label": "FIX",
+         "rtk_status": 0,
+         "rtk_status_label": "None",
+         "pos_type": 0,
+         "pos_type_label": "AREA_OUT",
+         "zone_hash": 0,
+         "area_name": null,
+         "stale_zero_area_out": true,
+         "valid_for_motion": false
+        },
+        {
+         "source": "report_data.locations[0]",
+         "x": 7.3227,
+         "y": -4.0778,
+         "toward": 107.5119,
+         "pos_level": null,
+         "pos_level_label": null,
+         "rtk_status": null,
+         "rtk_status_label": null,
+         "pos_type": 1,
+         "pos_type_label": "AREA_INSIDE",
+         "zone_hash": null,
+         "area_name": null,
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        },
+        {
+         "source": "location_metadata",
+         "x": null,
+         "y": null,
+         "toward": 107,
+         "pos_level": null,
+         "pos_level_label": null,
+         "rtk_status": null,
+         "rtk_status_label": null,
+         "pos_type": 1,
+         "pos_type_label": "AREA_INSIDE",
+         "zone_hash": "1343645155037768237",
+         "area_name": "Backyard Right",
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        },
+        {
+         "source": "report_data.rtk",
+         "x": null,
+         "y": null,
+         "toward": null,
+         "pos_level": 1,
+         "pos_level_label": "SINGLE",
+         "rtk_status": 4,
+         "rtk_status_label": "Fix",
+         "pos_type": null,
+         "pos_type_label": null,
+         "zone_hash": null,
+         "area_name": null,
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        }
+       ],
+       "blade": {
+        "reported_state": 0,
+        "reported_state_label": "OFF",
+        "knife_status": null,
+        "current_cutter_mode": 0,
+        "current_cutter_rpm": 0
+       },
+       "transport": {
+        "ble_rssi": -64,
+        "wifi_rssi": -57,
+        "wifi_connect_status": null,
+        "iot_connect_status": null,
+        "connection_label": "WIFI/BLE"
+       }
+      }
+     },
+     {
+      "label": "linear_2_position_settled",
+      "command_index": 2,
+      "delay_seconds": 3.01,
+      "source": "position_settle",
+      "telemetry": {
+       "online": true,
+       "work_mode": 11,
+       "work_mode_label": "MODE_READY",
+       "charge_state": 0,
+       "charge_state_label": "not_charging",
+       "position": {
+        "x": 7.6859,
+        "y": -4.1771,
+        "toward": 107.5119,
+        "source": "report_data.locations[0]",
+        "pos_level": 1,
+        "pos_level_label": "SINGLE",
+        "rtk_status": 4,
+        "rtk_status_label": "Fix",
+        "pos_type": 1,
+        "pos_type_label": "AREA_INSIDE",
+        "zone_hash": "1343645155037768237",
+        "map_bol_hash": "5126959670531450704",
+        "area_name": "Backyard Right",
+        "valid_for_motion": true
+       },
+       "position_candidates": [
+        {
+         "source": "mowing_state",
+         "x": 0.0,
+         "y": 0.0,
+         "toward": 0.0,
+         "pos_level": 0,
+         "pos_level_label": "FIX",
+         "rtk_status": 0,
+         "rtk_status_label": "None",
+         "pos_type": 0,
+         "pos_type_label": "AREA_OUT",
+         "zone_hash": 0,
+         "area_name": null,
+         "stale_zero_area_out": true,
+         "valid_for_motion": false
+        },
+        {
+         "source": "report_data.locations[0]",
+         "x": 7.6859,
+         "y": -4.1771,
+         "toward": 107.5119,
+         "pos_level": null,
+         "pos_level_label": null,
+         "rtk_status": null,
+         "rtk_status_label": null,
+         "pos_type": 1,
+         "pos_type_label": "AREA_INSIDE",
+         "zone_hash": null,
+         "area_name": null,
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        },
+        {
+         "source": "location_metadata",
+         "x": null,
+         "y": null,
+         "toward": 107,
+         "pos_level": null,
+         "pos_level_label": null,
+         "rtk_status": null,
+         "rtk_status_label": null,
+         "pos_type": 1,
+         "pos_type_label": "AREA_INSIDE",
+         "zone_hash": "1343645155037768237",
+         "area_name": "Backyard Right",
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        },
+        {
+         "source": "report_data.rtk",
+         "x": null,
+         "y": null,
+         "toward": null,
+         "pos_level": 1,
+         "pos_level_label": "SINGLE",
+         "rtk_status": 4,
+         "rtk_status_label": "Fix",
+         "pos_type": null,
+         "pos_type_label": null,
+         "zone_hash": null,
+         "area_name": null,
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        }
+       ],
+       "blade": {
+        "reported_state": 0,
+        "reported_state_label": "OFF",
+        "knife_status": null,
+        "current_cutter_mode": 0,
+        "current_cutter_rpm": 0
+       },
+       "transport": {
+        "ble_rssi": -66,
+        "wifi_rssi": -61,
+        "wifi_connect_status": null,
+        "iot_connect_status": null,
+        "connection_label": "WIFI/BLE"
+       }
+      }
+     },
+     {
+      "label": "linear_3_position_settled",
+      "command_index": 3,
+      "delay_seconds": 3.01,
+      "source": "position_settle",
+      "telemetry": {
+       "online": true,
+       "work_mode": 11,
+       "work_mode_label": "MODE_READY",
+       "charge_state": 0,
+       "charge_state_label": "not_charging",
+       "position": {
+        "x": 7.8483,
+        "y": -4.2234,
+        "toward": 107.5119,
+        "source": "report_data.locations[0]",
+        "pos_level": 1,
+        "pos_level_label": "SINGLE",
+        "rtk_status": 4,
+        "rtk_status_label": "Fix",
+        "pos_type": 1,
+        "pos_type_label": "AREA_INSIDE",
+        "zone_hash": "1343645155037768237",
+        "map_bol_hash": "5126959670531450704",
+        "area_name": "Backyard Right",
+        "valid_for_motion": true
+       },
+       "position_candidates": [
+        {
+         "source": "mowing_state",
+         "x": 0.0,
+         "y": 0.0,
+         "toward": 0.0,
+         "pos_level": 0,
+         "pos_level_label": "FIX",
+         "rtk_status": 0,
+         "rtk_status_label": "None",
+         "pos_type": 0,
+         "pos_type_label": "AREA_OUT",
+         "zone_hash": 0,
+         "area_name": null,
+         "stale_zero_area_out": true,
+         "valid_for_motion": false
+        },
+        {
+         "source": "report_data.locations[0]",
+         "x": 7.8483,
+         "y": -4.2234,
+         "toward": 107.5119,
+         "pos_level": null,
+         "pos_level_label": null,
+         "rtk_status": null,
+         "rtk_status_label": null,
+         "pos_type": 1,
+         "pos_type_label": "AREA_INSIDE",
+         "zone_hash": null,
+         "area_name": null,
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        },
+        {
+         "source": "location_metadata",
+         "x": null,
+         "y": null,
+         "toward": 107,
+         "pos_level": null,
+         "pos_level_label": null,
+         "rtk_status": null,
+         "rtk_status_label": null,
+         "pos_type": 1,
+         "pos_type_label": "AREA_INSIDE",
+         "zone_hash": "1343645155037768237",
+         "area_name": "Backyard Right",
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        },
+        {
+         "source": "report_data.rtk",
+         "x": null,
+         "y": null,
+         "toward": null,
+         "pos_level": 1,
+         "pos_level_label": "SINGLE",
+         "rtk_status": 4,
+         "rtk_status_label": "Fix",
+         "pos_type": null,
+         "pos_type_label": null,
+         "zone_hash": null,
+         "area_name": null,
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        }
+       ],
+       "blade": {
+        "reported_state": 0,
+        "reported_state_label": "OFF",
+        "knife_status": null,
+        "current_cutter_mode": 0,
+        "current_cutter_rpm": 0
+       },
+       "transport": {
+        "ble_rssi": -70,
+        "wifi_rssi": -61,
+        "wifi_connect_status": null,
+        "iot_connect_status": null,
+        "connection_label": "WIFI/BLE"
+       }
+      }
+     },
+     {
+      "label": "linear_4_position_settled",
+      "command_index": 4,
+      "delay_seconds": 3.01,
+      "source": "position_settle",
+      "telemetry": {
+       "online": true,
+       "work_mode": 11,
+       "work_mode_label": "MODE_READY",
+       "charge_state": 0,
+       "charge_state_label": "not_charging",
+       "position": {
+        "x": 7.8976,
+        "y": -4.2381,
+        "toward": 106.2648,
+        "source": "report_data.locations[0]",
+        "pos_level": 1,
+        "pos_level_label": "SINGLE",
+        "rtk_status": 4,
+        "rtk_status_label": "Fix",
+        "pos_type": 1,
+        "pos_type_label": "AREA_INSIDE",
+        "zone_hash": "1343645155037768237",
+        "map_bol_hash": "5126959670531450704",
+        "area_name": "Backyard Right",
+        "valid_for_motion": true
+       },
+       "position_candidates": [
+        {
+         "source": "mowing_state",
+         "x": 0.0,
+         "y": 0.0,
+         "toward": 0.0,
+         "pos_level": 0,
+         "pos_level_label": "FIX",
+         "rtk_status": 0,
+         "rtk_status_label": "None",
+         "pos_type": 0,
+         "pos_type_label": "AREA_OUT",
+         "zone_hash": 0,
+         "area_name": null,
+         "stale_zero_area_out": true,
+         "valid_for_motion": false
+        },
+        {
+         "source": "report_data.locations[0]",
+         "x": 7.8976,
+         "y": -4.2381,
+         "toward": 106.2648,
+         "pos_level": null,
+         "pos_level_label": null,
+         "rtk_status": null,
+         "rtk_status_label": null,
+         "pos_type": 1,
+         "pos_type_label": "AREA_INSIDE",
+         "zone_hash": null,
+         "area_name": null,
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        },
+        {
+         "source": "location_metadata",
+         "x": null,
+         "y": null,
+         "toward": 106,
+         "pos_level": null,
+         "pos_level_label": null,
+         "rtk_status": null,
+         "rtk_status_label": null,
+         "pos_type": 1,
+         "pos_type_label": "AREA_INSIDE",
+         "zone_hash": "1343645155037768237",
+         "area_name": "Backyard Right",
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        },
+        {
+         "source": "report_data.rtk",
+         "x": null,
+         "y": null,
+         "toward": null,
+         "pos_level": 1,
+         "pos_level_label": "SINGLE",
+         "rtk_status": 4,
+         "rtk_status_label": "Fix",
+         "pos_type": null,
+         "pos_type_label": null,
+         "zone_hash": null,
+         "area_name": null,
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        }
+       ],
+       "blade": {
+        "reported_state": 0,
+        "reported_state_label": "OFF",
+        "knife_status": null,
+        "current_cutter_mode": 0,
+        "current_cutter_rpm": 0
+       },
+       "transport": {
+        "ble_rssi": -70,
+        "wifi_rssi": -64,
+        "wifi_connect_status": null,
+        "iot_connect_status": null,
+        "connection_label": "WIFI/BLE"
+       }
+      }
+     }
+    ],
+    "phases": [
+     {
+      "name": "turn_to_target_heading",
+      "turn_mode": "vio",
+      "passed": true,
+      "result": {
+       "service": "vio_turn_to_heading",
+       "mode": "real_vio_turn_to_heading",
+       "dry_run": false,
+       "real_execution_scope": "vio_turn_to_heading_only",
+       "path_execution_allowed": false,
+       "target_vision_heading": 342.60713038234337,
+       "heading_tolerance_degrees": 18.0,
+       "angular_speed": 500,
+       "pulse_duration_ms": 1500,
+       "slow_pulse_duration_ms": 700,
+       "slow_threshold_degrees": 15.0,
+       "refresh_wait_seconds": 2.0,
+       "effective_poll_interval_seconds": 2.0,
+       "fresh_heading_timeout_seconds": 8.0,
+       "max_commands": 4,
+       "min_progress_degrees": 2.0,
+       "max_no_progress_pulses": 2,
+       "max_displacement_m": 0.3,
+       "invert_direction": false,
+       "motion_refresh_interval_ms": 200,
+       "motion_refresh_commands_sent": 7,
+       "refresh_cadence_broken_pulses": 0,
+       "prefer_ble": true,
+       "confirm_blades_off": true,
+       "confirm_clear_area": true,
+       "active_transport": "ble",
+       "initial_vision_heading": -101.10467150168733,
+       "initial_vio_state": 2,
+       "initial_vio_feed": {
+        "live": true,
+        "tracked_features": 80,
+        "brightness_raw": 1,
+        "brightness_label": "Light"
+       },
+       "initial_heading_error_degrees": 83.712,
+       "safety_gates": [
+        {
+         "name": "stop_primitive_available",
+         "passed": true,
+         "detail": "Coordinator must expose async_stop_manual_motion()."
+        },
+        {
+         "name": "ble_transport_required",
+         "passed": true,
+         "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+        },
+        {
+         "name": "ble_link_live",
+         "passed": true,
+         "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+         "diagnostics": {
+          "live": true,
+          "reason": null,
+          "is_connected": true,
+          "is_usable": true,
+          "cooldown_active": false,
+          "cooldown_remaining_seconds": 0.0,
+          "last_send_age_seconds": 3.2,
+          "queue_depth": 0,
+          "queue_dispatch_paused": false,
+          "saga_active": false,
+          "stall_threshold_seconds": 15.0,
+          "queue_depth_limit": 0
+         }
+        },
+        {
+         "name": "operator_confirmed_blades_off",
+         "passed": true,
+         "detail": "Real pulse requires confirm_blades_off=true."
+        },
+        {
+         "name": "operator_confirmed_clear_area",
+         "passed": true,
+         "detail": "Real pulse requires confirm_clear_area=true."
+        },
+        {
+         "name": "mower_reports_blades_off",
+         "passed": true,
+         "detail": "Real pulse requires blade state off and cutter RPM zero/unknown."
+        },
+        {
+         "name": "mower_ready",
+         "passed": true,
+         "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+        },
+        {
+         "name": "not_docked_or_charging",
+         "passed": true,
+         "detail": "Real pulse requires the mower to be off the dock and not charging."
+        },
+        {
+         "name": "live_map_position_available",
+         "passed": true,
+         "detail": "Real pulse requires live map-local mower position."
+        },
+        {
+         "name": "position_area_inside",
+         "passed": true,
+         "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+        },
+        {
+         "name": "map_position_nonzero",
+         "passed": true,
+         "detail": "Real pulse requires nonzero map-local x/y coordinates."
+        }
+       ],
+       "runtime_safety": {
+        "allowed_for_manual_motion": true,
+        "blockers": [],
+        "blade_safe_for_motion": true,
+        "active_mowing_detected": false,
+        "active_route_detected": false,
+        "active_route_status": {
+         "route_present": false,
+         "progress_present": false,
+         "progress_is_active": false,
+         "blocks_motion": false,
+         "reason": "no_route",
+         "ha_state": "paused",
+         "work_mode_label": "MODE_READY"
+        },
+        "position_valid_for_motion": true,
+        "rtk_report_age_seconds": null,
+        "rtk_report_quiet_threshold_seconds": 1800.0,
+        "rtk_report_quiet": false,
+        "rtk_status_label": "Fix",
+        "rtk_degraded": false,
+        "rtk_degraded_override": false
+       },
+       "blockers": [],
+       "would_send": true,
+       "planned_command": {
+        "command": "send_movement",
+        "kwargs": {
+         "linear_speed": 0,
+         "angular_speed": -500
+        }
+       },
+       "commands_sent": 1,
+       "command_results": [
+        {
+         "index": 1,
+         "angular_speed": -500,
+         "pulse_duration_ms": 1500.0,
+         "before_vision_heading": -101.10467150168733,
+         "heading_error_before": 83.712,
+         "command": "send_movement",
+         "sent_at_utc": "2026-08-18T23:24:22.186751+00:00",
+         "ok": true,
+         "error": null,
+         "stop_ack": {
+          "movement_ok": true
+         },
+         "after_vision_heading": -17.501770442798627,
+         "measured_change_degrees": 83.603,
+         "heading_error_after": 0.109,
+         "progress_degrees": 83.603,
+         "displacement_m": 0.044298645577489484,
+         "heading_poll_seconds": 2.0,
+         "heading_went_fresh": true,
+         "motion_refresh": {
+          "refresh_enabled": true,
+          "refresh_interval_ms": 200,
+          "refresh_commands_sent": 7,
+          "refresh_command_limit": null,
+          "refresh_write_durations_ms": [
+           386.887,
+           188.315,
+           132.143,
+           178.165,
+           199.034,
+           142.221,
+           293.548
+          ],
+          "max_refresh_commands": 7,
+          "elapsed_ms": 1720.94
+         },
+         "final_approach": {
+          "applied": false,
+          "reason": "cruising_full_pulse_fits",
+          "heading_error_degrees": 83.7118018840307,
+          "heading_tolerance_degrees": 18.0,
+          "degrees_per_second": 37.0,
+          "degrees_per_second_source": "default",
+          "sweep_bound_degrees_per_second": 40.0,
+          "sweep_bound_offset_degrees": 12.0,
+          "max_allowed_sweep_degrees": 101.712,
+          "ceiling_pulse_duration_ms": 2242.8,
+          "pulse_duration_ms": 1500.0,
+          "ceiling_below_actuation_floor": false,
+          "sweep_exceeds_any_pulse": false
+         },
+         "heading_poll_count": 1,
+         "heading_poll_feed_alive": true,
+         "longest_refresh_write_ms": 386.887,
+         "refresh_cadence_broken": false
+        }
+       ],
+       "final_vision_heading": -17.501770442798627,
+       "final_heading_error_degrees": 0.109,
+       "final_vio_feed": {
+        "live": true,
+        "tracked_features": 80,
+        "brightness_raw": 1,
+        "brightness_label": "Light"
+       },
+       "final_displacement_m": 0.044298645577489484,
+       "turn_degrees_per_second": 37.0,
+       "turn_feasibility": {
+        "feasible": true,
+        "reason": "within_budget",
+        "initial_error_degrees": 83.712,
+        "heading_tolerance_degrees": 18.0,
+        "required_rotation_degrees": 65.712,
+        "per_command_rotation_bound_degrees": 21.6,
+        "rotation_bound_source": "conservative_observed_rate_with_refresh",
+        "estimated_commands_needed": 4,
+        "max_commands": 4,
+        "translation_bound_m_per_degree": 0.0026,
+        "translation_bound_source": "conservative_observed_translation_per_degree",
+        "estimated_translation_m": 0.218,
+        "max_displacement_m": 0.3,
+        "command_count_model": "executor_pulse_policy_replay",
+        "modelled_pulse_durations_ms": [
+         1500.0,
+         1500.0,
+         1162.8,
+         744.2
+        ]
+       },
+       "stop_reason": "target_heading_reached"
+      }
+     },
+     {
+      "name": "linear_forward_to_target",
+      "passed": true,
+      "result": {
+       "commands_sent": 4,
+       "stop_reason": "target_reached",
+       "progress_diagnostics": [
+        {
+         "status": "path_progress",
+         "passed": true,
+         "action": "forward",
+         "path_progress_distance": 0.27204417203514203,
+         "expected_target_heading_degrees": 342.161132443805,
+         "movement_vector_heading_degrees": 343.010295580457,
+         "heading_progress": true,
+         "min_progress_distance": 0.0025,
+         "min_heading_change_degrees": 0.0,
+         "command_index": 1,
+         "measured_delta": {
+          "distance": 0.27207405241955746,
+          "dx": 0.2602000000000002,
+          "dy": -0.0794999999999999,
+          "heading_change_degrees": 0.0
+         }
+        },
+        {
+         "status": "path_progress",
+         "passed": true,
+         "action": "forward",
+         "path_progress_distance": 0.37605697622386247,
+         "expected_target_heading_degrees": 341.83702679311057,
+         "movement_vector_heading_degrees": 344.7088470596104,
+         "heading_progress": true,
+         "min_progress_distance": 0.0025,
+         "min_heading_change_degrees": 0.0,
+         "command_index": 2,
+         "measured_delta": {
+          "distance": 0.3765298527341492,
+          "dx": 0.36319999999999997,
+          "dy": -0.09930000000000039,
+          "heading_change_degrees": 0.0
+         }
+        },
+        {
+         "status": "path_progress",
+         "passed": true,
+         "action": "forward",
+         "path_progress_distance": 0.16810590283670623,
+         "expected_target_heading_degrees": 338.6307533135701,
+         "movement_vector_heading_degrees": 344.08722736353553,
+         "heading_progress": true,
+         "min_progress_distance": 0.0025,
+         "min_heading_change_degrees": 0.0,
+         "command_index": 3,
+         "measured_delta": {
+          "distance": 0.16887110469230643,
+          "dx": 0.16239999999999988,
+          "dy": -0.046299999999999564,
+          "heading_change_degrees": 0.0
+         }
+        },
+        {
+         "status": "path_progress",
+         "passed": true,
+         "action": "forward",
+         "path_progress_distance": 0.05063377608628113,
+         "expected_target_heading_degrees": 333.2087824468944,
+         "movement_vector_heading_degrees": 343.39676424356753,
+         "heading_progress": true,
+         "min_progress_distance": 0.0025,
+         "min_heading_change_degrees": 0.0,
+         "command_index": 4,
+         "measured_delta": {
+          "distance": 0.0514449220040227,
+          "dx": 0.04929999999999968,
+          "dy": -0.01470000000000038,
+          "heading_change_degrees": -1.2471000000000458
+         }
+        }
+       ]
+      }
+     }
+    ],
+    "progress_diagnostics": [
+     {
+      "status": "path_progress",
+      "passed": true,
+      "action": "forward",
+      "path_progress_distance": 0.27204417203514203,
+      "expected_target_heading_degrees": 342.161132443805,
+      "movement_vector_heading_degrees": 343.010295580457,
+      "heading_progress": true,
+      "min_progress_distance": 0.0025,
+      "min_heading_change_degrees": 0.0,
+      "command_index": 1,
+      "measured_delta": {
+       "distance": 0.27207405241955746,
+       "dx": 0.2602000000000002,
+       "dy": -0.0794999999999999,
+       "heading_change_degrees": 0.0
+      }
+     },
+     {
+      "status": "path_progress",
+      "passed": true,
+      "action": "forward",
+      "path_progress_distance": 0.37605697622386247,
+      "expected_target_heading_degrees": 341.83702679311057,
+      "movement_vector_heading_degrees": 344.7088470596104,
+      "heading_progress": true,
+      "min_progress_distance": 0.0025,
+      "min_heading_change_degrees": 0.0,
+      "command_index": 2,
+      "measured_delta": {
+       "distance": 0.3765298527341492,
+       "dx": 0.36319999999999997,
+       "dy": -0.09930000000000039,
+       "heading_change_degrees": 0.0
+      }
+     },
+     {
+      "status": "path_progress",
+      "passed": true,
+      "action": "forward",
+      "path_progress_distance": 0.16810590283670623,
+      "expected_target_heading_degrees": 338.6307533135701,
+      "movement_vector_heading_degrees": 344.08722736353553,
+      "heading_progress": true,
+      "min_progress_distance": 0.0025,
+      "min_heading_change_degrees": 0.0,
+      "command_index": 3,
+      "measured_delta": {
+       "distance": 0.16887110469230643,
+       "dx": 0.16239999999999988,
+       "dy": -0.046299999999999564,
+       "heading_change_degrees": 0.0
+      }
+     },
+     {
+      "status": "path_progress",
+      "passed": true,
+      "action": "forward",
+      "path_progress_distance": 0.05063377608628113,
+      "expected_target_heading_degrees": 333.2087824468944,
+      "movement_vector_heading_degrees": 343.39676424356753,
+      "heading_progress": true,
+      "min_progress_distance": 0.0025,
+      "min_heading_change_degrees": 0.0,
+      "command_index": 4,
+      "measured_delta": {
+       "distance": 0.0514449220040227,
+       "dx": 0.04929999999999968,
+       "dy": -0.01470000000000038,
+       "heading_change_degrees": -1.2471000000000458
+      }
+     }
+    ],
+    "completion_status": {
+     "complete": true,
+     "target_index": null,
+     "distance_to_target": null,
+     "waypoint_distances": [
+      {
+       "index": 0,
+       "distance": 0.8547734495174725
+      },
+      {
+       "index": 1,
+       "distance": 0.11965521300804244
+      }
+     ],
+     "reason": "path_complete"
+    },
+    "stop_reason": "target_reached",
+    "post_turn_alignment": {
+     "turn_displacement_m": 0.044298645577489484,
+     "before": {
+      "facing_degrees": 339.794,
+      "bearing_degrees": 342.161,
+      "aim_error_degrees": 2.367
+     },
+     "alignment_tolerance_degrees": 10.0,
+     "correction_attempted": false,
+     "passed": true
+    },
+    "linear_execution_mode": "loop_to_tolerance",
+    "effective_linear_ceiling": 22,
+    "linear_distance_ceiling": 1.9696996116159438
+   }
+  },
+  {
+   "index": 2,
+   "points": [
+    {
+     "x": 8.0,
+     "y": -4.3
+    },
+    {
+     "x": 8.499,
+     "y": -5.873
+    }
+   ],
+   "real_segment": true,
+   "passed": true,
+   "result": {
+    "valid": true,
+    "errors": [],
+    "warnings": [],
+    "coordinate_system": "mower_map_xy",
+    "blade_mode": "off",
+    "speed": 0.2,
+    "area_hash": null,
+    "point_count": 2,
+    "distance": 1.6502514959847792,
+    "points": [
+     {
+      "x": 8.0,
+      "y": -4.3
+     },
+     {
+      "x": 8.499,
+      "y": -5.873
+     }
+    ],
+    "geojson": {
+     "type": "FeatureCollection",
+     "features": [
+      {
+       "type": "Feature",
+       "properties": {
+        "type_name": "custom_path_start",
+        "Name": "Start",
+        "marker": "start"
+       },
+       "geometry": {
+        "type": "Point",
+        "coordinates": [
+         8.0,
+         -4.3
+        ]
+       }
+      },
+      {
+       "type": "Feature",
+       "properties": {
+        "type_name": "custom_path",
+        "Name": "Custom path",
+        "valid": true,
+        "distance": 1.6502514959847792,
+        "color": "#22c55e",
+        "weight": 3
+       },
+       "geometry": {
+        "type": "LineString",
+        "coordinates": [
+         [
+          8.0,
+          -4.3
+         ],
+         [
+          8.499,
+          -5.873
+         ]
+        ]
+       }
+      },
+      {
+       "type": "Feature",
+       "properties": {
+        "type_name": "custom_path_end",
+        "Name": "End",
+        "marker": "end"
+       },
+       "geometry": {
+        "type": "Point",
+        "coordinates": [
+         8.499,
+         -5.873
+        ]
+       }
+      }
+     ]
+    },
+    "path": {
+     "coordinate_system": "mower_map_xy",
+     "points": [
+      {
+       "x": 8.0,
+       "y": -4.3
+      },
+      {
+       "x": 8.499,
+       "y": -5.873
+      }
+     ],
+     "distance": 1.6502514959847792
+    },
+    "service": "raw_pymammotion_execute_vector_segment",
+    "mode": "real_raw_vector_segment",
+    "dry_run": false,
+    "would_send": true,
+    "real_execution_scope": "one_segment_turn_then_forward_only",
+    "full_path_execution_allowed": false,
+    "ready_for_multi_point": false,
+    "prefer_ble": true,
+    "transport_preference": "ble_preferred",
+    "ble_auto_recover": false,
+    "ble_recovery": null,
+    "linear_speed_fast": 400,
+    "linear_speed_slow": 200,
+    "slow_linear_threshold": 0.15,
+    "max_turn_commands": 4,
+    "max_linear_commands": 3,
+    "heading_tolerance_degrees": 18.0,
+    "angular_speed_fast": 180,
+    "angular_speed_slow": 180,
+    "slow_turn_threshold_degrees": 8.0,
+    "waypoint_tolerance": 0.15,
+    "min_progress_distance": 0.0025,
+    "min_heading_change_degrees": 0.5,
+    "max_turn_translation_distance": 0.3,
+    "calibrated_forward_heading_offset_degrees": 102.4,
+    "max_linear_pulse_ceiling": 22,
+    "max_no_progress_pulses": 3,
+    "final_approach_metres_per_pulse": 1.06,
+    "turn_degrees_per_second": 37.0,
+    "turn_pulse_duration_ms": 1500.0,
+    "linear_pulse_duration_ms": 1300.0,
+    "vio_turn_max_commands": 4,
+    "vio_angular_speed": 500,
+    "vio_heading_offset_degrees": 0.8436130546885465,
+    "sample_delays": [
+     0.0,
+     3.0
+    ],
+    "confirm_blades_off": true,
+    "confirm_clear_area": true,
+    "advisory_start": {
+     "x": 8.0,
+     "y": -4.3
+    },
+    "true_start": {
+     "x": 7.8976,
+     "y": -4.2381
+    },
+    "target": {
+     "x": 8.499,
+     "y": -5.873
+    },
+    "target_map_heading_degrees": 287.8040113064434,
+    "target_reported_heading_degrees": 187.79610831594195,
+    "target_heading_degrees": 187.79610831594195,
+    "heading_calibration": {
+     "formula": "target_reported_heading = target_map_heading - calibrated_forward_heading_offset",
+     "target_map_heading_degrees": 290.19610831594196,
+     "calibrated_forward_heading_offset_degrees": 102.4,
+     "target_reported_heading_degrees": 187.79610831594195
+    },
+    "initial_linear_command_selection": {
+     "command": "send_movement",
+     "linear_speed": 400,
+     "angular_speed": 0,
+     "distance_to_target": 1.7420045838056801,
+     "speed_tier": "fast",
+     "slow_linear_threshold": 0.15,
+     "reason": "target_remaining"
+    },
+    "turn_mode": "vio",
+    "vio": {
+     "initial_vio_state": 2,
+     "initial_vio_feed": {
+      "live": true,
+      "tracked_features": 79,
+      "brightness_raw": 1,
+      "brightness_label": "Light"
+     },
+     "initial_vision_heading": -16.21613266392658,
+     "provided_offset_degrees": 0.8436130546885465,
+     "offset_degrees": 359.68529736294806,
+     "offset_source": "linear_refresh",
+     "target_vision_heading": 289.3524952612534,
+     "calibration": null,
+     "formula": "target_vision_heading = target_map_heading - (map_motion_heading - vision_heading)"
+    },
+    "initial_telemetry": {
+     "online": true,
+     "work_mode": 11,
+     "work_mode_label": "MODE_READY",
+     "charge_state": 0,
+     "charge_state_label": "not_charging",
+     "position": {
+      "x": 7.8976,
+      "y": -4.2381,
+      "toward": 106.2648,
+      "source": "report_data.locations[0]",
+      "pos_level": 1,
+      "pos_level_label": "SINGLE",
+      "rtk_status": 4,
+      "rtk_status_label": "Fix",
+      "pos_type": 1,
+      "pos_type_label": "AREA_INSIDE",
+      "zone_hash": "1343645155037768237",
+      "map_bol_hash": "5126959670531450704",
+      "area_name": "Backyard Right",
+      "valid_for_motion": true
+     },
+     "position_candidates": [
+      {
+       "source": "mowing_state",
+       "x": 0.0,
+       "y": 0.0,
+       "toward": 0.0,
+       "pos_level": 0,
+       "pos_level_label": "FIX",
+       "rtk_status": 0,
+       "rtk_status_label": "None",
+       "pos_type": 0,
+       "pos_type_label": "AREA_OUT",
+       "zone_hash": 0,
+       "area_name": null,
+       "stale_zero_area_out": true,
+       "valid_for_motion": false
+      },
+      {
+       "source": "report_data.locations[0]",
+       "x": 7.8976,
+       "y": -4.2381,
+       "toward": 106.2648,
+       "pos_level": null,
+       "pos_level_label": null,
+       "rtk_status": null,
+       "rtk_status_label": null,
+       "pos_type": 1,
+       "pos_type_label": "AREA_INSIDE",
+       "zone_hash": null,
+       "area_name": null,
+       "stale_zero_area_out": false,
+       "valid_for_motion": false
+      },
+      {
+       "source": "location_metadata",
+       "x": null,
+       "y": null,
+       "toward": 106,
+       "pos_level": null,
+       "pos_level_label": null,
+       "rtk_status": null,
+       "rtk_status_label": null,
+       "pos_type": 1,
+       "pos_type_label": "AREA_INSIDE",
+       "zone_hash": "1343645155037768237",
+       "area_name": "Backyard Right",
+       "stale_zero_area_out": false,
+       "valid_for_motion": false
+      },
+      {
+       "source": "report_data.rtk",
+       "x": null,
+       "y": null,
+       "toward": null,
+       "pos_level": 1,
+       "pos_level_label": "SINGLE",
+       "rtk_status": 4,
+       "rtk_status_label": "Fix",
+       "pos_type": null,
+       "pos_type_label": null,
+       "zone_hash": null,
+       "area_name": null,
+       "stale_zero_area_out": false,
+       "valid_for_motion": false
+      }
+     ],
+     "blade": {
+      "reported_state": 0,
+      "reported_state_label": "OFF",
+      "knife_status": null,
+      "current_cutter_mode": 0,
+      "current_cutter_rpm": 0
+     },
+     "transport": {
+      "ble_rssi": -70,
+      "wifi_rssi": -64,
+      "wifi_connect_status": null,
+      "iot_connect_status": null,
+      "connection_label": "WIFI/BLE"
+     }
+    },
+    "final_telemetry": {
+     "online": true,
+     "work_mode": 11,
+     "work_mode_label": "MODE_READY",
+     "charge_state": 0,
+     "charge_state_label": "not_charging",
+     "position": {
+      "x": 8.4286,
+      "y": -5.8459,
+      "toward": 164.6851,
+      "source": "report_data.locations[0]",
+      "pos_level": 1,
+      "pos_level_label": "SINGLE",
+      "rtk_status": 4,
+      "rtk_status_label": "Fix",
+      "pos_type": 1,
+      "pos_type_label": "AREA_INSIDE",
+      "zone_hash": "1343645155037768237",
+      "map_bol_hash": "5126959670531450704",
+      "area_name": "Backyard Right",
+      "valid_for_motion": true
+     },
+     "position_candidates": [
+      {
+       "source": "mowing_state",
+       "x": 0.0,
+       "y": 0.0,
+       "toward": 0.0,
+       "pos_level": 0,
+       "pos_level_label": "FIX",
+       "rtk_status": 0,
+       "rtk_status_label": "None",
+       "pos_type": 0,
+       "pos_type_label": "AREA_OUT",
+       "zone_hash": 0,
+       "area_name": null,
+       "stale_zero_area_out": true,
+       "valid_for_motion": false
+      },
+      {
+       "source": "report_data.locations[0]",
+       "x": 8.4286,
+       "y": -5.8459,
+       "toward": 164.6851,
+       "pos_level": null,
+       "pos_level_label": null,
+       "rtk_status": null,
+       "rtk_status_label": null,
+       "pos_type": 1,
+       "pos_type_label": "AREA_INSIDE",
+       "zone_hash": null,
+       "area_name": null,
+       "stale_zero_area_out": false,
+       "valid_for_motion": false
+      },
+      {
+       "source": "location_metadata",
+       "x": null,
+       "y": null,
+       "toward": 164,
+       "pos_level": null,
+       "pos_level_label": null,
+       "rtk_status": null,
+       "rtk_status_label": null,
+       "pos_type": 1,
+       "pos_type_label": "AREA_INSIDE",
+       "zone_hash": "1343645155037768237",
+       "area_name": "Backyard Right",
+       "stale_zero_area_out": false,
+       "valid_for_motion": false
+      },
+      {
+       "source": "report_data.rtk",
+       "x": null,
+       "y": null,
+       "toward": null,
+       "pos_level": 1,
+       "pos_level_label": "SINGLE",
+       "rtk_status": 4,
+       "rtk_status_label": "Fix",
+       "pos_type": null,
+       "pos_type_label": null,
+       "zone_hash": null,
+       "area_name": null,
+       "stale_zero_area_out": false,
+       "valid_for_motion": false
+      }
+     ],
+     "blade": {
+      "reported_state": 0,
+      "reported_state_label": "OFF",
+      "knife_status": null,
+      "current_cutter_mode": 0,
+      "current_cutter_rpm": 0
+     },
+     "transport": {
+      "ble_rssi": -74,
+      "wifi_rssi": -59,
+      "wifi_connect_status": null,
+      "iot_connect_status": null,
+      "connection_label": "WIFI/BLE"
+     }
+    },
+    "runtime_safety": {
+     "allowed_for_manual_motion": true,
+     "blockers": [],
+     "blade_safe_for_motion": true,
+     "active_mowing_detected": false,
+     "active_route_detected": false,
+     "active_route_status": {
+      "route_present": false,
+      "progress_present": false,
+      "progress_is_active": false,
+      "blocks_motion": false,
+      "reason": "no_route",
+      "ha_state": "paused",
+      "work_mode_label": "MODE_READY"
+     },
+     "position_valid_for_motion": true,
+     "rtk_report_age_seconds": null,
+     "rtk_report_quiet_threshold_seconds": 1800.0,
+     "rtk_report_quiet": false,
+     "rtk_status_label": "Fix",
+     "rtk_degraded": false,
+     "rtk_degraded_override": false
+    },
+    "queue_settle": {
+     "live": true,
+     "reason": null,
+     "is_connected": true,
+     "is_usable": true,
+     "cooldown_active": false,
+     "cooldown_remaining_seconds": 0.0,
+     "last_send_age_seconds": 0.1,
+     "queue_depth": 0,
+     "queue_dispatch_paused": false,
+     "saga_active": false,
+     "stall_threshold_seconds": 15.0,
+     "queue_depth_limit": 0
+    },
+    "safety_gates": [
+     {
+      "name": "stop_primitive_available",
+      "passed": true,
+      "detail": "Coordinator must expose async_stop_manual_motion()."
+     },
+     {
+      "name": "ble_transport_required",
+      "passed": true,
+      "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+     },
+     {
+      "name": "ble_link_live",
+      "passed": true,
+      "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+      "diagnostics": {
+       "live": true,
+       "reason": null,
+       "is_connected": true,
+       "is_usable": true,
+       "cooldown_active": false,
+       "cooldown_remaining_seconds": 0.0,
+       "last_send_age_seconds": 0.1,
+       "queue_depth": 0,
+       "queue_dispatch_paused": false,
+       "saga_active": false,
+       "stall_threshold_seconds": 15.0,
+       "queue_depth_limit": 0
+      }
+     },
+     {
+      "name": "operator_confirmed_blades_off",
+      "passed": true,
+      "detail": "Real pulse requires confirm_blades_off=true."
+     },
+     {
+      "name": "operator_confirmed_clear_area",
+      "passed": true,
+      "detail": "Real pulse requires confirm_clear_area=true."
+     },
+     {
+      "name": "mower_reports_blades_off",
+      "passed": true,
+      "detail": "Real pulse requires blade state off and cutter RPM zero/unknown."
+     },
+     {
+      "name": "mower_ready",
+      "passed": true,
+      "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+     },
+     {
+      "name": "not_docked_or_charging",
+      "passed": true,
+      "detail": "Real pulse requires the mower to be off the dock and not charging."
+     },
+     {
+      "name": "live_map_position_available",
+      "passed": true,
+      "detail": "Real pulse requires live map-local mower position."
+     },
+     {
+      "name": "position_area_inside",
+      "passed": true,
+      "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+     },
+     {
+      "name": "map_position_nonzero",
+      "passed": true,
+      "detail": "Real pulse requires nonzero map-local x/y coordinates."
+     },
+     {
+      "name": "segment_too_long",
+      "passed": true,
+      "detail": "Segment length is capped at 6.1 m by authorization, not by a measured reach limit; the longest segment ever executed is 4.0 m.",
+      "diagnostics": {
+       "segment_length_m": 1.7420045838056801,
+       "max_segment_length_m": 6.1
+      }
+     },
+     {
+      "name": "linear_budget_insufficient_for_segment",
+      "passed": true,
+      "detail": "22 linear pulses reach about 6.60 m at a stall-tolerant 0.3 m/pulse, short of this segment.",
+      "diagnostics": {
+       "segment_length_m": 1.7420045838056801,
+       "linear_pulse_ceiling": 22,
+       "budget_check_metres_per_pulse": 0.3,
+       "budget_reach_m": 6.6
+      }
+     }
+    ],
+    "blockers": [],
+    "commands_sent": 6,
+    "turn_commands_sent": 1,
+    "linear_commands_sent": 5,
+    "motion_refresh_interval_ms": 200,
+    "motion_refresh_commands_sent": 29,
+    "app_speed_scale": {
+     "available": true,
+     "linear_speed": 400,
+     "angular_speed": 500,
+     "app_max_linear_speed": 850,
+     "app_max_angular_speed": 382,
+     "linear_fraction_of_app_max": 0.471,
+     "angular_fraction_of_app_max": 1.309,
+     "linear_above_app_max": false,
+     "angular_above_app_max": true
+    },
+    "calibration_commands_sent": 0,
+    "realignments": [],
+    "command_results": [
+     {
+      "index": 1,
+      "angular_speed": 500,
+      "pulse_duration_ms": 1471.1,
+      "before_vision_heading": -16.21613266392658,
+      "heading_error_before": -54.431,
+      "command": "send_movement",
+      "sent_at_utc": "2026-08-18T23:24:44.806456+00:00",
+      "ok": true,
+      "error": null,
+      "stop_ack": {
+       "movement_ok": true
+      },
+      "after_vision_heading": -75.74017221122733,
+      "measured_change_degrees": -59.524,
+      "heading_error_after": 5.093,
+      "progress_degrees": 49.339,
+      "displacement_m": 0.07407091196954511,
+      "heading_poll_seconds": 2.0,
+      "heading_went_fresh": true,
+      "motion_refresh": {
+       "refresh_enabled": true,
+       "refresh_interval_ms": 200,
+       "refresh_commands_sent": 6,
+       "refresh_command_limit": null,
+       "refresh_write_durations_ms": [
+        122.382,
+        530.349,
+        115.525,
+        197.237,
+        198.429,
+        217.648
+       ],
+       "max_refresh_commands": 7,
+       "elapsed_ms": 1660.38
+      },
+      "final_approach": {
+       "applied": true,
+       "reason": "final_approach_scaled_to_remaining_angle",
+       "heading_error_degrees": -54.43137207482005,
+       "heading_tolerance_degrees": 18.0,
+       "degrees_per_second": 37.0,
+       "degrees_per_second_source": "default",
+       "sweep_bound_degrees_per_second": 40.0,
+       "sweep_bound_offset_degrees": 12.0,
+       "max_allowed_sweep_degrees": 72.431,
+       "ceiling_pulse_duration_ms": 1510.8,
+       "pulse_duration_ms": 1471.1,
+       "ceiling_below_actuation_floor": false,
+       "sweep_exceeds_any_pulse": false
+      },
+      "heading_poll_count": 1,
+      "heading_poll_feed_alive": true,
+      "longest_refresh_write_ms": 530.349,
+      "refresh_cadence_broken": false
+     },
+     {
+      "index": 1,
+      "phase": "linear_forward_to_target",
+      "attempted": true,
+      "ok": true,
+      "ack": null,
+      "error": null,
+      "duration_ms": 230.613,
+      "command": "send_movement",
+      "sent_at_utc": "2026-08-18T23:24:49.011528+00:00",
+      "prefer_ble": true,
+      "kwargs": {
+       "linear_speed": 400,
+       "angular_speed": 0
+      },
+      "selection": {
+       "command": "send_movement",
+       "linear_speed": 400,
+       "angular_speed": 0,
+       "distance_to_target": 1.7546328989278643,
+       "speed_tier": "fast",
+       "slow_linear_threshold": 0.15,
+       "reason": "target_remaining"
+      },
+      "final_approach": {
+       "applied": false,
+       "reason": "cruising_full_pulse_fits",
+       "distance_to_target": 1.7546328989278643,
+       "metres_per_pulse": 1.06,
+       "metres_per_pulse_source": "default",
+       "pulse_duration_ms": 1300.0,
+       "refresh_command_limit": null,
+       "full_pulse_refresh_commands": 10
+      },
+      "motion_refresh": {
+       "refresh_enabled": true,
+       "refresh_interval_ms": 200,
+       "refresh_commands_sent": 4,
+       "refresh_command_limit": null,
+       "refresh_write_durations_ms": [
+        256.265,
+        293.041,
+        118.942,
+        710.289
+       ],
+       "max_refresh_commands": 6,
+       "elapsed_ms": 1580.911
+      },
+      "stop_result": {
+       "attempted": true,
+       "ok": true,
+       "error": null,
+       "coordinator_method": "async_stop_manual_motion",
+       "use_wifi": false,
+       "transport_preference": "ble_preferred",
+       "ack": {
+        "movement_ok": true
+       },
+       "duration_ms": 213.499
+      },
+      "post_command_feedback_refresh": {
+       "method": "request_reports_count_5",
+       "settle_seconds": 0.0,
+       "ok": true,
+       "error": null,
+       "duration_ms": 0.655
+      },
+      "position_settled": true,
+      "position_moved": true,
+      "position_settle_wait_seconds": 3.0,
+      "position_feed_stale": false,
+      "position_settle_polls": 3,
+      "post_feedback_queue_settle": {
+       "live": true,
+       "reason": null,
+       "is_connected": true,
+       "is_usable": true,
+       "cooldown_active": false,
+       "cooldown_remaining_seconds": 0.0,
+       "last_send_age_seconds": 0.1,
+       "queue_depth": 0,
+       "queue_dispatch_paused": false,
+       "saga_active": false,
+       "stall_threshold_seconds": 15.0,
+       "queue_depth_limit": 0,
+       "duration_ms": 100.51
+      },
+      "position_source_comparison": {
+       "locations_xy": [
+        8.0578,
+        -4.5541
+       ],
+       "locations_stale_zero": false,
+       "mowing_state_xy": [
+        0.0,
+        0.0
+       ],
+       "agreement_m": 9.2557,
+       "rtk_status": 0,
+       "pos_level": 0,
+       "pos_type": 0,
+       "zone_hash": 0
+      },
+      "post_settle_feedback": {
+       "source": "position_settle",
+       "additional_wait_seconds": 0.0,
+       "requested_sample_delays_skipped": [
+        0.0,
+        3.0
+       ]
+      },
+      "final_approach_observation": {
+       "measured_distance": 0.36438301277639173,
+       "nonzero_writes": 5,
+       "normalised_metres_per_eleven_writes": 0.8016
+      }
+     },
+     {
+      "index": 2,
+      "phase": "linear_forward_to_target",
+      "attempted": true,
+      "ok": true,
+      "ack": null,
+      "error": null,
+      "duration_ms": 590.312,
+      "command": "send_movement",
+      "sent_at_utc": "2026-08-18T23:24:54.142931+00:00",
+      "prefer_ble": true,
+      "kwargs": {
+       "linear_speed": 400,
+       "angular_speed": 0
+      },
+      "selection": {
+       "command": "send_movement",
+       "linear_speed": 400,
+       "angular_speed": 0,
+       "distance_to_target": 1.3907388863478294,
+       "speed_tier": "fast",
+       "slow_linear_threshold": 0.15,
+       "reason": "target_remaining"
+      },
+      "final_approach": {
+       "applied": false,
+       "reason": "cruising_full_pulse_fits",
+       "distance_to_target": 1.3907388863478294,
+       "metres_per_pulse": 1.06,
+       "metres_per_pulse_source": "default_conservative_floor",
+       "pulse_duration_ms": 1300.0,
+       "refresh_command_limit": null,
+       "full_pulse_refresh_commands": 10,
+       "observed_metres_per_pulse": 0.8016
+      },
+      "motion_refresh": {
+       "refresh_enabled": true,
+       "refresh_interval_ms": 200,
+       "refresh_commands_sent": 5,
+       "refresh_command_limit": null,
+       "refresh_write_durations_ms": [
+        195.678,
+        319.128,
+        168.519,
+        214.467,
+        228.328
+       ],
+       "max_refresh_commands": 6,
+       "elapsed_ms": 1331.642
+      },
+      "stop_result": {
+       "attempted": true,
+       "ok": true,
+       "error": null,
+       "coordinator_method": "async_stop_manual_motion",
+       "use_wifi": false,
+       "transport_preference": "ble_preferred",
+       "ack": {
+        "movement_ok": true
+       },
+       "duration_ms": 505.868
+      },
+      "post_command_feedback_refresh": {
+       "method": "request_reports_count_5",
+       "settle_seconds": 0.0,
+       "ok": true,
+       "error": null,
+       "duration_ms": 0.432
+      },
+      "position_settled": true,
+      "position_moved": true,
+      "position_settle_wait_seconds": 3.01,
+      "position_feed_stale": false,
+      "position_settle_polls": 3,
+      "post_feedback_queue_settle": {
+       "live": true,
+       "reason": null,
+       "is_connected": true,
+       "is_usable": true,
+       "cooldown_active": false,
+       "cooldown_remaining_seconds": 0.0,
+       "last_send_age_seconds": 0.1,
+       "queue_depth": 0,
+       "queue_dispatch_paused": false,
+       "saga_active": false,
+       "stall_threshold_seconds": 15.0,
+       "queue_depth_limit": 0,
+       "duration_ms": 101.293
+      },
+      "position_source_comparison": {
+       "locations_xy": [
+        8.1709,
+        -4.9387
+       ],
+       "locations_stale_zero": false,
+       "mowing_state_xy": [
+        0.0,
+        0.0
+       ],
+       "agreement_m": 9.5475,
+       "rtk_status": 0,
+       "pos_level": 0,
+       "pos_type": 0,
+       "zone_hash": 0
+      },
+      "post_settle_feedback": {
+       "source": "position_settle",
+       "additional_wait_seconds": 0.0,
+       "requested_sample_delays_skipped": [
+        0.0,
+        3.0
+       ]
+      },
+      "final_approach_observation": {
+       "measured_distance": 0.40088498350524393,
+       "nonzero_writes": 6,
+       "normalised_metres_per_eleven_writes": 0.735
+      }
+     },
+     {
+      "index": 3,
+      "phase": "linear_forward_to_target",
+      "attempted": true,
+      "ok": true,
+      "ack": null,
+      "error": null,
+      "duration_ms": 341.49,
+      "command": "send_movement",
+      "sent_at_utc": "2026-08-18T23:24:59.678979+00:00",
+      "prefer_ble": true,
+      "kwargs": {
+       "linear_speed": 400,
+       "angular_speed": 0
+      },
+      "selection": {
+       "command": "send_movement",
+       "linear_speed": 400,
+       "angular_speed": 0,
+       "distance_to_target": 0.9902353760596524,
+       "speed_tier": "fast",
+       "slow_linear_threshold": 0.15,
+       "reason": "target_remaining"
+      },
+      "final_approach": {
+       "applied": true,
+       "reason": "final_approach_bounded_by_refresh_count",
+       "distance_to_target": 0.9902353760596524,
+       "metres_per_pulse": 1.06,
+       "metres_per_pulse_source": "default_conservative_floor",
+       "pulse_duration_ms": 1300.0,
+       "refresh_command_limit": 10,
+       "full_pulse_refresh_commands": 10,
+       "observed_metres_per_pulse": 0.7683,
+       "target_nonzero_writes": 11
+      },
+      "motion_refresh": {
+       "refresh_enabled": true,
+       "refresh_interval_ms": 200,
+       "refresh_commands_sent": 6,
+       "refresh_command_limit": 10,
+       "refresh_write_durations_ms": [
+        109.007,
+        236.757,
+        121.17,
+        127.001,
+        120.118,
+        243.376
+       ],
+       "max_refresh_commands": 6,
+       "elapsed_ms": 1443.944
+      },
+      "stop_result": {
+       "attempted": true,
+       "ok": true,
+       "error": null,
+       "coordinator_method": "async_stop_manual_motion",
+       "use_wifi": false,
+       "transport_preference": "ble_preferred",
+       "ack": {
+        "movement_ok": true
+       },
+       "duration_ms": 454.815
+      },
+      "post_command_feedback_refresh": {
+       "method": "request_reports_count_5",
+       "settle_seconds": 0.0,
+       "ok": true,
+       "error": null,
+       "duration_ms": 0.387
+      },
+      "position_settled": true,
+      "position_moved": true,
+      "position_settle_wait_seconds": 2.0,
+      "position_feed_stale": false,
+      "position_settle_polls": 2,
+      "post_feedback_queue_settle": {
+       "live": true,
+       "reason": null,
+       "is_connected": true,
+       "is_usable": true,
+       "cooldown_active": false,
+       "cooldown_remaining_seconds": 0.0,
+       "last_send_age_seconds": 0.1,
+       "queue_depth": 0,
+       "queue_dispatch_paused": false,
+       "saga_active": false,
+       "stall_threshold_seconds": 15.0,
+       "queue_depth_limit": 0,
+       "duration_ms": 100.378
+      },
+      "position_source_comparison": {
+       "locations_xy": [
+        8.2674,
+        -5.3098
+       ],
+       "locations_stale_zero": false,
+       "mowing_state_xy": [
+        0.0,
+        0.0
+       ],
+       "agreement_m": 9.8257,
+       "rtk_status": 0,
+       "pos_level": 0,
+       "pos_type": 0,
+       "zone_hash": 0
+      },
+      "post_settle_feedback": {
+       "source": "position_settle",
+       "additional_wait_seconds": 0.0,
+       "requested_sample_delays_skipped": [
+        0.0,
+        3.0
+       ]
+      },
+      "final_approach_observation": {
+       "measured_distance": 0.38344159920384263,
+       "nonzero_writes": 7,
+       "normalised_metres_per_eleven_writes": 0.6026
+      }
+     },
+     {
+      "index": 4,
+      "phase": "linear_forward_to_target",
+      "attempted": true,
+      "ok": true,
+      "ack": null,
+      "error": null,
+      "duration_ms": 626.185,
+      "command": "send_movement",
+      "sent_at_utc": "2026-08-18T23:25:04.024154+00:00",
+      "prefer_ble": true,
+      "kwargs": {
+       "linear_speed": 400,
+       "angular_speed": 0
+      },
+      "selection": {
+       "command": "send_movement",
+       "linear_speed": 400,
+       "angular_speed": 0,
+       "distance_to_target": 0.6089604256435719,
+       "speed_tier": "fast",
+       "slow_linear_threshold": 0.15,
+       "reason": "target_remaining"
+      },
+      "final_approach": {
+       "applied": true,
+       "reason": "final_approach_bounded_by_refresh_count",
+       "distance_to_target": 0.6089604256435719,
+       "metres_per_pulse": 1.06,
+       "metres_per_pulse_source": "default_conservative_floor",
+       "pulse_duration_ms": 1300.0,
+       "refresh_command_limit": 6,
+       "full_pulse_refresh_commands": 10,
+       "observed_metres_per_pulse": 0.713,
+       "target_nonzero_writes": 7
+      },
+      "motion_refresh": {
+       "refresh_enabled": true,
+       "refresh_interval_ms": 200,
+       "refresh_commands_sent": 5,
+       "refresh_command_limit": 6,
+       "refresh_write_durations_ms": [
+        286.903,
+        113.631,
+        89.914,
+        91.603,
+        307.172
+       ],
+       "max_refresh_commands": 6,
+       "elapsed_ms": 1307.381
+      },
+      "stop_result": {
+       "attempted": true,
+       "ok": true,
+       "error": null,
+       "coordinator_method": "async_stop_manual_motion",
+       "use_wifi": false,
+       "transport_preference": "ble_preferred",
+       "ack": {
+        "movement_ok": true
+       },
+       "duration_ms": 131.243
+      },
+      "post_command_feedback_refresh": {
+       "method": "request_reports_count_5",
+       "settle_seconds": 0.0,
+       "ok": true,
+       "error": null,
+       "duration_ms": 0.409
+      },
+      "position_settled": true,
+      "position_moved": true,
+      "position_settle_wait_seconds": 1.0,
+      "position_feed_stale": false,
+      "position_settle_polls": 1,
+      "post_feedback_queue_settle": {
+       "live": true,
+       "reason": null,
+       "is_connected": true,
+       "is_usable": true,
+       "cooldown_active": false,
+       "cooldown_remaining_seconds": 0.0,
+       "last_send_age_seconds": 0.1,
+       "queue_depth": 0,
+       "queue_dispatch_paused": false,
+       "saga_active": false,
+       "stall_threshold_seconds": 15.0,
+       "queue_depth_limit": 0,
+       "duration_ms": 100.753
+      },
+      "position_source_comparison": {
+       "locations_xy": [
+        8.3403,
+        -5.5745
+       ],
+       "locations_stale_zero": false,
+       "mowing_state_xy": [
+        0.0,
+        0.0
+       ],
+       "agreement_m": 10.0317,
+       "rtk_status": 0,
+       "pos_level": 0,
+       "pos_type": 0,
+       "zone_hash": 0
+      },
+      "post_settle_feedback": {
+       "source": "position_settle",
+       "additional_wait_seconds": 0.0,
+       "requested_sample_delays_skipped": [
+        0.0,
+        3.0
+       ]
+      },
+      "final_approach_observation": {
+       "measured_distance": 0.2745550946531489,
+       "nonzero_writes": 6,
+       "normalised_metres_per_eleven_writes": 0.5034
+      }
+     },
+     {
+      "index": 5,
+      "phase": "linear_forward_to_target",
+      "attempted": true,
+      "ok": true,
+      "ack": null,
+      "error": null,
+      "duration_ms": 628.817,
+      "command": "send_movement",
+      "sent_at_utc": "2026-08-18T23:25:07.193511+00:00",
+      "prefer_ble": true,
+      "kwargs": {
+       "linear_speed": 400,
+       "angular_speed": 0
+      },
+      "selection": {
+       "command": "send_movement",
+       "linear_speed": 400,
+       "angular_speed": 0,
+       "distance_to_target": 0.33806499375120286,
+       "speed_tier": "fast",
+       "slow_linear_threshold": 0.15,
+       "reason": "target_remaining"
+      },
+      "final_approach": {
+       "applied": true,
+       "reason": "final_approach_bounded_by_refresh_count",
+       "distance_to_target": 0.33806499375120286,
+       "metres_per_pulse": 1.06,
+       "metres_per_pulse_source": "default_conservative_floor",
+       "pulse_duration_ms": 1300.0,
+       "refresh_command_limit": 3,
+       "full_pulse_refresh_commands": 10,
+       "observed_metres_per_pulse": 0.6606,
+       "target_nonzero_writes": 4
+      },
+      "motion_refresh": {
+       "refresh_enabled": true,
+       "refresh_interval_ms": 200,
+       "refresh_commands_sent": 3,
+       "refresh_command_limit": 3,
+       "refresh_write_durations_ms": [
+        197.192,
+        305.524,
+        120.301
+       ],
+       "max_refresh_commands": 3,
+       "elapsed_ms": 826.159
+      },
+      "stop_result": {
+       "attempted": true,
+       "ok": true,
+       "error": null,
+       "coordinator_method": "async_stop_manual_motion",
+       "use_wifi": false,
+       "transport_preference": "ble_preferred",
+       "ack": {
+        "movement_ok": true
+       },
+       "duration_ms": 174.619
+      },
+      "post_command_feedback_refresh": {
+       "method": "request_reports_count_5",
+       "settle_seconds": 0.0,
+       "ok": true,
+       "error": null,
+       "duration_ms": 0.546
+      },
+      "position_settled": true,
+      "position_moved": true,
+      "position_settle_wait_seconds": 3.0,
+      "position_feed_stale": false,
+      "position_settle_polls": 3,
+      "post_feedback_queue_settle": {
+       "live": true,
+       "reason": null,
+       "is_connected": true,
+       "is_usable": true,
+       "cooldown_active": false,
+       "cooldown_remaining_seconds": 0.0,
+       "last_send_age_seconds": 0.1,
+       "queue_depth": 0,
+       "queue_dispatch_paused": false,
+       "saga_active": false,
+       "stall_threshold_seconds": 15.0,
+       "queue_depth_limit": 0,
+       "duration_ms": 100.519
+      },
+      "position_source_comparison": {
+       "locations_xy": [
+        8.4286,
+        -5.8459
+       ],
+       "locations_stale_zero": false,
+       "mowing_state_xy": [
+        0.0,
+        0.0
+       ],
+       "agreement_m": 10.2575,
+       "rtk_status": 0,
+       "pos_level": 0,
+       "pos_type": 0,
+       "zone_hash": 0
+      },
+      "post_settle_feedback": {
+       "source": "position_settle",
+       "additional_wait_seconds": 0.0,
+       "requested_sample_delays_skipped": [
+        0.0,
+        3.0
+       ]
+      },
+      "final_approach_observation": {
+       "measured_distance": 0.2854029607414759,
+       "nonzero_writes": 4,
+       "normalised_metres_per_eleven_writes": 0.7849
+      }
+     }
+    ],
+    "samples": [
+     {
+      "label": "initial",
+      "telemetry": {
+       "online": true,
+       "work_mode": 11,
+       "work_mode_label": "MODE_READY",
+       "charge_state": 0,
+       "charge_state_label": "not_charging",
+       "position": {
+        "x": 7.8976,
+        "y": -4.2381,
+        "toward": 106.2648,
+        "source": "report_data.locations[0]",
+        "pos_level": 1,
+        "pos_level_label": "SINGLE",
+        "rtk_status": 4,
+        "rtk_status_label": "Fix",
+        "pos_type": 1,
+        "pos_type_label": "AREA_INSIDE",
+        "zone_hash": "1343645155037768237",
+        "map_bol_hash": "5126959670531450704",
+        "area_name": "Backyard Right",
+        "valid_for_motion": true
+       },
+       "position_candidates": [
+        {
+         "source": "mowing_state",
+         "x": 0.0,
+         "y": 0.0,
+         "toward": 0.0,
+         "pos_level": 0,
+         "pos_level_label": "FIX",
+         "rtk_status": 0,
+         "rtk_status_label": "None",
+         "pos_type": 0,
+         "pos_type_label": "AREA_OUT",
+         "zone_hash": 0,
+         "area_name": null,
+         "stale_zero_area_out": true,
+         "valid_for_motion": false
+        },
+        {
+         "source": "report_data.locations[0]",
+         "x": 7.8976,
+         "y": -4.2381,
+         "toward": 106.2648,
+         "pos_level": null,
+         "pos_level_label": null,
+         "rtk_status": null,
+         "rtk_status_label": null,
+         "pos_type": 1,
+         "pos_type_label": "AREA_INSIDE",
+         "zone_hash": null,
+         "area_name": null,
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        },
+        {
+         "source": "location_metadata",
+         "x": null,
+         "y": null,
+         "toward": 106,
+         "pos_level": null,
+         "pos_level_label": null,
+         "rtk_status": null,
+         "rtk_status_label": null,
+         "pos_type": 1,
+         "pos_type_label": "AREA_INSIDE",
+         "zone_hash": "1343645155037768237",
+         "area_name": "Backyard Right",
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        },
+        {
+         "source": "report_data.rtk",
+         "x": null,
+         "y": null,
+         "toward": null,
+         "pos_level": 1,
+         "pos_level_label": "SINGLE",
+         "rtk_status": 4,
+         "rtk_status_label": "Fix",
+         "pos_type": null,
+         "pos_type_label": null,
+         "zone_hash": null,
+         "area_name": null,
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        }
+       ],
+       "blade": {
+        "reported_state": 0,
+        "reported_state_label": "OFF",
+        "knife_status": null,
+        "current_cutter_mode": 0,
+        "current_cutter_rpm": 0
+       },
+       "transport": {
+        "ble_rssi": -70,
+        "wifi_rssi": -64,
+        "wifi_connect_status": null,
+        "iot_connect_status": null,
+        "connection_label": "WIFI/BLE"
+       }
+      }
+     },
+     {
+      "label": "linear_1_position_settled",
+      "command_index": 1,
+      "delay_seconds": 3.0,
+      "source": "position_settle",
+      "telemetry": {
+       "online": true,
+       "work_mode": 11,
+       "work_mode_label": "MODE_READY",
+       "charge_state": 0,
+       "charge_state_label": "not_charging",
+       "position": {
+        "x": 8.0578,
+        "y": -4.5541,
+        "toward": 165.7501,
+        "source": "report_data.locations[0]",
+        "pos_level": 1,
+        "pos_level_label": "SINGLE",
+        "rtk_status": 4,
+        "rtk_status_label": "Fix",
+        "pos_type": 1,
+        "pos_type_label": "AREA_INSIDE",
+        "zone_hash": "1343645155037768237",
+        "map_bol_hash": "5126959670531450704",
+        "area_name": "Backyard Right",
+        "valid_for_motion": true
+       },
+       "position_candidates": [
+        {
+         "source": "mowing_state",
+         "x": 0.0,
+         "y": 0.0,
+         "toward": 0.0,
+         "pos_level": 0,
+         "pos_level_label": "FIX",
+         "rtk_status": 0,
+         "rtk_status_label": "None",
+         "pos_type": 0,
+         "pos_type_label": "AREA_OUT",
+         "zone_hash": 0,
+         "area_name": null,
+         "stale_zero_area_out": true,
+         "valid_for_motion": false
+        },
+        {
+         "source": "report_data.locations[0]",
+         "x": 8.0578,
+         "y": -4.5541,
+         "toward": 165.7501,
+         "pos_level": null,
+         "pos_level_label": null,
+         "rtk_status": null,
+         "rtk_status_label": null,
+         "pos_type": 1,
+         "pos_type_label": "AREA_INSIDE",
+         "zone_hash": null,
+         "area_name": null,
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        },
+        {
+         "source": "location_metadata",
+         "x": null,
+         "y": null,
+         "toward": 165,
+         "pos_level": null,
+         "pos_level_label": null,
+         "rtk_status": null,
+         "rtk_status_label": null,
+         "pos_type": 1,
+         "pos_type_label": "AREA_INSIDE",
+         "zone_hash": "1343645155037768237",
+         "area_name": "Backyard Right",
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        },
+        {
+         "source": "report_data.rtk",
+         "x": null,
+         "y": null,
+         "toward": null,
+         "pos_level": 1,
+         "pos_level_label": "SINGLE",
+         "rtk_status": 4,
+         "rtk_status_label": "Fix",
+         "pos_type": null,
+         "pos_type_label": null,
+         "zone_hash": null,
+         "area_name": null,
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        }
+       ],
+       "blade": {
+        "reported_state": 0,
+        "reported_state_label": "OFF",
+        "knife_status": null,
+        "current_cutter_mode": 0,
+        "current_cutter_rpm": 0
+       },
+       "transport": {
+        "ble_rssi": -70,
+        "wifi_rssi": -57,
+        "wifi_connect_status": null,
+        "iot_connect_status": null,
+        "connection_label": "WIFI/BLE"
+       }
+      }
+     },
+     {
+      "label": "linear_2_position_settled",
+      "command_index": 2,
+      "delay_seconds": 3.01,
+      "source": "position_settle",
+      "telemetry": {
+       "online": true,
+       "work_mode": 11,
+       "work_mode_label": "MODE_READY",
+       "charge_state": 0,
+       "charge_state_label": "not_charging",
+       "position": {
+        "x": 8.1709,
+        "y": -4.9387,
+        "toward": 165.7501,
+        "source": "report_data.locations[0]",
+        "pos_level": 1,
+        "pos_level_label": "SINGLE",
+        "rtk_status": 4,
+        "rtk_status_label": "Fix",
+        "pos_type": 1,
+        "pos_type_label": "AREA_INSIDE",
+        "zone_hash": "1343645155037768237",
+        "map_bol_hash": "5126959670531450704",
+        "area_name": "Backyard Right",
+        "valid_for_motion": true
+       },
+       "position_candidates": [
+        {
+         "source": "mowing_state",
+         "x": 0.0,
+         "y": 0.0,
+         "toward": 0.0,
+         "pos_level": 0,
+         "pos_level_label": "FIX",
+         "rtk_status": 0,
+         "rtk_status_label": "None",
+         "pos_type": 0,
+         "pos_type_label": "AREA_OUT",
+         "zone_hash": 0,
+         "area_name": null,
+         "stale_zero_area_out": true,
+         "valid_for_motion": false
+        },
+        {
+         "source": "report_data.locations[0]",
+         "x": 8.1709,
+         "y": -4.9387,
+         "toward": 165.7501,
+         "pos_level": null,
+         "pos_level_label": null,
+         "rtk_status": null,
+         "rtk_status_label": null,
+         "pos_type": 1,
+         "pos_type_label": "AREA_INSIDE",
+         "zone_hash": null,
+         "area_name": null,
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        },
+        {
+         "source": "location_metadata",
+         "x": null,
+         "y": null,
+         "toward": 165,
+         "pos_level": null,
+         "pos_level_label": null,
+         "rtk_status": null,
+         "rtk_status_label": null,
+         "pos_type": 1,
+         "pos_type_label": "AREA_INSIDE",
+         "zone_hash": "1343645155037768237",
+         "area_name": "Backyard Right",
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        },
+        {
+         "source": "report_data.rtk",
+         "x": null,
+         "y": null,
+         "toward": null,
+         "pos_level": 1,
+         "pos_level_label": "SINGLE",
+         "rtk_status": 4,
+         "rtk_status_label": "Fix",
+         "pos_type": null,
+         "pos_type_label": null,
+         "zone_hash": null,
+         "area_name": null,
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        }
+       ],
+       "blade": {
+        "reported_state": 0,
+        "reported_state_label": "OFF",
+        "knife_status": null,
+        "current_cutter_mode": 0,
+        "current_cutter_rpm": 0
+       },
+       "transport": {
+        "ble_rssi": -70,
+        "wifi_rssi": -57,
+        "wifi_connect_status": null,
+        "iot_connect_status": null,
+        "connection_label": "WIFI/BLE"
+       }
+      }
+     },
+     {
+      "label": "linear_3_position_settled",
+      "command_index": 3,
+      "delay_seconds": 2.0,
+      "source": "position_settle",
+      "telemetry": {
+       "online": true,
+       "work_mode": 11,
+       "work_mode_label": "MODE_READY",
+       "charge_state": 0,
+       "charge_state_label": "not_charging",
+       "position": {
+        "x": 8.2674,
+        "y": -5.3098,
+        "toward": 165.7501,
+        "source": "report_data.locations[0]",
+        "pos_level": 1,
+        "pos_level_label": "SINGLE",
+        "rtk_status": 4,
+        "rtk_status_label": "Fix",
+        "pos_type": 1,
+        "pos_type_label": "AREA_INSIDE",
+        "zone_hash": "1343645155037768237",
+        "map_bol_hash": "5126959670531450704",
+        "area_name": "Backyard Right",
+        "valid_for_motion": true
+       },
+       "position_candidates": [
+        {
+         "source": "mowing_state",
+         "x": 0.0,
+         "y": 0.0,
+         "toward": 0.0,
+         "pos_level": 0,
+         "pos_level_label": "FIX",
+         "rtk_status": 0,
+         "rtk_status_label": "None",
+         "pos_type": 0,
+         "pos_type_label": "AREA_OUT",
+         "zone_hash": 0,
+         "area_name": null,
+         "stale_zero_area_out": true,
+         "valid_for_motion": false
+        },
+        {
+         "source": "report_data.locations[0]",
+         "x": 8.2674,
+         "y": -5.3098,
+         "toward": 165.7501,
+         "pos_level": null,
+         "pos_level_label": null,
+         "rtk_status": null,
+         "rtk_status_label": null,
+         "pos_type": 1,
+         "pos_type_label": "AREA_INSIDE",
+         "zone_hash": null,
+         "area_name": null,
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        },
+        {
+         "source": "location_metadata",
+         "x": null,
+         "y": null,
+         "toward": 165,
+         "pos_level": null,
+         "pos_level_label": null,
+         "rtk_status": null,
+         "rtk_status_label": null,
+         "pos_type": 1,
+         "pos_type_label": "AREA_INSIDE",
+         "zone_hash": "1343645155037768237",
+         "area_name": "Backyard Right",
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        },
+        {
+         "source": "report_data.rtk",
+         "x": null,
+         "y": null,
+         "toward": null,
+         "pos_level": 1,
+         "pos_level_label": "SINGLE",
+         "rtk_status": 4,
+         "rtk_status_label": "Fix",
+         "pos_type": null,
+         "pos_type_label": null,
+         "zone_hash": null,
+         "area_name": null,
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        }
+       ],
+       "blade": {
+        "reported_state": 0,
+        "reported_state_label": "OFF",
+        "knife_status": null,
+        "current_cutter_mode": 0,
+        "current_cutter_rpm": 0
+       },
+       "transport": {
+        "ble_rssi": -70,
+        "wifi_rssi": -58,
+        "wifi_connect_status": null,
+        "iot_connect_status": null,
+        "connection_label": "WIFI/BLE"
+       }
+      }
+     },
+     {
+      "label": "linear_4_position_settled",
+      "command_index": 4,
+      "delay_seconds": 1.0,
+      "source": "position_settle",
+      "telemetry": {
+       "online": true,
+       "work_mode": 11,
+       "work_mode_label": "MODE_READY",
+       "charge_state": 0,
+       "charge_state_label": "not_charging",
+       "position": {
+        "x": 8.3403,
+        "y": -5.5745,
+        "toward": 164.6851,
+        "source": "report_data.locations[0]",
+        "pos_level": 1,
+        "pos_level_label": "SINGLE",
+        "rtk_status": 4,
+        "rtk_status_label": "Fix",
+        "pos_type": 1,
+        "pos_type_label": "AREA_INSIDE",
+        "zone_hash": "1343645155037768237",
+        "map_bol_hash": "5126959670531450704",
+        "area_name": "Backyard Right",
+        "valid_for_motion": true
+       },
+       "position_candidates": [
+        {
+         "source": "mowing_state",
+         "x": 0.0,
+         "y": 0.0,
+         "toward": 0.0,
+         "pos_level": 0,
+         "pos_level_label": "FIX",
+         "rtk_status": 0,
+         "rtk_status_label": "None",
+         "pos_type": 0,
+         "pos_type_label": "AREA_OUT",
+         "zone_hash": 0,
+         "area_name": null,
+         "stale_zero_area_out": true,
+         "valid_for_motion": false
+        },
+        {
+         "source": "report_data.locations[0]",
+         "x": 8.3403,
+         "y": -5.5745,
+         "toward": 164.6851,
+         "pos_level": null,
+         "pos_level_label": null,
+         "rtk_status": null,
+         "rtk_status_label": null,
+         "pos_type": 1,
+         "pos_type_label": "AREA_INSIDE",
+         "zone_hash": null,
+         "area_name": null,
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        },
+        {
+         "source": "location_metadata",
+         "x": null,
+         "y": null,
+         "toward": 164,
+         "pos_level": null,
+         "pos_level_label": null,
+         "rtk_status": null,
+         "rtk_status_label": null,
+         "pos_type": 1,
+         "pos_type_label": "AREA_INSIDE",
+         "zone_hash": "1343645155037768237",
+         "area_name": "Backyard Right",
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        },
+        {
+         "source": "report_data.rtk",
+         "x": null,
+         "y": null,
+         "toward": null,
+         "pos_level": 1,
+         "pos_level_label": "SINGLE",
+         "rtk_status": 4,
+         "rtk_status_label": "Fix",
+         "pos_type": null,
+         "pos_type_label": null,
+         "zone_hash": null,
+         "area_name": null,
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        }
+       ],
+       "blade": {
+        "reported_state": 0,
+        "reported_state_label": "OFF",
+        "knife_status": null,
+        "current_cutter_mode": 0,
+        "current_cutter_rpm": 0
+       },
+       "transport": {
+        "ble_rssi": -66,
+        "wifi_rssi": -58,
+        "wifi_connect_status": null,
+        "iot_connect_status": null,
+        "connection_label": "WIFI/BLE"
+       }
+      }
+     },
+     {
+      "label": "linear_5_position_settled",
+      "command_index": 5,
+      "delay_seconds": 3.0,
+      "source": "position_settle",
+      "telemetry": {
+       "online": true,
+       "work_mode": 11,
+       "work_mode_label": "MODE_READY",
+       "charge_state": 0,
+       "charge_state_label": "not_charging",
+       "position": {
+        "x": 8.4286,
+        "y": -5.8459,
+        "toward": 164.6851,
+        "source": "report_data.locations[0]",
+        "pos_level": 1,
+        "pos_level_label": "SINGLE",
+        "rtk_status": 4,
+        "rtk_status_label": "Fix",
+        "pos_type": 1,
+        "pos_type_label": "AREA_INSIDE",
+        "zone_hash": "1343645155037768237",
+        "map_bol_hash": "5126959670531450704",
+        "area_name": "Backyard Right",
+        "valid_for_motion": true
+       },
+       "position_candidates": [
+        {
+         "source": "mowing_state",
+         "x": 0.0,
+         "y": 0.0,
+         "toward": 0.0,
+         "pos_level": 0,
+         "pos_level_label": "FIX",
+         "rtk_status": 0,
+         "rtk_status_label": "None",
+         "pos_type": 0,
+         "pos_type_label": "AREA_OUT",
+         "zone_hash": 0,
+         "area_name": null,
+         "stale_zero_area_out": true,
+         "valid_for_motion": false
+        },
+        {
+         "source": "report_data.locations[0]",
+         "x": 8.4286,
+         "y": -5.8459,
+         "toward": 164.6851,
+         "pos_level": null,
+         "pos_level_label": null,
+         "rtk_status": null,
+         "rtk_status_label": null,
+         "pos_type": 1,
+         "pos_type_label": "AREA_INSIDE",
+         "zone_hash": null,
+         "area_name": null,
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        },
+        {
+         "source": "location_metadata",
+         "x": null,
+         "y": null,
+         "toward": 164,
+         "pos_level": null,
+         "pos_level_label": null,
+         "rtk_status": null,
+         "rtk_status_label": null,
+         "pos_type": 1,
+         "pos_type_label": "AREA_INSIDE",
+         "zone_hash": "1343645155037768237",
+         "area_name": "Backyard Right",
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        },
+        {
+         "source": "report_data.rtk",
+         "x": null,
+         "y": null,
+         "toward": null,
+         "pos_level": 1,
+         "pos_level_label": "SINGLE",
+         "rtk_status": 4,
+         "rtk_status_label": "Fix",
+         "pos_type": null,
+         "pos_type_label": null,
+         "zone_hash": null,
+         "area_name": null,
+         "stale_zero_area_out": false,
+         "valid_for_motion": false
+        }
+       ],
+       "blade": {
+        "reported_state": 0,
+        "reported_state_label": "OFF",
+        "knife_status": null,
+        "current_cutter_mode": 0,
+        "current_cutter_rpm": 0
+       },
+       "transport": {
+        "ble_rssi": -74,
+        "wifi_rssi": -59,
+        "wifi_connect_status": null,
+        "iot_connect_status": null,
+        "connection_label": "WIFI/BLE"
+       }
+      }
+     }
+    ],
+    "phases": [
+     {
+      "name": "turn_to_target_heading",
+      "turn_mode": "vio",
+      "passed": true,
+      "result": {
+       "service": "vio_turn_to_heading",
+       "mode": "real_vio_turn_to_heading",
+       "dry_run": false,
+       "real_execution_scope": "vio_turn_to_heading_only",
+       "path_execution_allowed": false,
+       "target_vision_heading": 289.3524952612534,
+       "heading_tolerance_degrees": 18.0,
+       "angular_speed": 500,
+       "pulse_duration_ms": 1500,
+       "slow_pulse_duration_ms": 700,
+       "slow_threshold_degrees": 15.0,
+       "refresh_wait_seconds": 2.0,
+       "effective_poll_interval_seconds": 2.0,
+       "fresh_heading_timeout_seconds": 8.0,
+       "max_commands": 4,
+       "min_progress_degrees": 2.0,
+       "max_no_progress_pulses": 2,
+       "max_displacement_m": 0.3,
+       "invert_direction": false,
+       "motion_refresh_interval_ms": 200,
+       "motion_refresh_commands_sent": 6,
+       "refresh_cadence_broken_pulses": 0,
+       "prefer_ble": true,
+       "confirm_blades_off": true,
+       "confirm_clear_area": true,
+       "active_transport": "ble",
+       "initial_vision_heading": -16.21613266392658,
+       "initial_vio_state": 2,
+       "initial_vio_feed": {
+        "live": true,
+        "tracked_features": 79,
+        "brightness_raw": 1,
+        "brightness_label": "Light"
+       },
+       "initial_heading_error_degrees": -54.431,
+       "safety_gates": [
+        {
+         "name": "stop_primitive_available",
+         "passed": true,
+         "detail": "Coordinator must expose async_stop_manual_motion()."
+        },
+        {
+         "name": "ble_transport_required",
+         "passed": true,
+         "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+        },
+        {
+         "name": "ble_link_live",
+         "passed": true,
+         "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+         "diagnostics": {
+          "live": true,
+          "reason": null,
+          "is_connected": true,
+          "is_usable": true,
+          "cooldown_active": false,
+          "cooldown_remaining_seconds": 0.0,
+          "last_send_age_seconds": 0.1,
+          "queue_depth": 0,
+          "queue_dispatch_paused": false,
+          "saga_active": false,
+          "stall_threshold_seconds": 15.0,
+          "queue_depth_limit": 0
+         }
+        },
+        {
+         "name": "operator_confirmed_blades_off",
+         "passed": true,
+         "detail": "Real pulse requires confirm_blades_off=true."
+        },
+        {
+         "name": "operator_confirmed_clear_area",
+         "passed": true,
+         "detail": "Real pulse requires confirm_clear_area=true."
+        },
+        {
+         "name": "mower_reports_blades_off",
+         "passed": true,
+         "detail": "Real pulse requires blade state off and cutter RPM zero/unknown."
+        },
+        {
+         "name": "mower_ready",
+         "passed": true,
+         "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+        },
+        {
+         "name": "not_docked_or_charging",
+         "passed": true,
+         "detail": "Real pulse requires the mower to be off the dock and not charging."
+        },
+        {
+         "name": "live_map_position_available",
+         "passed": true,
+         "detail": "Real pulse requires live map-local mower position."
+        },
+        {
+         "name": "position_area_inside",
+         "passed": true,
+         "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+        },
+        {
+         "name": "map_position_nonzero",
+         "passed": true,
+         "detail": "Real pulse requires nonzero map-local x/y coordinates."
+        }
+       ],
+       "runtime_safety": {
+        "allowed_for_manual_motion": true,
+        "blockers": [],
+        "blade_safe_for_motion": true,
+        "active_mowing_detected": false,
+        "active_route_detected": false,
+        "active_route_status": {
+         "route_present": false,
+         "progress_present": false,
+         "progress_is_active": false,
+         "blocks_motion": false,
+         "reason": "no_route",
+         "ha_state": "paused",
+         "work_mode_label": "MODE_READY"
+        },
+        "position_valid_for_motion": true,
+        "rtk_report_age_seconds": null,
+        "rtk_report_quiet_threshold_seconds": 1800.0,
+        "rtk_report_quiet": false,
+        "rtk_status_label": "Fix",
+        "rtk_degraded": false,
+        "rtk_degraded_override": false
+       },
+       "blockers": [],
+       "would_send": true,
+       "planned_command": {
+        "command": "send_movement",
+        "kwargs": {
+         "linear_speed": 0,
+         "angular_speed": 500
+        }
+       },
+       "commands_sent": 1,
+       "command_results": [
+        {
+         "index": 1,
+         "angular_speed": 500,
+         "pulse_duration_ms": 1471.1,
+         "before_vision_heading": -16.21613266392658,
+         "heading_error_before": -54.431,
+         "command": "send_movement",
+         "sent_at_utc": "2026-08-18T23:24:44.806456+00:00",
+         "ok": true,
+         "error": null,
+         "stop_ack": {
+          "movement_ok": true
+         },
+         "after_vision_heading": -75.74017221122733,
+         "measured_change_degrees": -59.524,
+         "heading_error_after": 5.093,
+         "progress_degrees": 49.339,
+         "displacement_m": 0.07407091196954511,
+         "heading_poll_seconds": 2.0,
+         "heading_went_fresh": true,
+         "motion_refresh": {
+          "refresh_enabled": true,
+          "refresh_interval_ms": 200,
+          "refresh_commands_sent": 6,
+          "refresh_command_limit": null,
+          "refresh_write_durations_ms": [
+           122.382,
+           530.349,
+           115.525,
+           197.237,
+           198.429,
+           217.648
+          ],
+          "max_refresh_commands": 7,
+          "elapsed_ms": 1660.38
+         },
+         "final_approach": {
+          "applied": true,
+          "reason": "final_approach_scaled_to_remaining_angle",
+          "heading_error_degrees": -54.43137207482005,
+          "heading_tolerance_degrees": 18.0,
+          "degrees_per_second": 37.0,
+          "degrees_per_second_source": "default",
+          "sweep_bound_degrees_per_second": 40.0,
+          "sweep_bound_offset_degrees": 12.0,
+          "max_allowed_sweep_degrees": 72.431,
+          "ceiling_pulse_duration_ms": 1510.8,
+          "pulse_duration_ms": 1471.1,
+          "ceiling_below_actuation_floor": false,
+          "sweep_exceeds_any_pulse": false
+         },
+         "heading_poll_count": 1,
+         "heading_poll_feed_alive": true,
+         "longest_refresh_write_ms": 530.349,
+         "refresh_cadence_broken": false
+        }
+       ],
+       "final_vision_heading": -75.74017221122733,
+       "final_heading_error_degrees": 5.093,
+       "final_vio_feed": {
+        "live": true,
+        "tracked_features": 79,
+        "brightness_raw": 1,
+        "brightness_label": "Light"
+       },
+       "final_displacement_m": 0.07407091196954511,
+       "turn_degrees_per_second": 37.0,
+       "turn_feasibility": {
+        "feasible": true,
+        "reason": "within_budget",
+        "initial_error_degrees": 54.431,
+        "heading_tolerance_degrees": 18.0,
+        "required_rotation_degrees": 36.431,
+        "per_command_rotation_bound_degrees": 21.6,
+        "rotation_bound_source": "conservative_observed_rate_with_refresh",
+        "estimated_commands_needed": 3,
+        "max_commands": 4,
+        "translation_bound_m_per_degree": 0.0026,
+        "translation_bound_source": "conservative_observed_translation_per_degree",
+        "estimated_translation_m": 0.142,
+        "max_displacement_m": 0.3,
+        "command_count_model": "executor_pulse_policy_replay",
+        "modelled_pulse_durations_ms": [
+         1471.1,
+         981.2,
+         628.0
+        ]
+       },
+       "stop_reason": "target_heading_reached"
+      }
+     },
+     {
+      "name": "linear_forward_to_target",
+      "passed": true,
+      "result": {
+       "commands_sent": 5,
+       "stop_reason": "target_reached",
+       "progress_diagnostics": [
+        {
+         "status": "path_progress",
+         "passed": true,
+         "action": "forward",
+         "path_progress_distance": 0.36399549466458364,
+         "expected_target_heading_degrees": 287.8040113064434,
+         "movement_vector_heading_degrees": 285.16134049269397,
+         "heading_progress": true,
+         "min_progress_distance": 0.0025,
+         "min_heading_change_degrees": 0.0,
+         "command_index": 1,
+         "measured_delta": {
+          "distance": 0.36438301277639173,
+          "dx": 0.09529999999999994,
+          "dy": -0.3517000000000001,
+          "heading_change_degrees": 0.0
+         }
+        },
+        {
+         "status": "path_progress",
+         "passed": true,
+         "action": "forward",
+         "path_progress_distance": 0.4006134188590269,
+         "expected_target_heading_degrees": 288.4961803336868,
+         "movement_vector_heading_degrees": 286.3871206465699,
+         "heading_progress": true,
+         "min_progress_distance": 0.0025,
+         "min_heading_change_degrees": 0.0,
+         "command_index": 2,
+         "measured_delta": {
+          "distance": 0.40088498350524393,
+          "dx": 0.11309999999999931,
+          "dy": -0.38459999999999983,
+          "heading_change_degrees": 0.0
+         }
+        },
+        {
+         "status": "path_progress",
+         "passed": true,
+         "action": "forward",
+         "path_progress_distance": 0.38211155564412674,
+         "expected_target_heading_degrees": 289.34984677468015,
+         "movement_vector_heading_degrees": 284.5762408349879,
+         "heading_progress": true,
+         "min_progress_distance": 0.0025,
+         "min_heading_change_degrees": 0.0,
+         "command_index": 3,
+         "measured_delta": {
+          "distance": 0.38344159920384263,
+          "dx": 0.0965000000000007,
+          "dy": -0.3711000000000002,
+          "heading_change_degrees": 0.0
+         }
+        },
+        {
+         "status": "path_progress",
+         "passed": true,
+         "action": "forward",
+         "path_progress_distance": 0.27253442590231375,
+         "expected_target_heading_degrees": 292.353522987216,
+         "movement_vector_heading_degrees": 285.39788197782286,
+         "heading_progress": true,
+         "min_progress_distance": 0.0025,
+         "min_heading_change_degrees": 0.0,
+         "command_index": 4,
+         "measured_delta": {
+          "distance": 0.2745550946531489,
+          "dx": 0.07289999999999885,
+          "dy": -0.2646999999999995,
+          "heading_change_degrees": -1.0650000000000546
+         }
+        },
+        {
+         "status": "path_progress",
+         "passed": true,
+         "action": "forward",
+         "path_progress_distance": 0.2810882870349319,
+         "expected_target_heading_degrees": 297.9977156420866,
+         "movement_vector_heading_degrees": 288.02229937404513,
+         "heading_progress": true,
+         "min_progress_distance": 0.0025,
+         "min_heading_change_degrees": 0.0,
+         "command_index": 5,
+         "measured_delta": {
+          "distance": 0.2854029607414759,
+          "dx": 0.08830000000000027,
+          "dy": -0.27140000000000075,
+          "heading_change_degrees": 0.0
+         }
+        }
+       ]
+      }
+     }
+    ],
+    "progress_diagnostics": [
+     {
+      "status": "path_progress",
+      "passed": true,
+      "action": "forward",
+      "path_progress_distance": 0.36399549466458364,
+      "expected_target_heading_degrees": 287.8040113064434,
+      "movement_vector_heading_degrees": 285.16134049269397,
+      "heading_progress": true,
+      "min_progress_distance": 0.0025,
+      "min_heading_change_degrees": 0.0,
+      "command_index": 1,
+      "measured_delta": {
+       "distance": 0.36438301277639173,
+       "dx": 0.09529999999999994,
+       "dy": -0.3517000000000001,
+       "heading_change_degrees": 0.0
+      }
+     },
+     {
+      "status": "path_progress",
+      "passed": true,
+      "action": "forward",
+      "path_progress_distance": 0.4006134188590269,
+      "expected_target_heading_degrees": 288.4961803336868,
+      "movement_vector_heading_degrees": 286.3871206465699,
+      "heading_progress": true,
+      "min_progress_distance": 0.0025,
+      "min_heading_change_degrees": 0.0,
+      "command_index": 2,
+      "measured_delta": {
+       "distance": 0.40088498350524393,
+       "dx": 0.11309999999999931,
+       "dy": -0.38459999999999983,
+       "heading_change_degrees": 0.0
+      }
+     },
+     {
+      "status": "path_progress",
+      "passed": true,
+      "action": "forward",
+      "path_progress_distance": 0.38211155564412674,
+      "expected_target_heading_degrees": 289.34984677468015,
+      "movement_vector_heading_degrees": 284.5762408349879,
+      "heading_progress": true,
+      "min_progress_distance": 0.0025,
+      "min_heading_change_degrees": 0.0,
+      "command_index": 3,
+      "measured_delta": {
+       "distance": 0.38344159920384263,
+       "dx": 0.0965000000000007,
+       "dy": -0.3711000000000002,
+       "heading_change_degrees": 0.0
+      }
+     },
+     {
+      "status": "path_progress",
+      "passed": true,
+      "action": "forward",
+      "path_progress_distance": 0.27253442590231375,
+      "expected_target_heading_degrees": 292.353522987216,
+      "movement_vector_heading_degrees": 285.39788197782286,
+      "heading_progress": true,
+      "min_progress_distance": 0.0025,
+      "min_heading_change_degrees": 0.0,
+      "command_index": 4,
+      "measured_delta": {
+       "distance": 0.2745550946531489,
+       "dx": 0.07289999999999885,
+       "dy": -0.2646999999999995,
+       "heading_change_degrees": -1.0650000000000546
+      }
+     },
+     {
+      "status": "path_progress",
+      "passed": true,
+      "action": "forward",
+      "path_progress_distance": 0.2810882870349319,
+      "expected_target_heading_degrees": 297.9977156420866,
+      "movement_vector_heading_degrees": 288.02229937404513,
+      "heading_progress": true,
+      "min_progress_distance": 0.0025,
+      "min_heading_change_degrees": 0.0,
+      "command_index": 5,
+      "measured_delta": {
+       "distance": 0.2854029607414759,
+       "dx": 0.08830000000000027,
+       "dy": -0.27140000000000075,
+       "heading_change_degrees": 0.0
+      }
+     }
+    ],
+    "completion_status": {
+     "complete": true,
+     "target_index": null,
+     "distance_to_target": null,
+     "waypoint_distances": [
+      {
+       "index": 0,
+       "distance": 1.6042146894976375
+      },
+      {
+       "index": 1,
+       "distance": 0.0754358668008803
+      }
+     ],
+     "reason": "path_complete"
+    },
+    "stop_reason": "target_reached",
+    "post_turn_alignment": {
+     "turn_displacement_m": 0.07407091196954511,
+     "before": {
+      "facing_degrees": 285.103,
+      "bearing_degrees": 287.804,
+      "aim_error_degrees": 2.701
+     },
+     "alignment_tolerance_degrees": 10.0,
+     "correction_attempted": false,
+     "passed": true
+    },
+    "linear_execution_mode": "loop_to_tolerance",
+    "effective_linear_ceiling": 22,
+    "linear_distance_ceiling": 3.5092657978557287
+   }
+  }
+ ],
+ "initial_telemetry": {
+  "online": true,
+  "work_mode": 11,
+  "work_mode_label": "MODE_READY",
+  "charge_state": 0,
+  "charge_state_label": "not_charging",
+  "position": {
+   "x": 7.1134,
+   "y": -3.898,
+   "toward": -168.8465,
+   "source": "report_data.locations[0]",
+   "pos_level": 1,
+   "pos_level_label": "SINGLE",
+   "rtk_status": 4,
+   "rtk_status_label": "Fix",
+   "pos_type": 1,
+   "pos_type_label": "AREA_INSIDE",
+   "zone_hash": "1343645155037768237",
+   "map_bol_hash": "5126959670531450704",
+   "area_name": "Backyard Right",
+   "valid_for_motion": true
+  },
+  "position_candidates": [
+   {
+    "source": "mowing_state",
+    "x": 0.0,
+    "y": 0.0,
+    "toward": 0.0,
+    "pos_level": 0,
+    "pos_level_label": "FIX",
+    "rtk_status": 0,
+    "rtk_status_label": "None",
+    "pos_type": 0,
+    "pos_type_label": "AREA_OUT",
+    "zone_hash": 0,
+    "area_name": null,
+    "stale_zero_area_out": true,
+    "valid_for_motion": false
+   },
+   {
+    "source": "report_data.locations[0]",
+    "x": 7.1134,
+    "y": -3.898,
+    "toward": -168.8465,
+    "pos_level": null,
+    "pos_level_label": null,
+    "rtk_status": null,
+    "rtk_status_label": null,
+    "pos_type": 1,
+    "pos_type_label": "AREA_INSIDE",
+    "zone_hash": null,
+    "area_name": null,
+    "stale_zero_area_out": false,
+    "valid_for_motion": false
+   },
+   {
+    "source": "location_metadata",
+    "x": null,
+    "y": null,
+    "toward": -168,
+    "pos_level": null,
+    "pos_level_label": null,
+    "rtk_status": null,
+    "rtk_status_label": null,
+    "pos_type": 1,
+    "pos_type_label": "AREA_INSIDE",
+    "zone_hash": "1343645155037768237",
+    "area_name": "Backyard Right",
+    "stale_zero_area_out": false,
+    "valid_for_motion": false
+   },
+   {
+    "source": "report_data.rtk",
+    "x": null,
+    "y": null,
+    "toward": null,
+    "pos_level": 1,
+    "pos_level_label": "SINGLE",
+    "rtk_status": 4,
+    "rtk_status_label": "Fix",
+    "pos_type": null,
+    "pos_type_label": null,
+    "zone_hash": null,
+    "area_name": null,
+    "stale_zero_area_out": false,
+    "valid_for_motion": false
+   }
+  ],
+  "blade": {
+   "reported_state": 0,
+   "reported_state_label": "OFF",
+   "knife_status": null,
+   "current_cutter_mode": 0,
+   "current_cutter_rpm": 0
+  },
+  "transport": {
+   "ble_rssi": -66,
+   "wifi_rssi": -51,
+   "wifi_connect_status": null,
+   "iot_connect_status": null,
+   "connection_label": "WIFI/BLE"
+  }
+ },
+ "final_telemetry": {
+  "online": true,
+  "work_mode": 11,
+  "work_mode_label": "MODE_READY",
+  "charge_state": 0,
+  "charge_state_label": "not_charging",
+  "position": {
+   "x": 8.4286,
+   "y": -5.8459,
+   "toward": 164.6851,
+   "source": "report_data.locations[0]",
+   "pos_level": 1,
+   "pos_level_label": "SINGLE",
+   "rtk_status": 4,
+   "rtk_status_label": "Fix",
+   "pos_type": 1,
+   "pos_type_label": "AREA_INSIDE",
+   "zone_hash": "1343645155037768237",
+   "map_bol_hash": "5126959670531450704",
+   "area_name": "Backyard Right",
+   "valid_for_motion": true
+  },
+  "position_candidates": [
+   {
+    "source": "mowing_state",
+    "x": 0.0,
+    "y": 0.0,
+    "toward": 0.0,
+    "pos_level": 0,
+    "pos_level_label": "FIX",
+    "rtk_status": 0,
+    "rtk_status_label": "None",
+    "pos_type": 0,
+    "pos_type_label": "AREA_OUT",
+    "zone_hash": 0,
+    "area_name": null,
+    "stale_zero_area_out": true,
+    "valid_for_motion": false
+   },
+   {
+    "source": "report_data.locations[0]",
+    "x": 8.4286,
+    "y": -5.8459,
+    "toward": 164.6851,
+    "pos_level": null,
+    "pos_level_label": null,
+    "rtk_status": null,
+    "rtk_status_label": null,
+    "pos_type": 1,
+    "pos_type_label": "AREA_INSIDE",
+    "zone_hash": null,
+    "area_name": null,
+    "stale_zero_area_out": false,
+    "valid_for_motion": false
+   },
+   {
+    "source": "location_metadata",
+    "x": null,
+    "y": null,
+    "toward": 164,
+    "pos_level": null,
+    "pos_level_label": null,
+    "rtk_status": null,
+    "rtk_status_label": null,
+    "pos_type": 1,
+    "pos_type_label": "AREA_INSIDE",
+    "zone_hash": "1343645155037768237",
+    "area_name": "Backyard Right",
+    "stale_zero_area_out": false,
+    "valid_for_motion": false
+   },
+   {
+    "source": "report_data.rtk",
+    "x": null,
+    "y": null,
+    "toward": null,
+    "pos_level": 1,
+    "pos_level_label": "SINGLE",
+    "rtk_status": 4,
+    "rtk_status_label": "Fix",
+    "pos_type": null,
+    "pos_type_label": null,
+    "zone_hash": null,
+    "area_name": null,
+    "stale_zero_area_out": false,
+    "valid_for_motion": false
+   }
+  ],
+  "blade": {
+   "reported_state": 0,
+   "reported_state_label": "OFF",
+   "knife_status": null,
+   "current_cutter_mode": 0,
+   "current_cutter_rpm": 0
+  },
+  "transport": {
+   "ble_rssi": -74,
+   "wifi_rssi": -59,
+   "wifi_connect_status": null,
+   "iot_connect_status": null,
+   "connection_label": "WIFI/BLE"
+  }
+ },
+ "runtime_safety": {
+  "allowed_for_manual_motion": true,
+  "blockers": [],
+  "blade_safe_for_motion": true,
+  "active_mowing_detected": false,
+  "active_route_detected": false,
+  "active_route_status": {
+   "route_present": false,
+   "progress_present": false,
+   "progress_is_active": false,
+   "blocks_motion": false,
+   "reason": "no_route",
+   "ha_state": "paused",
+   "work_mode_label": "MODE_READY"
+  },
+  "position_valid_for_motion": true,
+  "rtk_report_age_seconds": null,
+  "rtk_report_quiet_threshold_seconds": 1800.0,
+  "rtk_report_quiet": false,
+  "rtk_status_label": "Fix",
+  "rtk_degraded": false,
+  "rtk_degraded_override": false
+ },
+ "safety_gates": [
+  {
+   "name": "stop_primitive_available",
+   "passed": true,
+   "detail": "Coordinator must expose async_stop_manual_motion()."
+  },
+  {
+   "name": "ble_transport_required",
+   "passed": true,
+   "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+  },
+  {
+   "name": "ble_link_live",
+   "passed": true,
+   "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+   "diagnostics": {
+    "live": true,
+    "reason": null,
+    "is_connected": true,
+    "is_usable": true,
+    "cooldown_active": false,
+    "cooldown_remaining_seconds": 0.0,
+    "last_send_age_seconds": 2.1,
+    "queue_depth": 0,
+    "queue_dispatch_paused": false,
+    "saga_active": false,
+    "stall_threshold_seconds": 15.0,
+    "queue_depth_limit": 0
+   }
+  },
+  {
+   "name": "operator_confirmed_blades_off",
+   "passed": true,
+   "detail": "Real pulse requires confirm_blades_off=true."
+  },
+  {
+   "name": "operator_confirmed_clear_area",
+   "passed": true,
+   "detail": "Real pulse requires confirm_clear_area=true."
+  },
+  {
+   "name": "mower_reports_blades_off",
+   "passed": true,
+   "detail": "Real pulse requires blade state off and cutter RPM zero/unknown."
+  },
+  {
+   "name": "mower_ready",
+   "passed": true,
+   "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+  },
+  {
+   "name": "not_docked_or_charging",
+   "passed": true,
+   "detail": "Real pulse requires the mower to be off the dock and not charging."
+  },
+  {
+   "name": "live_map_position_available",
+   "passed": true,
+   "detail": "Real pulse requires live map-local mower position."
+  },
+  {
+   "name": "position_area_inside",
+   "passed": true,
+   "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+  },
+  {
+   "name": "map_position_nonzero",
+   "passed": true,
+   "detail": "Real pulse requires nonzero map-local x/y coordinates."
+  }
+ ],
+ "blockers": [],
+ "stop_reason": "target_reached",
+ "failed_segment_index": null,
+ "junction_turn_feasibility": [
+  {
+   "segment_index": 2,
+   "turn_degrees": -48.009,
+   "feasibility": {
+    "feasible": true,
+    "reason": "within_budget",
+    "initial_error_degrees": 48.009,
+    "heading_tolerance_degrees": 18.0,
+    "required_rotation_degrees": 30.009,
+    "per_command_rotation_bound_degrees": 21.6,
+    "rotation_bound_source": "conservative_observed_rate_with_refresh",
+    "estimated_commands_needed": 2,
+    "max_commands": 4,
+    "translation_bound_m_per_degree": 0.0026,
+    "translation_bound_source": "conservative_observed_translation_per_degree",
+    "estimated_translation_m": 0.125,
+    "max_displacement_m": 0.3,
+    "command_count_model": "executor_pulse_policy_replay",
+    "modelled_pulse_durations_ms": [
+     1297.5,
+     883.1
+    ]
+   }
+  }
+ ]
+}
