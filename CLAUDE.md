@@ -243,6 +243,22 @@ accelerating as range closed. More budget buys more corrections chasing a target
 moving away faster, each adding turn translation. beta17 already recorded this
 exact failure.
 
+🔑 **`toward` IS ACCURATE — ~0.8° median, measured over 169 pulses across 30
+evidence files, 2026-08-18.** `movement_heading + toward` = **89.819°** with 98.2%
+of pulses inside 3°, corroborating the recorded 90.13° mirror from a far larger
+sample. Accuracy improves with travel length exactly as a fixed position-noise
+floor predicts (median 0.88° at 0.20-0.35 m, 0.76° above 0.35 m). **Exactly one
+outlier in 169** — and it is the already-documented item-15 case, a forward pulse
+immediately after a *night* turn. Read `docs/toward-accuracy-measured-20260818.md`.
+
+⚠️ **This corrects a framing, not a fact.** `toward` is not too imprecise to steer
+by; at ~1° it is comparable to VIO. What blocks closing a loop on it is *timing
+and granularity* — it stays bit-identical through a bounded pulse and arrives as
+one post-hoc step, and the refreshed night turn quantum is 48.15° ± 5.70 with
+nothing scaling it. ⚠️ Every sample is validated against travel, so this says
+nothing about `toward` as a **body heading after a rotation**; that is item 15,
+still open, and the sole outlier.
+
 **Settled, so do not re-derive:**
 
 - Rotation is **not predictable from duration** better than ~40% at p90 — ten
