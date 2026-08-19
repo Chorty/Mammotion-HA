@@ -6,6 +6,11 @@ measurements stand — but do not act on any build/host/gate state they describe
 
 ---
 
+📍 **Session findings and the roadmap are consolidated in
+`docs/roadmap-20260818.md`** — what 2026-08-18 established, and five phases from
+"validate what shipped" through to named destinations. Read that for direction;
+read the item below for the specific next run.
+
 ## 🏦 BANKED for the next daylight session — validate the reach work
 
 Everything shipped and accepted; **the control-law change has still never
