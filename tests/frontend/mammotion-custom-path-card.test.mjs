@@ -36,6 +36,7 @@ globalThis.localStorage = {
 };
 
 const {
+  ACCEPTED_PROFILE_ACCEPTED_ON,
   LUBA_ACCEPTANCE_PROFILE,
   MAX_NIGHT_SEGMENT_METRES,
   MAX_REAL_SEGMENTS,
@@ -350,24 +351,41 @@ test("an explicitly null ceiling falls back to the accepted value, not omission"
   assert.equal(payload.max_linear_pulse_ceiling, 22);
 });
 
-test("profile label reports acceptance by default and names any override", () => {
+test("the card's acceptance claim matches docs/accepted-profile.json", () => {
+  // 🚨 THIS CLAIM HAS ALREADY GONE STALE ONCE. The un-acceptance was hardcoded
+  // into _profileLabel() on 2026-08-17; Gate 5 passed on 2026-08-18 and the
+  // card kept telling the operator the profile "owes a Gate 5". The card
+  // cannot read the snapshot at runtime, so this test is the only thing tying
+  // the two together.
+  //
+  // If this fails, do NOT edit the constant to match blindly -- work out which
+  // side is right. The snapshot is regenerated only by
+  // scripts/check_accepted_profile.py --write-accepted after a real Gate 5.
+  const snapshot = JSON.parse(
+    readFileSync(new URL("../../docs/accepted-profile.json", import.meta.url)),
+  );
+  assert.equal(
+    ACCEPTED_PROFILE_ACCEPTED_ON,
+    snapshot.accepted_on,
+    "card acceptance date disagrees with docs/accepted-profile.json",
+  );
+  assert.deepEqual(
+    LUBA_ACCEPTANCE_PROFILE,
+    snapshot.profile,
+    "shipped profile differs from the hardware-accepted snapshot",
+  );
+});
+
+test("profile label states acceptance by default and names any override", () => {
   const element = card();
 
-  // ⚠️ INVERTED 2026-08-17. This used to assert the default label CLAIMED
-  // acceptance ("LUBA acceptance profile + reach"), which was right while the
-  // profile was accepted. Raising `max_linear_pulse_ceiling` 14 -> 22 moved the
-  // accepted value itself, so `_profileOverrides()` reads empty and the banner
-  // would have gone on advertising a Gate 5 that never ran on this profile.
-  // The default branch must now state the un-acceptance.
-  assert.match(element._profileLabel(), /NOT hardware-accepted/);
-  assert.match(element._profileLabel(), /owes a Gate 5/);
-  assert.doesNotMatch(element._profileLabel(), /^LUBA acceptance profile/);
-  // The last genuinely accepted state stays cited, so the banner still tells an
-  // operator what DID pass and at which ceiling.
+  assert.match(element._profileLabel(), /LUBA acceptance profile/);
   assert.match(
     element._profileLabel(),
-    /ceiling 14, Gate 5 re-pass 2026-08-12/,
+    new RegExp(ACCEPTED_PROFILE_ACCEPTED_ON),
   );
+  assert.doesNotMatch(element._profileLabel(), /owes a Gate 5/);
+  assert.doesNotMatch(element._profileLabel(), /NOT hardware-accepted/);
 
   element._config.waypoint_tolerance = 0.25;
   element._config.ble_auto_recover = true;

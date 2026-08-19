@@ -64,6 +64,12 @@ const CARD_VERSION = "0.6.4-beta58";
 // `calibrated_forward_heading_offset_degrees` is a per-mower measurement (this
 // value came from the acceptance LUBA). Re-derive it for another mower rather
 // than assuming 102.4 transfers.
+// The hardware acceptance this profile currently rests on. Kept beside the
+// profile it describes, and pinned against docs/accepted-profile.json by a
+// frontend test so the two cannot drift.
+const ACCEPTED_PROFILE_ACCEPTED_ON = "2026-08-18";
+const ACCEPTED_PROFILE_LABEL = `LUBA acceptance profile — Gate 5 passed ${ACCEPTED_PROFILE_ACCEPTED_ON}`;
+
 const LUBA_ACCEPTANCE_PROFILE = Object.freeze({
   prefer_ble: true,
   turn_mode: "vio",
@@ -1273,19 +1279,23 @@ class MammotionCustomPathCard extends HTMLElement {
     return `current orientation unavailable; last-travel projection ${heading.toFixed(1)}° (course-over-ground ${Number(pos.toward).toFixed(1)}° + offset ${Number(this._profileValue("calibrated_forward_heading_offset_degrees")).toFixed(1)}°; not mower orientation)`;
   }
 
-  // ⚠️ The default branch must NOT claim hardware acceptance while it isn't
-  // true. `_profileOverrides()` diffs the payload against LUBA_ACCEPTANCE_PROFILE,
-  // so raising `max_linear_pulse_ceiling` 14 -> 22 inside that constant on
-  // 2026-08-17 moved the accepted value itself: overrides read empty and the
-  // banner went on printing "Gate 5 re-pass 2026-08-12" for a profile no Gate 5
-  // has ever run. The un-acceptance has to be stated here, where the operator
-  // reads it, not only in a doc.
+  // ⚠️ THIS STRING IS A CLAIM ABOUT HARDWARE AND IT HAS ALREADY GONE STALE ONCE.
+  // On 2026-08-17 the un-acceptance was hardcoded here; Gate 5 then passed on
+  // 2026-08-18 and the card went on telling the operator the profile "owes a
+  // Gate 5" for hours. The card cannot read docs/accepted-profile.json at
+  // runtime, so this constant is the only place the fact lives -- and a
+  // frontend test now reads that file and fails if the two disagree. Update
+  // both together or the test will stop you.
+  //
+  // `_profileOverrides()` diffs the payload against LUBA_ACCEPTANCE_PROFILE, so
+  // it catches dashboard YAML overriding a value; it CANNOT catch the accepted
+  // value itself moving, which is what happened when the ceiling went 14 -> 22.
   _profileLabel() {
     const overrides = this._profileOverrides();
     if (overrides.length) {
       return `customised (not hardware-accepted): ${overrides.join(", ")}`;
     }
-    return "reach profile — NOT hardware-accepted (max_linear_pulse_ceiling 22 since 2026-08-17; owes a Gate 5). Last accepted: ceiling 14, Gate 5 re-pass 2026-08-12";
+    return `${ACCEPTED_PROFILE_LABEL} (max_linear_pulse_ceiling ${LUBA_ACCEPTANCE_PROFILE.max_linear_pulse_ceiling})`;
   }
 
   // Straight-line nudge along trustworthy CURRENT orientation only. The old
@@ -2448,6 +2458,7 @@ if (typeof window !== "undefined") {
 export {
   CARD_VERSION,
   LUBA_ACCEPTANCE_PROFILE,
+  ACCEPTED_PROFILE_ACCEPTED_ON,
   MAX_NIGHT_SEGMENT_METRES,
   MAX_REAL_SEGMENTS,
   MAX_WAYPOINTS,
