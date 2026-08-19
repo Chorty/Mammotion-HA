@@ -8,6 +8,51 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta58 → beta59 — 2026-08-18 20:50-21:05 EDT, motion-disabled
+
+Two releases fifteen minutes apart. beta58 shipped the empty-card
+`path_validation_failed` fix; its own verification then caught a stale claim
+that beta59 corrects.
+
+| | beta58 | beta59 |
+| --- | --- | --- |
+| Files | 46/46 byte-identical | 46/46 byte-identical |
+| Card md5 (both paths + local) | `c1f28b30…` | `cca150ff…` |
+| Archive SHA-256 local = host | `a5893c55…` | `3b7477c0…` |
+| Lovelace | `?v=0.6.4-beta58&build=c1f28b30` | `?v=0.6.4-beta59&build=cca150ff` |
+| Restart | API 50 s, 132 entities, 134 s | API 31 s, 132 entities, 118 s |
+| Gate after | ✅ disarmed | ✅ disarmed |
+
+Backups: `mammotion-backup-20260818-2050-pre-beta58.tgz`, and the beta59
+equivalent taken the same way. Backend pymammotion `0.8.12.post1`.
+
+🏁 **beta58 was the first release to carry a DERIVED acceptance verdict in its
+release body**, from the step added earlier that day:
+
+    ## Execution profile
+    ✅ Hardware-accepted. Byte-identical to the profile that passed supervised
+    LUBA acceptance on 2026-08-18 (docs/evidence-gate5-beta57-20260818.json).
+
+🚨 **What beta58's verification caught, and why it matters more than the fix.**
+The card's execution-profile row still read *"NOT hardware-accepted … owes a
+Gate 5"* — hardcoded on 2026-08-17, true then, and false from the moment Gate 5
+passed on 2026-08-18. The release body said accepted while the card said the
+opposite, on the same build.
+
+`_profileOverrides()` could never have caught it: it diffs the payload against
+`LUBA_ACCEPTANCE_PROFILE`, so it catches dashboard YAML overriding a value, and
+is structurally blind to the *accepted value itself* moving. beta59 replaces the
+hardcoded sentence with `ACCEPTED_PROFILE_ACCEPTED_ON` and pins it with a
+frontend test that reads `docs/accepted-profile.json` and fails on any
+disagreement in date or values. Verified by corrupting the snapshot date (suite
+went 49/1) and restoring it (50/50) — it catches drift, it does not merely
+assert today's string.
+
+⚠️ **The motion gate was found ARMED at rest for the third time this session**
+before the beta58 deploy (`real_motion_allowed: true`, zero blockers, mower off
+the dock). Disarmed each time and verified. Three occurrences in one day is a
+pattern worth a habit or an automation, not a coincidence.
+
 ### beta57 — 2026-08-18 17:15-17:22 EDT, motion-disabled
 
 `0.6.4-beta57`, tag `v0.6.4-beta57` at `eae4acb8` (release commit on top of the

@@ -26,7 +26,7 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: `0.6.4-beta57` released and installed motion-disabled
+## Current build: `0.6.4-beta59` released and installed motion-disabled
 
 ⚠️ **The heading below this one said `beta55` until 2026-08-17** — stale since
 the beta56 release on 2026-08-16, and it made a session ask which build was
