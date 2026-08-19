@@ -25,8 +25,9 @@ behaviour in regimes neither hardware run entered:
 | `max_linear_pulse_ceiling` 14 → 22 | leg needs **> 14 pulses** (~5 m) | 3 pulses used, of 22 |
 
 Short legs cannot reach the trigger window: a segment opens with a turn, the
-post-turn gate holds the residual under 10°, and aim only grows as
-`atan(cross_track / range)` — by which time range has closed below 0.5 m. Aim
+post-turn gate holds the residual under 10°, and aim only grows as the
+arctangent of cross-track over remaining range — by which time range has closed
+below 0.5 m. Aim
 and range move in opposite directions, so the path skips the window diagonally.
 Corpus replay puts all four old-vs-new divergences at **0.85-1.13 m range,
 15.5-17.1° aim, on legs of 1.9-4.0 m**.
