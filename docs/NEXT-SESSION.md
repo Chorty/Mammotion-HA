@@ -11,7 +11,29 @@ measurements stand — but do not act on any build/host/gate state they describe
 "validate what shipped" through to named destinations. Read that for direction;
 read the item below for the specific next run.
 
-## 🏦 BANKED for the next daylight session — validate the reach work
+## ✅ ANSWERED 2026-08-19 — the reach work is measured INERT
+
+🔑 A recovered long-leg run (1.96 / 1.75 / 2.31 m, 3/3 `target_reached`, mean
+0.0833 m, **with** real mid-drive corrections) replays with the old and new
+triggers making **identical decisions at all 17 decision points**. Across that
+run plus Gate 5 and run #4 that is **40 measured decision points, zero
+divergence**. Max corrections needed on any 2 m leg: **one** — so
+`vio_max_realignments: 3` is ample and the scope cut was right.
+`docs/longleg-replay-answers-the-open-question-20260819.md`.
+
+⚠️ **The banked run below is therefore no longer the top priority** — this data
+does what it was going to do, on the same geometry class, for free. What is
+still untested is the **ceiling 14 → 22**, which needs a leg over ~5 m; this run
+used 6-8 pulses of 14.
+
+⚠️ Also exposed: at 1.85 m range with 8.1° of aim, the projection was 0.26 m
+against a 0.15 m tolerance and **neither trigger fired**, because 8.1° is under
+the 15° floor. The far-field blind spot is still open, with the floor now doing
+the blocking. **But the segment landed at 0.1330 m anyway** — the aim fell back
+on its own, so correcting would have spent a turn fixing something that fixed
+itself. Do not lower the floor on that single case.
+
+## 🏦 Banked — the long-leg characterization run (deprioritised, see above)
 
 Everything shipped and accepted; **the control-law change has still never
 altered what the mower did.** Parked deliberately at the operator's call on
