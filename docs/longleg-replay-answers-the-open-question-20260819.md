@@ -42,9 +42,24 @@ Only one decision point fires under either rule — segment 1 pulse 4, aim
 budget was never the constraint on this geometry.
 
 **2. The trigger change bought nothing on the geometry it targeted.** It was
-designed for far-field misses; on real 2 m legs it changed no decision. Combined
-with Gate 5 (8 decision points, identical) and run #4 (15 points, identical),
-that is **40 measured decision points across three runs with zero divergence**.
+designed for far-field misses; on real 2 m legs it changed no decision.
+
+⚠️ **Corrected 2026-08-19: the total is 32, not 40.** This paragraph first said
+"40 measured decision points", built from a mis-remembered 15 for run #4. Run #4
+contributes **7** (3 + 4), not 15 — the 15 was run #4 *plus* Gate 5, and Gate 5
+was then added again. The conclusion is untouched; the arithmetic was wrong, and
+in this repo a wrong figure in a load-bearing doc is how a later session gets
+misled.
+
+| run | decision points | divergences |
+| --- | --- | --- |
+| `evidence-reaim-trigger-hardware-20260818` | 7 | 0 |
+| `evidence-gate5-beta57-20260818` | 8 | 0 |
+| `evidence-longleg-3segment-20260817` | 17 | 0 |
+| **total** | **32** | **0** |
+
+Reproduce: `scripts/replay_reaim_trigger.py --json <file>` and count
+`decisions` per segment.
 
 ## ⚠️ And one thing it exposes — the floor is now the blind spot
 
@@ -84,8 +99,8 @@ immediately after every run.**
 - The **length gates** (`segment_too_long`, `linear_budget_insufficient_for_segment`)
   are real safety additions and stand.
 - The **ceiling 14 → 22** remains unexercised: this run used 6-8 pulses of 14.
-- The **trigger change** is now measured inert across 40 decision points on
-  1.75-2.31 m legs. It is not wrong; it simply does not engage.
+- The **trigger change** is now measured inert across **32** decision points on
+  0.70-2.31 m legs. It is not wrong; it simply does not engage.
 
 ⚠️ The banked characterization run is **no longer the top priority** — this data
 does what that run was going to do, on the same geometry class, for free. What

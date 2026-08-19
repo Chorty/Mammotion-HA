@@ -16,8 +16,9 @@ read the item below for the specific next run.
 🔑 A recovered long-leg run (1.96 / 1.75 / 2.31 m, 3/3 `target_reached`, mean
 0.0833 m, **with** real mid-drive corrections) replays with the old and new
 triggers making **identical decisions at all 17 decision points**. Across that
-run plus Gate 5 and run #4 that is **40 measured decision points, zero
-divergence**. Max corrections needed on any 2 m leg: **one** — so
+run plus Gate 5 (8) and run #4 (7) that is **32 measured decision points, zero
+divergence** (⚠️ corrected from a wrong "40" on 2026-08-19). Max corrections
+needed on any 2 m leg: **one** — so
 `vio_max_realignments: 3` is ample and the scope cut was right.
 `docs/longleg-replay-answers-the-open-question-20260819.md`.
 
