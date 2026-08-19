@@ -11,7 +11,21 @@ claim living only in prose that a later session might not read.
 it is a job-level `if:` guard, written nowhere, verifying nothing, and true by
 construction whenever the release job runs.
 
-🚨 **2026-08-17 — THE PROFILE IN THE TREE IS NO LONGER THE ACCEPTED PROFILE.**
+🏁 **DISCHARGED 2026-08-18 — GATE 5 PASSED ON THE REACH PROFILE.** Card-driven,
+four segments, 4/4 `target_reached` at 0.1038 / 0.0863 / 0.1261 / 0.1129 m
+(mean 0.1073) against a 0.15 m tolerance, with every dispatched key
+byte-identical to `LUBA_ACCEPTANCE_PROFILE` and `max_linear_pulse_ceiling: 22`
+on the wire. `docs/gate5-beta57-PASSED-20260818.md`; evidence
+`docs/evidence-gate5-beta57-20260818.json`. The §4 re-pinning was completed with
+the change itself. **The acceptance debt below is settled** — the paragraph is
+kept because it records what was owed and why.
+
+⚠️ **Acceptance is not validation.** Replay shows the old and new re-aim
+triggers made identical decisions at all eight decision points of that run, and
+the ceiling never bound (3 pulses used of 22). Gate 5 accepted the *profile*;
+beta57's control-law change remains unexercised on hardware.
+
+🚨 **2026-08-17 — THE PROFILE IN THE TREE WAS NO LONGER THE ACCEPTED PROFILE.**
 `max_linear_pulse_ceiling` moved 14 → 22 on PR #15 (unmerged, unreleased, undeployed)
 to reach a 20 ft leg, alongside a pre-dispatch length cap and four control-law
 changes. It owes the §4 re-pinning in `docs/gate4-repass-20260805.md` and

@@ -40,30 +40,39 @@ def test_the_card_profile_parses() -> None:
     assert all("//" not in str(v) for v in profile.values())
 
 
-def test_the_accepted_snapshot_is_the_gate5_repass_profile() -> None:
-    """The snapshot records a real hardware pass, not a convenient value."""
+def test_the_accepted_snapshot_is_a_real_gate5_pass() -> None:
+    """The snapshot records a real hardware pass, not a convenient value.
+
+    Re-snapshotted 2026-08-18 after Gate 5 passed on the reach profile: four
+    card-driven segments, 4/4 target_reached at 0.1038 / 0.0863 / 0.1261 /
+    0.1129 m against a 0.15 m tolerance, and the dispatched payload carried
+    every profile key byte-identically. The previous snapshot was the
+    2026-08-12 re-pass at ceiling 14.
+    """
     doc = _accepted()
-    assert doc["accepted_on"] == "2026-08-12"
-    assert doc["evidence"] == "docs/evidence-gate5-repass-2-20260812.json"
+    assert doc["accepted_on"] == "2026-08-18"
+    assert doc["evidence"] == "docs/evidence-gate5-beta57-20260818.json"
     assert (_REPO / doc["evidence"]).exists()
-    # The ceiling Gate 5 actually ran on.
-    assert doc["profile"]["max_linear_pulse_ceiling"] == 14
+    # The ceiling this Gate 5 actually ran on.
+    assert doc["profile"]["max_linear_pulse_ceiling"] == 22
 
 
-def test_the_current_build_is_correctly_reported_as_not_accepted() -> None:
-    """beta57 raised the ceiling 14 -> 22, so it MUST report un-accepted.
+def test_the_shipped_profile_is_the_accepted_one() -> None:
+    """The shipped card must match the snapshot exactly.
 
-    ⚠️ If this test starts failing because the diff is empty, do not delete it.
-    Either a Gate 5 passed and the snapshot was legitimately regenerated -- in
-    which case update this test in the same change -- or someone reverted the
-    ceiling. Both are worth noticing.
+    ⚠️ INVERTED 2026-08-18, and the inversion is the point. This asserted the
+    build was NOT accepted while beta57's ceiling change (14 -> 22) was
+    outstanding; Gate 5 then passed on that profile and the snapshot was
+    regenerated, so the same guard now asserts the opposite.
+
+    If this starts failing, do NOT re-snapshot to silence it. A non-empty diff
+    means the shipped profile has moved away from the last hardware-accepted
+    one, which owes the section 4 re-pinning in docs/gate4-repass-20260805.md
+    and another Gate 5. Regenerate only after that gate actually passes, with
+    --write-accepted and the evidence file that proves it.
     """
     diffs = compare(extract_profile(CARD.read_text()), _accepted()["profile"])
-    assert diffs, "expected the shipped profile to diverge from the accepted one"
-    keys = {d["key"] for d in diffs}
-    assert keys == {"max_linear_pulse_ceiling"}
-    row = next(d for d in diffs if d["key"] == "max_linear_pulse_ceiling")
-    assert (row["accepted"], row["current"]) == (14, 22)
+    assert diffs == [], f"shipped profile has drifted from the accepted one: {diffs}"
 
 
 def test_compare_detects_every_kind_of_drift() -> None:

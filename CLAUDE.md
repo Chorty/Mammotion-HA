@@ -35,7 +35,19 @@ backend-only deploy adding the read-only `ota_info_probe` and changed nothing in
 the motion path, so every motion claim written under "beta55" below still
 describes what is running.
 
-🚨 **beta57 SHIPS THE REACH WORK AND IT UN-ACCEPTS THE PROFILE.** PR #15 merged
+🏁 **beta57 SHIPS THE REACH WORK AND GATE 5 PASSED ON IT, 2026-08-18** — four
+card-driven segments, 4/4 `target_reached`, mean 0.1073 m, profile identity
+proven key-by-key with `max_linear_pulse_ceiling: 22` dispatched.
+`docs/gate5-beta57-PASSED-20260818.md`. The profile is **accepted again** and
+`scripts/check_accepted_profile.py` now reports so.
+⚠️ **Acceptance is not validation:** replay shows old and new triggers made
+identical decisions at all eight decision points, and the ceiling never bound
+(3 pulses of 22). Both halves of the reach work only bite on legs of ~1.9 m and
+up, so **the control-law change is still untested on hardware** and *"is
+`vio_max_realignments: 3` enough"* remains unanswered — no mid-drive correction
+has ever fired on the new code.
+
+*(Superseded, kept for the record:)* **beta57 UN-ACCEPTED THE PROFILE.** PR #15 merged
 (`5d9aa759`), released and deployed motion-disabled 2026-08-18; deploy record and
 exact hashes in `docs/deploy-runbook-p0.md` → "beta57".
 `LUBA_ACCEPTANCE_PROFILE.max_linear_pulse_ceiling` moved **14 → 22** to reach a
