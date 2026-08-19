@@ -53,14 +53,40 @@ So `0` and `1` are treated as *flags*, and any other value as a *level* with a
 threshold at 45. A raw `1` therefore means "Light" while a raw `40` means
 "Dark" — do not read the raw number as a monotonic brightness.
 
-**`vio_survival_distance`** — distance in metres from `VioSurvivalInfoT`, a
-message carrying this single field. ⚠️ **Its meaning is not established.** The
-name suggests how far VIO can still navigate on its current map//feature memory,
-but nothing in pymammotion, the proto, or this project's measurements confirms
-that, and it has read `0.0` on every observation so far. **Treat it as
-unidentified in meaning, not merely undocumented.** HA displays it in the user's
-unit system, so it shows as `ft` on an imperial install despite the sensor
-declaring metres.
+**`vio_survival_distance`** — 🔑 **IDENTIFIED 2026-08-18 from the APK
+decompile.** It is **how far the mower can still navigate on vision alone**, and
+the app shows it only while the mower is actually doing so.
+
+In `CarStatusBarUtil.java` the status bar branches on `fuseStatus`, and this
+value appears in exactly one branch:
+
+```java
+} else if (fuseStatus == 2 || fuseStatus == 3) {
+    ...ivStatusBarPos.setImageResource(R.drawable.img_status_bar_vision);
+    ...pbStatusBarVision.setProgress(dis);
+    ...tvStatusBarVisionDis.setText(tranMetricUnit(vioSurvivalDistance));
+```
+
+`fuseStatus` `-1` and `1` draw the RTK/position icons; **`2` and `3` draw the
+*vision* icon**, and only then does the app reveal a vision panel carrying a
+progress bar plus this distance as text. The bar is coloured by a separate 0-100
+value `dis` — green at 50+, **orange 20-49, red below 20** — so the app treats a
+falling vision reserve as a warning state.
+
+That settles the name: "survival" is how much navigating the mower has left on
+vision before it loses its reference, surfaced when vision is carrying the
+position fix rather than RTK.
+
+⚠️ **It reads `0.0` here and that is expected, not a fault.** This mower runs on
+RTK Fix, so `fuse_status` is never in the 2/3 vision-fused regime — the same
+field this project already measured as `0` (`NO_POSE`) in all 81 records of the
+2026-08-13 night capture. The counter has no reason to be populated.
+
+⚠️ Two things still NOT established: the units the device reports (the proto says
+float, our sensor declares metres, and HA re-displays in the user's unit system —
+so an imperial install shows `ft`), and whether the value counts down during
+vision navigation or is a static capability figure. Neither can be settled
+without observing the mower in a vision-fused state, which has not happened.
 
 ## Live snapshot, 2026-08-18 ~21:00 EDT (full dark)
 
@@ -98,3 +124,32 @@ every future run, and would cost nothing at runtime.
 ⚠️ Not done here. It changes what the executor records on every run, and this
 was identified at night with the mower parked — it belongs with the next change
 that touches that function, not as a drive-by.
+
+## Does the long-leg reach test need VIO? Yes — unavoidably
+
+Asked 2026-08-18. The answer is **yes**, for two independent reasons in the
+code, so the banked characterization run cannot be done after dark.
+
+**1. The re-aim block is inside `if turn_mode == "vio"`.** The mid-drive
+correction — the thing under test — sits in that branch of the linear loop.
+`legacy` and `night` never reach it at all.
+
+**2. Within that branch it additionally requires a live VIO track**
+(`reading["vio_state"] == _VIO_STATE_ACTIVE`), and the executor separately
+refuses a real run through `vio_feed_live` when tracked features fall below
+`_VIO_MIN_TRACKED_FEATURES` (5) — *regardless of what `vio_state` claims*, which
+is the dusk-latch guard.
+
+Neither non-VIO mode is a way round it:
+
+| mode | why it cannot test this |
+| --- | --- |
+| `night` | hard-capped at `_NIGHT_MAX_SEGMENT_LENGTH_M` = **1.0 m**, refused pre-dispatch by `night_segment_too_long`; also refuses loop-to-tolerance (`night_linear_loop_unsupported`); and it runs a **different** aim controller (`night_aim`), not the trigger under test |
+| `legacy` | never enters the re-aim branch — no mid-drive correction of any kind |
+
+The run needs a leg of **≥ 1.9 m**, so night's 1.0 m cap rules it out even
+before the controller difference does.
+
+**Consequence for scheduling:** the characterization run is daylight-only, and
+`vio_tracked_features` saturating at 80 means the feed will look perfectly
+healthy right up until it does not. Go with hours of light in hand, not minutes.
