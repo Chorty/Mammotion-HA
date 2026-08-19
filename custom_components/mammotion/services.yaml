@@ -337,6 +337,19 @@ export_tasks:
         entity:
           integration: mammotion
 
+disarm_experimental_motion:
+  description: >-
+    Close the experimental manual-motion gate. One-way by design: there is no
+    matching arm service, because arming stays behind the options flow where a
+    human has to do it. Idempotent, and refuses while a run is active - use the
+    abort service to stop a run in progress.
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+
 export_runtime_state:
   description: Read-only runtime telemetry and manual-motion safety blockers used for click/go preflight. Sends no movement commands.
   fields:

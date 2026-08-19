@@ -871,6 +871,322 @@
       "name": "Annuler la tâche en cours",
       "description": "Arrête la tondeuse et efface la tâche en cours."
     },
+    "copy_task": {
+      "name": "Copier la tâche",
+      "description": "Duplique un programme avec un nouvel id. Sans nom, 'Copy-N' est utilisé.",
+      "fields": {
+        "name": {
+          "name": "Nouveau nom",
+          "description": "Override the auto-generated 'Copy-N' name."
+        }
+      }
+    },
+    "create_task": {
+      "name": "Créer une tâche",
+      "description": "Crée un nouveau programme sur l'appareil.",
+      "fields": {
+        "name": {
+          "name": "Name",
+          "description": "Display name for the new schedule."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Whether the schedule starts enabled."
+        },
+        "weeks": {
+          "name": "Weekdays",
+          "description": "List of weekday integers (0 = Sunday … 6 = Saturday)."
+        },
+        "start_time": {
+          "name": "Start time",
+          "description": "HH:MM (mower)."
+        },
+        "end_time": {
+          "name": "End time",
+          "description": "HH:MM (mower)."
+        },
+        "start_date": {
+          "name": "Start date",
+          "description": "YYYY-MM-DD."
+        },
+        "end_date": {
+          "name": "End date",
+          "description": "YYYY-MM-DD."
+        },
+        "trigger_type": {
+          "name": "Trigger type",
+          "description": "0 = weekly, 1 = day interval, 2 = date, 3 = run once."
+        },
+        "day": {
+          "name": "Day interval",
+          "description": "Interval in days for trigger_type = 1."
+        },
+        "knife_height": {
+          "name": "Cut height",
+          "description": "Mower-only blade height in millimetres."
+        },
+        "speed": {
+          "name": "Speed",
+          "description": "Mower or Spino speed."
+        },
+        "edge_mode": {
+          "name": "Edge mode",
+          "description": "Mower-only."
+        },
+        "route_angle": {
+          "name": "Route angle",
+          "description": "Mower-only."
+        },
+        "route_spacing": {
+          "name": "Route spacing",
+          "description": "Mower-only."
+        },
+        "zone_hashs": {
+          "name": "Zone hashes",
+          "description": "Mower-only: list of area hashes covered."
+        },
+        "work_mode": {
+          "name": "Work mode",
+          "description": "Spino-only cleaning mode."
+        },
+        "sub_mode": {
+          "name": "Sub-modes",
+          "description": "Spino-only: list of APP_WORK values."
+        },
+        "operating_power": {
+          "name": "Operating power",
+          "description": "Spino-only."
+        },
+        "starttime": {
+          "name": "Start timestamp",
+          "description": "Spino-only: unix start time."
+        }
+      }
+    },
+    "delete_task": {
+      "name": "Supprimer la tâche",
+      "description": "Supprime définitivement le programme."
+    },
+    "disarm_experimental_motion": {
+      "name": "Désarmer le mouvement expérimental",
+      "description": "Ferme la barrière du mouvement manuel expérimental. Sens unique par conception : il n'existe pas de service d'armement correspondant, car l'armement reste dans les options de l'intégration. Idempotent, et refusé pendant qu'un trajet est en cours.",
+      "fields": {
+        "entity_id": {
+          "name": "Entité",
+          "description": "Toute entité de tondeuse Mammotion appartenant à l'appareil."
+        }
+      }
+    },
+    "edit_task": {
+      "name": "Modifier la tâche",
+      "description": "Modifie un sous-ensemble de champs du programme.",
+      "fields": {
+        "name": {
+          "name": "Name",
+          "description": "Display name."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Whether the schedule is active."
+        },
+        "weeks": {
+          "name": "Weekdays",
+          "description": "List of weekday integers (0 = Sunday … 6 = Saturday) the schedule runs on."
+        },
+        "start_time": {
+          "name": "Start time",
+          "description": "HH:MM (mower only)."
+        },
+        "end_time": {
+          "name": "End time",
+          "description": "HH:MM (mower only)."
+        },
+        "start_date": {
+          "name": "Start date",
+          "description": "YYYY-MM-DD."
+        },
+        "end_date": {
+          "name": "End date",
+          "description": "YYYY-MM-DD."
+        },
+        "trigger_type": {
+          "name": "Trigger type",
+          "description": "0 = weekly, 1 = day interval, 2 = date, 3 = run once."
+        },
+        "day": {
+          "name": "Day interval",
+          "description": "Interval in days when trigger_type is 1 (DAY)."
+        },
+        "knife_height": {
+          "name": "Cut height",
+          "description": "Mower-only blade height in millimetres."
+        },
+        "speed": {
+          "name": "Speed",
+          "description": "Mower: driving speed (float). Spino: fixed32 speed value (int)."
+        },
+        "edge_mode": {
+          "name": "Edge mode",
+          "description": "Mower-only: 0 = none, 1 = once, 2 = twice."
+        },
+        "route_angle": {
+          "name": "Route angle",
+          "description": "Mower-only: mowing pattern angle 0–179 degrees."
+        },
+        "route_spacing": {
+          "name": "Route spacing",
+          "description": "Mower-only: spacing between mow lines in cm."
+        },
+        "zone_hashs": {
+          "name": "Zone hashes",
+          "description": "Mower-only: list of area hashes (fixed64) covered by this schedule."
+        },
+        "work_mode": {
+          "name": "Work mode",
+          "description": "Spino-only: 0 = recharge, 1 = AUTO, 2 = FLOOR, 3 = WALL, 4 = ECO, 5 = LINE, 6 = CUSTOM."
+        },
+        "sub_mode": {
+          "name": "Sub-modes",
+          "description": "Spino-only: list of APP_WORK values for multi-stage cleaning."
+        },
+        "operating_power": {
+          "name": "Operating power",
+          "description": "Spino-only: suction power (fixed32 int)."
+        },
+        "starttime": {
+          "name": "Start timestamp",
+          "description": "Spino-only: unix timestamp (seconds) for the start of the cleaning session."
+        }
+      }
+    },
+    "export_map": {
+      "name": "Export map",
+      "description": "Returns read-only mower map data for custom path planning and debugging. Does not send commands to the mower.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        }
+      }
+    },
+    "export_tasks": {
+      "name": "Export tasks",
+      "description": "Returns read-only mower task data and sync metadata for custom path planning and debugging.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        }
+      }
+    },
+    "get_areas": {
+      "name": "Get areas",
+      "description": "Returns normalized read-only mower map area data and task references.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        }
+      }
+    },
+    "get_map_data": {
+      "name": "Obtenir les données de la carte",
+      "description": "Retourne les données brutes de la carte (zones, tuiles SVG, noms de zones) pour utilisation avec la carte SVG.",
+      "fields": {
+        "entity_id": {
+          "name": "Entité",
+          "description": "Toute entité Mammotion appartenant à l'appareil."
+        }
+      }
+    },
+    "get_tasks": {
+      "name": "Get tasks",
+      "description": "Returns normalized read-only mower task/schedule data.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        }
+      }
+    },
+    "preview_custom_path": {
+      "name": "Preview custom path",
+      "description": "Validates a proposed mower-map x/y path and returns GeoJSON preview data without sending movement commands.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        },
+        "points": {
+          "name": "Points",
+          "description": "List of map-local points, each with x and y."
+        },
+        "area_hash": {
+          "name": "Area hash",
+          "description": "Optional area hash to constrain containment validation."
+        },
+        "speed": {
+          "name": "Speed",
+          "description": "Proposed path speed. Used for validation only."
+        },
+        "blade_mode": {
+          "name": "Blade mode",
+          "description": "Must be off. This preview pass does not support blade movement."
+        }
+      }
+    },
+    "refresh_tasks": {
+      "name": "Actualiser les tâches",
+      "description": "Récupère à nouveau tous les programmes de l'appareil."
+    },
+    "rename_task": {
+      "name": "Renommer la tâche",
+      "description": "Renomme un programme existant (tondeuse ou robot de piscine). Ciblez l'entité bouton de la tâche.",
+      "fields": {
+        "name": {
+          "name": "Nouveau nom",
+          "description": "New display name for the task."
+        }
+      }
+    },
+    "reset_blade_time": {
+      "name": "Réinitialiser le temps de lame",
+      "description": "Réinitialiser le compteur de temps d'utilisation de la lame."
+    },
+    "set_blade_warning_time": {
+      "name": "Définir le temps d'avertissement de lame",
+      "description": "Définir le temps d'avertissement de remplacement de lame en heures.",
+      "fields": {
+        "hours": {
+          "name": "Heures",
+          "description": "Seuil d'avertissement en heures avant le remplacement recommandé de la lame."
+        }
+      }
+    },
+    "set_non_work_hours": {
+      "name": "Définir les heures non travaillées",
+      "description": "Définir les heures pendant lesquelles la tondeuse ne travaille pas.",
+      "fields": {
+        "start_time": {
+          "name": "Heure de début",
+          "description": "Heure de début des heures non travaillées."
+        },
+        "end_time": {
+          "name": "Heure de fin",
+          "description": "Heure de fin des heures non travaillées."
+        }
+      }
+    },
+    "set_task_enabled": {
+      "name": "Activer / désactiver la tâche",
+      "description": "Bascule l'indicateur d'activation d'un programme sans le supprimer.",
+      "fields": {
+        "enabled": {
+          "name": "Activé",
+          "description": "True to enable the schedule, false to disable it."
+        }
+      }
+    },
     "start_mow": {
       "name": "Commencer à tondre",
       "description": "Démarrer l'opération de tonte avec des paramètres personnalisés.",
@@ -979,43 +1295,9 @@
         }
       }
     },
-    "set_non_work_hours": {
-      "name": "Définir les heures non travaillées",
-      "description": "Définir les heures pendant lesquelles la tondeuse ne travaille pas.",
-      "fields": {
-        "start_time": {
-          "name": "Heure de début",
-          "description": "Heure de début des heures non travaillées."
-        },
-        "end_time": {
-          "name": "Heure de fin",
-          "description": "Heure de fin des heures non travaillées."
-        }
-      }
-    },
-    "set_blade_warning_time": {
-      "name": "Définir le temps d'avertissement de lame",
-      "description": "Définir le temps d'avertissement de remplacement de lame en heures.",
-      "fields": {
-        "hours": {
-          "name": "Heures",
-          "description": "Seuil d'avertissement en heures avant le remplacement recommandé de la lame."
-        }
-      }
-    },
-    "reset_blade_time": {
-      "name": "Réinitialiser le temps de lame",
-      "description": "Réinitialiser le compteur de temps d'utilisation de la lame."
-    },
-    "get_map_data": {
-      "name": "Obtenir les données de la carte",
-      "description": "Retourne les données brutes de la carte (zones, tuiles SVG, noms de zones) pour utilisation avec la carte SVG.",
-      "fields": {
-        "entity_id": {
-          "name": "Entité",
-          "description": "Toute entité Mammotion appartenant à l'appareil."
-        }
-      }
+    "start_task": {
+      "name": "Démarrer la tâche",
+      "description": "Exécute immédiatement un programme enregistré (aussi appelé « démarrer le programme »). Uniquement pour la tondeuse — le robot de piscine Spino n'a pas de commande équivalente."
     },
     "svg_add": {
       "name": "Ajouter une tuile SVG",
@@ -1060,6 +1342,24 @@
         "y_move": {
           "name": "Position Y",
           "description": "Remplacement de la coordonnée Y (mètres). Par défaut : centroïde de la zone."
+        }
+      }
+    },
+    "svg_delete": {
+      "name": "Supprimer une tuile SVG",
+      "description": "Supprime une tuile SVG de la carte de l'appareil par son hash attribué par l'appareil.",
+      "fields": {
+        "entity_id": {
+          "name": "Entité",
+          "description": "Toute entité Mammotion appartenant à l'appareil."
+        },
+        "device_hash": {
+          "name": "Hash de l'appareil",
+          "description": "Hash attribué par l'appareil lors de l'ajout de la tuile."
+        },
+        "area_hash": {
+          "name": "Hash de zone",
+          "description": "Hash de la zone de tonte parente."
         }
       }
     },
@@ -1113,270 +1413,6 @@
         }
       }
     },
-    "svg_delete": {
-      "name": "Supprimer une tuile SVG",
-      "description": "Supprime une tuile SVG de la carte de l'appareil par son hash attribué par l'appareil.",
-      "fields": {
-        "entity_id": {
-          "name": "Entité",
-          "description": "Toute entité Mammotion appartenant à l'appareil."
-        },
-        "device_hash": {
-          "name": "Hash de l'appareil",
-          "description": "Hash attribué par l'appareil lors de l'ajout de la tuile."
-        },
-        "area_hash": {
-          "name": "Hash de zone",
-          "description": "Hash de la zone de tonte parente."
-        }
-      }
-    },
-    "rename_task": {
-      "name": "Renommer la tâche",
-      "description": "Renomme un programme existant (tondeuse ou robot de piscine). Ciblez l'entité bouton de la tâche.",
-      "fields": {
-        "name": {
-          "name": "Nouveau nom",
-          "description": "New display name for the task."
-        }
-      }
-    },
-    "set_task_enabled": {
-      "name": "Activer / désactiver la tâche",
-      "description": "Bascule l'indicateur d'activation d'un programme sans le supprimer.",
-      "fields": {
-        "enabled": {
-          "name": "Activé",
-          "description": "True to enable the schedule, false to disable it."
-        }
-      }
-    },
-    "delete_task": {
-      "name": "Supprimer la tâche",
-      "description": "Supprime définitivement le programme."
-    },
-    "copy_task": {
-      "name": "Copier la tâche",
-      "description": "Duplique un programme avec un nouvel id. Sans nom, 'Copy-N' est utilisé.",
-      "fields": {
-        "name": {
-          "name": "Nouveau nom",
-          "description": "Override the auto-generated 'Copy-N' name."
-        }
-      }
-    },
-    "edit_task": {
-      "name": "Modifier la tâche",
-      "description": "Modifie un sous-ensemble de champs du programme.",
-      "fields": {
-        "name": {
-          "name": "Name",
-          "description": "Display name."
-        },
-        "enabled": {
-          "name": "Enabled",
-          "description": "Whether the schedule is active."
-        },
-        "weeks": {
-          "name": "Weekdays",
-          "description": "List of weekday integers (0 = Sunday … 6 = Saturday) the schedule runs on."
-        },
-        "start_time": {
-          "name": "Start time",
-          "description": "HH:MM (mower only)."
-        },
-        "end_time": {
-          "name": "End time",
-          "description": "HH:MM (mower only)."
-        },
-        "start_date": {
-          "name": "Start date",
-          "description": "YYYY-MM-DD."
-        },
-        "end_date": {
-          "name": "End date",
-          "description": "YYYY-MM-DD."
-        },
-        "trigger_type": {
-          "name": "Trigger type",
-          "description": "0 = weekly, 1 = day interval, 2 = date, 3 = run once."
-        },
-        "day": {
-          "name": "Day interval",
-          "description": "Interval in days when trigger_type is 1 (DAY)."
-        },
-        "knife_height": {
-          "name": "Cut height",
-          "description": "Mower-only blade height in millimetres."
-        },
-        "speed": {
-          "name": "Speed",
-          "description": "Mower: driving speed (float). Spino: fixed32 speed value (int)."
-        },
-        "edge_mode": {
-          "name": "Edge mode",
-          "description": "Mower-only: 0 = none, 1 = once, 2 = twice."
-        },
-        "route_angle": {
-          "name": "Route angle",
-          "description": "Mower-only: mowing pattern angle 0–179 degrees."
-        },
-        "route_spacing": {
-          "name": "Route spacing",
-          "description": "Mower-only: spacing between mow lines in cm."
-        },
-        "zone_hashs": {
-          "name": "Zone hashes",
-          "description": "Mower-only: list of area hashes (fixed64) covered by this schedule."
-        },
-        "work_mode": {
-          "name": "Work mode",
-          "description": "Spino-only: 0 = recharge, 1 = AUTO, 2 = FLOOR, 3 = WALL, 4 = ECO, 5 = LINE, 6 = CUSTOM."
-        },
-        "sub_mode": {
-          "name": "Sub-modes",
-          "description": "Spino-only: list of APP_WORK values for multi-stage cleaning."
-        },
-        "operating_power": {
-          "name": "Operating power",
-          "description": "Spino-only: suction power (fixed32 int)."
-        },
-        "starttime": {
-          "name": "Start timestamp",
-          "description": "Spino-only: unix timestamp (seconds) for the start of the cleaning session."
-        }
-      }
-    },
-    "create_task": {
-      "name": "Créer une tâche",
-      "description": "Crée un nouveau programme sur l'appareil.",
-      "fields": {
-        "name": {
-          "name": "Name",
-          "description": "Display name for the new schedule."
-        },
-        "enabled": {
-          "name": "Enabled",
-          "description": "Whether the schedule starts enabled."
-        },
-        "weeks": {
-          "name": "Weekdays",
-          "description": "List of weekday integers (0 = Sunday … 6 = Saturday)."
-        },
-        "start_time": {
-          "name": "Start time",
-          "description": "HH:MM (mower)."
-        },
-        "end_time": {
-          "name": "End time",
-          "description": "HH:MM (mower)."
-        },
-        "start_date": {
-          "name": "Start date",
-          "description": "YYYY-MM-DD."
-        },
-        "end_date": {
-          "name": "End date",
-          "description": "YYYY-MM-DD."
-        },
-        "trigger_type": {
-          "name": "Trigger type",
-          "description": "0 = weekly, 1 = day interval, 2 = date, 3 = run once."
-        },
-        "day": {
-          "name": "Day interval",
-          "description": "Interval in days for trigger_type = 1."
-        },
-        "knife_height": {
-          "name": "Cut height",
-          "description": "Mower-only blade height in millimetres."
-        },
-        "speed": {
-          "name": "Speed",
-          "description": "Mower or Spino speed."
-        },
-        "edge_mode": {
-          "name": "Edge mode",
-          "description": "Mower-only."
-        },
-        "route_angle": {
-          "name": "Route angle",
-          "description": "Mower-only."
-        },
-        "route_spacing": {
-          "name": "Route spacing",
-          "description": "Mower-only."
-        },
-        "zone_hashs": {
-          "name": "Zone hashes",
-          "description": "Mower-only: list of area hashes covered."
-        },
-        "work_mode": {
-          "name": "Work mode",
-          "description": "Spino-only cleaning mode."
-        },
-        "sub_mode": {
-          "name": "Sub-modes",
-          "description": "Spino-only: list of APP_WORK values."
-        },
-        "operating_power": {
-          "name": "Operating power",
-          "description": "Spino-only."
-        },
-        "starttime": {
-          "name": "Start timestamp",
-          "description": "Spino-only: unix start time."
-        }
-      }
-    },
-    "refresh_tasks": {
-      "name": "Actualiser les tâches",
-      "description": "Récupère à nouveau tous les programmes de l'appareil."
-    },
-    "start_task": {
-      "name": "Démarrer la tâche",
-      "description": "Exécute immédiatement un programme enregistré (aussi appelé « démarrer le programme »). Uniquement pour la tondeuse — le robot de piscine Spino n'a pas de commande équivalente."
-    },
-    "get_tasks": {
-      "name": "Get tasks",
-      "description": "Returns normalized read-only mower task/schedule data.",
-      "fields": {
-        "entity_id": {
-          "name": "Entity",
-          "description": "Any Mammotion mower entity belonging to the device."
-        }
-      }
-    },
-    "get_areas": {
-      "name": "Get areas",
-      "description": "Returns normalized read-only mower map area data and task references.",
-      "fields": {
-        "entity_id": {
-          "name": "Entity",
-          "description": "Any Mammotion mower entity belonging to the device."
-        }
-      }
-    },
-    "export_map": {
-      "name": "Export map",
-      "description": "Returns read-only mower map data for custom path planning and debugging. Does not send commands to the mower.",
-      "fields": {
-        "entity_id": {
-          "name": "Entity",
-          "description": "Any Mammotion mower entity belonging to the device."
-        }
-      }
-    },
-    "export_tasks": {
-      "name": "Export tasks",
-      "description": "Returns read-only mower task data and sync metadata for custom path planning and debugging.",
-      "fields": {
-        "entity_id": {
-          "name": "Entity",
-          "description": "Any Mammotion mower entity belonging to the device."
-        }
-      }
-    },
     "validate_custom_path": {
       "name": "Validate custom path",
       "description": "Validates a proposed mower-map x/y path without sending movement commands.",
@@ -1400,32 +1436,6 @@
         "blade_mode": {
           "name": "Blade mode",
           "description": "Must be off. This validation pass does not support blade movement."
-        }
-      }
-    },
-    "preview_custom_path": {
-      "name": "Preview custom path",
-      "description": "Validates a proposed mower-map x/y path and returns GeoJSON preview data without sending movement commands.",
-      "fields": {
-        "entity_id": {
-          "name": "Entity",
-          "description": "Any Mammotion mower entity belonging to the device."
-        },
-        "points": {
-          "name": "Points",
-          "description": "List of map-local points, each with x and y."
-        },
-        "area_hash": {
-          "name": "Area hash",
-          "description": "Optional area hash to constrain containment validation."
-        },
-        "speed": {
-          "name": "Speed",
-          "description": "Proposed path speed. Used for validation only."
-        },
-        "blade_mode": {
-          "name": "Blade mode",
-          "description": "Must be off. This preview pass does not support blade movement."
         }
       }
     }

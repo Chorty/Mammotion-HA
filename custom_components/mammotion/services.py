@@ -36,7 +36,7 @@ from pymammotion.utility.device_type import DeviceType
 
 from .backend_capability import async_probe_backend_capabilities
 from .capabilities import capability_snapshot
-from .const import DOMAIN, LOGGER
+from .const import CONF_ENABLE_EXPERIMENTAL_MOTION, DOMAIN, LOGGER
 from .coordinator import (
     MammotionReportUpdateCoordinator,
     MammotionRTKCoordinator,
@@ -67,6 +67,20 @@ SERVICE_GET_AREAS = "get_areas"
 SERVICE_EXPORT_MAP = "export_map"
 SERVICE_EXPORT_TASKS = "export_tasks"
 SERVICE_EXPORT_RUNTIME_STATE = "export_runtime_state"
+#: 🔒 ONE-WAY BY DESIGN. There is deliberately no matching "arm" service.
+#:
+#: Arming stays behind the options flow, which is a human sitting in front of
+#: Settings. A service that could arm would let any automation, script, scene or
+#: voice assistant open the motion gate, which is a strictly larger attack
+#: surface than exists today. This one can only ever CLOSE it, so the worst a
+#: bug or a stray call can do is refuse to move.
+#:
+#: It exists because the gate was found armed at rest three times on
+#: 2026-08-18, once with zero blockers and the mower off its dock -- no docked
+#: position to fall back on. Nothing in HA could close it: the gate is a config
+#: entry option, so there was no entity to toggle and no service to call, only a
+#: binary_sensor reporting the state.
+SERVICE_DISARM_EXPERIMENTAL_MOTION = "disarm_experimental_motion"
 SERVICE_EXPORT_ACTIVE_ROUTE = "export_active_route"
 SERVICE_VALIDATE_CUSTOM_PATH = "validate_custom_path"
 SERVICE_PREVIEW_CUSTOM_PATH = "preview_custom_path"
@@ -16299,12 +16313,74 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         schema=GEOJSON_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
+
+    async def handle_disarm_experimental_motion(call: ServiceCall) -> dict[str, Any]:
+        """Close the experimental-motion gate. Never opens it.
+
+        Idempotent: disarming an already-disarmed gate is a success, not an
+        error, so an automation can call it on a schedule without generating
+        failures.
+
+        ⚠️ It does NOT stop a run in progress -- that is `Abort / Stop`, a
+        different and more urgent thing. This only removes the standing
+        permission, so it refuses while a session is active rather than
+        half-stopping a moving mower.
+        """
+        entity_id = call.data[ATTR_ENTITY_ID]
+        mower = _get_mower_by_entity_id(hass, entity_id)
+        if mower is None:
+            LOGGER.error("Could not find entity %s", entity_id)
+            return {"disarmed": False, "reason": "entity_not_found"}
+        coordinator = mower.reporting_coordinator
+        entry = getattr(coordinator, "config_entry", None)
+        if entry is None:
+            return {"disarmed": False, "reason": "config_entry_unavailable"}
+
+        status = experimental_motion_status(coordinator)
+        was_enabled = bool(status.get("enabled"))
+        if status.get("active_session") is not None:
+            # Pulling the permission out from under a live run would leave the
+            # session's own stop path to finish without it. Abort is the
+            # correct tool and it is a separate service.
+            LOGGER.warning(
+                "Refusing to disarm %s while a manual-motion session is active; "
+                "use the abort service to stop a run",
+                entity_id,
+            )
+            return {
+                "disarmed": False,
+                "reason": "active_session",
+                "was_enabled": was_enabled,
+            }
+
+        if was_enabled:
+            options = dict(entry.options)
+            options[CONF_ENABLE_EXPERIMENTAL_MOTION] = False
+            hass.config_entries.async_update_entry(entry, options=options)
+            LOGGER.info("Experimental motion gate disarmed for %s", entity_id)
+
+        after = experimental_motion_status(coordinator)
+        return {
+            "disarmed": True,
+            "was_enabled": was_enabled,
+            "changed": was_enabled,
+            "enabled": bool(after.get("enabled")),
+            "real_motion_allowed": bool(after.get("real_motion_allowed")),
+        }
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_EXPORT_RUNTIME_STATE,
         handle_export_runtime_state,
         schema=GEOJSON_SCHEMA,
         supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_DISARM_EXPERIMENTAL_MOTION,
+        handle_disarm_experimental_motion,
+        schema=GEOJSON_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
     )
     hass.services.async_register(
         DOMAIN,

@@ -871,6 +871,322 @@
       "name": "Prekini trenutno nalogo",
       "description": "Ustavi kosilnico in prekine trenutno nalogo"
     },
+    "copy_task": {
+      "name": "Kopiraj opravilo",
+      "description": "Podvoji urnik z novim id-jem. Brez imena: 'Copy-N'.",
+      "fields": {
+        "name": {
+          "name": "Novo ime",
+          "description": "Override the auto-generated 'Copy-N' name."
+        }
+      }
+    },
+    "create_task": {
+      "name": "Ustvari opravilo",
+      "description": "Ustvari nov urnik na napravi.",
+      "fields": {
+        "name": {
+          "name": "Name",
+          "description": "Display name for the new schedule."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Whether the schedule starts enabled."
+        },
+        "weeks": {
+          "name": "Weekdays",
+          "description": "List of weekday integers (0 = Sunday … 6 = Saturday)."
+        },
+        "start_time": {
+          "name": "Start time",
+          "description": "HH:MM (mower)."
+        },
+        "end_time": {
+          "name": "End time",
+          "description": "HH:MM (mower)."
+        },
+        "start_date": {
+          "name": "Start date",
+          "description": "YYYY-MM-DD."
+        },
+        "end_date": {
+          "name": "End date",
+          "description": "YYYY-MM-DD."
+        },
+        "trigger_type": {
+          "name": "Trigger type",
+          "description": "0 = weekly, 1 = day interval, 2 = date, 3 = run once."
+        },
+        "day": {
+          "name": "Day interval",
+          "description": "Interval in days for trigger_type = 1."
+        },
+        "knife_height": {
+          "name": "Cut height",
+          "description": "Mower-only blade height in millimetres."
+        },
+        "speed": {
+          "name": "Speed",
+          "description": "Mower or Spino speed."
+        },
+        "edge_mode": {
+          "name": "Edge mode",
+          "description": "Mower-only."
+        },
+        "route_angle": {
+          "name": "Route angle",
+          "description": "Mower-only."
+        },
+        "route_spacing": {
+          "name": "Route spacing",
+          "description": "Mower-only."
+        },
+        "zone_hashs": {
+          "name": "Zone hashes",
+          "description": "Mower-only: list of area hashes covered."
+        },
+        "work_mode": {
+          "name": "Work mode",
+          "description": "Spino-only cleaning mode."
+        },
+        "sub_mode": {
+          "name": "Sub-modes",
+          "description": "Spino-only: list of APP_WORK values."
+        },
+        "operating_power": {
+          "name": "Operating power",
+          "description": "Spino-only."
+        },
+        "starttime": {
+          "name": "Start timestamp",
+          "description": "Spino-only: unix start time."
+        }
+      }
+    },
+    "delete_task": {
+      "name": "Izbriši opravilo",
+      "description": "Trajno izbriše urnik."
+    },
+    "disarm_experimental_motion": {
+      "name": "Onemogoči eksperimentalno gibanje",
+      "description": "Zapre vrata eksperimentalnega ročnega gibanja. Namerno enosmerno: ustrezna storitev za omogočanje ne obstaja, ker omogočanje ostaja med možnostmi integracije. Idempotentno in zavrnjeno med izvajanjem vožnje.",
+      "fields": {
+        "entity_id": {
+          "name": "Entiteta",
+          "description": "Katera koli entiteta kosilnice Mammotion, ki pripada napravi."
+        }
+      }
+    },
+    "edit_task": {
+      "name": "Uredi opravilo",
+      "description": "Spremeni izbrana polja urnika.",
+      "fields": {
+        "name": {
+          "name": "Name",
+          "description": "Display name."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Whether the schedule is active."
+        },
+        "weeks": {
+          "name": "Weekdays",
+          "description": "List of weekday integers (0 = Sunday … 6 = Saturday) the schedule runs on."
+        },
+        "start_time": {
+          "name": "Start time",
+          "description": "HH:MM (mower only)."
+        },
+        "end_time": {
+          "name": "End time",
+          "description": "HH:MM (mower only)."
+        },
+        "start_date": {
+          "name": "Start date",
+          "description": "YYYY-MM-DD."
+        },
+        "end_date": {
+          "name": "End date",
+          "description": "YYYY-MM-DD."
+        },
+        "trigger_type": {
+          "name": "Trigger type",
+          "description": "0 = weekly, 1 = day interval, 2 = date, 3 = run once."
+        },
+        "day": {
+          "name": "Day interval",
+          "description": "Interval in days when trigger_type is 1 (DAY)."
+        },
+        "knife_height": {
+          "name": "Cut height",
+          "description": "Mower-only blade height in millimetres."
+        },
+        "speed": {
+          "name": "Speed",
+          "description": "Mower: driving speed (float). Spino: fixed32 speed value (int)."
+        },
+        "edge_mode": {
+          "name": "Edge mode",
+          "description": "Mower-only: 0 = none, 1 = once, 2 = twice."
+        },
+        "route_angle": {
+          "name": "Route angle",
+          "description": "Mower-only: mowing pattern angle 0–179 degrees."
+        },
+        "route_spacing": {
+          "name": "Route spacing",
+          "description": "Mower-only: spacing between mow lines in cm."
+        },
+        "zone_hashs": {
+          "name": "Zone hashes",
+          "description": "Mower-only: list of area hashes (fixed64) covered by this schedule."
+        },
+        "work_mode": {
+          "name": "Work mode",
+          "description": "Spino-only: 0 = recharge, 1 = AUTO, 2 = FLOOR, 3 = WALL, 4 = ECO, 5 = LINE, 6 = CUSTOM."
+        },
+        "sub_mode": {
+          "name": "Sub-modes",
+          "description": "Spino-only: list of APP_WORK values for multi-stage cleaning."
+        },
+        "operating_power": {
+          "name": "Operating power",
+          "description": "Spino-only: suction power (fixed32 int)."
+        },
+        "starttime": {
+          "name": "Start timestamp",
+          "description": "Spino-only: unix timestamp (seconds) for the start of the cleaning session."
+        }
+      }
+    },
+    "export_map": {
+      "name": "Export map",
+      "description": "Returns read-only mower map data for custom path planning and debugging. Does not send commands to the mower.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        }
+      }
+    },
+    "export_tasks": {
+      "name": "Export tasks",
+      "description": "Returns read-only mower task data and sync metadata for custom path planning and debugging.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        }
+      }
+    },
+    "get_areas": {
+      "name": "Get areas",
+      "description": "Returns normalized read-only mower map area data and task references.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        }
+      }
+    },
+    "get_map_data": {
+      "name": "Pridobi podatke zemljevida",
+      "description": "Vrne surove podatke zemljevida (področja, SVG ploščice, imena področij) za uporabo s kartico SVG zemljevida.",
+      "fields": {
+        "entity_id": {
+          "name": "Entiteta",
+          "description": "Katera koli Mammotion entiteta, ki pripada napravi."
+        }
+      }
+    },
+    "get_tasks": {
+      "name": "Get tasks",
+      "description": "Returns normalized read-only mower task/schedule data.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        }
+      }
+    },
+    "preview_custom_path": {
+      "name": "Preview custom path",
+      "description": "Validates a proposed mower-map x/y path and returns GeoJSON preview data without sending movement commands.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        },
+        "points": {
+          "name": "Points",
+          "description": "List of map-local points, each with x and y."
+        },
+        "area_hash": {
+          "name": "Area hash",
+          "description": "Optional area hash to constrain containment validation."
+        },
+        "speed": {
+          "name": "Speed",
+          "description": "Proposed path speed. Used for validation only."
+        },
+        "blade_mode": {
+          "name": "Blade mode",
+          "description": "Must be off. This preview pass does not support blade movement."
+        }
+      }
+    },
+    "refresh_tasks": {
+      "name": "Osveži opravila",
+      "description": "Znova pridobi vse urnike iz naprave."
+    },
+    "rename_task": {
+      "name": "Preimenuj opravilo",
+      "description": "Preimenuje obstoječi urnik (kosilnica ali bazenski robot). Označi entiteto gumba opravila.",
+      "fields": {
+        "name": {
+          "name": "Novo ime",
+          "description": "New display name for the task."
+        }
+      }
+    },
+    "reset_blade_time": {
+      "name": "Ponastavi čas rezila",
+      "description": "Ponastavi števec časa uporabe rezila."
+    },
+    "set_blade_warning_time": {
+      "name": "Nastavi čas opozorila rezila",
+      "description": "Nastavite čas opozorila za zamenjavo rezila v urah.",
+      "fields": {
+        "hours": {
+          "name": "Ure",
+          "description": "Prag opozorila v urah pred priporočeno zamenjavo rezila."
+        }
+      }
+    },
+    "set_non_work_hours": {
+      "name": "Nastavi ure brez dela",
+      "description": "Nastavi ure, ko kosilnica ne dela.",
+      "fields": {
+        "start_time": {
+          "name": "Začetni čas",
+          "description": "Začetni čas ur brez dela."
+        },
+        "end_time": {
+          "name": "Končni čas",
+          "description": "Končni čas ur brez dela."
+        }
+      }
+    },
+    "set_task_enabled": {
+      "name": "Omogoči / onemogoči opravilo",
+      "description": "Preklopi zastavico omogočenosti urnika brez izbrisa.",
+      "fields": {
+        "enabled": {
+          "name": "Omogočeno",
+          "description": "True to enable the schedule, false to disable it."
+        }
+      }
+    },
     "start_mow": {
       "name": "Prični košnjo",
       "description": "Prični košnjo z dodatnimi nastavitvami",
@@ -979,43 +1295,9 @@
         }
       }
     },
-    "set_non_work_hours": {
-      "name": "Nastavi ure brez dela",
-      "description": "Nastavi ure, ko kosilnica ne dela.",
-      "fields": {
-        "start_time": {
-          "name": "Začetni čas",
-          "description": "Začetni čas ur brez dela."
-        },
-        "end_time": {
-          "name": "Končni čas",
-          "description": "Končni čas ur brez dela."
-        }
-      }
-    },
-    "set_blade_warning_time": {
-      "name": "Nastavi čas opozorila rezila",
-      "description": "Nastavite čas opozorila za zamenjavo rezila v urah.",
-      "fields": {
-        "hours": {
-          "name": "Ure",
-          "description": "Prag opozorila v urah pred priporočeno zamenjavo rezila."
-        }
-      }
-    },
-    "reset_blade_time": {
-      "name": "Ponastavi čas rezila",
-      "description": "Ponastavi števec časa uporabe rezila."
-    },
-    "get_map_data": {
-      "name": "Pridobi podatke zemljevida",
-      "description": "Vrne surove podatke zemljevida (področja, SVG ploščice, imena področij) za uporabo s kartico SVG zemljevida.",
-      "fields": {
-        "entity_id": {
-          "name": "Entiteta",
-          "description": "Katera koli Mammotion entiteta, ki pripada napravi."
-        }
-      }
+    "start_task": {
+      "name": "Zaženi opravilo",
+      "description": "Takoj zažene shranjen urnik (znano tudi kot „zaženi urnik“). Samo kosilnica — bazenski robot Spino nima enakovrednega ukaza."
     },
     "svg_add": {
       "name": "Dodaj SVG ploščico",
@@ -1060,6 +1342,24 @@
         "y_move": {
           "name": "Položaj Y",
           "description": "Prepisovanje koordinate Y (metri). Privzeto: težišče področja."
+        }
+      }
+    },
+    "svg_delete": {
+      "name": "Izbriši SVG ploščico",
+      "description": "Odstrani SVG ploščico z zemljevida naprave z njenim hashom, ki ga je dodelila naprava.",
+      "fields": {
+        "entity_id": {
+          "name": "Entiteta",
+          "description": "Katera koli Mammotion entiteta, ki pripada napravi."
+        },
+        "device_hash": {
+          "name": "Hash naprave",
+          "description": "Hash, ki ga je naprava dodelila ob dodajanju ploščice."
+        },
+        "area_hash": {
+          "name": "Hash področja",
+          "description": "Hash nadrejenega področja košnje."
         }
       }
     },
@@ -1113,270 +1413,6 @@
         }
       }
     },
-    "svg_delete": {
-      "name": "Izbriši SVG ploščico",
-      "description": "Odstrani SVG ploščico z zemljevida naprave z njenim hashom, ki ga je dodelila naprava.",
-      "fields": {
-        "entity_id": {
-          "name": "Entiteta",
-          "description": "Katera koli Mammotion entiteta, ki pripada napravi."
-        },
-        "device_hash": {
-          "name": "Hash naprave",
-          "description": "Hash, ki ga je naprava dodelila ob dodajanju ploščice."
-        },
-        "area_hash": {
-          "name": "Hash področja",
-          "description": "Hash nadrejenega področja košnje."
-        }
-      }
-    },
-    "rename_task": {
-      "name": "Preimenuj opravilo",
-      "description": "Preimenuje obstoječi urnik (kosilnica ali bazenski robot). Označi entiteto gumba opravila.",
-      "fields": {
-        "name": {
-          "name": "Novo ime",
-          "description": "New display name for the task."
-        }
-      }
-    },
-    "set_task_enabled": {
-      "name": "Omogoči / onemogoči opravilo",
-      "description": "Preklopi zastavico omogočenosti urnika brez izbrisa.",
-      "fields": {
-        "enabled": {
-          "name": "Omogočeno",
-          "description": "True to enable the schedule, false to disable it."
-        }
-      }
-    },
-    "delete_task": {
-      "name": "Izbriši opravilo",
-      "description": "Trajno izbriše urnik."
-    },
-    "copy_task": {
-      "name": "Kopiraj opravilo",
-      "description": "Podvoji urnik z novim id-jem. Brez imena: 'Copy-N'.",
-      "fields": {
-        "name": {
-          "name": "Novo ime",
-          "description": "Override the auto-generated 'Copy-N' name."
-        }
-      }
-    },
-    "edit_task": {
-      "name": "Uredi opravilo",
-      "description": "Spremeni izbrana polja urnika.",
-      "fields": {
-        "name": {
-          "name": "Name",
-          "description": "Display name."
-        },
-        "enabled": {
-          "name": "Enabled",
-          "description": "Whether the schedule is active."
-        },
-        "weeks": {
-          "name": "Weekdays",
-          "description": "List of weekday integers (0 = Sunday … 6 = Saturday) the schedule runs on."
-        },
-        "start_time": {
-          "name": "Start time",
-          "description": "HH:MM (mower only)."
-        },
-        "end_time": {
-          "name": "End time",
-          "description": "HH:MM (mower only)."
-        },
-        "start_date": {
-          "name": "Start date",
-          "description": "YYYY-MM-DD."
-        },
-        "end_date": {
-          "name": "End date",
-          "description": "YYYY-MM-DD."
-        },
-        "trigger_type": {
-          "name": "Trigger type",
-          "description": "0 = weekly, 1 = day interval, 2 = date, 3 = run once."
-        },
-        "day": {
-          "name": "Day interval",
-          "description": "Interval in days when trigger_type is 1 (DAY)."
-        },
-        "knife_height": {
-          "name": "Cut height",
-          "description": "Mower-only blade height in millimetres."
-        },
-        "speed": {
-          "name": "Speed",
-          "description": "Mower: driving speed (float). Spino: fixed32 speed value (int)."
-        },
-        "edge_mode": {
-          "name": "Edge mode",
-          "description": "Mower-only: 0 = none, 1 = once, 2 = twice."
-        },
-        "route_angle": {
-          "name": "Route angle",
-          "description": "Mower-only: mowing pattern angle 0–179 degrees."
-        },
-        "route_spacing": {
-          "name": "Route spacing",
-          "description": "Mower-only: spacing between mow lines in cm."
-        },
-        "zone_hashs": {
-          "name": "Zone hashes",
-          "description": "Mower-only: list of area hashes (fixed64) covered by this schedule."
-        },
-        "work_mode": {
-          "name": "Work mode",
-          "description": "Spino-only: 0 = recharge, 1 = AUTO, 2 = FLOOR, 3 = WALL, 4 = ECO, 5 = LINE, 6 = CUSTOM."
-        },
-        "sub_mode": {
-          "name": "Sub-modes",
-          "description": "Spino-only: list of APP_WORK values for multi-stage cleaning."
-        },
-        "operating_power": {
-          "name": "Operating power",
-          "description": "Spino-only: suction power (fixed32 int)."
-        },
-        "starttime": {
-          "name": "Start timestamp",
-          "description": "Spino-only: unix timestamp (seconds) for the start of the cleaning session."
-        }
-      }
-    },
-    "create_task": {
-      "name": "Ustvari opravilo",
-      "description": "Ustvari nov urnik na napravi.",
-      "fields": {
-        "name": {
-          "name": "Name",
-          "description": "Display name for the new schedule."
-        },
-        "enabled": {
-          "name": "Enabled",
-          "description": "Whether the schedule starts enabled."
-        },
-        "weeks": {
-          "name": "Weekdays",
-          "description": "List of weekday integers (0 = Sunday … 6 = Saturday)."
-        },
-        "start_time": {
-          "name": "Start time",
-          "description": "HH:MM (mower)."
-        },
-        "end_time": {
-          "name": "End time",
-          "description": "HH:MM (mower)."
-        },
-        "start_date": {
-          "name": "Start date",
-          "description": "YYYY-MM-DD."
-        },
-        "end_date": {
-          "name": "End date",
-          "description": "YYYY-MM-DD."
-        },
-        "trigger_type": {
-          "name": "Trigger type",
-          "description": "0 = weekly, 1 = day interval, 2 = date, 3 = run once."
-        },
-        "day": {
-          "name": "Day interval",
-          "description": "Interval in days for trigger_type = 1."
-        },
-        "knife_height": {
-          "name": "Cut height",
-          "description": "Mower-only blade height in millimetres."
-        },
-        "speed": {
-          "name": "Speed",
-          "description": "Mower or Spino speed."
-        },
-        "edge_mode": {
-          "name": "Edge mode",
-          "description": "Mower-only."
-        },
-        "route_angle": {
-          "name": "Route angle",
-          "description": "Mower-only."
-        },
-        "route_spacing": {
-          "name": "Route spacing",
-          "description": "Mower-only."
-        },
-        "zone_hashs": {
-          "name": "Zone hashes",
-          "description": "Mower-only: list of area hashes covered."
-        },
-        "work_mode": {
-          "name": "Work mode",
-          "description": "Spino-only cleaning mode."
-        },
-        "sub_mode": {
-          "name": "Sub-modes",
-          "description": "Spino-only: list of APP_WORK values."
-        },
-        "operating_power": {
-          "name": "Operating power",
-          "description": "Spino-only."
-        },
-        "starttime": {
-          "name": "Start timestamp",
-          "description": "Spino-only: unix start time."
-        }
-      }
-    },
-    "refresh_tasks": {
-      "name": "Osveži opravila",
-      "description": "Znova pridobi vse urnike iz naprave."
-    },
-    "start_task": {
-      "name": "Zaženi opravilo",
-      "description": "Takoj zažene shranjen urnik (znano tudi kot „zaženi urnik“). Samo kosilnica — bazenski robot Spino nima enakovrednega ukaza."
-    },
-    "get_tasks": {
-      "name": "Get tasks",
-      "description": "Returns normalized read-only mower task/schedule data.",
-      "fields": {
-        "entity_id": {
-          "name": "Entity",
-          "description": "Any Mammotion mower entity belonging to the device."
-        }
-      }
-    },
-    "get_areas": {
-      "name": "Get areas",
-      "description": "Returns normalized read-only mower map area data and task references.",
-      "fields": {
-        "entity_id": {
-          "name": "Entity",
-          "description": "Any Mammotion mower entity belonging to the device."
-        }
-      }
-    },
-    "export_map": {
-      "name": "Export map",
-      "description": "Returns read-only mower map data for custom path planning and debugging. Does not send commands to the mower.",
-      "fields": {
-        "entity_id": {
-          "name": "Entity",
-          "description": "Any Mammotion mower entity belonging to the device."
-        }
-      }
-    },
-    "export_tasks": {
-      "name": "Export tasks",
-      "description": "Returns read-only mower task data and sync metadata for custom path planning and debugging.",
-      "fields": {
-        "entity_id": {
-          "name": "Entity",
-          "description": "Any Mammotion mower entity belonging to the device."
-        }
-      }
-    },
     "validate_custom_path": {
       "name": "Validate custom path",
       "description": "Validates a proposed mower-map x/y path without sending movement commands.",
@@ -1400,32 +1436,6 @@
         "blade_mode": {
           "name": "Blade mode",
           "description": "Must be off. This validation pass does not support blade movement."
-        }
-      }
-    },
-    "preview_custom_path": {
-      "name": "Preview custom path",
-      "description": "Validates a proposed mower-map x/y path and returns GeoJSON preview data without sending movement commands.",
-      "fields": {
-        "entity_id": {
-          "name": "Entity",
-          "description": "Any Mammotion mower entity belonging to the device."
-        },
-        "points": {
-          "name": "Points",
-          "description": "List of map-local points, each with x and y."
-        },
-        "area_hash": {
-          "name": "Area hash",
-          "description": "Optional area hash to constrain containment validation."
-        },
-        "speed": {
-          "name": "Speed",
-          "description": "Proposed path speed. Used for validation only."
-        },
-        "blade_mode": {
-          "name": "Blade mode",
-          "description": "Must be off. This preview pass does not support blade movement."
         }
       }
     }

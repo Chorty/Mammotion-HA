@@ -1,0 +1,66 @@
+# Auto-disarm the experimental motion gate when it is left on.
+#
+# WHY THIS EXISTS. On 2026-08-18 the gate was found ARMED at rest three times in
+# one day. Once it read `real_motion_allowed: true` with ZERO blockers and the
+# mower parked out in the yard -- the docked-position backstop that had covered
+# the earlier occasions was not there. Normal posture is disarmed; the gate is
+# meant to be open for the ~100 s of a supervised run, not overnight.
+#
+# 🔒 The service it calls is ONE-WAY. There is no arm service, deliberately:
+# arming stays behind the options flow, where a human has to do it in Settings.
+# This automation can only ever close the gate, so the worst it can do on a bad
+# day is make you re-enable it.
+#
+# ⚠️ It does NOT stop a run. The service refuses while a session is active, so a
+# supervised run is never interrupted by the clock. To stop a moving mower use
+# Abort / Stop on the card, which is a different and more urgent path.
+#
+# INSTALL: paste into Settings -> Automations -> ⋮ -> Edit in YAML, or drop it
+# into automations.yaml. Adjust the entity ids for your install.
+
+alias: Mammotion - disarm motion gate when left armed
+description: >-
+  Closes the experimental manual-motion gate after it has been left open and
+  idle. Never opens it, and never interrupts an active run.
+mode: single
+
+triggers:
+  # The gate has been open and READY for 15 minutes. `real_motion_ready` is on
+  # only when every blocker is clear, which is precisely the dangerous state:
+  # nothing but a service call stands between this and a moving mower.
+  - trigger: state
+    entity_id: binary_sensor.back_yard_clip_skywalker_real_motion_ready
+    to: "on"
+    for:
+      minutes: 15
+    id: idle_and_ready
+
+  # Belt and braces: sweep nightly in case the sensor flapped and the `for:`
+  # timer never matured. Cheap, idempotent, and catches the case where the gate
+  # was armed while some other blocker happened to be masking it.
+  - trigger: time
+    at: "23:00:00"
+    id: nightly_sweep
+
+conditions: []
+
+actions:
+  - action: mammotion.disarm_experimental_motion
+    target:
+      entity_id: lawn_mower.back_yard_clip_skywalker
+    response_variable: result
+
+  # Only speak up when something actually changed. A nightly sweep that finds
+  # the gate already closed should be silent, or the notification becomes noise
+  # and stops being read -- which is how a real one gets missed.
+  - if:
+      - condition: template
+        value_template: "{{ result.changed | default(false) }}"
+    then:
+      - action: persistent_notification.create
+        data:
+          title: Mammotion motion gate disarmed
+          message: >-
+            The experimental motion gate was left armed and has been closed
+            automatically ({{ trigger.id }}). Re-enable it in the integration
+            options when you next want to drive.
