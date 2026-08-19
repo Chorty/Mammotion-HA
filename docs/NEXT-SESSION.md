@@ -6,6 +6,53 @@ measurements stand — but do not act on any build/host/gate state they describe
 
 ---
 
+## 🏦 BANKED for the next daylight session — validate the reach work
+
+Everything shipped and accepted; **the control-law change has still never
+altered what the mower did.** Parked deliberately at the operator's call on
+2026-08-18, not blocked.
+
+**State:** host runs `0.6.4-beta59`, gate DISARMED, profile hardware-accepted
+(Gate 5 passed 2026-08-18, `docs/gate5-beta57-PASSED-20260818.md`). Nothing is
+owed for acceptance.
+
+**What is unvalidated, and precisely why.** Both halves of beta57 only change
+behaviour in regimes neither hardware run entered:
+
+| change | only differs when | runs so far |
+| --- | --- | --- |
+| re-aim trigger (angle → projected miss) | aim error **15-19°** at range **≥ 0.5 m** | 15 decision points, **0** in that window |
+| `max_linear_pulse_ceiling` 14 → 22 | leg needs **> 14 pulses** (~5 m) | 3 pulses used, of 22 |
+
+Short legs cannot reach the trigger window: a segment opens with a turn, the
+post-turn gate holds the residual under 10°, and aim only grows as
+`atan(cross_track / range)` — by which time range has closed below 0.5 m. Aim
+and range move in opposite directions, so the path skips the window diagonally.
+Corpus replay puts all four old-vs-new divergences at **0.85-1.13 m range,
+15.5-17.1° aim, on legs of 1.9-4.0 m**.
+
+**So the run to do:** a leg of **≥ 1.9 m after a junction turn** — the operator's
+original 3-segment path (1.21 / 2.00 / 1.92 m, −99° then −58° junctions) is close
+to the right shape, though the −99° junction sits in the documented contested
+86-100° band and should come down to 45-70°. That geometry is a
+*characterization* run, not a Gate 5.
+
+**Watch:** whether any mid-drive correction fires at all — none ever has on the
+new code. If one does, whether the budget holds. ⚠️ A leg following a junction
+turn has an effective mid-drive budget of **2, not 3**: the post-turn gate at
+`services.py:12184` spends the same counter.
+
+**Tools ready:** `scripts/replay_reaim_trigger.py` (self-validating; run it on
+the new evidence and it will say whether old and new diverged),
+`scripts/card_headless_probe.mjs` (card state and emitted payload from the desk,
+before going outside).
+
+⚠️ VIO is the gate on scheduling this: `vio_tracked_features` saturates at 80 and
+collapses fast — 80 at 20:20 on 2026-08-18, **0 by 21:00**. Go in proper
+daylight, not at dusk. See `docs/vio-telemetry-fields.md`.
+
+---
+
 ## 🐛 OPEN — the click-to-go card locks up Home Assistant on iPhone/mobile
 
 **Reported by the operator 2026-08-18. Not reproduced, not diagnosed, no cause
