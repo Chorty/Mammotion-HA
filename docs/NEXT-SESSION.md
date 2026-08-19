@@ -59,6 +59,36 @@ daylight, not at dusk. See `docs/vio-telemetry-fields.md`.
 
 ---
 
+## 🐛 OPEN ×3 — entity naming, from the 2026-08-18 audit
+
+**There are no duplicated entities in the integration code** — that result is
+recorded in `docs/entity-audit-20260818.md` along with the four apparent
+duplicates that are legitimate, so nobody re-audits them. Three cosmetic
+problems in the live install are open:
+
+1. **Two switches share a meaningless entity id.**
+   The bare switch entity id is "Device 4G" and the one HA suffixed with a 2
+   is "Device Wi-Fi". The code is correct — distinct unique ids, correct names,
+   translations in all twelve locales. These are **stale registry entries**: the
+   ids were assigned when the entities had no resolvable name and HA never
+   renames an entity id afterwards. **Operator-fixable only**, by renaming in
+   Settings → Devices.
+2. **"Area Area 1"** — the per-area switch doubles the word, because the area
+   entity key and the area's own name concatenate. Cosmetic.
+3. 🔑 **`blade_height` is a sensor AND a number with identical friendly names**,
+   same device class, same unit, **and they disagree** (1.9685 in reported vs
+   2.0 in setpoint). Two identically-named entities showing different values with
+   nothing to tell them apart. The only one of the three that is a genuine
+   defect rather than historical debt.
+
+⚠️ **None was changed.** Every fix renames or removes a user-visible entity,
+which breaks automations, dashboard cards, templates and history. That is an
+operator decision. Item 3 needs a choice between renaming the sensor
+("Blade height (reported)", a twelve-locale change) or dropping it, since an HA
+`number` already exposes its current value.
+
+---
+
 ## 🐛 OPEN — the click-to-go card locks up Home Assistant on iPhone/mobile
 
 **Reported by the operator 2026-08-18. Not reproduced, not diagnosed, no cause
