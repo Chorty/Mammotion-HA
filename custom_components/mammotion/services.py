@@ -48,6 +48,7 @@ from .manual_motion import (
     ManualMotionSession,
     active_motion_session,
     assert_session_can_dispatch,
+    experimental_motion_enabled,
     experimental_motion_status,
     record_completed_dispatch,
 )
@@ -16336,9 +16337,17 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         if entry is None:
             return {"disarmed": False, "reason": "config_entry_unavailable"}
 
-        status = experimental_motion_status(coordinator)
-        was_enabled = bool(status.get("enabled"))
-        if status.get("active_session") is not None:
+        # ⚠️ Deliberately NOT experimental_motion_status(): that builds the full
+        # blocker report and requires `ble_liveness` and `safety` keyword
+        # arguments this handler has no reason to compute. Calling it without
+        # them is a TypeError, which is exactly how the first version of this
+        # service failed on the host at 500 while every unit test passed --
+        # they exercised the constants around the handler, never the handler.
+        #
+        # Disarming needs two facts and nothing else: is it on, and is a run in
+        # progress. Read both directly.
+        was_enabled = experimental_motion_enabled(coordinator)
+        if active_motion_session(coordinator) is not None:
             # Pulling the permission out from under a live run would leave the
             # session's own stop path to finish without it. Abort is the
             # correct tool and it is a separate service.
@@ -16359,13 +16368,11 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             hass.config_entries.async_update_entry(entry, options=options)
             LOGGER.info("Experimental motion gate disarmed for %s", entity_id)
 
-        after = experimental_motion_status(coordinator)
         return {
             "disarmed": True,
             "was_enabled": was_enabled,
             "changed": was_enabled,
-            "enabled": bool(after.get("enabled")),
-            "real_motion_allowed": bool(after.get("real_motion_allowed")),
+            "enabled": experimental_motion_enabled(coordinator),
         }
 
     hass.services.async_register(
