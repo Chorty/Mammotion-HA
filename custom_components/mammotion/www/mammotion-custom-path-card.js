@@ -825,7 +825,15 @@ class MammotionCustomPathCard extends HTMLElement {
         blockers.push("runtime_safety_blocked");
       }
     }
-    if (!this._validation?.valid) {
+    // ⚠️ ONLY when there is a path to validate. `_validation` starts null and
+    // stays null until a preview runs, so an unconditional test reported
+    // "path_validation_failed" on an EMPTY card -- alongside `path_unset`,
+    // which already says the real thing. Worse, its help text sent the
+    // operator hunting for "a point outside the selected area" among zero
+    // points. Observed on the live card 2026-08-18 with 0/7 points.
+    //
+    // Not validated yet is not the same as failed validation.
+    if (this._waypoints.length && !this._validation?.valid) {
       blockers.push("path_validation_failed");
     }
     return {
@@ -880,7 +888,9 @@ class MammotionCustomPathCard extends HTMLElement {
       ? [
           ...(!this._currentPositionPoint() ? ["position_unavailable"] : []),
           ...(!this._waypoints.length ? ["path_unset"] : []),
-          ...(!this._validation?.valid ? ["path_validation_failed"] : []),
+          ...(this._waypoints.length && !this._validation?.valid
+            ? ["path_validation_failed"]
+            : []),
         ]
       : [...this._preflight().blockers].filter(
           (blocker) =>

@@ -83,7 +83,11 @@ const card = new MammotionCustomPathCard();
 // would be an override the card must report, which is the point of the check.
 card._config = { entity: ENTITY, card_height: 520, speed: 0.2, sample_delays: [0, 3] };
 card._runtimeState = runtime;
-card._validation = { valid: true };
+// ⚠️ null, matching the card's constructor -- NOT a synthetic {valid:true}.
+// Pre-seeding a passing validation is what the frontend fixtures do, and it
+// hides any defect in how the card reports an unvalidated path. Live state or
+// nothing.
+card._validation = null;
 card._waypoints = waypoints;
 card._render = () => {};
 card._confirmBladesOff = true;

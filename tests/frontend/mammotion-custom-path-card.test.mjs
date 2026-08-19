@@ -1035,3 +1035,45 @@ test("the blocker codes the backend actually emits all have help text", () => {
   assert.match(details.join(" "), /RTK Fix and a zone inside a mapped area/);
   assert.match(details.join(" "), /dozes after ~10 min idle/);
 });
+
+test("an empty card does not claim the path FAILED validation", () => {
+  // Observed on the live card 2026-08-18: with 0/7 points the banner read
+  // "path_unset, experimental_motion_disabled, path_validation_failed" and told
+  // the operator to hunt for "a point outside the selected area" among zero
+  // points. `_validation` starts null and stays null until a preview runs, so
+  // an unconditional `!this._validation?.valid` fired on an empty card.
+  //
+  // Not validated yet is not the same as failed validation.
+  const element = card();
+  element._validation = null;
+  element._waypoints = [];
+
+  const { blockers } = element._preflight();
+
+  assert.ok(blockers.includes("path_unset"));
+  assert.equal(blockers.includes("path_validation_failed"), false);
+});
+
+test("a path that really did fail validation still reports it", () => {
+  // The paired assertion: suppressing the false positive must not suppress the
+  // true one, or the guard would hide a genuinely out-of-area waypoint.
+  const element = card();
+  element._validation = { valid: false };
+  element._waypoints = [{ x: 1.5, y: 1 }];
+
+  const { blockers } = element._preflight();
+
+  assert.ok(blockers.includes("path_validation_failed"));
+  assert.equal(blockers.includes("path_unset"), false);
+});
+
+test("Night dry-run does not inherit the empty-path validation false positive", () => {
+  const element = card();
+  element._validation = null;
+  element._waypoints = [];
+
+  const { blockers } = element._nightPreflight({ dryRun: true });
+
+  assert.ok(blockers.includes("path_unset"));
+  assert.equal(blockers.includes("path_validation_failed"), false);
+});
