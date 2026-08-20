@@ -20,6 +20,24 @@ const MAX_NIGHT_SEGMENT_METRES = 1.0;
 const MAX_REAL_SEGMENT_METRES = 6.1;
 // Mirrors the backend's `_BUDGET_CHECK_METRES_PER_PULSE` (services.py).
 const BUDGET_CHECK_METRES_PER_PULSE = 0.3;
+// Route B (2026-08-19). Any leg longer than this is split into collinear
+// sub-legs, so a distant click is driven with only geometry that has been
+// measured. Mirrors the backend's `_SPLIT_LEG_TARGET_LENGTH_M`; keep the two in
+// step, the same trap MAX_REAL_SEGMENTS and MAX_REAL_SEGMENT_METRES document.
+//
+// ⚠️ NOT a LUBA_ACCEPTANCE_PROFILE key, deliberately. Adding it to that object
+// would un-accept the hardware-accepted profile and owe another Gate 5 -- the
+// exact cost Route B exists to avoid. It travels as a plain payload key, like
+// `max_real_segments`.
+//
+// 3.85 rather than 3.81: `ceil(d / target)` is a step function and
+// 15.24 / 3.81 = 4.000 exactly, so a centimetre of drift between this check and
+// the backend's would flip the count to 5 and refuse the run. A true 50 ft
+// click still splits into 4 sub-legs of 3.81 m.
+//
+// ⚠️ 3.81 m is 95% of the longest straight leg ever executed (4.0 m, n = 1).
+// 4 x 3.85 = 15.40 m has never been driven.
+const SPLIT_LEG_TARGET_METRES = 3.85;
 const NIGHT_GO_PROFILE = Object.freeze({
   prefer_ble: true,
   turn_mode: "night",
@@ -42,7 +60,7 @@ const NIGHT_GO_PROFILE = Object.freeze({
 });
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
-const CARD_VERSION = "0.6.4-beta60";
+const CARD_VERSION = "0.6.4-beta61";
 
 // The exact bounded execution profile that passed supervised LUBA acceptance
 // Gate 4 re-pass on 2026-08-05 (three-write zero stop, bounded straight segment,
@@ -181,7 +199,8 @@ const BLOCKER_HELP = Object.freeze({
   night_requires_one_segment:
     "Night Go supports exactly one waypoint. Remove the additional destinations.",
   night_segment_too_long: `Night Go is limited to ${MAX_NIGHT_SEGMENT_METRES.toFixed(1)} m. Move the waypoint closer.`,
-  segment_too_long: `A single leg is capped at ${MAX_REAL_SEGMENT_METRES.toFixed(1)} m (20 ft). Move the waypoint closer, or add an intermediate one to split the leg.`,
+  segment_too_long: `A single leg is capped at ${MAX_REAL_SEGMENT_METRES.toFixed(1)} m (20 ft). Long legs are normally split automatically into ${SPLIT_LEG_TARGET_METRES.toFixed(2)} m sub-legs, so seeing this means the mower drifted past the cap mid-run. Move the waypoint closer.`,
+  split_exceeds_real_segment_budget: `Too far for one click. Long legs are split into sub-legs of at most ${SPLIT_LEG_TARGET_METRES.toFixed(2)} m, and only ${MAX_REAL_SEGMENTS} segments can run per click (about ${(MAX_REAL_SEGMENTS * SPLIT_LEG_TARGET_METRES).toFixed(1)} m total). Click a nearer point, or fewer of them.`,
   linear_budget_insufficient_for_segment:
     "This leg is longer than its linear pulse budget can reach. Shorten it, or raise max_linear_pulse_ceiling (which leaves the accepted profile).",
   [`real_segment_limit_${MAX_REAL_SEGMENTS}`]: `Real Go runs at most ${MAX_REAL_SEGMENTS} segments. Remove waypoints or run it in two clicks.`,
@@ -539,11 +558,24 @@ class MammotionCustomPathCard extends HTMLElement {
         details: ["Both confirmations are required before Real Go will send."],
       };
     }
-    const segments = this._segmentCount();
+    const destinations = this._segmentCount();
+    const split = this._plannedSplit();
+    const legs = split.subLegCount;
+    // Name BOTH once a split is in play. "N segments" alone was true while a
+    // click was always one leg; after the split it would be a lie in whichever
+    // direction the reader took it.
+    const headline = split.applied
+      ? `Ready — Real Go will drive ${legs} leg${legs === 1 ? "" : "s"} to reach ${destinations} destination${destinations === 1 ? "" : "s"}.`
+      : `Ready — Real Go will drive ${legs} segment${legs === 1 ? "" : "s"}.`;
     return {
       level: "ready",
-      headline: `Ready — Real Go will drive ${segments} segment${segments === 1 ? "" : "s"}.`,
-      details: [this._profileLabel()],
+      headline,
+      details: split.applied
+        ? [
+            `Long legs are split into collinear sub-legs of at most ${SPLIT_LEG_TARGET_METRES.toFixed(2)} m; the extra junctions are 0° turns and cost no turn commands.`,
+            this._profileLabel(),
+          ]
+        : [this._profileLabel()],
     };
   }
 
@@ -640,7 +672,7 @@ class MammotionCustomPathCard extends HTMLElement {
       this._runtimeState = await this._callService("export_runtime_state", {});
       const backendSession = this._activeBackendSession();
       if (backendSession && !this._runTicker) {
-        this._startRunTicker(this._segmentCount() || "?");
+        this._startRunTicker(this._plannedLegCount() || "?");
       } else if (
         !backendSession &&
         this._runTicker &&
@@ -790,6 +822,14 @@ class MammotionCustomPathCard extends HTMLElement {
     if (this._segmentCount() > MAX_REAL_SEGMENTS) {
       blockers.push(`real_segment_limit_${MAX_REAL_SEGMENTS}`);
     }
+    // Deliberately DISTINCT from real_segment_limit_N. That one means "you
+    // clicked too many destinations"; this one means "the destinations are too
+    // far apart to reach in the segment budget once split". Collapsing them
+    // would give the operator advice for the wrong problem.
+    const plannedSplit = this._plannedSplit();
+    if (plannedSplit.applied && plannedSplit.subLegCount > MAX_REAL_SEGMENTS) {
+      blockers.push("split_exceeds_real_segment_budget");
+    }
     // Refuse an over-long leg HERE rather than letting the backend gate catch
     // it, so the reason appears in the readiness banner instead of arriving as
     // a failed run. The backend keeps its own copy: this one is a courtesy, not
@@ -870,11 +910,80 @@ class MammotionCustomPathCard extends HTMLElement {
     return Number(ceiling) * BUDGET_CHECK_METRES_PER_PULSE;
   }
 
+  // Route B: mirror of the backend's `_split_long_legs`. Split every leg longer
+  // than SPLIT_LEG_TARGET_METRES into `ceil(d / target)` equal sub-legs by
+  // linear interpolation, so every inserted point sits exactly on the
+  // operator's original line and every junction it creates is a 0 degree turn.
+  //
+  // The card computes this for DISPLAY and routing only -- the payload sends
+  // the operator's clicks plus `split_leg_target_length_m`, and the backend
+  // does the split itself, so the run JSON records what was actually asked for.
+  // Duplicated arithmetic is this repo's accepted pattern for a mower-specific
+  // number the card owns; keep the two in step.
+  //
+  // NO ROUNDING of the interpolated coordinates: rounding to 3 dp would inject
+  // up to ~1.4 mm of non-collinearity, and collinearity is the entire basis for
+  // treating these junctions as free.
+  _plannedSplit() {
+    const requested = this._segmentPoints();
+    if (!requested || requested.length < 2) {
+      return {
+        applied: false,
+        points: requested || [],
+        requestedPoints: requested || [],
+        requestedLegCount: 0,
+        subLegCount: 0,
+        insertedIndices: [],
+      };
+    }
+    const points = [requested[0]];
+    const insertedIndices = [];
+    for (let i = 1; i < requested.length; i += 1) {
+      const start = requested[i - 1];
+      const end = requested[i];
+      const length = Math.hypot(end.x - start.x, end.y - start.y);
+      // A non-finite coordinate would make subLegs Infinity and hang the loop
+      // inside a render. Leave such a leg unsplit; the length and validation
+      // gates refuse it by name.
+      const subLegs = Number.isFinite(length)
+        ? Math.max(1, Math.ceil(length / SPLIT_LEG_TARGET_METRES))
+        : 1;
+      for (let step = 1; step < subLegs; step += 1) {
+        const fraction = step / subLegs;
+        insertedIndices.push(points.length);
+        points.push({
+          x: start.x + (end.x - start.x) * fraction,
+          y: start.y + (end.y - start.y) * fraction,
+        });
+      }
+      points.push(end);
+    }
+    return {
+      applied: points.length > requested.length,
+      points,
+      requestedPoints: requested,
+      requestedLegCount: requested.length - 1,
+      subLegCount: points.length - 1,
+      insertedIndices,
+    };
+  }
+
+  // Number of legs the mower will actually drive, after the split. Distinct
+  // from `_segmentCount()`, which counts the operator's destinations.
+  _plannedLegCount() {
+    return this._plannedSplit().subLegCount;
+  }
+
   // Longest single leg in the planned path, in metres. The cap is per-SEGMENT,
   // not per-path: four legs of 6 m are four separate control problems, while
   // one leg of 24 m is the one thing no run has ever done.
+  //
+  // 🔑 This measures the SPLIT points, not destination-to-destination. Measuring
+  // the destinations would have every long click trip `segment_too_long` in
+  // _preflight() -- the split would never get a chance to run and Route B would
+  // be dead on arrival.
   _longestSegmentMetres() {
-    const points = this._segmentPoints();
+    const points = this._plannedSplit().points;
     if (!points || points.length < 2) return 0;
     let longest = 0;
     for (let i = 1; i < points.length; i += 1) {
@@ -908,6 +1017,9 @@ class MammotionCustomPathCard extends HTMLElement {
             // never fire -- e.g. a 0.95 m night segment refused because a
             // configured Real Go ceiling of 3 reaches only 0.9 m.
             blocker !== "segment_too_long" &&
+            // Night never splits: `_nightMotionPayload` omits the key entirely
+            // and the backend caps night at one 1.0 m segment.
+            blocker !== "split_exceeds_real_segment_budget" &&
             blocker !== "linear_budget_insufficient_for_segment",
         );
     if (this._segmentCount() !== 1) {
@@ -1454,14 +1566,26 @@ class MammotionCustomPathCard extends HTMLElement {
     if (this._areaHash) {
       payload.area_hash = String(this._areaHash);
     }
-    if (points.length > 2) {
+    // Route B: a single distant click still needs the multi-segment executor,
+    // because the backend will split it into several legs. Route on the number
+    // of legs that will actually be DRIVEN, not on how many points were clicked.
+    const split = this._plannedSplit();
+    if (split.subLegCount > 1) {
       return {
         service: "raw_pymammotion_execute_multi_segment",
         payload: {
           ...payload,
-          max_real_segments: dryRun
-            ? Math.min(points.length - 1, MAX_WAYPOINTS)
-            : MAX_REAL_SEGMENTS,
+          // `points` stays the operator's CLICKS, not the split path -- the
+          // backend splits and echoes both, so the run JSON records what was
+          // asked for as well as what was driven.
+          split_leg_target_length_m: SPLIT_LEG_TARGET_METRES,
+          // ⚠️ Clamp to MAX_REAL_SEGMENTS on BOTH branches. This used to send
+          // `Math.min(points.length - 1, MAX_WAYPOINTS)` -- up to 7 -- into the
+          // backend's `vol.Range(min=0, max=4)`, so a 5+-waypoint DRY RUN was
+          // rejected by schema validation before it reached the handler.
+          // Behaviour-neutral: `max_real_segments` is only read behind
+          // `if not dry_run`.
+          max_real_segments: MAX_REAL_SEGMENTS,
         },
       };
     }
@@ -1730,7 +1854,9 @@ class MammotionCustomPathCard extends HTMLElement {
       this._render();
       return;
     }
-    const segmentCount = this._segmentCount();
+    // The ticker counts DRIVEN legs, not clicked destinations -- after a split
+    // they differ, and the ticker is the operator's only live progress signal.
+    const segmentCount = this._plannedLegCount();
     const startedAt = new Date();
     this._startRunTicker(segmentCount);
     try {
@@ -2000,7 +2126,13 @@ class MammotionCustomPathCard extends HTMLElement {
     }
 
     const start = this._currentPositionPoint();
-    const pathPoints = start ? [start, ...this._waypoints] : [];
+    // ⚠️ Draw and colour against the SPLIT path, not [start, ...waypoints].
+    // `runResult.segments` is one entry per DRIVEN leg, so once a split turns
+    // one click into four legs, indexing them against the clicks paints
+    // segment 1's verdict over the whole leg and drops segments 2-4 entirely.
+    const plannedSplit = this._plannedSplit();
+    const pathPoints = start ? plannedSplit.points : [];
+    const insertedIndices = new Set(plannedSplit.insertedIndices);
     const runResult = this._realRun || this._dryRun;
     const segments = Array.isArray(runResult?.segments)
       ? runResult.segments
@@ -2100,6 +2232,25 @@ class MammotionCustomPathCard extends HTMLElement {
       svgEl.appendChild(startCircle);
     }
 
+    // Split points the operator did not click: hollow, unlabelled and NOT
+    // draggable -- they are derived from the two clicks around them and move
+    // with them.
+    pathPoints.forEach((point, index) => {
+      if (!insertedIndices.has(index)) return;
+      svgEl.appendChild(
+        el("circle", {
+          cx: mt.toSX(point.x).toFixed(1),
+          cy: mt.toSY(point.y).toFixed(1),
+          r: 5,
+          fill: "none",
+          stroke: "#fbbf24",
+          "stroke-width": "2",
+          "stroke-dasharray": "3,2",
+          "pointer-events": "none",
+        }),
+      );
+    });
+
     this._waypoints.forEach((point, index) => {
       const isLast = index === this._waypoints.length - 1;
       const circle = el("circle", {
@@ -2166,6 +2317,7 @@ class MammotionCustomPathCard extends HTMLElement {
       ? `Nudge unavailable: ${nudgeBlockers.join(", ")}`
       : `Drive ${this._nudgeMetres().toFixed(2)} m along ${(this._currentOrientationDegrees() ?? 0).toFixed(1)}°. Straight line only — never turns.`;
     const segmentCount = this._segmentCount();
+    const plannedLegCount = this._plannedLegCount();
     const coordinateEditor = this._waypoints.length
       ? `<div class="coordinate-editor">
           <div class="title">Precise waypoint coordinates (metres)</div>
@@ -2271,7 +2423,7 @@ class MammotionCustomPathCard extends HTMLElement {
             <button id="reload" type="button" title="Re-fetch the map and live mower state">Reload</button>
             <button id="undo" type="button" ${removeDisabled} title="Remove the last destination">Undo point</button>
             <button id="clear" type="button" ${runActive ? "disabled" : ""} title="Remove all destinations">Reset path</button>
-            <span class="waypoint-counter">${this._waypoints.length}/${MAX_WAYPOINTS} points · ${segmentCount} segment${segmentCount === 1 ? "" : "s"}</span>
+            <span class="waypoint-counter">${this._waypoints.length}/${MAX_WAYPOINTS} points · ${plannedLegCount} leg${plannedLegCount === 1 ? "" : "s"}${plannedLegCount !== segmentCount ? ` (${segmentCount} destination${segmentCount === 1 ? "" : "s"}, auto-split)` : ""}</span>
           </div>
           <div class="group">
             <span class="group-label">Run</span>
@@ -2299,6 +2451,7 @@ class MammotionCustomPathCard extends HTMLElement {
         <div class="map-caption">
           <span class="legend"><span class="dot" style="background:#22c55e"></span>Green = mower position; arrow only with trusted live orientation</span>
           <span class="legend"><span class="dot" style="background:#f97316"></span>Click the map to add destinations (max ${MAX_WAYPOINTS}), driven in order</span>
+          <span class="legend"><span class="dot" style="background:transparent;border:2px dashed #fbbf24"></span>Auto-inserted split point — a leg over ${SPLIT_LEG_TARGET_METRES.toFixed(2)} m is driven as collinear sub-legs (max ${MAX_REAL_SEGMENTS} per click)</span>
         </div>
         <svg id="path-map"></svg>
         ${coordinateEditor}
@@ -2461,8 +2614,10 @@ export {
   ACCEPTED_PROFILE_ACCEPTED_ON,
   MAX_NIGHT_SEGMENT_METRES,
   MAX_REAL_SEGMENTS,
+  MAX_REAL_SEGMENT_METRES,
   MAX_WAYPOINTS,
   NIGHT_GO_PROFILE,
+  SPLIT_LEG_TARGET_METRES,
   PROFILE_KEYS,
   MammotionCustomPathCard,
 };

@@ -1,0 +1,372 @@
+{
+  "artifact": "off-mower geometry evidence for Route B (collinear leg split)",
+  "generated_from_commit": "1e78daad6a7dae26cf3cd67f7ba9338346a84036",
+  "generated_by": "scripts-free inline harness; regenerate with tests/components/mammotion/test_collinear_leg_split.py",
+  "constants": {
+    "_SPLIT_LEG_TARGET_LENGTH_M": 3.85,
+    "_MAX_SEGMENT_LENGTH_M": 6.1,
+    "REAL_CLICK_TO_GO_SEGMENT_LIMIT": 4
+  },
+  "what_this_proves": "Pure geometry only. The splitter produces collinear sub-legs of the stated lengths, every inserted junction is 0 degrees to floating-point precision, and every sub-leg is inside the 6.10 m per-segment cap. It proves NOTHING about whether the mower can drive them.",
+  "what_this_does_not_prove": "That 15.40 m is drivable. The longest straight leg ever executed is 4.0 m (n = 1, landing 0.1023 m against 0.15 m). Cross-track error has unity gain across a collinear junction, not contraction.",
+  "cases": [
+    {
+      "name": "50ft_axis_aligned",
+      "requested_points": [
+        {
+          "x": 0.0,
+          "y": 0.0
+        },
+        {
+          "x": 15.24,
+          "y": 0.0
+        }
+      ],
+      "requested_distance_m": 15.24,
+      "target_length_m": 3.85,
+      "applied": true,
+      "sub_leg_count": 4,
+      "sub_leg_lengths_m": [
+        3.81,
+        3.81,
+        3.8099999999999996,
+        3.8100000000000005
+      ],
+      "sub_leg_headings_degrees": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "junction_turn_degrees": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "max_abs_junction_degrees": 0.0,
+      "longest_sub_leg_m": 3.8100000000000005,
+      "within_segment_cap": true,
+      "within_segment_budget": true,
+      "split_points": [
+        {
+          "x": 0.0,
+          "y": 0.0
+        },
+        {
+          "x": 3.81,
+          "y": 0.0
+        },
+        {
+          "x": 7.62,
+          "y": 0.0
+        },
+        {
+          "x": 11.43,
+          "y": 0.0
+        },
+        {
+          "x": 15.24,
+          "y": 0.0
+        }
+      ]
+    },
+    {
+      "name": "50ft_oblique_37deg",
+      "requested_points": [
+        {
+          "x": 1.0,
+          "y": 2.0
+        },
+        {
+          "x": 13.171205173120743,
+          "y": 11.171660952837216
+        }
+      ],
+      "requested_distance_m": 15.24,
+      "target_length_m": 3.85,
+      "applied": true,
+      "sub_leg_count": 4,
+      "sub_leg_lengths_m": [
+        3.81,
+        3.8100000000000005,
+        3.810000000000001,
+        3.809999999999999
+      ],
+      "sub_leg_headings_degrees": [
+        37.0,
+        37.0,
+        37.0,
+        37.0
+      ],
+      "junction_turn_degrees": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "max_abs_junction_degrees": 0.0,
+      "longest_sub_leg_m": 3.810000000000001,
+      "within_segment_cap": true,
+      "within_segment_budget": true,
+      "split_points": [
+        {
+          "x": 1.0,
+          "y": 2.0
+        },
+        {
+          "x": 4.042801293280186,
+          "y": 4.292915238209304
+        },
+        {
+          "x": 7.085602586560372,
+          "y": 6.585830476418608
+        },
+        {
+          "x": 10.128403879840558,
+          "y": 8.878745714627913
+        },
+        {
+          "x": 13.171205173120743,
+          "y": 11.171660952837216
+        }
+      ]
+    },
+    {
+      "name": "20ft_6.10m",
+      "requested_points": [
+        {
+          "x": 0.0,
+          "y": 0.0
+        },
+        {
+          "x": 6.1,
+          "y": 0.0
+        }
+      ],
+      "requested_distance_m": 6.1,
+      "target_length_m": 3.85,
+      "applied": true,
+      "sub_leg_count": 2,
+      "sub_leg_lengths_m": [
+        3.05,
+        3.05
+      ],
+      "sub_leg_headings_degrees": [
+        0.0,
+        0.0
+      ],
+      "junction_turn_degrees": [
+        0.0
+      ],
+      "max_abs_junction_degrees": 0.0,
+      "longest_sub_leg_m": 3.05,
+      "within_segment_cap": true,
+      "within_segment_budget": true,
+      "split_points": [
+        {
+          "x": 0.0,
+          "y": 0.0
+        },
+        {
+          "x": 3.05,
+          "y": 0.0
+        },
+        {
+          "x": 6.1,
+          "y": 0.0
+        }
+      ]
+    },
+    {
+      "name": "gate5_four_0.8m_legs",
+      "requested_points": [
+        {
+          "x": 1.0,
+          "y": 1.0
+        },
+        {
+          "x": 1.8,
+          "y": 1.0
+        },
+        {
+          "x": 2.6,
+          "y": 1.0
+        },
+        {
+          "x": 3.4000000000000004,
+          "y": 1.0
+        },
+        {
+          "x": 4.2,
+          "y": 1.0
+        }
+      ],
+      "requested_distance_m": 3.2,
+      "target_length_m": 3.85,
+      "applied": false,
+      "sub_leg_count": 4,
+      "sub_leg_lengths_m": [
+        0.8,
+        0.8,
+        0.8000000000000003,
+        0.7999999999999998
+      ],
+      "sub_leg_headings_degrees": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "junction_turn_degrees": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "max_abs_junction_degrees": 0.0,
+      "longest_sub_leg_m": 0.8000000000000003,
+      "within_segment_cap": true,
+      "within_segment_budget": true,
+      "split_points": [
+        {
+          "x": 1.0,
+          "y": 1.0
+        },
+        {
+          "x": 1.8,
+          "y": 1.0
+        },
+        {
+          "x": 2.6,
+          "y": 1.0
+        },
+        {
+          "x": 3.4000000000000004,
+          "y": 1.0
+        },
+        {
+          "x": 4.2,
+          "y": 1.0
+        }
+      ]
+    },
+    {
+      "name": "over_budget_3x5m",
+      "requested_points": [
+        {
+          "x": 0.0,
+          "y": 0.0
+        },
+        {
+          "x": 5.0,
+          "y": 0.0
+        },
+        {
+          "x": 10.0,
+          "y": 0.0
+        },
+        {
+          "x": 15.0,
+          "y": 0.0
+        }
+      ],
+      "requested_distance_m": 15.0,
+      "target_length_m": 3.85,
+      "applied": true,
+      "sub_leg_count": 6,
+      "sub_leg_lengths_m": [
+        2.5,
+        2.5,
+        2.5,
+        2.5,
+        2.5,
+        2.5
+      ],
+      "sub_leg_headings_degrees": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "junction_turn_degrees": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "max_abs_junction_degrees": 0.0,
+      "longest_sub_leg_m": 2.5,
+      "within_segment_cap": true,
+      "within_segment_budget": false,
+      "split_points": [
+        {
+          "x": 0.0,
+          "y": 0.0
+        },
+        {
+          "x": 2.5,
+          "y": 0.0
+        },
+        {
+          "x": 5.0,
+          "y": 0.0
+        },
+        {
+          "x": 7.5,
+          "y": 0.0
+        },
+        {
+          "x": 10.0,
+          "y": 0.0
+        },
+        {
+          "x": 12.5,
+          "y": 0.0
+        },
+        {
+          "x": 15.0,
+          "y": 0.0
+        }
+      ]
+    },
+    {
+      "name": "splitter_off_50ft",
+      "requested_points": [
+        {
+          "x": 0.0,
+          "y": 0.0
+        },
+        {
+          "x": 15.24,
+          "y": 0.0
+        }
+      ],
+      "requested_distance_m": 15.24,
+      "target_length_m": null,
+      "applied": false,
+      "sub_leg_count": 1,
+      "sub_leg_lengths_m": [
+        15.24
+      ],
+      "sub_leg_headings_degrees": [
+        0.0
+      ],
+      "junction_turn_degrees": [],
+      "max_abs_junction_degrees": 0.0,
+      "longest_sub_leg_m": 15.24,
+      "within_segment_cap": false,
+      "within_segment_budget": true,
+      "split_points": [
+        {
+          "x": 0.0,
+          "y": 0.0
+        },
+        {
+          "x": 15.24,
+          "y": 0.0
+        }
+      ]
+    }
+  ]
+}

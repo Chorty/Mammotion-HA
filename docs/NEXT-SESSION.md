@@ -11,6 +11,37 @@ measurements stand — but do not act on any build/host/gate state they describe
 "validate what shipped" through to named destinations. Read that for direction;
 read the item below for the specific next run.
 
+## 🆕 2026-08-19 — ROUTE B BUILT: one click auto-splits into collinear sub-legs
+
+**`0.6.4-beta61` on the branch. NOT DEPLOYED. NO MOTION HAS RUN ON IT.**
+
+Route A (the 6.10 m cap and the projected-miss trigger, `beta60`) is measured
+inert — see the section below. **Route B delivers the 50 ft ask instead**, using
+only geometry that has been measured: a leg longer than **3.85 m** is split into
+`ceil(d/3.85)` collinear sub-legs, so a 15.24 m click becomes **4 legs of
+3.8100 m, every junction 0.000000°**. A collinear junction costs **zero turn
+commands and zero translation** (`_vio_turn_to_heading` returns
+`target_heading_reached` before dispatching), and each sub-leg gets a fresh
+pulse budget.
+
+🔑 **It moves no `LUBA_ACCEPTANCE_PROFILE` key, so it owes no Gate 5.**
+`scripts/check_accepted_profile.py` still reports ACCEPTED.
+
+⚠️ **What it does NOT buy:** cross-track error has **unity gain** across a
+collinear junction, not contraction. A 0.10 m junction miss opens the next leg
+at 1.50°, below every correction threshold, so nothing corrects it. And
+**15.40 m has never been driven** — 3.81 m is 95% of the single 4.0 m datapoint.
+⚠️ The yard spans **12.74 × 9.73 m**, so a true 50 ft straight click may not fit;
+20–40 ft is the realistic everyday value.
+
+**Read `docs/route-b-collinear-split-20260819.md` before acting on any of it.**
+Geometry evidence banked: `docs/evidence-collinear-split-geometry-20260819.json`.
+
+**Next, in order:** host dry run with the gate DISARMED (expect
+`split.applied`, `sub_leg_count: 4`, `requested_points` of 2, `points` of 5,
+`would_send: false`) → refusal dry run on 3 × 5 m → only then a supervised
+daylight run, downloading the run JSON immediately.
+
 ## ✅ ANSWERED 2026-08-19 — the reach work is measured INERT
 
 🔑 A recovered long-leg run (1.96 / 1.75 / 2.31 m, 3/3 `target_reached`, mean

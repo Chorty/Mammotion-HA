@@ -26,7 +26,24 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: `0.6.4-beta59` released and installed motion-disabled
+## Current build: `0.6.4-beta60` on the host; branch is at `0.6.4-beta61`
+
+🆕 **2026-08-19 — ROUTE B IS BUILT AND UNDEPLOYED (`0.6.4-beta61`).** The host
+still runs `beta60`. **No motion has run on beta61.** One click on a distant
+point now auto-splits into collinear sub-legs of at most **3.85 m**, so a 50 ft
+click becomes 4 legs of 3.8100 m with every junction at 0.000000°. It moves **no
+`LUBA_ACCEPTANCE_PROFILE` key and owes no Gate 5**;
+`scripts/check_accepted_profile.py` still reports ACCEPTED. Read
+`docs/route-b-collinear-split-20260819.md`. ⚠️ Splitting does **not** improve
+accuracy — cross-track error has unity gain across a collinear junction — and
+15.40 m has never been driven.
+
+⚠️ **Route A (`beta60`) is measured INERT.** Replayed across 32 decision points
+on three hardware runs, the old and new re-aim triggers made identical decisions
+every time. It was correct, tested and Gate 5-accepted, and it changed nothing.
+Do not fund more work on that trigger.
+
+## (history) Current build: `0.6.4-beta59` released and installed motion-disabled
 
 ⚠️ **The heading below this one said `beta55` until 2026-08-17** — stale since
 the beta56 release on 2026-08-16, and it made a session ask which build was

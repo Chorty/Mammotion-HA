@@ -1116,6 +1116,17 @@ RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA = vol.Schema(
             vol.Coerce(int),
             vol.Range(min=0, max=REAL_CLICK_TO_GO_SEGMENT_LIMIT),
         ),
+        # Route B: split any leg longer than this into collinear sub-legs, so a
+        # distant click is driven with only geometry that has been measured.
+        # None (the default) is off and dispatches exactly as before.
+        #
+        # ⚠️ The 6.10 upper bound is a LITERAL on purpose. It mirrors
+        # `_MAX_SEGMENT_LENGTH_M`, which is defined ~10,000 lines below this
+        # schema -- referencing the constant here is a NameError at import.
+        # `test_collinear_leg_split.py` asserts the literal still equals it.
+        vol.Optional("split_leg_target_length_m"): vol.Any(
+            None, vol.All(vol.Coerce(float), vol.Range(min=0.5, max=6.10))
+        ),
         vol.Optional("linear_speed_fast", default=400): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=1000)
         ),
@@ -1652,6 +1663,83 @@ def _path_heading_degrees(start: dict[str, float], end: dict[str, float]) -> flo
     return (
         math.degrees(math.atan2(end["y"] - start["y"], end["x"] - start["x"])) + 360
     ) % 360
+
+
+def _split_long_legs(
+    points: list[dict[str, float]],
+    *,
+    target_length_m: float | None,
+) -> dict[str, Any]:
+    """Split each leg longer than ``target_length_m`` into collinear sub-legs.
+
+    Route B (2026-08-19): reach a distant click using only geometry that has
+    been measured. A leg of ``d`` metres becomes ``n = ceil(d / target)``
+    sub-legs of ``d / n`` metres each, by linear interpolation between the two
+    endpoints -- so every inserted point lies exactly on the operator's original
+    line and every junction it creates is a 0 degree turn. A 0 degree turn costs
+    zero turn commands and zero translation: ``_vio_turn_to_heading`` returns
+    ``target_heading_reached`` immediately when the error is inside
+    ``heading_tolerance_degrees``.
+
+    ``target_length_m`` of ``None`` (the schema default) means off, and the
+    points are returned unchanged -- a caller that omits the parameter dispatches
+    byte-identically to before this existed.
+
+    No rounding of the interpolated coordinates: rounding to 3 dp would inject
+    up to ~1.4 mm of non-collinearity, and collinearity is the whole basis for
+    treating these junctions as free.
+    """
+    requested = [dict(point) for point in points]
+    result: dict[str, Any] = {
+        "applied": False,
+        "target_length_m": target_length_m,
+        "requested_points": requested,
+        "points": requested,
+        "requested_leg_count": max(0, len(requested) - 1),
+        "sub_leg_count": max(0, len(requested) - 1),
+        "legs": [],
+    }
+    if target_length_m is None or target_length_m <= 0 or len(requested) < 2:
+        return result
+
+    split_points: list[dict[str, float]] = [requested[0]]
+    legs: list[dict[str, Any]] = []
+    for leg_index, (start, end) in enumerate(
+        zip(requested, requested[1:], strict=False)
+    ):
+        length = _path_distance([start, end])
+        # A non-finite coordinate reaches here: the point schema is a bare
+        # `vol.Coerce(float)`, which accepts inf and nan. `math.ceil(inf)` raises
+        # OverflowError -> HTTP 500. Leave such a leg unsplit and let the
+        # existing length/containment gates refuse it by name instead.
+        sub_legs = (
+            1
+            if not math.isfinite(length)
+            else max(1, math.ceil(length / target_length_m))
+        )
+        legs.append(
+            {
+                "index": leg_index + 1,
+                "length_m": length,
+                "sub_legs": sub_legs,
+                "sub_leg_length_m": length / sub_legs if sub_legs else length,
+            }
+        )
+        for step in range(1, sub_legs):
+            fraction = step / sub_legs
+            split_points.append(
+                {
+                    "x": start["x"] + (end["x"] - start["x"]) * fraction,
+                    "y": start["y"] + (end["y"] - start["y"]) * fraction,
+                }
+            )
+        split_points.append(dict(end))
+
+    result["points"] = split_points
+    result["sub_leg_count"] = max(0, len(split_points) - 1)
+    result["legs"] = legs
+    result["applied"] = len(split_points) > len(requested)
+    return result
 
 
 def _heading_error_degrees(current: float, target: float) -> float:
@@ -11145,6 +11233,26 @@ _NIGHT_MAX_SEGMENT_LENGTH_M = 1.0
 #: beyond anything measured and OWES A GATE 5 before it is an accepted path.
 _MAX_SEGMENT_LENGTH_M = 6.10
 
+#: The sub-leg length the CARD sends as `split_leg_target_length_m`, in metres.
+#:
+#: Route B (2026-08-19). Not a schema default and NOT a `LUBA_ACCEPTANCE_PROFILE`
+#: key -- putting it in the profile would un-accept the profile and owe another
+#: Gate 5, which is the exact cost Route B exists to avoid. It is duplicated in
+#: `www/mammotion-custom-path-card.js` as `SPLIT_LEG_TARGET_METRES`; keep the two
+#: in step, the same way `MAX_REAL_SEGMENT_METRES` mirrors `_MAX_SEGMENT_LENGTH_M`.
+#:
+#: 3.85 rather than 3.81: `n = ceil(d / target)` is a step function and
+#: 15.24 / 3.81 = 4.000 exactly, so a centimetre of drift between the card's
+#: check and the backend's snapshot flips it to n=5 and the run is refused.
+#: 3.85 buys 0.16 m of headroom before the count rounds up, and a true 50 ft
+#: (15.24 m) click still splits into 4 sub-legs of 3.81 m.
+#:
+#: ⚠️ 3.81 m is 95% of the single longest straight leg ever executed (4.0 m,
+#: landing 0.1023 m against 0.15 m, n = 1). It is not proven better than 4.0,
+#: only shorter. 4 x 3.85 = 15.40 m HAS NEVER BEEN DRIVEN. If the first run
+#: disappoints, 3.0 m (~39 ft) is the conservative fallback.
+_SPLIT_LEG_TARGET_LENGTH_M = 3.85
+
 #: Conservative per-pulse travel used ONLY to check a segment's pulse budget
 #: before dispatch, in metres.
 #:
@@ -13111,6 +13219,7 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
     prefer_ble: bool = True,
     ble_auto_recover: bool = True,
     max_real_segments: int = 1,
+    split_leg_target_length_m: float | None = None,
     linear_speed_fast: int = 400,
     linear_speed_slow: int = 200,
     slow_linear_threshold: float = 0.15,
@@ -13156,9 +13265,14 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
     calibration drives and turn immediately on the shared offset.
     """
     normalized_area_hash = _coerce_optional_int(area_hash)
+    # Route B: split long legs BEFORE the preview, so `_validate_custom_path`'s
+    # per-point containment check judges the inserted points too -- an inserted
+    # point can land outside a concave area even when both operator clicks are
+    # inside it.
+    split = _split_long_legs(points, target_length_m=split_leg_target_length_m)
     preview = _preview_custom_path(
         coordinator,
-        points,
+        split["points"],
         area_hash=normalized_area_hash,
         speed=0.2,
         blade_mode="off",
@@ -13212,6 +13326,34 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
         # chain entry so a blind feed (vio_state active yet 0 tracked features) is
         # refused once up front rather than only when segment 1 happens to run.
         gates.append(_vio_feed_live_gate(initial_vio_feed, dry_run=dry_run))
+    split_sub_leg_count = max(0, len(normalized_points) - 1)
+    split_over_budget = (
+        split["applied"] and split_sub_leg_count > REAL_CLICK_TO_GO_SEGMENT_LIMIT
+    )
+    if split_over_budget:
+        # Fires on dry runs too. A dry run that passes while Real Go refuses is
+        # the trap this gate exists to close -- the operator would plan against
+        # a preview the real path will not accept.
+        gates.append(
+            {
+                "name": "split_exceeds_real_segment_budget",
+                "passed": False,
+                "detail": (
+                    f"{split['requested_leg_count']} destination(s) split into "
+                    f"{split_sub_leg_count} sub-legs of at most "
+                    f"{split['target_length_m']} m; at most "
+                    f"{REAL_CLICK_TO_GO_SEGMENT_LIMIT} segments can run per click. "
+                    "Click a nearer point, or fewer of them."
+                ),
+                "diagnostics": {
+                    "requested_leg_count": split["requested_leg_count"],
+                    "sub_leg_count": split_sub_leg_count,
+                    "target_length_m": split["target_length_m"],
+                    "max_segments": REAL_CLICK_TO_GO_SEGMENT_LIMIT,
+                    "legs": split["legs"],
+                },
+            }
+        )
     if len(normalized_points) < 2 or len(normalized_points) > 8:
         gates.append(
             {
@@ -13281,6 +13423,12 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
         "ble_auto_recover": ble_auto_recover,
         "ble_recovery": ble_recovery,
         "max_real_segments": max_real_segments,
+        # Echo it or it is unprovable (the beta44 discipline): the run JSON is
+        # the artifact every measurement is read out of, so it has to record
+        # what the operator actually clicked as well as what was driven.
+        "split_leg_target_length_m": split_leg_target_length_m,
+        "split": split,
+        "requested_points": split["requested_points"],
         "max_turn_commands": max_turn_commands,
         "max_linear_commands": max_linear_commands,
         "linear_speed_fast": linear_speed_fast,
@@ -13341,6 +13489,11 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
 
     if not preview["valid"]:
         result["stop_reason"] = "path_validation_failed"
+        return result
+    if split_over_budget:
+        # Above `invalid_point_count` so a handful of long clicks reports the
+        # real reason rather than surfacing as a bare point-count error.
+        result["stop_reason"] = "split_exceeds_real_segment_budget"
         return result
     if total_segments < 1 or len(normalized_points) > 8:
         result["stop_reason"] = "invalid_point_count"
@@ -15898,6 +16051,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             prefer_ble=call.data["prefer_ble"],
             ble_auto_recover=call.data["ble_auto_recover"],
             max_real_segments=call.data["max_real_segments"],
+            split_leg_target_length_m=call.data.get("split_leg_target_length_m"),
             linear_speed_fast=call.data["linear_speed_fast"],
             linear_speed_slow=call.data["linear_speed_slow"],
             slow_linear_threshold=call.data["slow_linear_threshold"],

@@ -40,9 +40,11 @@ const {
   LUBA_ACCEPTANCE_PROFILE,
   MAX_NIGHT_SEGMENT_METRES,
   MAX_REAL_SEGMENTS,
+  MAX_REAL_SEGMENT_METRES,
   MAX_WAYPOINTS,
   NIGHT_GO_PROFILE,
   PROFILE_KEYS,
+  SPLIT_LEG_TARGET_METRES,
   MammotionCustomPathCard,
 } =
   await import("../../custom_components/mammotion/www/mammotion-custom-path-card.js");
@@ -88,6 +90,11 @@ test("acceptance profile is frozen for the night-mode change", () => {
     ble_auto_recover: false,
     sample_delays: [0, 3],
   });
+  // Route B ships the split target as a plain payload key, NOT a profile key.
+  // Putting it in this object would un-accept the hardware-accepted profile and
+  // owe another Gate 5 -- the exact cost Route B exists to avoid.
+  assert.equal(LUBA_ACCEPTANCE_PROFILE.split_leg_target_length_m, undefined);
+  assert.equal(PROFILE_KEYS.includes("split_leg_target_length_m"), false);
 });
 
 test("Night Go has a separate frozen fixed-budget profile", () => {
@@ -289,7 +296,12 @@ test("seven-point dry-run is retained but real payload is capped at the limit", 
   const dry = element._motionPayload(true);
   const real = element._motionPayload(false);
 
-  assert.equal(dry.payload.max_real_segments, MAX_WAYPOINTS);
+  // Was MAX_WAYPOINTS (7), which the backend schema's vol.Range(min=0, max=4)
+  // rejects -- a 5+-waypoint DRY RUN failed validation before reaching the
+  // handler, and this assertion pinned the broken value. Clamping is
+  // behaviour-neutral: max_real_segments is only read behind `if not dry_run`.
+  assert.equal(dry.payload.max_real_segments, MAX_REAL_SEGMENTS);
+  assert.ok(dry.payload.max_real_segments <= MAX_REAL_SEGMENTS);
   assert.equal(real.payload.max_real_segments, MAX_REAL_SEGMENTS);
   assert.equal(real.payload.motion_refresh_interval_ms, 200);
   assert.equal(real.payload.final_approach_metres_per_pulse, 1.06);
@@ -1094,4 +1106,120 @@ test("Night dry-run does not inherit the empty-path validation false positive", 
 
   assert.ok(blockers.includes("path_unset"));
   assert.equal(blockers.includes("path_validation_failed"), false);
+});
+
+// --- Route B: a distant click auto-splits into collinear sub-legs ------------
+//
+// What these do NOT prove: that a 3.81 m leg lands accurately, or that
+// 4 x 3.85 = 15.40 m is drivable. The longest straight leg ever executed is
+// 4.0 m, n = 1. These pin the card's arithmetic, its routing, and the fact that
+// nothing about the accepted profile moved.
+
+test("a 50 ft click splits into four collinear sub-legs", () => {
+  const element = card();
+  // Mower at (1, 1); a single click 15.24 m away on +x.
+  element._waypoints = [{ x: 16.24, y: 1 }];
+
+  const split = element._plannedSplit();
+
+  assert.equal(split.applied, true);
+  assert.equal(split.requestedLegCount, 1);
+  assert.equal(split.subLegCount, 4);
+  assert.equal(split.points.length, 5);
+  for (let i = 1; i < split.points.length; i += 1) {
+    const dx = split.points[i].x - split.points[i - 1].x;
+    const dy = split.points[i].y - split.points[i - 1].y;
+    assert.ok(Math.abs(Math.hypot(dx, dy) - 15.24 / 4) < 1e-9);
+    // Collinear: every sub-leg is on the original bearing. The whole route
+    // rests on this -- a non-collinear junction is not a free turn.
+    assert.ok(Math.abs(dy) < 1e-9);
+  }
+});
+
+test("_longestSegmentMetres measures the SPLIT points, not the destinations", () => {
+  // The single most important card edit. Measuring destination-to-destination
+  // would trip `segment_too_long` on every long click and the split would never
+  // get a chance to run.
+  const element = card();
+  element._waypoints = [{ x: 16.24, y: 1 }];
+
+  assert.ok(element._longestSegmentMetres() < MAX_REAL_SEGMENT_METRES);
+  assert.ok(Math.abs(element._longestSegmentMetres() - 15.24 / 4) < 1e-9);
+  assert.equal(
+    element._preflight().blockers.includes("segment_too_long"),
+    false,
+  );
+});
+
+test("a short click is untouched and still dispatches as one vector segment", () => {
+  const element = card();
+  element._waypoints = [{ x: 1.8, y: 1 }];
+
+  const split = element._plannedSplit();
+  assert.equal(split.applied, false);
+  assert.equal(split.subLegCount, 1);
+
+  const { service, payload } = element._motionPayload(false);
+  assert.equal(service, "raw_pymammotion_execute_vector_segment");
+  assert.equal(payload.split_leg_target_length_m, undefined);
+});
+
+test("a split click routes to multi-segment and sends the clicks, not the split", () => {
+  const element = card();
+  element._waypoints = [{ x: 16.24, y: 1 }];
+
+  const { service, payload } = element._motionPayload(false);
+
+  assert.equal(service, "raw_pymammotion_execute_multi_segment");
+  assert.equal(payload.split_leg_target_length_m, SPLIT_LEG_TARGET_METRES);
+  // Provenance pin: the backend splits and echoes both, so the run JSON records
+  // what the operator actually asked for.
+  assert.equal(payload.points.length, 2);
+  assert.equal(payload.max_real_segments, MAX_REAL_SEGMENTS);
+});
+
+test("too far for one click is refused by name, distinctly from too many clicks", () => {
+  const element = card();
+  // 30 m needs 8 sub-legs against a budget of 4.
+  element._waypoints = [{ x: 31, y: 1 }];
+
+  const { blockers } = element._preflight();
+
+  assert.ok(blockers.includes("split_exceeds_real_segment_budget"));
+  // Distinct from real_segment_limit_N: one destination was clicked, so that
+  // code would be advice for the wrong problem.
+  assert.equal(
+    blockers.includes(`real_segment_limit_${MAX_REAL_SEGMENTS}`),
+    false,
+  );
+});
+
+test("night is unaffected by the split gates", () => {
+  const element = card();
+  element._waypoints = [{ x: 31, y: 1 }];
+
+  const { blockers } = element._nightPreflight();
+
+  assert.equal(blockers.includes("split_exceeds_real_segment_budget"), false);
+  assert.ok(blockers.includes("night_segment_too_long"));
+
+  const night = element._nightMotionPayload(false);
+  assert.equal(night.payload.split_leg_target_length_m, undefined);
+});
+
+test("too many short clicks reports only the click limit, not the split code", () => {
+  // The two codes are distinct and must stay distinct in BOTH directions.
+  // Five short destinations are an over-click, not an over-reach; firing the
+  // split code here would give advice for a problem the operator does not have.
+  const element = card();
+  element._waypoints = Array.from({ length: 5 }, (_, index) => ({
+    x: 1 + 0.8 * (index + 1),
+    y: 1,
+  }));
+
+  const { blockers } = element._preflight();
+
+  assert.ok(blockers.includes(`real_segment_limit_${MAX_REAL_SEGMENTS}`));
+  assert.equal(blockers.includes("split_exceeds_real_segment_budget"), false);
+  assert.equal(element._plannedSplit().applied, false);
 });
