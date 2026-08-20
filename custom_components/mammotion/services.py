@@ -1893,6 +1893,98 @@ def _area_polygons(
     return polygons
 
 
+#: `HashList` fields holding KEEP-OUT geometry, in the same map-local x/y frame
+#: as `area`. Every one is a polygon the mower must not enter.
+#:
+#: 🚨 Added 2026-08-20 after a supervised run drove into a no-go zone and pushed
+#: a trampoline. `_area_polygons` read `map.area` and nothing else, so
+#: containment validated INCLUSION in a mowing zone and never tested EXCLUSION
+#: from a keep-out. The geometry was not missing and not unreachable -- it sits
+#: in sibling dicts on the same object, and `get_geojson` has always exposed it
+#: (the mower reported obstacle hash 1529607395159402290; the geojson names it
+#: "Obstacle 1", "Obstacle in Backyard Right", ~4.0 x 4.1 m).
+#:
+#: ⚠️ Only `obstacle` is CONFIRMED populated on this hardware. The rest are
+#: included because a keep-out we cannot see is exactly the failure this fixes,
+#: and reading an empty dict costs nothing. `no_go_zone_variant` is documented
+#: upstream as a sibling of `no_go_zone` -- both encode as `(shape=0, type=1)`.
+_KEEP_OUT_MAP_FIELDS: tuple[str, ...] = (
+    "obstacle",  # type 1  -- keep-out / no-go obstacle boundary (CONFIRMED live)
+    "no_go_zone",  # type 23 -- user-drawn rectangular no-go zone
+    "no_go_zone_variant",  # type 22 -- sibling of 23
+    "virtual_wall",  # type 21 -- user-drawn virtual fence / keep-out line
+    "visual_obstacle_zone",  # type 26 -- vision-detected obstacle (Vision/Pro)
+)
+
+
+def _keep_out_polygons(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> dict[str, list[dict[str, float]]]:
+    """Return keep-out polygons as map-local x/y, keyed ``"<field>:<hash>"``.
+
+    Same extraction as `_area_polygons`, over the keep-out dicts instead of
+    `map.area`. No coordinate conversion: these are already in the frame the
+    path planner uses.
+
+    Keyed by field AND hash because two different keep-out types could in
+    principle carry the same hash, and a diagnostics blob that silently
+    collapsed them would hide one.
+    """
+    device_data = coordinator.data
+    polygons: dict[str, list[dict[str, float]]] = {}
+    for field_name in _KEEP_OUT_MAP_FIELDS:
+        frame_lists = getattr(device_data.map, field_name, None) or {}
+        if not isinstance(frame_lists, dict):
+            continue
+        for current_hash, frame_list in frame_lists.items():
+            points: list[dict[str, float]] = []
+            for frame in sorted(
+                getattr(frame_list, "data", []) or [],
+                key=lambda f: getattr(f, "current_frame", 0),
+            ):
+                points.extend(
+                    {"x": float(point.x), "y": float(point.y)}
+                    for point in getattr(frame, "data_couple", []) or []
+                    if hasattr(point, "x") and hasattr(point, "y")
+                )
+            # A keep-out needs 3 points to bound anything. A 2-point virtual
+            # wall is a LINE, which this polygon test cannot represent -- it is
+            # reported in diagnostics rather than silently treated as empty.
+            if points:
+                polygons[f"{field_name}:{current_hash}"] = points
+    return polygons
+
+
+def _keep_out_violations(
+    points: list[dict[str, float]],
+    keep_outs: dict[str, list[dict[str, float]]],
+) -> list[dict[str, Any]]:
+    """Return every (point index, keep-out) pair where the path enters a keep-out.
+
+    Per-point, matching the existing containment check. ⚠️ This tests the
+    POINTS, not the segments between them, so a leg that clips the corner of a
+    keep-out without either endpoint inside it is NOT caught. Route B's split
+    narrows that gap considerably -- it inserts a point every ~3.85 m along the
+    line -- but it does not close it.
+    """
+    violations: list[dict[str, Any]] = []
+    for index, point in enumerate(points):
+        for key, polygon in keep_outs.items():
+            if len(polygon) < 3:
+                continue
+            if _point_in_polygon(point, polygon):
+                field_name, _, hash_text = key.partition(":")
+                violations.append(
+                    {
+                        "point_index": index,
+                        "point": point,
+                        "keep_out_type": field_name,
+                        "keep_out_hash": hash_text,
+                    }
+                )
+    return violations
+
+
 def _point_on_segment(
     point: dict[str, float],
     start: dict[str, float],
@@ -2175,6 +2267,12 @@ def _export_mower_map(coordinator: MammotionReportUpdateCoordinator) -> dict[str
                     str(_json_safe_int(area_hash)): points
                     for area_hash, points in polygons.items()
                 },
+                # 🚨 Keep-outs, in the SAME map-local x/y frame as the areas, so
+                # a consumer can test exclusion without any coordinate
+                # conversion. `get_geojson` has always carried these in WGS84
+                # lat/lon, which is why the card could draw them while
+                # containment could not check them.
+                "keep_out_polygons": _keep_out_polygons(coordinator),
                 "raw": {
                     "area": map_dict.get("area", {}),
                     "svg": map_dict.get("svg", {}),
@@ -2833,6 +2931,24 @@ def _validate_custom_path(  # noqa: C901
         if outside:
             errors.append("path_points_outside_known_area_geometry")
 
+    # 🚨 EXCLUSION, added 2026-08-20. Being inside a mowing area says nothing
+    # about keep-outs INSIDE that area: on a supervised run a 10.8 m leg stayed
+    # within "Backyard Right" the whole way and drove into an obstacle zone
+    # containing a trampoline. Inclusion and exclusion are separate questions
+    # and this check only ever asked the first one.
+    #
+    # Deliberately OUTSIDE the `valid_polygons` branch above: a keep-out must be
+    # honoured even when no area geometry is available to contain the path.
+    keep_outs = _keep_out_polygons(coordinator)
+    keep_out_violations = _keep_out_violations(normalized_points, keep_outs)
+    if keep_out_violations:
+        errors.append("path_points_inside_keep_out_zone")
+    elif not keep_outs:
+        # Silence here would read as "no keep-outs on the path" when it means
+        # "no keep-out geometry was loaded". Those are very different, and the
+        # second one is how the trampoline run passed validation.
+        warnings.append("no_keep_out_geometry_available_for_exclusion_check")
+
     distance = _path_distance(normalized_points)
     if distance == 0 and len(normalized_points) >= 2:
         errors.append("path_distance_must_be_greater_than_zero")
@@ -2841,6 +2957,11 @@ def _validate_custom_path(  # noqa: C901
         "valid": not errors,
         "errors": errors,
         "warnings": warnings,
+        # Echo it or it is unprovable: a run record must show HOW MANY keep-outs
+        # were actually checked, so "no violation" can be distinguished from
+        # "nothing was loaded to violate".
+        "keep_out_zones_checked": len(keep_outs),
+        "keep_out_violations": keep_out_violations,
         "coordinate_system": "mower_map_xy",
         "blade_mode": blade_mode,
         "speed": speed,

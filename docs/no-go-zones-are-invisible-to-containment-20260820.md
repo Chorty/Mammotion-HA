@@ -12,6 +12,39 @@ Sub-leg 2 drove into a no-go zone containing a trampoline and stopped on
 
 Evidence: `docs/evidence-routeb-first-hardware-run-20260820.json`.
 
+## ✅ RESOLVED IN CODE, SAME DAY — the geometry was never missing
+
+`HashList` stores map geometry in **per-type dicts on the same object**:
+
+```
+area:                  dict[int, FrameList]   # type 0   <- the only one we read
+obstacle:              dict[int, FrameList]   # type 1   <- "Keep-out / no-go obstacle boundary points"
+no_go_zone:            dict[int, FrameList]   # type 23
+no_go_zone_variant:    dict[int, FrameList]   # type 22
+virtual_wall:          dict[int, FrameList]   # type 21
+visual_obstacle_zone:  dict[int, FrameList]   # type 26
+```
+
+`_area_polygons` read `map.area` and nothing else. The keep-outs sit beside it,
+**already in map-local x/y** — the same frame the path planner uses. No
+coordinate conversion, no upstream change, no new transport call.
+
+`_keep_out_polygons()` + `_keep_out_violations()` now read all five keep-out
+fields, `_validate_custom_path` tests exclusion alongside inclusion, and
+`export_map` exposes `keep_out_polygons` so the card can draw them.
+
+⚠️ **A detour worth recording as a dead end.** The first attempt went via
+`get_geojson`, which does carry the obstacles — with the exact hash the mower
+reported, named "Obstacle 1", "Obstacle in Backyard Right", ~4.0 x 4.1 m. But
+geojson is **WGS84 lat/lon** while planning is map-local metres, and deriving
+the transform from the four areas present in both frames FAILED: per-axis scale
+gave a 3.46 m mean residual and a full affine gave **6.10 m**. A richer model
+fitting worse means the point CORRESPONDENCE is wrong — same polygon, same point
+count, different start index or winding. Any conclusion drawn from those
+transforms is void, including two "does not cross the obstacle" results that the
+mower had already disproved by driving into it. The sibling-dict route avoids
+the question entirely.
+
 ## The defect
 
 **`_validate_custom_path` does not fail to check no-go zones. It has no no-go
@@ -72,18 +105,20 @@ progress detector would have let it push indefinitely.
 
 ## What to fix, in order
 
-1. **Find the no-go geometry upstream.** The mower reports a zone hash we cannot
-   resolve, so the data exists on the device. Check whether pymammotion parses
-   an obstacle/exclusion frame we simply do not export — this is a read-only
-   investigation and costs nothing.
-2. **If it is reachable, add it to `export_map` and to
-   `_validate_custom_path`,** as a per-point exclusion test alongside the
-   existing inclusion test. The split runs before the preview precisely so
-   inserted points get checked; they would get this check for free.
-3. **If it is NOT reachable, say so in the card.** A containment check that
-   cannot see no-go zones must not present itself as "path validated". The
-   readiness banner should state the limit rather than imply coverage it does
-   not have.
+1. ✅ **DONE — exclusion check shipped.** `_keep_out_polygons` /
+   `_keep_out_violations`, wired into `_validate_custom_path` and `export_map`.
+   Pinned by `tests/components/mammotion/test_keep_out_zones.py`.
+   ⚠️ **NOT YET VERIFIED ON THE HOST** — that needs a deploy, and the decisive
+   test is whether `export_map.keep_out_polygons` returns hash
+   1529607395159402290 and whether the recorded 10.8 m click is refused.
+2. ⚠️ **The check is PER-POINT, like the inclusion check beside it.** A leg
+   clipping a keep-out corner with neither endpoint inside is NOT caught. Route
+   B's split narrows the gap (a point every ~3.85 m) but a 4 m keep-out can
+   still fit between two split points. Segment-level containment is the real
+   fix; `test_a_leg_that_clips_a_corner_is_not_caught` pins the limitation so it
+   cannot be mistaken for coverage.
+3. **Card work still owed.** The card should draw keep-outs from
+   `keep_out_polygons` and refuse the click before the operator ever sends it.
 4. **Consider a travel-collapse obstacle detector.** The signature here was
    unmistakable and arrived two pulses before the zone gate. It is a separate
    question from `min_progress_distance`, which is set for final-approach
