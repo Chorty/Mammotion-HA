@@ -38,6 +38,152 @@ const BUDGET_CHECK_METRES_PER_PULSE = 0.3;
 // ⚠️ 3.81 m is 95% of the longest straight leg ever executed (4.0 m, n = 1).
 // 4 x 3.85 = 15.40 m has never been driven.
 const SPLIT_LEG_TARGET_METRES = 3.85;
+// Deliberate safety-gate overrides, 2026-08-19, at the operator's explicit
+// request: every blocker gets a toggle so a restriction can be lifted ON
+// PURPOSE instead of being worked around by editing a constant and redeploying.
+//
+// ⚠️ A toggle here is NOT enough on its own. The card's blockers are a courtesy
+// copy; the BACKEND keeps its own gates. Every code below must also be a key of
+// `_OVERRIDABLE_GATES` in services.py, or the card will read "Ready" while the
+// backend refuses -- a card that lies, which is worse than no toggle at all.
+// Keep the two in step.
+//
+// `tier` drives presentation order and colour only. `risk: "high"` marks the
+// gates that protect against a physical hazard or a blind sensor rather than a
+// chosen number; they are still overridable, they just say so loudly.
+const OVERRIDE_TIERS = ["cap", "night", "sensing", "link", "physical"];
+const OVERRIDABLE_BLOCKERS = Object.freeze({
+  // chosen authorization numbers
+  segment_too_long: { tier: "cap", risk: "low" },
+  [`real_segment_limit_${MAX_REAL_SEGMENTS}`]: {
+    tier: "cap",
+    risk: "low",
+    backend: "real_segment_limit",
+  },
+  real_segment_limit: { tier: "cap", risk: "low" },
+  split_exceeds_real_segment_budget: { tier: "cap", risk: "low" },
+  linear_budget_insufficient_for_segment: { tier: "cap", risk: "low" },
+  point_count_2_to_8: { tier: "cap", risk: "low" },
+  max_real_segments_positive: { tier: "cap", risk: "low" },
+  one_segment_only: { tier: "cap", risk: "low" },
+  // night
+  night_segment_too_long: { tier: "night", risk: "medium" },
+  night_requires_one_segment: {
+    tier: "night",
+    risk: "high",
+    backend: "night_multi_segment_unsupported",
+  },
+  night_multi_segment_unsupported: { tier: "night", risk: "high" },
+  night_linear_loop_unsupported: { tier: "night", risk: "medium" },
+  night_requires_precise_rtk: { tier: "night", risk: "high" },
+  // sensing
+  rtk_not_precise: { tier: "sensing", risk: "high" },
+  path_validation: { tier: "sensing", risk: "high" },
+  path_validation_failed: {
+    tier: "sensing",
+    risk: "high",
+    backend: "path_validation",
+  },
+  position_not_valid_for_motion: { tier: "sensing", risk: "medium" },
+  live_map_position_available: { tier: "sensing", risk: "high" },
+  map_position_nonzero: { tier: "sensing", risk: "high" },
+  position_area_inside: { tier: "sensing", risk: "medium" },
+  vio_feed_live: { tier: "sensing", risk: "high" },
+  vio_feed_degraded: {
+    tier: "sensing",
+    risk: "high",
+    backend: "vio_feed_live",
+  },
+  vio_active: { tier: "sensing", risk: "high" },
+  live_heading_available: { tier: "sensing", risk: "high" },
+  current_orientation_unavailable: {
+    tier: "sensing",
+    risk: "high",
+    backend: "live_heading_available",
+  },
+  vio_heading_available: { tier: "sensing", risk: "high" },
+  target_heading_available: { tier: "sensing", risk: "high" },
+  // link
+  ble_transport_required: { tier: "link", risk: "high" },
+  ble_link_live: { tier: "link", risk: "high" },
+  // physical
+  mower_reports_blades_off: { tier: "physical", risk: "high" },
+  blade_unsafe: {
+    tier: "physical",
+    risk: "high",
+    backend: "mower_reports_blades_off",
+  },
+  mower_ready: { tier: "physical", risk: "medium" },
+  not_docked_or_charging: { tier: "physical", risk: "medium" },
+  runtime_not_mowing: { tier: "physical", risk: "high" },
+  runtime_route_not_blocking: { tier: "physical", risk: "high" },
+});
+// Why each override matters, in the operator's terms, shown at the moment of
+// flipping the toggle. A gate's NAME never says what it was protecting.
+const OVERRIDE_WHY = Object.freeze({
+  segment_too_long:
+    "6.10 m is an authorization cap chosen 2026-08-17, not a measured limit. The longest segment ever executed is 4.0 m (n = 1).",
+  real_segment_limit:
+    "4 segments per click. Error does not compound with segment index (measured slope +0.017 m).",
+  split_exceeds_real_segment_budget:
+    "Runs more collinear sub-legs than a single click has ever driven.",
+  linear_budget_insufficient_for_segment:
+    "The pulse ceiling cannot reach this leg at a conservative 0.30 m/pulse. Risks stranding mid-leg — which stops safely.",
+  point_count_2_to_8: "The executor chain is validated for 2 to 8 points.",
+  max_real_segments_positive:
+    "A real run with max_real_segments < 1 executes nothing.",
+  one_segment_only: "This executor was validated on a single segment.",
+  night_segment_too_long:
+    "Night is capped at 1.0 m because the turn quantum is 48.15° ± 5.70 with NOTHING scaling it — 4 of 5 converging night turns landed inside tolerance by luck (margins 1.72 / 1.09 / 0.36°). No night landing-accuracy population exists.",
+  night_requires_one_segment:
+    "⚠️ NIGHT HAS NO JUNCTION FEASIBILITY MODEL. The preflight that refuses an impossible turn before segment 1 does not exist for night, so an infeasible junction is discovered AFTER motion starts.",
+  night_multi_segment_unsupported:
+    "⚠️ NIGHT HAS NO JUNCTION FEASIBILITY MODEL — an infeasible junction is discovered after motion has started.",
+  night_linear_loop_unsupported:
+    "Night runs a fixed pulse budget; loop-to-tolerance has never been exercised at night.",
+  night_requires_precise_rtk:
+    "Night steers on RTK alone — there is no VIO to fall back on. Float produced a 13.9 cm stationary jump (2026-08-07).",
+  rtk_not_precise:
+    "Non-Fix RTK. Float produced a 13.9 cm stationary jump against an 0.08 m tolerance (2026-08-07).",
+  path_validation:
+    "⚠️ CONTAINMENT. The path leaves every known area polygon — the mower may drive outside mapped geometry entirely.",
+  path_validation_failed:
+    "⚠️ CONTAINMENT. The path leaves every known area polygon — the mower may drive outside mapped geometry entirely.",
+  position_not_valid_for_motion:
+    "Typically docked, CHARGE_ON, or zone_hash 0. The dock sits outside every mowing area.",
+  live_map_position_available:
+    "No live map position — the controller steers on position.",
+  map_position_nonzero:
+    "Position reads (0, 0), usually a dead or unstarted feed.",
+  position_area_inside: "The mower does not report itself inside a known area.",
+  vio_feed_live:
+    "⚠️ THE DUSK LATCH. vio_state reads active while tracked_features is 0 — the state field lies and the feed is already blind.",
+  vio_feed_degraded:
+    "⚠️ THE DUSK LATCH. vio_state reads active while tracked_features is 0 — the state field lies and the feed is already blind.",
+  vio_active: "VIO is not active, and the vio turn mode closes on VIO heading.",
+  live_heading_available:
+    "No trustworthy current heading. Frozen course-over-ground is last travel, not orientation.",
+  current_orientation_unavailable:
+    "No trustworthy current heading. Frozen course-over-ground is last travel, not orientation.",
+  vio_heading_available: "No VIO heading to close the turn loop on.",
+  target_heading_available:
+    "No target heading could be derived for this segment.",
+  ble_transport_required:
+    "Not on BLE. The position feed is BLE-only and stone dead on cloud.",
+  ble_link_live:
+    "⚠️ The link is not live. is_usable is routing eligibility, NOT liveness — commands can pile up undelivered, and the STOP may not arrive either.",
+  mower_reports_blades_off:
+    "🚨 THE MOWER REPORTS ITS BLADES ARE NOT OFF. The RPM register latches after a mow so this can be stale — but it can also be true. Confirm physically first.",
+  blade_unsafe:
+    "🚨 THE MOWER REPORTS ITS BLADES ARE NOT OFF. Confirm physically before overriding.",
+  mower_ready: "Work mode is not MODE_READY or MODE_PAUSE.",
+  not_docked_or_charging:
+    "The mower reports charging. Driving off the dock under power can damage the dock.",
+  runtime_not_mowing:
+    "🚨 AN AUTONOMOUS MOW IS ACTIVE — this commands manual motion into a running vendor job.",
+  runtime_route_not_blocking:
+    "🚨 Live or ambiguous route data indicates the mower is executing a route.",
+});
 // Run retention. The card used to keep ten SUMMARIES plus exactly ONE full
 // result, overwritten every run -- and `_segmentLandingRows()` needs the full
 // result, so a summary-only entry renders as `[]`. The downloaded history was
@@ -264,6 +410,13 @@ class MammotionCustomPathCard extends HTMLElement {
     // would be invisible on exactly the path that has no other copy. Null means
     // "nothing to say"; anything else means a run was not fully stored.
     this._storageWarning = null;
+    // Deliberate per-run safety-gate overrides, as a Set of blocker codes.
+    // ⚠️ RESET AFTER EVERY RUN, in the same `finally` that clears the blade and
+    // clear-area confirmations. An override that outlives the reason it was set
+    // is the `c196b8b1` failure shape -- state surviving its own intent -- and
+    // the gate has already been found armed at rest three times (2026-08-18).
+    // Deliberately NOT persisted to localStorage for the same reason.
+    this._overrides = new Set();
   }
 
   _renderHistoryHtml() {
@@ -893,6 +1046,93 @@ class MammotionCustomPathCard extends HTMLElement {
     return [...new Set(blockers)];
   }
 
+  // Blockers currently firing that the operator is allowed to override, in
+  // registry order. Only firing blockers are offered: a toggle for a gate that
+  // is not blocking anything invites arming something for no reason.
+  // The override panel. Renders one toggle per FIRING overridable blocker,
+  // grouped by tier, each carrying the reason the gate exists. Collapsed by
+  // default and absent entirely when nothing is blocking -- this must never
+  // read as a normal part of the run flow.
+  _overridePanelHtml(preflight) {
+    const items = this._overridableBlockers(preflight.blockers);
+    if (!items.length) return "";
+    const on = items.filter((item) => item.on);
+    const rows = items
+      .map(
+        (
+          item,
+        ) => `<label class="override-row risk-${item.risk} ${item.on ? "on" : ""}">
+          <input type="checkbox" class="override-toggle" data-override="${this._escapeHtml(item.code)}" ${item.on ? "checked" : ""}/>
+          <span class="override-code">${this._escapeHtml(item.code)}</span>
+          <span class="override-tier">${this._escapeHtml(item.tier)}${item.risk === "high" ? " · high risk" : ""}</span>
+          <span class="override-why">${this._escapeHtml(item.why)}</span>
+        </label>`,
+      )
+      .join("");
+    const summary = on.length
+      ? `⚠️ ${on.length} safety gate${on.length === 1 ? "" : "s"} overridden for the next run`
+      : `Override blockers (${items.length} available)`;
+    const active = on.length
+      ? `<div class="override-active">These gates will NOT stop the next Real Go: <b>${this._escapeHtml(on.map((i) => i.code).join(", "))}</b>. They reset automatically when the run finishes. Every override is recorded in the run JSON.</div>`
+      : "";
+    return `<details class="override-panel${on.length ? " armed" : ""}" ${on.length ? "open" : ""}>
+      <summary>${this._escapeHtml(summary)}</summary>
+      ${active}
+      <div class="override-note">A toggle lifts the gate in the BACKEND too, not just on this card. Dry runs ignore overrides on purpose, so use one to see the honest verdict first.</div>
+      ${rows}
+    </details>`;
+  }
+
+  _overridableBlockers(blockers) {
+    const seen = new Set();
+    return OVERRIDE_TIERS.flatMap((tier) =>
+      (blockers || [])
+        .filter((code) => {
+          const meta = OVERRIDABLE_BLOCKERS[code];
+          if (!meta || meta.tier !== tier || seen.has(code)) return false;
+          seen.add(code);
+          return true;
+        })
+        .map((code) => ({
+          code,
+          tier,
+          risk: OVERRIDABLE_BLOCKERS[code].risk,
+          backend: OVERRIDABLE_BLOCKERS[code].backend || code,
+          why: OVERRIDE_WHY[code] || "",
+          on: this._overrides.has(code),
+        })),
+    );
+  }
+
+  // The backend gate names to send. Card codes and backend gate names are not
+  // always identical (`real_segment_limit_4` vs `real_segment_limit`,
+  // `blade_unsafe` vs `mower_reports_blades_off`), and sending a card-only name
+  // would be REFUSED by the schema -- which is the correct fail-closed
+  // behaviour, but it would silently drop the override the operator asked for.
+  _overridePayloadNames() {
+    const names = new Set();
+    for (const code of this._overrides) {
+      const meta = OVERRIDABLE_BLOCKERS[code];
+      if (meta) names.add(meta.backend || code);
+    }
+    return [...names];
+  }
+
+  _toggleOverride(code) {
+    if (!OVERRIDABLE_BLOCKERS[code]) return;
+    if (this._overrides.has(code)) {
+      this._overrides.delete(code);
+    } else {
+      this._overrides.add(code);
+    }
+    this._render();
+  }
+
+  _clearOverrides() {
+    if (!this._overrides.size) return;
+    this._overrides = new Set();
+  }
+
   _preflight() {
     const blockers = [];
     const runtime = this._runtimeState || {};
@@ -968,13 +1208,19 @@ class MammotionCustomPathCard extends HTMLElement {
     if (this._waypoints.length && !this._validation?.valid) {
       blockers.push("path_validation_failed");
     }
+    // Dedupe first (the backend reports position_not_valid_for_motion and
+    // rtk_not_precise on BOTH its experimental_motion and safety lists), then
+    // split into what still blocks and what the operator has deliberately
+    // overridden. `blockers` stays the honest full list for display; `safe`
+    // reflects what will actually dispatch.
+    const all = [...new Set(blockers)];
+    const overridden = all.filter((code) => this._overrides.has(code));
+    const remaining = all.filter((code) => !this._overrides.has(code));
     return {
-      safe: blockers.length === 0,
-      // The backend reports the same condition on both its experimental_motion
-      // and safety blocker lists -- position_not_valid_for_motion and
-      // rtk_not_precise arrive on each -- so concatenating them printed every
-      // shared code twice. Dedupe while keeping first-seen order.
-      blockers: [...new Set(blockers)],
+      safe: remaining.length === 0,
+      blockers: all,
+      remaining,
+      overridden,
       runtime,
     };
   }
@@ -1643,6 +1889,13 @@ class MammotionCustomPathCard extends HTMLElement {
       ),
       ble_auto_recover: Boolean(this._profileValue("ble_auto_recover")),
     };
+    // Only on a REAL run. A dry run is advisory and should keep reporting every
+    // gate honestly -- overriding there would hide exactly what the dry run
+    // exists to reveal.
+    const overrideNames = dryRun ? [] : this._overridePayloadNames();
+    if (overrideNames.length) {
+      payload.safety_overrides = overrideNames;
+    }
     // Omitted, not zeroed: the backend treats a missing ceiling as "no
     // loop-to-tolerance", which is what Gate 4 ran. Sending 0 would fail the
     // schema's Range(min=1).
@@ -1704,6 +1957,10 @@ class MammotionCustomPathCard extends HTMLElement {
       toward_mirror_degrees: NIGHT_GO_PROFILE.toward_mirror_degrees,
       sample_delays: NIGHT_GO_PROFILE.sample_delays,
     };
+    const nightOverrides = dryRun ? [] : this._overridePayloadNames();
+    if (nightOverrides.length) {
+      payload.safety_overrides = nightOverrides;
+    }
     // Deliberately OMIT max_linear_pulse_ceiling. Night v1 is fixed-budget;
     // sending the accepted daylight ceiling would be refused by the backend.
     if (this._areaHash) {
@@ -1989,6 +2246,8 @@ class MammotionCustomPathCard extends HTMLElement {
       this._submittingRealRun = false;
       this._confirmBladesOff = false;
       this._confirmClearArea = false;
+      // Overrides die with the run that used them. See the constructor note.
+      this._clearOverrides();
       this._stopRunTicker();
       await this._loadRuntimeState();
       this._render();
@@ -2075,6 +2334,8 @@ class MammotionCustomPathCard extends HTMLElement {
       this._submittingRealRun = false;
       this._confirmBladesOff = false;
       this._confirmClearArea = false;
+      // Overrides die with the run that used them. See the constructor note.
+      this._clearOverrides();
       this._confirmNightExperimental = false;
       this._stopRunTicker();
       await this._loadRuntimeState();
@@ -2445,6 +2706,20 @@ class MammotionCustomPathCard extends HTMLElement {
         .banner.blocked { border-color: #ef4444; background: rgba(239,68,68,0.12); }
         .banner.busy { border-color: #3b82f6; background: rgba(59,130,246,0.12); }
 
+        /* Override panel. Deliberately visually loud when armed: an overridden
+           gate must never look like a normal run. */
+        .override-panel { margin: 10px 12px 0; padding: 6px 10px; border: 1px dashed rgba(239,68,68,0.5); border-radius: 6px; font-size: 12px; }
+        .override-panel > summary { cursor: pointer; font-weight: 600; color: #ef4444; }
+        .override-panel.armed { border-style: solid; border-width: 2px; background: rgba(239,68,68,0.10); }
+        .override-active { margin: 6px 0; padding: 6px 8px; border-radius: 4px; background: rgba(239,68,68,0.16); }
+        .override-note { margin: 6px 0; opacity: 0.8; font-size: 11px; }
+        .override-row { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 8px; align-items: start; padding: 6px; margin: 4px 0; border-radius: 4px; border: 1px solid rgba(127,127,127,0.25); cursor: pointer; }
+        .override-row.on { border-color: #ef4444; background: rgba(239,68,68,0.10); }
+        .override-row.risk-high .override-tier { color: #ef4444; font-weight: 700; }
+        .override-code { font-family: ui-monospace, Menlo, monospace; font-size: 11px; }
+        .override-tier { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.75; }
+        .override-why { grid-column: 2 / span 2; font-size: 11px; opacity: 0.85; }
+
         .toolbar { display: flex; gap: 10px; align-items: stretch; padding: 12px; flex-wrap: wrap; }
         .group { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 6px 9px; border: 1px solid rgba(127,127,127,0.3); border-radius: 6px; }
         .group-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--secondary-text-color); font-weight: 700; }
@@ -2508,6 +2783,7 @@ class MammotionCustomPathCard extends HTMLElement {
               : ""
           }
         </div>
+        ${this._overridePanelHtml(preflight)}
         <div class="toolbar">
           <div class="group">
             <span class="group-label">Path</span>
@@ -2612,6 +2888,13 @@ class MammotionCustomPathCard extends HTMLElement {
     this._q("#clear-history")?.addEventListener("click", () =>
       this._clearHistory(),
     );
+    this.shadowRoot
+      ?.querySelectorAll(".override-toggle")
+      .forEach((el) =>
+        el.addEventListener("change", (event) =>
+          this._toggleOverride(event.target.dataset.override),
+        ),
+      );
     this._q("#download-real-result")?.addEventListener("click", () =>
       this._downloadJson(this._realRun, "real-go", "Real Go result"),
     );

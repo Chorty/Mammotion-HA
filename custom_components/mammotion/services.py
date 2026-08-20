@@ -284,6 +284,287 @@ _CUSTOM_PATH_POINT_SCHEMA = vol.Schema(
     extra=vol.ALLOW_EXTRA,
 )
 
+#: Safety gates the operator may deliberately override, name -> metadata.
+#:
+#: Added 2026-08-19 at the operator's explicit request: every blocker the card
+#: can show gets a toggle, so a restriction can be lifted ON PURPOSE instead of
+#: being worked around by editing constants. This is a bespoke tool for one
+#: yard (standing decision 1), the operator supervises every real run, and an
+#: override is recorded in the run JSON -- which is strictly better than the
+#: previous options, which were "edit a constant and redeploy" or "do not run".
+#:
+#: ⚠️ MUST BE DEFINED ABOVE THE SCHEMAS. The service schemas ~700 lines below
+#: validate against `sorted(_OVERRIDABLE_GATES)`, and a constant defined with
+#: the other constants ~11,000 lines down is a NameError at import -- the exact
+#: trap documented on `_MAX_SEGMENT_LENGTH_M` and the 6.10 literal.
+#:
+#: `tier` orders the card's presentation and nothing else; the backend treats
+#: every entry identically. `why` is rendered to the operator at the moment of
+#: flipping the toggle, because a gate's NAME never says what it was protecting.
+_OVERRIDABLE_GATES: dict[str, dict[str, str]] = {
+    # -- chosen authorization numbers: someone picked these, they are not
+    #    measurements, and overriding one is a research decision -------------
+    "segment_too_long": {
+        "tier": "cap",
+        "why": (
+            "6.10 m is an authorization cap chosen 2026-08-17, not a measured "
+            "limit. The longest segment ever executed is 4.0 m (n = 1)."
+        ),
+    },
+    "real_segment_limit": {
+        "tier": "cap",
+        "why": (
+            "4 segments per click. Segment 3+ was never executed until beta33; "
+            "error does not compound with segment index (slope +0.017 m)."
+        ),
+    },
+    "split_exceeds_real_segment_budget": {
+        "tier": "cap",
+        "why": (
+            "Sub-legs after the collinear split exceed the 4-segment budget. "
+            "Overriding runs more legs than a click has ever driven."
+        ),
+    },
+    "linear_budget_insufficient_for_segment": {
+        "tier": "cap",
+        "why": (
+            "The configured pulse ceiling cannot reach this leg at the "
+            "conservative 0.30 m/pulse. Overriding risks stranding mid-leg on "
+            "max_linear_pulse_ceiling_reached -- which stops safely."
+        ),
+    },
+    "point_count_2_to_8": {
+        "tier": "cap",
+        "why": "The executor chain accepts 2 to 8 points. Untested beyond that.",
+    },
+    "max_real_segments_positive": {
+        "tier": "cap",
+        "why": "A real run with max_real_segments < 1 executes nothing.",
+    },
+    "one_segment_only": {
+        "tier": "cap",
+        "why": "This executor was validated on a single segment.",
+    },
+    # -- night: the tightest caps in the codebase, and the least evidenced ---
+    "night_segment_too_long": {
+        "tier": "night",
+        "why": (
+            "Night is capped at 1.0 m because the refreshed turn quantum is "
+            "48.15 deg +/- 5.70 with NOTHING scaling it -- 4 of 5 converging "
+            "night turns landed inside tolerance by luck (margins 1.72 / 1.09 "
+            "/ 0.36 deg). The cap is what keeps a coarse controller's error "
+            "bounded. No night landing-accuracy population exists."
+        ),
+    },
+    "night_multi_segment_unsupported": {
+        "tier": "night",
+        "why": (
+            "⚠️ NIGHT HAS NO JUNCTION FEASIBILITY MODEL AT ALL. The preflight "
+            "that refuses an impossible turn before segment 1 does not exist "
+            "for night, so an infeasible junction is discovered AFTER motion "
+            "has started."
+        ),
+    },
+    "night_linear_loop_unsupported": {
+        "tier": "night",
+        "why": (
+            "Night runs a fixed pulse budget. Loop-to-tolerance at night has "
+            "never been exercised."
+        ),
+    },
+    "night_requires_precise_rtk": {
+        "tier": "night",
+        "why": (
+            "Night steers on RTK position alone -- there is no VIO to fall "
+            "back on. Float produced a 13.9 cm stationary jump on 2026-08-07."
+        ),
+    },
+    # -- sensing: proceed on degraded, stale or absent measurement -----------
+    "rtk_not_precise": {
+        "tier": "sensing",
+        "why": (
+            "Non-Fix RTK. Float produced a 13.9 cm stationary jump against an "
+            "0.08 m tolerance (2026-08-07). Equivalent to allow_degraded_rtk."
+        ),
+    },
+    "path_validation": {
+        "tier": "sensing",
+        "why": (
+            "⚠️ CONTAINMENT. The path leaves every known area polygon. "
+            "Overriding lets the mower drive outside mapped geometry entirely."
+        ),
+    },
+    "position_not_valid_for_motion": {
+        "tier": "sensing",
+        "why": (
+            "Position is not valid for motion -- typically docked, CHARGE_ON, "
+            "or zone_hash 0. The dock is outside every mowing area."
+        ),
+    },
+    "live_map_position_available": {
+        "tier": "sensing",
+        "why": "No live map position. The controller steers on position.",
+    },
+    "map_position_nonzero": {
+        "tier": "sensing",
+        "why": "Position reads (0, 0) -- usually a dead or unstarted feed.",
+    },
+    "position_area_inside": {
+        "tier": "sensing",
+        "why": "The mower does not report itself inside a known area.",
+    },
+    "vio_feed_live": {
+        "tier": "sensing",
+        "why": (
+            "⚠️ THE DUSK LATCH. vio_state reads active while tracked_features "
+            "is 0 -- the state field lies and the feed is already blind. "
+            "Overriding steers a VIO turn on a sensor reporting nothing."
+        ),
+    },
+    "vio_active": {
+        "tier": "sensing",
+        "why": "VIO is not active. The vio turn mode closes on VIO heading.",
+    },
+    "live_heading_available": {
+        "tier": "sensing",
+        "why": "No trustworthy current heading. Frozen course-over-ground is not orientation.",
+    },
+    "vio_heading_available": {
+        "tier": "sensing",
+        "why": "No VIO heading available to close the turn loop on.",
+    },
+    "target_heading_available": {
+        "tier": "sensing",
+        "why": "No target heading could be derived for this segment.",
+    },
+    # -- link: the command path itself --------------------------------------
+    "ble_transport_required": {
+        "tier": "link",
+        "why": (
+            "Not on BLE. The position feed is BLE-only and stone dead on "
+            "cloud; a 30-min cloud window produced exactly ONE report."
+        ),
+    },
+    "ble_link_live": {
+        "tier": "link",
+        "why": (
+            "⚠️ The BLE link is not live. is_usable is routing eligibility, "
+            "NOT liveness -- it stays true while commands pile up undelivered "
+            "and 'command ok' never proved delivery. Overriding dispatches "
+            "into a link that may not carry the STOP either."
+        ),
+    },
+    # -- physical: the mower is doing something else, or is unsafe -----------
+    "mower_reports_blades_off": {
+        "tier": "physical",
+        "why": (
+            "🚨 THE MOWER REPORTS ITS BLADES ARE NOT OFF. Note the blade RPM "
+            "register latches after a mow, so this can be stale -- but it can "
+            "also be true. Confirm the blades physically before overriding."
+        ),
+    },
+    "mower_ready": {
+        "tier": "physical",
+        "why": "Work mode is not MODE_READY or MODE_PAUSE.",
+    },
+    "not_docked_or_charging": {
+        "tier": "physical",
+        "why": "The mower reports charging. Motion while docked can damage the dock.",
+    },
+    "runtime_not_mowing": {
+        "tier": "physical",
+        "why": (
+            "🚨 AN AUTONOMOUS MOW IS ACTIVE. Overriding commands manual motion "
+            "into a running vendor job."
+        ),
+    },
+    "runtime_route_not_blocking": {
+        "tier": "physical",
+        "why": "Live or ambiguous route data indicates the mower is executing a route.",
+    },
+}
+
+#: Gates deliberately absent from the registry above, and why. Not a safety
+#: veto -- the operator asked for every blocker and got it. These three are
+#: INCOHERENT to override rather than merely risky:
+#:
+#: * ``stop_primitive_available`` -- ``hasattr(coordinator,
+#:   "async_stop_manual_motion")``. If it is False the code has no way to stop
+#:   the mower; an override does not create the method, it just dispatches
+#:   motion with no stop path.
+#: * ``turn_mode_valid`` -- the turn mode is not one the executor implements,
+#:   so there is no code path to run.
+#: * ``operator_confirmed_blades_off`` / ``operator_confirmed_clear_area`` --
+#:   these ARE the operator's deliberate act. The card already exposes them as
+#:   checkboxes; an "override" of a confirmation is simply not confirming, and
+#:   would remove the last human step rather than add one.
+#:
+#: The experimental-motion gate itself is likewise not here: it is the ARMING
+#: control, not a blocker. Overriding it would mean motion without arming,
+#: which is the one thing the whole gate exists to prevent.
+_NON_OVERRIDABLE_GATES: frozenset[str] = frozenset(
+    {
+        "stop_primitive_available",
+        "turn_mode_valid",
+        "operator_confirmed_blades_off",
+        "operator_confirmed_clear_area",
+    }
+)
+
+
+def _apply_safety_overrides(
+    gates: list[dict[str, Any]],
+    overrides: list[str] | tuple[str, ...] | None,
+) -> dict[str, Any]:
+    """Force-pass the named gates, recording exactly what was overridden.
+
+    An overridden gate keeps its original verdict in ``original_passed`` and is
+    marked ``overridden: True``, so the run JSON shows both that the gate FIRED
+    and that the operator chose to proceed. Silently flipping ``passed`` would
+    make an overridden run indistinguishable from a clean one, which is the
+    failure this project has been bitten by repeatedly.
+
+    Returns a summary; ``gates`` is mutated in place.
+    """
+    requested = [str(name) for name in (overrides or [])]
+    applied: list[dict[str, str]] = []
+    unused: list[str] = []
+    refused: list[str] = []
+
+    firing = {gate["name"] for gate in gates if not gate.get("passed")}
+    for name in requested:
+        if name in _NON_OVERRIDABLE_GATES or name not in _OVERRIDABLE_GATES:
+            # Fail closed on a name we do not recognise. A typo must not read
+            # as a granted override.
+            refused.append(name)
+        elif name not in firing:
+            # Requested but the gate passed anyway -- recorded so the run JSON
+            # does not imply the override did something.
+            unused.append(name)
+
+    for gate in gates:
+        name = gate["name"]
+        if gate.get("passed"):
+            continue
+        if name not in requested:
+            continue
+        if name in refused:
+            continue
+        gate["original_passed"] = False
+        gate["overridden"] = True
+        gate["passed"] = True
+        applied.append({"name": name, **_OVERRIDABLE_GATES[name]})
+
+    return {
+        "requested": requested,
+        "applied": applied,
+        "applied_names": [item["name"] for item in applied],
+        "unused": unused,
+        "refused": refused,
+        "any_applied": bool(applied),
+    }
+
+
 DEFAULT_HEADING_OFFSET_CANDIDATES = (110.0, 0.0, 90.0, -90.0, 180.0)
 
 _HEADING_OFFSET_CANDIDATES_SCHEMA = vol.All(
@@ -969,6 +1250,15 @@ RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA = vol.Schema(
         # stated deliberately: a precision run on Float steers against a
         # position that jumps further than the tolerance it is aiming at.
         vol.Optional("allow_degraded_rtk", default=False): cv.boolean,
+        # Deliberate, per-run safety-gate overrides. Each name must be a key of
+        # `_OVERRIDABLE_GATES` (defined ABOVE this schema on purpose -- see the
+        # NameError note there); an unrecognised name is refused by validation
+        # rather than silently ignored, so a typo can never read as a granted
+        # override. Empty by default: omitting it dispatches exactly as before.
+        vol.Optional("safety_overrides", default=[]): vol.All(
+            cv.ensure_list,
+            [vol.In(sorted(_OVERRIDABLE_GATES))],
+        ),
         vol.Required(ATTR_ENTITY_ID): cv.entity_id,
         vol.Required("points"): vol.All(
             cv.ensure_list,
@@ -1097,6 +1387,15 @@ RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT_SCHEMA = vol.Schema(
         # stated deliberately: a precision run on Float steers against a
         # position that jumps further than the tolerance it is aiming at.
         vol.Optional("allow_degraded_rtk", default=False): cv.boolean,
+        # Deliberate, per-run safety-gate overrides. Each name must be a key of
+        # `_OVERRIDABLE_GATES` (defined ABOVE this schema on purpose -- see the
+        # NameError note there); an unrecognised name is refused by validation
+        # rather than silently ignored, so a typo can never read as a granted
+        # override. Empty by default: omitting it dispatches exactly as before.
+        vol.Optional("safety_overrides", default=[]): vol.All(
+            cv.ensure_list,
+            [vol.In(sorted(_OVERRIDABLE_GATES))],
+        ),
         vol.Required(ATTR_ENTITY_ID): cv.entity_id,
         vol.Required("points"): vol.All(
             cv.ensure_list,
@@ -11452,6 +11751,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     *,
     area_hash: int | None = None,
     dry_run: bool = True,
+    safety_overrides: list[str] | tuple[str, ...] | None = None,
     confirm_blades_off: bool = False,
     confirm_clear_area: bool = False,
     prefer_ble: bool = True,
@@ -11819,6 +12119,11 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                 "detail": "Vector segment execution is blocked by live/ambiguous route data.",
             }
         )
+    # Apply the operator's deliberate overrides BEFORE blockers are computed --
+    # one choke point, so no gate can be overridden anywhere else. An overridden
+    # gate keeps `original_passed: False` and `overridden: True`, so the run JSON
+    # can never present an overridden run as a clean one.
+    safety_overrides_summary = _apply_safety_overrides(gates, safety_overrides)
     blockers = [gate["name"] for gate in gates if not gate["passed"]]
     completion_status = _manual_velocity_completion_status(
         normalized_points,
@@ -11895,6 +12200,10 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         "sample_delays": list(sample_delays),
         "confirm_blades_off": confirm_blades_off,
         "confirm_clear_area": confirm_clear_area,
+        # Echo it or it is unprovable. An override changes what the mower was
+        # allowed to do, so the run record has to carry which gates were lifted
+        # and why -- `applied` includes each gate's rationale verbatim.
+        "safety_overrides": safety_overrides_summary,
         "points": normalized_points,
         "advisory_start": normalized_points[0] if normalized_points else None,
         "true_start": current_point,
@@ -13214,6 +13523,7 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
     *,
     area_hash: int | str | None = None,
     dry_run: bool = True,
+    safety_overrides: list[str] | tuple[str, ...] | None = None,
     confirm_blades_off: bool = False,
     confirm_clear_area: bool = False,
     prefer_ble: bool = True,
@@ -13405,6 +13715,11 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
                 "detail": "Multi-segment execution is blocked by live/ambiguous route data.",
             }
         )
+    # Apply the operator's deliberate overrides BEFORE blockers are computed --
+    # one choke point, so no gate can be overridden anywhere else. An overridden
+    # gate keeps `original_passed: False` and `overridden: True`, so the run JSON
+    # can never present an overridden run as a clean one.
+    safety_overrides_summary = _apply_safety_overrides(gates, safety_overrides)
     blockers = [gate["name"] for gate in gates if not gate["passed"]]
     total_segments = max(0, len(normalized_points) - 1)
     result: dict[str, Any] = {
@@ -13472,6 +13787,10 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
         "sample_delays": list(sample_delays),
         "confirm_blades_off": confirm_blades_off,
         "confirm_clear_area": confirm_clear_area,
+        # Echo it or it is unprovable. An override changes what the mower was
+        # allowed to do, so the run record has to carry which gates were lifted
+        # and why -- `applied` includes each gate's rationale verbatim.
+        "safety_overrides": safety_overrides_summary,
         "points": normalized_points,
         "total_segments": total_segments,
         "segments_planned": total_segments,
@@ -15978,6 +16297,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             cast(list[dict[str, float]], call.data["points"]),
             area_hash=call.data.get("area_hash"),
             dry_run=call.data["dry_run"],
+            safety_overrides=call.data.get("safety_overrides") or [],
             confirm_blades_off=call.data["confirm_blades_off"],
             confirm_clear_area=call.data["confirm_clear_area"],
             prefer_ble=call.data["prefer_ble"],
@@ -16046,6 +16366,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             cast(list[dict[str, float]], call.data["points"]),
             area_hash=call.data.get("area_hash"),
             dry_run=call.data["dry_run"],
+            safety_overrides=call.data.get("safety_overrides") or [],
             confirm_blades_off=call.data["confirm_blades_off"],
             confirm_clear_area=call.data["confirm_clear_area"],
             prefer_ble=call.data["prefer_ble"],

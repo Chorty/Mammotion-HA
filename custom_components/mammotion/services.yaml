@@ -2114,6 +2114,13 @@ raw_pymammotion_execute_multi_segment:
           min: 0.5
           max: 6.10
           step: 0.05
+    safety_overrides:
+      required: false
+      example:
+        - segment_too_long
+        - rtk_not_precise
+      selector:
+        object:
     linear_speed_fast:
       required: false
       default: 400

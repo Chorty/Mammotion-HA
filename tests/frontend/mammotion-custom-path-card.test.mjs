@@ -1485,3 +1485,148 @@ test("the downloaded history payload carries the full results", () => {
     assert.equal(element._segmentLandingRows(run.result).length, 1);
   }
 });
+
+// --- Deliberate safety-gate overrides ---------------------------------------
+//
+// Added at the operator's explicit request: every blocker gets a toggle so a
+// restriction can be lifted ON PURPOSE rather than by editing a constant and
+// redeploying. The load-bearing properties are that overrides are OFF by
+// default, that they reset after every run, that a dry run ignores them, and
+// that the card sends BACKEND gate names (which are not always the card's own
+// blocker codes).
+
+test("overrides are off by default and change no payload", () => {
+  const element = card();
+  element._waypoints = [{ x: 1.8, y: 1 }];
+
+  assert.equal(element._overrides.size, 0);
+  assert.equal(
+    element._motionPayload(false).payload.safety_overrides,
+    undefined,
+  );
+  assert.equal(element._overridePanelHtml(element._preflight()), "");
+});
+
+test("a toggled override clears its blocker and nothing else", () => {
+  const element = card();
+  element._waypoints = [{ x: 1.8, y: 1 }];
+  element._runtimeState.safety = {
+    allowed_for_manual_motion: false,
+    blockers: ["rtk_not_precise", "blade_unsafe"],
+  };
+
+  const before = element._preflight();
+  assert.equal(before.safe, false);
+  assert.deepEqual(before.remaining.includes("rtk_not_precise"), true);
+
+  element._toggleOverride("rtk_not_precise");
+  const after = element._preflight();
+
+  // The honest full list is unchanged; only what still BLOCKS moves.
+  assert.ok(after.blockers.includes("rtk_not_precise"));
+  assert.equal(after.remaining.includes("rtk_not_precise"), false);
+  assert.deepEqual(after.overridden, ["rtk_not_precise"]);
+  // The un-overridden blocker still blocks.
+  assert.ok(after.remaining.includes("blade_unsafe"));
+  assert.equal(after.safe, false);
+});
+
+test("the card sends BACKEND gate names, not its own blocker codes", () => {
+  // `blade_unsafe` is the card's code; the backend gate is
+  // `mower_reports_blades_off`. Sending the card code would be refused by the
+  // schema -- correct fail-closed behaviour, but it would silently drop the
+  // override the operator asked for.
+  const element = card();
+  element._waypoints = [{ x: 1.8, y: 1 }];
+  element._toggleOverride("blade_unsafe");
+  element._toggleOverride(`real_segment_limit_${MAX_REAL_SEGMENTS}`);
+
+  const names = element._overridePayloadNames();
+
+  assert.ok(names.includes("mower_reports_blades_off"));
+  assert.ok(names.includes("real_segment_limit"));
+  assert.equal(names.includes("blade_unsafe"), false);
+});
+
+test("a dry run ignores overrides on purpose", () => {
+  // The dry run is what you use to see the honest verdict. Overriding there
+  // would hide exactly what it exists to reveal.
+  const element = card();
+  element._waypoints = [{ x: 1.8, y: 1 }];
+  element._toggleOverride("rtk_not_precise");
+
+  assert.equal(
+    element._motionPayload(true).payload.safety_overrides,
+    undefined,
+  );
+  assert.deepEqual(element._motionPayload(false).payload.safety_overrides, [
+    "rtk_not_precise",
+  ]);
+});
+
+test("only FIRING blockers are offered as toggles", () => {
+  // A toggle for a gate that is not blocking anything invites arming something
+  // for no reason.
+  const element = card();
+  element._waypoints = [{ x: 1.8, y: 1 }];
+  element._runtimeState.safety = {
+    allowed_for_manual_motion: false,
+    blockers: ["rtk_not_precise"],
+  };
+
+  const offered = element
+    ._overridableBlockers(element._preflight().blockers)
+    .map((item) => item.code);
+
+  assert.ok(offered.includes("rtk_not_precise"));
+  assert.equal(offered.includes("blade_unsafe"), false);
+});
+
+test("every offered override carries the reason the gate exists", () => {
+  // A gate's NAME never says what it was protecting.
+  const element = card();
+  element._waypoints = [{ x: 1.8, y: 1 }];
+  element._runtimeState.safety = {
+    allowed_for_manual_motion: false,
+    blockers: ["rtk_not_precise", "blade_unsafe", "runtime_not_mowing"],
+  };
+
+  for (const item of element._overridableBlockers(
+    element._preflight().blockers,
+  )) {
+    assert.ok(item.why.length > 20, `${item.code} has no rationale`);
+    assert.ok(["low", "medium", "high"].includes(item.risk));
+  }
+});
+
+test("overrides reset after a run, and an unknown code is ignored", () => {
+  const element = card();
+  element._toggleOverride("rtk_not_precise");
+  assert.equal(element._overrides.size, 1);
+
+  element._clearOverrides();
+  assert.equal(element._overrides.size, 0);
+
+  element._toggleOverride("not_a_real_blocker");
+  assert.equal(element._overrides.size, 0);
+});
+
+test("an armed override panel says so loudly", () => {
+  const element = card();
+  element._waypoints = [{ x: 1.8, y: 1 }];
+  element._runtimeState.safety = {
+    allowed_for_manual_motion: false,
+    blockers: ["rtk_not_precise"],
+  };
+
+  const idle = element._overridePanelHtml(element._preflight());
+  assert.match(idle, /Override blockers/);
+  assert.equal(idle.includes("armed"), false);
+
+  element._toggleOverride("rtk_not_precise");
+  const armed = element._overridePanelHtml(element._preflight());
+  assert.match(armed, /armed/);
+  assert.match(armed, /1 safety gate overridden/);
+  assert.match(armed, /reset automatically/);
+  assert.match(armed, /recorded in the run JSON/);
+});
