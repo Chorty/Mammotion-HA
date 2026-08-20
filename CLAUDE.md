@@ -26,10 +26,17 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: `0.6.4-beta60` on the host; branch is at `0.6.4-beta61`
+## Current build: `0.6.4-beta61` released and installed motion-disabled
 
-🆕 **2026-08-19 — ROUTE B IS BUILT AND UNDEPLOYED (`0.6.4-beta61`).** The host
-still runs `beta60`. **No motion has run on beta61.** One click on a distant
+🆕 **2026-08-19 — ROUTE B IS DEPLOYED (`0.6.4-beta61`), MOTION-DISABLED.**
+**No motion has run on it.** Gate verified `real_motion_allowed: false`, no
+session. Deploy record and exact hashes: `docs/deploy-runbook-p0.md` → beta61.
+A host dry run proves the splitter executes: a 50 ft click became 4 sub-legs of
+3.810000 m with all three junctions at `estimated_commands_needed: 0` and
+`estimated_translation_m: 0.0` (`docs/evidence-beta61-50ft-dryrun-20260819.json`).
+🔑 **A 50 ft straight click DOES fit** — longest contained chord is 20.52 m,
+measured from the live polygons; the 12.74 × 9.73 m figure was recorded
+*positions*, not area extent. One click on a distant
 point now auto-splits into collinear sub-legs of at most **3.85 m**, so a 50 ft
 click becomes 4 legs of 3.8100 m with every junction at 0.000000°. It moves **no
 `LUBA_ACCEPTANCE_PROFILE` key and owes no Gate 5**;

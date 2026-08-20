@@ -8,6 +8,58 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta60 → beta61 — 2026-08-19 20:16-20:35 EDT, motion-disabled
+
+Ships **Route B** (a distant click auto-splits into collinear sub-legs of at
+most 3.85 m) and **card run retention** (history entries keep their full result,
+bounded by count and bytes, with quota no longer handled silently).
+
+| | beta61 |
+| --- | --- |
+| Files | 46/46 byte-identical |
+| Card md5 (both paths + local) | `bf98df5808b9b6af773c684cddfcb70a` |
+| Archive SHA-256 local = host | `f549ca8b9f02484b4c00300863e78ea4757c32f78fae26aa49d0afb71730abfb` |
+| AppleDouble entries | 0 |
+| Backup | `/config/mammotion-backup-20260819-2016-pre-beta61.tgz` |
+| Tag | `v0.6.4-beta61` at `ee2daf99` |
+| Quartet on host | manifest `0.6.4-beta61`, CARD_VERSION `0.6.4-beta61` (both paths) |
+| Lovelace resource | `?v=0.6.4-beta61&build=bf98df58` (read back after apply) |
+| Backend | pymammotion `0.8.12.post1` |
+| Restart | API up 51 s; 132 Mammotion entities at 135 s; config entry `loaded` |
+| Gate after deploy | `enabled: false`, `real_motion_allowed: false`, `active_session: None` |
+
+Gates before shipping, by exit code (never `| tail` — a pipeline's status is
+`tail`'s): pytest **716**, frontend **68**, ruff check, ruff format, mypy, ten
+pre-commit hooks, `check_accepted_profile.py` **ACCEPTED**.
+
+⚠️ **I hand-bumped the quartet to beta61 while building, and had to undo it**
+(`230e085b`). `Beta Release` computes `max(manifest beta suffix, highest tag) + 1`,
+so a manifest already reading 61 would have released **beta62** while every doc
+in the branch said beta61. Do not bump by hand.
+
+**Dry-run verification, gate DISARMED, no motion commanded**
+(`docs/evidence-beta61-50ft-dryrun-20260819.json`): a 15.24 m (50 ft) click
+became **4 sub-legs of 3.810000 m**, all four headings identical to 9 decimal
+places, `requested_points` 2 beside `points` 5, and all three inserted junctions
+reported `already_within_tolerance` with **`estimated_commands_needed: 0` and
+`estimated_translation_m: 0.0`** — the zero-cost junction, confirmed on the host
+rather than argued from code. `would_send: false`, no session created. The
+refusal path was exercised too: 3 × 5 m produced 6 sub-legs and refused with
+`split_exceeds_real_segment_budget`, detail *"3 destination(s) split into 6
+sub-legs of at most 3.85 m; at most 4 segments can run per click. Click a nearer
+point, or fewer of them."*
+
+🔑 **A 50 ft straight click DOES fit the yard** — the longest fully-contained
+straight chord is **20.52 m** in area `…37768237` (17.50 / 11.10 / 10.31 m in
+the other three), measured from the live `export_map` polygons. This corrects
+the worry recorded from the "1,165 recorded positions span 12.74 × 9.73 m"
+figure, which described where the mower has *been*, not where it may *go*.
+⚠️ The dock is not in any mowing area, so a path starting at the dock fails
+containment with or without the split — that is the dock, not the splitter.
+
+⚠️ **NO MOTION HAS RUN ON beta61.**
+
+
 ### beta58 → beta59 — 2026-08-18 20:50-21:05 EDT, motion-disabled
 
 Two releases fifteen minutes apart. beta58 shipped the empty-card

@@ -13,7 +13,14 @@ read the item below for the specific next run.
 
 ## 🆕 2026-08-19 — ROUTE B BUILT: one click auto-splits into collinear sub-legs
 
-**`0.6.4-beta61` on the branch. NOT DEPLOYED. NO MOTION HAS RUN ON IT.**
+**`0.6.4-beta61` DEPLOYED motion-disabled 2026-08-19. NO MOTION HAS RUN ON IT.**
+
+✅ **Host dry runs done and banked** — 50 ft click → 4 sub-legs of 3.810000 m,
+three junctions all `already_within_tolerance` at **0 commands / 0.0 m
+translation**, `would_send: false`, no session
+(`docs/evidence-beta61-50ft-dryrun-20260819.json`). Refusal path exercised too.
+🔑 **50 ft fits**: longest contained chord 20.52 m (area …37768237). The next
+step is the **supervised daylight run** — nothing else is owed off-mower.
 
 Route A (the 6.10 m cap and the projected-miss trigger, `beta60`) is measured
 inert — see the section below. **Route B delivers the 50 ft ask instead**, using
