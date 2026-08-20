@@ -17,7 +17,7 @@ from pymammotion.data.model.pool_state import PoolPlan
 from pymammotion.utility.device_type import DeviceType
 
 from . import MammotionConfigEntry
-from .const import DOMAIN
+from .const import DOMAIN, LOGGER
 from .coordinator import (
     MammotionBaseUpdateCoordinator,
     MammotionReportUpdateCoordinator,
@@ -84,18 +84,57 @@ SPINO_BUTTON_SENSORS: tuple[MammotionSpinoButtonEntityDescription, ...] = (
 
 
 def _nudge_available(coordinator: MammotionBaseUpdateCoordinator) -> bool:
-    """Keep one-click movement unavailable because it cannot confirm safety."""
-    return False
+    """Report the nudge buttons as always pressable (operator decision, 2026-08-20).
+
+    🚨 These buttons were previously hard-disabled (`return False`) with the
+    comment "cannot confirm safety". They are re-enabled at the operator's
+    explicit instruction, choosing BOTH the ungated press path and
+    always-available, with the trade-offs stated before the choice was made.
+
+    ⚠️ Availability here means "pressable", NOT "safe". Nothing about the
+    mower's state is consulted. A greyed button would have carried information;
+    this one carries none, so its state must never be read as a safety signal.
+    """
+    del coordinator
+    return True
 
 
-async def _reject_unguarded_nudge(
-    coordinator: MammotionBaseUpdateCoordinator,
-) -> None:
-    """Prevent button presses from bypassing the service safety boundary."""
-    raise RuntimeError(
-        "Emergency nudge buttons are disabled; use the guarded manual-motion "
-        "services with both operator confirmations"
-    )
+def _unguarded_nudge(
+    method_name: str,
+) -> Callable[[MammotionBaseUpdateCoordinator], Awaitable[Any]]:
+    """Return a press handler that commands motion with NO safety gates.
+
+    🚨 THIS BYPASSES THE SERVICE SAFETY BOUNDARY ENTIRELY. It calls the
+    coordinator's movement primitive directly, so NONE of the following apply:
+
+      * `mower_reports_blades_off`  -- the blades are not checked
+      * `ble_link_live`             -- may dispatch into a dead link
+      * `position_not_valid_for_motion` / `position_area_inside`
+      * `runtime_not_mowing` / `runtime_route_not_blocking`
+      * `operator_confirmed_blades_off` / `operator_confirmed_clear_area`
+
+    One press is one movement command, in every state, with no confirmation
+    step. This is the behaviour the previous implementation existed to prevent,
+    re-enabled deliberately: it is the only path that can move the mower out of
+    a position the gates themselves refuse to move from -- which is exactly the
+    situation that prompted it (mower stationary inside a no-go zone, every
+    guarded path refusing `position_not_valid_for_motion`).
+
+    ⚠️ Motion is bounded ONLY by the mower's own H-watchdog. These primitives
+    send no refresh, so the mower self-halts after roughly one step (~0.1 m)
+    rather than running until stopped. That bound is a property of the DEVICE,
+    not of this code -- do not rely on it if a refresh is ever added here.
+    """
+
+    async def press(coordinator: MammotionBaseUpdateCoordinator) -> Any:
+        LOGGER.warning(
+            "UNGATED NUDGE: %s commanded via button, bypassing all safety "
+            "gates (no blade, link, position or route check)",
+            method_name,
+        )
+        return await getattr(coordinator, method_name)()
+
+    return press
 
 
 BUTTON_SENSORS: tuple[MammotionButtonSensorEntityDescription, ...] = (
@@ -131,22 +170,22 @@ BUTTON_SENSORS: tuple[MammotionButtonSensorEntityDescription, ...] = (
     ),
     MammotionButtonSensorEntityDescription(
         key="emergency_nudge_forward",
-        press_fn=_reject_unguarded_nudge,
+        press_fn=_unguarded_nudge("async_move_forward"),
         available_fn=_nudge_available,
     ),
     MammotionButtonSensorEntityDescription(
         key="emergency_nudge_left",
-        press_fn=_reject_unguarded_nudge,
+        press_fn=_unguarded_nudge("async_move_left"),
         available_fn=_nudge_available,
     ),
     MammotionButtonSensorEntityDescription(
         key="emergency_nudge_right",
-        press_fn=_reject_unguarded_nudge,
+        press_fn=_unguarded_nudge("async_move_right"),
         available_fn=_nudge_available,
     ),
     MammotionButtonSensorEntityDescription(
         key="emergency_nudge_back",
-        press_fn=_reject_unguarded_nudge,
+        press_fn=_unguarded_nudge("async_move_back"),
         available_fn=_nudge_available,
     ),
     MammotionButtonSensorEntityDescription(
