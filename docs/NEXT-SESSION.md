@@ -11,6 +11,35 @@ measurements stand — but do not act on any build/host/gate state they describe
 "validate what shipped" through to named destinations. Read that for direction;
 read the item below for the specific next run.
 
+## 🚨 2026-08-20 — FIRST ROUTE B HARDWARE RUN: mechanism proven, and it drove into a no-go zone
+
+**`0.6.4-beta62`, supervised, gate armed for the run then DISARMED and verified.**
+
+A 10.8 m single click split into 3 collinear sub-legs of 3.599987 m. Sub-leg 1
+reached target at **0.092 m**. Sub-leg 2 drove into a no-go zone containing a
+trampoline and stopped on `telemetry_quality_degraded`. The operator judged no
+damage and let it push.
+
+🔑 **THE COLLINEAR JUNCTION COST ZERO TURN COMMANDS ON HARDWARE** —
+`turn_commands_sent: 0` on sub-leg 2, decided five pulses before contact. That
+is Route B's entire premise, previously argued from code and now measured.
+
+🚨 **CONTAINMENT CANNOT SEE NO-GO ZONES — IT HAS NO GEOMETRY FOR THEM.**
+`export_map` exposes only area polygons; the zone hash the mower reported at
+contact appears nowhere in the payload. Every containment check in this project
+validates against mowing areas only. Survivable at 0.8 m, **not** at 10-15 m.
+**Read `docs/no-go-zones-are-invisible-to-containment-20260820.md` before
+planning any long leg.**
+
+⚠️ **Route B end-to-end is UNTESTED.** Sub-leg 2's `distance_to_target: 1.3724`
+is where it stopped while pushing, not a landing. Validated: one clean sub-leg
+plus one free junction. Evidence:
+`docs/evidence-routeb-first-hardware-run-20260820.json`.
+
+✅ Also banked: a 0.8 m confirmation run on beta62 reached target at **0.1078 m**
+(`docs/evidence-beta62-confirmation-0p8m-20260820.json`), 0.5 mm off the beta57
+Gate 5 mean — beta61/beta62 did not disturb the accepted path.
+
 ## 🆕 2026-08-19 — ROUTE B BUILT: one click auto-splits into collinear sub-legs
 
 **`0.6.4-beta61` DEPLOYED motion-disabled 2026-08-19. NO MOTION HAS RUN ON IT.**
