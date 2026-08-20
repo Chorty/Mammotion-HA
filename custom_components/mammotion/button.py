@@ -17,7 +17,7 @@ from pymammotion.data.model.pool_state import PoolPlan
 from pymammotion.utility.device_type import DeviceType
 
 from . import MammotionConfigEntry
-from .const import DOMAIN, LOGGER
+from .const import CONF_MOVEMENT_USE_WIFI, DOMAIN, LOGGER
 from .coordinator import (
     MammotionBaseUpdateCoordinator,
     MammotionReportUpdateCoordinator,
@@ -99,6 +99,10 @@ def _nudge_available(coordinator: MammotionBaseUpdateCoordinator) -> bool:
     return True
 
 
+#: Nudge speed, matching upstream's button implementation exactly.
+_NUDGE_SPEED = 0.4
+
+
 def _unguarded_nudge(
     method_name: str,
 ) -> Callable[[MammotionBaseUpdateCoordinator], Awaitable[Any]]:
@@ -120,6 +124,13 @@ def _unguarded_nudge(
     situation that prompted it (mower stationary inside a no-go zone, every
     guarded path refusing `position_not_valid_for_motion`).
 
+    ⚠️ The call signature matches upstream: ``(speed, use_wifi)``. Both are
+    REQUIRED -- ``speed`` is positional on the coordinator, so calling with no
+    arguments raises TypeError and the button fails ON PRESS while still
+    appearing available. That bug shipped here for one commit and was caught
+    only by reading upstream: ``AsyncMock`` accepts any signature, so the unit
+    test passed and proved nothing. The tests now assert the ARGUMENTS.
+
     ⚠️ Motion is bounded ONLY by the mower's own H-watchdog. These primitives
     send no refresh, so the mower self-halts after roughly one step (~0.1 m)
     rather than running until stopped. That bound is a property of the DEVICE,
@@ -127,12 +138,19 @@ def _unguarded_nudge(
     """
 
     async def press(coordinator: MammotionBaseUpdateCoordinator) -> Any:
-        LOGGER.warning(
-            "UNGATED NUDGE: %s commanded via button, bypassing all safety "
-            "gates (no blade, link, position or route check)",
-            method_name,
+        # Mirrors upstream: the WiFi transport is an integration option, and
+        # movement over WiFi has lower latency for manual control.
+        use_wifi = bool(
+            coordinator.config_entry.options.get(CONF_MOVEMENT_USE_WIFI, False)
         )
-        return await getattr(coordinator, method_name)()
+        LOGGER.warning(
+            "UNGATED NUDGE: %s(speed=%s, use_wifi=%s) commanded via button, "
+            "bypassing all safety gates (no blade, link, position or route check)",
+            method_name,
+            _NUDGE_SPEED,
+            use_wifi,
+        )
+        return await getattr(coordinator, method_name)(_NUDGE_SPEED, use_wifi)
 
     return press
 

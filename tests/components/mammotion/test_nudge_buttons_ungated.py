@@ -26,6 +26,7 @@ above first, then ask the operator. Do not revert it as a bug.
 
 from __future__ import annotations
 
+import inspect
 import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -33,10 +34,13 @@ from unittest.mock import AsyncMock
 import pytest
 
 from custom_components.mammotion.button import (
+    _NUDGE_SPEED,
     BUTTON_SENSORS,
     _nudge_available,
     _unguarded_nudge,
 )
+from custom_components.mammotion.const import CONF_MOVEMENT_USE_WIFI
+from custom_components.mammotion.coordinator import MammotionReportUpdateCoordinator
 
 _NUDGE_KEYS = {
     "emergency_nudge_forward": "async_move_forward",
@@ -74,15 +78,45 @@ async def test_a_press_calls_the_primitive_directly_with_no_gates(
     hatch the operator asked for.
     """
     coordinator = SimpleNamespace(
-        **{name: AsyncMock() for name in _NUDGE_KEYS.values()}
+        config_entry=SimpleNamespace(options={}),
+        **{name: AsyncMock() for name in _NUDGE_KEYS.values()},
     )
 
     await _unguarded_nudge(method)(coordinator)
 
-    getattr(coordinator, method).assert_awaited_once_with()
+    # ⚠️ Assert the ARGUMENTS, not merely that something was awaited. `speed` is
+    # positional and REQUIRED on the coordinator, so a no-argument call raises
+    # TypeError on press while the button still shows as available. That bug
+    # shipped for one commit precisely because AsyncMock accepts any signature,
+    # so `assert_awaited_once_with()` with no args passed anyway.
+    getattr(coordinator, method).assert_awaited_once_with(_NUDGE_SPEED, False)
     for other in _NUDGE_KEYS.values():
         if other != method:
             getattr(coordinator, other).assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_wifi_transport_option_is_honoured() -> None:
+    """Upstream passes CONF_MOVEMENT_USE_WIFI through; so must this."""
+    coordinator = SimpleNamespace(
+        config_entry=SimpleNamespace(options={CONF_MOVEMENT_USE_WIFI: True}),
+        async_move_back=AsyncMock(),
+    )
+
+    await _unguarded_nudge("async_move_back")(coordinator)
+
+    coordinator.async_move_back.assert_awaited_once_with(_NUDGE_SPEED, True)
+
+
+def test_the_press_signature_matches_the_real_coordinator() -> None:
+    """An AsyncMock could never have caught the shipped TypeError.
+
+    Bind against the REAL coordinator signature, so a change on either side
+    fails here rather than on the lawn.
+    """
+    for method in sorted(_NUDGE_KEYS.values()):
+        signature = inspect.signature(getattr(MammotionReportUpdateCoordinator, method))
+        signature.bind(object(), _NUDGE_SPEED, False)
 
 
 @pytest.mark.asyncio
@@ -90,7 +124,9 @@ async def test_a_press_is_logged_as_ungated(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """The only trace an ungated press leaves. It must not be silent."""
-    coordinator = SimpleNamespace(async_move_back=AsyncMock())
+    coordinator = SimpleNamespace(
+        config_entry=SimpleNamespace(options={}), async_move_back=AsyncMock()
+    )
 
     with caplog.at_level(logging.WARNING, logger="custom_components.mammotion"):
         await _unguarded_nudge("async_move_back")(coordinator)
