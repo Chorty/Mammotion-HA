@@ -8,6 +8,54 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta62 → beta63 — 2026-08-20 14:18-14:30 EDT, motion-disabled
+
+Ships the **keep-out exclusion check**. Gate was DISARMED before, during and
+after; no motion was commanded.
+
+| | beta63 |
+| --- | --- |
+| Files | 46/46 byte-identical |
+| Card md5 (both paths + local) | `5bc908c4f32f7db4c07b5ed3e9cbf3be` |
+| Archive SHA-256 local = host | `1b5230594139550af15ef57c6ee1bf359b655dba419e739f6a476c3451dfb5c0` |
+| AppleDouble entries | 0 |
+| Backup | `/config/mammotion-backup-20260820-1418-pre-beta63.tgz` |
+| Tag | `v0.6.4-beta63` |
+| Quartet on host | manifest `0.6.4-beta63`, CARD_VERSION `0.6.4-beta63` (both paths) |
+| Lovelace resource | `?v=0.6.4-beta63&build=5bc908c4` (read back) |
+| Restart | API up 51 s; 132 Mammotion entities at 155 s |
+
+Gates before shipping, by exit code: pytest **733**, frontend **76**, ruff check,
+ruff format, mypy, ten pre-commit hooks, `check_accepted_profile.py` **ACCEPTED**.
+
+🏁 **THE TRAMPOLINE RUN IS NOW REFUSED PRE-DISPATCH.** Verified on the host,
+`dry_run: true`, no motion (`docs/evidence-beta63-keepout-refusal-20260820.json`):
+
+* `export_map` exposes **`keep_out_polygons`** with **2** obstacle zones in
+  map-local x/y — no coordinate conversion:
+  * `obstacle:1529607395159402290` — 21 pts, `x[10.471, 14.449] y[-2.540, 1.529]`,
+    **3.98 x 4.07 m**. This is the trampoline: the hash the mower reported at
+    contact, and the size the WGS84 geojson independently gives (~4.0 x 4.1 m).
+  * `obstacle:3985039798069143977` — 30 pts, 4.82 x 3.73 m, in Front Main.
+* The position where the mower **actually stopped**, `(10.5192, -0.5248)`, tests
+  **inside** that polygon — independent confirmation the geometry is correct and
+  correctly framed.
+* Replaying the **exact recorded 10.8 m click** through the deployed validator:
+  `valid: false`, `errors: ["path_points_inside_keep_out_zone"]`,
+  `stop_reason: "path_validation_failed"`, `would_send: false`, and the
+  violation names **split point 2 `(11.4570, 0.4772)`, type `obstacle`, hash
+  `1529607395159402290`** — the inserted point, caught because the split runs
+  before the preview.
+* Control: a clean 0.78 m leg from the same start in the same area still
+  validates, `keep_out_zones_checked: 2`, zero violations.
+
+⚠️ **Still per-point.** A leg clipping a keep-out corner with neither endpoint
+inside is not caught. Segment-level containment remains the real fix.
+
+⚠️ The gate readback after deploy shows `ble_client_not_connected` alongside the
+usual blockers — the mower had dozed off BLE, not a fault.
+
+
 ### beta61 → beta62 — 2026-08-19 23:43 - 2026-08-20 00:05 EDT, DEPLOYED WITH THE GATE ARMED
 
 Ships the **deliberate safety-gate override toggles** — one per firing blocker,

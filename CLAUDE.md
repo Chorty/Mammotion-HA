@@ -26,7 +26,24 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: `0.6.4-beta62` released and installed — ⚠️ GATE WAS ARMED AT DEPLOY
+## Current build: `0.6.4-beta63` released and installed motion-disabled
+
+🏁 **2026-08-20 — KEEP-OUT ZONES ARE NOW CHECKED.** Containment tested inclusion
+in a mowing area and never exclusion from a keep-out, so a supervised 10.8 m run
+stayed inside "Backyard Right" the whole way and drove into an obstacle zone
+containing a trampoline. The geometry was never missing: `HashList` keeps it in
+sibling dicts beside `map.area` (`obstacle`, `no_go_zone`, `virtual_wall`,
+`no_go_zone_variant`, `visual_obstacle_zone`), already in map-local x/y.
+`_keep_out_polygons` / `_keep_out_violations` now read all five,
+`_validate_custom_path` refuses with `path_points_inside_keep_out_zone`, and
+`export_map` exposes `keep_out_polygons`. **Verified on the host: the exact
+recorded click is refused pre-dispatch**, naming split point 2 and obstacle hash
+`1529607395159402290` — and the position where the mower actually stopped tests
+inside that polygon. `docs/evidence-beta63-keepout-refusal-20260820.json`.
+⚠️ **Still PER-POINT** — a leg clipping a corner with neither endpoint inside is
+not caught. Segment-level containment is the real fix.
+
+## (history) beta62 — ⚠️ GATE WAS ARMED AT DEPLOY
 
 🆕 **2026-08-20 — beta62 ADDS DELIBERATE SAFETY-GATE OVERRIDE TOGGLES.** One
 toggle per firing blocker (29 registered gates), each rendering the reason the
