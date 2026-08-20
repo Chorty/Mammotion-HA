@@ -71,5 +71,34 @@
     "Both are NIGHT probes. VIO was dead, which affects vision_info rather than the RTK position path measured here -- but this has not been re-measured in daylight.",
     "Identical-value reports are invisible to this method; see method.bias_note.",
     "No motion was commanded and no gate was armed to produce this."
-  ]
+  ],
+  "continuous_motion_comparison": {
+    "source": "docs/evidence-autonomous-mow-observation-20260813T220700Z.jsonl",
+    "what_it_is": "The VENDOR mowing autonomously under its own controller -- continuous motion, not our pulsed stop-measure-go. Read-only observation, we commanded nothing.",
+    "samples": 291,
+    "span_seconds": 179.9,
+    "sampler_cadence_median_s": 0.613,
+    "distinct_positions": 178,
+    "repeated_samples": 113,
+    "repeated_fraction": 0.388,
+    "position_update_intervals_s": {
+      "n": 177,
+      "min": 0.6,
+      "p10": 0.61,
+      "median": 1.22,
+      "p90": 1.26,
+      "max": 1.86
+    },
+    "median_travel_between_samples_m": 0.336,
+    "implied_vendor_speed_m_s": 0.55,
+    "finding": "THE FEED IS ~1 Hz DURING CONTINUOUS MOTION TOO -- median interval 1.22 s, p10 0.61 s. Observed intervals quantize to multiples of the 0.613 s sampler (0.61 / 1.22 / 1.83), which is aliasing, so the true rate sits near 1 Hz rather than being resolved exactly.",
+    "why_this_MATTERS_for_continuous_motion": "\ud83d\udd11 The vendor drives continuously, at roughly 0.55 m/s, covering ~0.34 m between position samples, ON THIS EXACT FEED -- and mows successfully. So a ~1 Hz feed is DEMONSTRABLY SUFFICIENT for continuous closed-loop motion. The 1 Hz rate is not what blocks a continuous controller; it is what makes stop-measure-go expensive, because that design needs 2-3 arrivals of standing still per decision while a continuous one just steers on the latest fix.",
+    "what_1_Hz_DOES_constrain": "Stopping precisely on a target. At ~0.3-0.55 m/s the mower learns its position only every ~0.3-0.55 m, so landing inside a 0.15 m tolerance cannot be done by measuring -- it needs prediction/lead. That is the real engineering problem in a continuous design, and it is exactly the problem the current pulsed design avoids by stopping and waiting.",
+    "corrects_a_standing_claim": "\u26a0\ufe0f CLAUDE.md states the feed during continuous motion showed 'zero frozen samples' (from the 2026-07-21/22 observation). In THIS 2026-08-13 dataset 38.8% of samples repeat the previous (x,y). That is expected when a 1.63 Hz sampler oversamples a ~1 Hz feed, and it does not contradict the sub-cm PRECISION claim -- precision and cadence are different properties. But 'zero frozen samples' is not a general property of the feed during motion, and should not be relied on as one.",
+    "caveats": [
+      "Vendor motion, not ours: its controller and speed are not what our path executor would command.",
+      "One 180 s window, one session, at night.",
+      "Aliasing against the 0.613 s sampler bounds how precisely the true rate can be stated."
+    ]
+  }
 }
