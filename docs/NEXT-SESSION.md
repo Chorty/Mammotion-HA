@@ -11,6 +11,68 @@ measurements stand — but do not act on any build/host/gate state they describe
 "validate what shipped" through to named destinations. Read that for direction;
 read the item below for the specific next run.
 
+## ✅ 2026-08-21 — CORRECTION: the beta42 quadrature term IS applied. Read this before the section below.
+
+**The commit message that banked
+`docs/evidence-routeb-retry-overshoot-20260820.json` (`845ddf3e`) is wrong.** It
+said the beta42 quadrature term "needs checking" and implied it might not be
+reaching the suppression decisions. It is present, and it fired on both records.
+
+Reproduced by executing the shipped `_projected_landing_after_next_pulse`
+against that file's own recorded inputs:
+
+| after pulse | d (m) | aim (°) | perpendicular | overshoot | hypot | recorded |
+|---|---|---|---|---|---|---|
+| 11 | 0.2994 | 24.545 | 0.1244 | 0.0271 | **0.127282** | 0.1273 |
+| 12 | 0.2539 | 29.977 | 0.1269 | 0.0340 | **0.131330** | 0.1313 |
+
+Both match to rounding. 🔑 **`perpendicular_miss_m` and `projected_landing_m`
+sitting close together is CORRECT at this geometry, not a symptom of a dropped
+term.** Because `d < metres_per_pulse` (0.30 m against 1.06), `t = min(d, mpp)`
+collapses to `t = d` and the overshoot term reduces to `d·(1 − cos aim)` — 2.7 cm
+at 24.5°. The term is small here *by construction*.
+
+⚠️ **The real limitation, stated accurately: the guard is a SINGLE-PULSE
+lookahead.** It correctly projected 0.1273 m for one more pulse and suppressed on
+that. The segment then fired **two** more (pulses 12 and 13) and landed
+**0.16734 m** out with the target behind it, stopping on
+`target_requires_reverse_recovery`.
+
+🚨 **Do NOT change the guard on this.** n = 1, and the function's own docstring
+already records measured next-pulse travel at **0.30× to 1.16×** of the remaining
+distance — a multi-pulse projection compounds that spread. Two previous attempts
+to improve a re-aim heuristic on thin evidence (the `vio_max_realignments`
+divergence detector, v1 and v2) were each reviewed and reverted, for two
+different reasons.
+
+**Method lesson:** the false claim lived in a *commit message*, which
+`scripts/check_doc_symbols.py` structurally cannot reach — it validates symbol
+names in docs, not prose in git history. Executing the shipped function against
+the recorded inputs is one command and settles it. Correction also banked inside
+the evidence file itself under `CORRECTION_read_this_first`.
+
+## 🚨 2026-08-20 — ROUTE B RETRY: failed on sub-leg 1, before any junction
+
+**`0.6.4-beta63`+, supervised, keep-out check active** — `keep_out_zones_checked: 2`,
+`keep_out_violations: []`, so the trampoline class of failure did not recur.
+
+An 11.500014 m click split into **3** collinear sub-legs of **3.833338 m**
+(`split.applied: true`). Sub-leg 1 alone executed: 1 turn command, **13** linear
+pulses, landing **0.16734 m** against a 0.15 tolerance, stopping on
+`target_requires_reverse_recovery` with the target 130.656° behind. Segments
+executed **1 of 3**.
+
+The failure chain was not leg length on its own: an **18.083°** opening aim error
+→ a mid-drive correction after pulse 2 (`target_heading_reached`) → two
+suppressions during final approach (above) → overshoot. Evidence:
+`docs/evidence-routeb-retry-overshoot-20260820.json`.
+
+❌ **Route B end-to-end is now 0 for 2**, and **neither failure was the
+splitter**: run 1 hit a trampoline on sub-leg 2, run 2 never reached a junction.
+✅ What Route B *has* shown still stands — the collinear junction costs
+`turn_commands_sent: 0` on hardware, split geometry is exact to 6 dp, and a
+3.6 m sub-leg landed 0.092 m (n = 1).
+
 ## 🚨 2026-08-20 — FIRST ROUTE B HARDWARE RUN: mechanism proven, and it drove into a no-go zone
 
 **`0.6.4-beta62`, supervised, gate armed for the run then DISARMED and verified.**

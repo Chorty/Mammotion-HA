@@ -1,4 +1,12 @@
 {
+  "CORRECTION_read_this_first": {
+    "what_was_wrong": "The commit message that banked this file (845ddf3e) said the beta42 quadrature term 'needs checking' and implied it might not be applied to the suppression decisions below. That is WRONG. The term is present in _projected_landing_after_next_pulse and it fired on both records in realignments_suppressed.",
+    "how_it_was_disproved": "The function was executed against this file's own recorded inputs, on 2026-08-21. Pulse 11: d=0.2994, aim=24.545 deg, mpp=1.06 -> t=min(d,mpp)=0.2994, perpendicular=0.1244, overshoot=0.0271, hypot=0.127282, matching the recorded projected_landing_m of 0.1273. Pulse 12: d=0.2539, aim=29.977 deg -> perpendicular=0.1269, overshoot=0.0340, hypot=0.131330, matching the recorded 0.1313. Both reproduce to rounding.",
+    "why_it_LOOKED_missing": "perpendicular_miss_m and projected_landing_m sit close together here (0.1244 vs 0.1273) and that is CORRECT at this geometry, not a symptom of a dropped term. Because d < metres_per_pulse, travel collapses to t = d, so the overshoot term reduces to d*(1-cos(aim)) -- only 0.0271 m at 24.5 deg. The quadrature term is small here by construction. Closeness of those two numbers is never evidence that the term is absent.",
+    "what_the_REAL_limitation_is": "The guard is a SINGLE-PULSE lookahead. It correctly projected 0.1273 m for one more pulse and suppressed on that basis. The segment then fired TWO more pulses (12 and 13) and landed 0.16734 m out with the target behind it, stopping on target_requires_reverse_recovery. The guard answered the question it was asked; the question was one pulse short of what happened.",
+    "do_NOT_change_the_guard_on_this": "n = 1. The function's own docstring already records that measured next-pulse travel ran 0.30x to 1.16x of the remaining distance, so a multi-pulse projection would compound that spread. Two previous attempts to improve a re-aim heuristic on thin evidence (the vio_max_realignments divergence detector, v1 and v2) were each reviewed and reverted for being wrong in different ways. See CLAUDE.md.",
+    "method_lesson": "The claim was written into a commit message, which no doc-symbol check can reach -- check_doc_symbols.py validates names in docs, not prose in git history. Reproducing a recorded number by executing the shipped function against the recorded inputs takes one command and settles it."
+  },
   "valid": true,
   "errors": [],
   "warnings": [],

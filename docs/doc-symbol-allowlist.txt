@@ -44,3 +44,6 @@ _fix_tokens                                     # referenced in a .pre-commit-co
 initial_aim                                     # variable in the landing-error fit
 map_facing                                      # variable in a heading derivation
 toward_first                                    # variable in the --summarise offset formula
+
+# --- keys that live only in a docs/evidence-*.json record ---
+CORRECTION_read_this_first                      # a JSON key inside docs/evidence-routeb-retry-overshoot-20260820.json, holding the 2026-08-21 correction to commit 845ddf3e. The checker scans code trees only, so an evidence-file key can never resolve
