@@ -1,0 +1,75 @@
+{
+  "date": "2026-08-21",
+  "test": "Position-report cadence DURING MOTION, from banked dense captures",
+  "motion_commanded": false,
+  "gate_armed": false,
+  "why_this_was_free": "No new run was needed. Two 2026-08-13 night probes already sampled the runtime at ~10 Hz while the mower was under power, and their capture_samples carry x/y per sample. Counting DISTINCT (x,y) values recovers the arrival cadence directly -- the measurement the 2026-08-07 per-channel probe said required a moving mower.",
+  "question": "Would lowering _settle_linear_position_feed's poll_interval_seconds below 1.0 s get fresher position data? That settle is 57% of a segment's wall clock.",
+  "method": {
+    "observable": "distinct (x, y) pairs in capture_samples",
+    "sampler_rate": "~10 Hz, oversampling a 1 Hz feed about 10x",
+    "bias_note": "A report arriving with bit-identical coordinates is indistinguishable from no report, so this measures the rate of CHANGED positions and bounds the true arrival rate from below. It does not weaken the conclusion: an unchanged value is not fresher data, so a faster poll gains nothing either way."
+  },
+  "runs": [
+    {
+      "file": "evidence-night-reverse-fusion-20260813T234313Z.json",
+      "samples": 81,
+      "span_seconds": 8.54,
+      "sampler_interval_mean_s": 0.1068,
+      "distinct_position_values": 5,
+      "arrival_elapsed_s": [
+        0.433,
+        3.469,
+        4.177,
+        5.198,
+        6.211
+      ],
+      "intervals_s": [
+        3.036,
+        0.708,
+        1.021,
+        1.013
+      ]
+    },
+    {
+      "file": "evidence-night-toward-latency-20260813T215934Z.json",
+      "samples": 73,
+      "span_seconds": 7.55,
+      "sampler_interval_mean_s": 0.1049,
+      "distinct_position_values": 6,
+      "arrival_elapsed_s": [
+        0.418,
+        3.115,
+        4.066,
+        5.218,
+        6.035,
+        7.056
+      ],
+      "intervals_s": [
+        2.697,
+        0.951,
+        1.152,
+        0.817,
+        1.021
+      ]
+    }
+  ],
+  "pooled_intervals_s": {
+    "n": 9,
+    "min": 0.708,
+    "median": 1.021,
+    "max": 3.036,
+    "under_0_5_s": 0
+  },
+  "finding": "THE POSITION FEED UPDATES AT ~1 Hz WHILE THE MOWER IS MOVING. Two independent captures, each oversampled ~10x, both give a median inter-arrival of 1.02 s (0.98 Hz). Across all 9 pooled intervals NOT ONE is under 0.5 s.",
+  "consequence_for_the_settle_poll": "REFUTED as a lever. _settle_linear_position_feed already polls at exactly 1.0 s, matching the feed. Halving it to 0.5 s would double the poll count and the BLE load and read the same value about half the time. There is no fresher data to fetch.",
+  "consequence_for_the_settle_FLOOR": "The settle needs the feed to move off the pre-pulse value, then two consecutive snapshots to agree. At 1 Hz that is at least two arrivals (~2 s), plus the time for this pulse's motion to land in a feed that is itself ~1 s stale. The measured 2.85 s mean is therefore close to the FLOOR of a stop-measure-go design at this feed rate, not slack to be tuned away.",
+  "what_this_leaves": "In a pulsed design the only remaining way to cut dead time is FEWER pulses -- longer or faster ones -- since the ~3 s cost is per pulse and nearly fixed. Real smoothness needs continuous motion, which never pays a per-pulse settle.",
+  "corroborates": "docs/evidence-report-rate-probe-20260807.json saw a ~1 s ceiling in TOTAL LubaMsg traffic (p90 1002 ms, max 1107 ms) and found the requested wire period is not honoured (observed ratio 1.2 against 5.0 expected). This is the position channel specifically, and it agrees.",
+  "caveats": [
+    "Two captures, 9 intervals, both from the same 2026-08-13 session.",
+    "Both are NIGHT probes. VIO was dead, which affects vision_info rather than the RTK position path measured here -- but this has not been re-measured in daylight.",
+    "Identical-value reports are invisible to this method; see method.bias_note.",
+    "No motion was commanded and no gate was armed to produce this."
+  ]
+}

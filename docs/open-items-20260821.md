@@ -71,13 +71,29 @@ with `requested_sample_delays_skipped: [0.0, 3.0]`. Do not re-fix that.
 Levers, cheapest first — **none of these are validated, and the first two are
 measurements waiting to be taken, not recommendations:**
 
-1. **`poll_interval_seconds` 1.0 → 0.5** in `_settle_linear_position_feed`.
-   Not a `LUBA_ACCEPTANCE_PROFILE` key, so it owes no Gate 5. Could plausibly
-   halve the settle quantum. ⚠️ **But the function's own docstring says the feed
-   "lags ~4s and updates in jumps"** — if the report cadence is the real limit,
-   faster polling buys nothing and just burns BLE queue. **Measure the report
-   cadence first.** The instrument for that is item 6.
-2. **`linear_speed_fast` 400 → higher.** Also **not** a frozen profile key
+1. ~~**`poll_interval_seconds` 1.0 → 0.5** in `_settle_linear_position_feed`.~~
+   🗑️ **REFUTED THE SAME DAY — do not spend time here.** The position feed
+   updates at **~1 Hz while moving**, so the settle loop's 1.0 s poll is already
+   matched to it. Two banked dense captures, each oversampling ~10×, both give a
+   median inter-arrival of **1.02 s**, and **none of the 9 pooled intervals is
+   under 0.5 s**. Halving the poll would double the BLE load and read the same
+   value half the time. `docs/evidence-position-report-cadence-20260821.json`.
+
+   🔑 **And this reframes the settle as a floor, not slack.** Settling needs the
+   feed to move off the pre-pulse value, then two consecutive snapshots to agree
+   — at 1 Hz that is at least two arrivals (~2 s), plus the time for the pulse's
+   motion to land in a feed that is itself ~1 s stale. The measured 2.85 s mean
+   is **near the physical floor of stop-measure-go at this feed rate.** Corroborated
+   independently by `docs/evidence-report-rate-probe-20260807.json`, which found
+   the requested wire period is *not honoured* (observed ratio 1.2 against 5.0
+   expected) and saw a ~1 s ceiling in total traffic.
+
+   ⚠️ Note what this kills: **the cheap fix does not exist.** Dead time per pulse
+   cannot be tuned down. It can only be paid fewer times.
+
+2. **`linear_speed_fast` 400 → higher — now the only lever left inside the
+   pulsed design.** Since the ~3 s settle is per pulse and nearly fixed, the
+   only way to cut total dead time is to need fewer pulses. Also **not** a frozen profile key
    (verified against the `LUBA_ACCEPTANCE_PROFILE` literal — the frozen set is
    19 keys and linear speed is not among them). The app's own ceiling is 850, so
    400 is 47% throttle. Fewer, longer pulses per metre means fewer settle waits,
