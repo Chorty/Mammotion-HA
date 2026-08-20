@@ -1,0 +1,343 @@
+{
+  "date": "2026-08-21",
+  "test": "What predicts BLE refresh-cadence collapse?",
+  "motion_commanded": false,
+  "gate_armed": false,
+  "source": "read-only replay of docs/evidence-*.json",
+  "pulses": 282,
+  "evidence_files": [
+    "evidence-beta32-4segment-20260809T170941Z.json",
+    "evidence-beta32-4segment-20260809T183129Z.json",
+    "evidence-beta32-4segment-20260809T195940Z.json",
+    "evidence-beta32-4segment-20260809T210241Z.json",
+    "evidence-beta32-4segment-20260810T002506Z.json",
+    "evidence-beta32-4segment-20260810T185433Z.json",
+    "evidence-beta32-4segment-20260810T193833Z.json",
+    "evidence-beta32-4segment-20260810T205937Z.json",
+    "evidence-beta32-4segment-20260810T232848Z.json",
+    "evidence-beta32-4segment-20260811T001250Z.json",
+    "evidence-beta32-4segment-20260811T235133Z.json",
+    "evidence-beta32-4segment-20260811T235945Z.json",
+    "evidence-beta32-4segment-20260812T001116Z.json",
+    "evidence-beta32-4segment-20260812T002804Z.json",
+    "evidence-beta32-4segment-20260812T185603Z.json",
+    "evidence-beta32-4segment-20260812T191850Z.json",
+    "evidence-beta32-4segment-20260813T002104Z.json",
+    "evidence-beta32-4segment-20260813T002704Z.json",
+    "evidence-beta32-4segment-20260814T202705Z.json",
+    "evidence-beta32-4segment-20260814T204300Z.json",
+    "evidence-beta33-reposition-20260809T184618Z.json",
+    "evidence-beta62-confirmation-0p8m-20260820.json",
+    "evidence-gate4-beta20-day2-real-result-20260805.json",
+    "evidence-gate4-beta20-day2d-real-result-20260805.json",
+    "evidence-gate4-beta20-day2e-real-result-20260805.json",
+    "evidence-gate4-beta20-day2f-real-result-20260805.json",
+    "evidence-gate4-beta20-day2h-real-result-20260805.json",
+    "evidence-gate4-beta20-day2i-real-result-20260805.json",
+    "evidence-gate4-beta20-day2j-real-result-20260805.json",
+    "evidence-gate4-beta20-real-result-20260804.json",
+    "evidence-gate5-beta57-20260818.json",
+    "evidence-gate5-repass-2-20260812.json",
+    "evidence-gate5-repass-20260812.json",
+    "evidence-longleg-3segment-20260817.json",
+    "evidence-night-go-card-beta54-20260814T180345Z.json",
+    "evidence-night-segment-item18-20260814T000022Z.json",
+    "evidence-night-segment-turn-quantum-20260813T214605Z.json",
+    "evidence-offset-beta19-drive1-result-20260804.json",
+    "evidence-offset-beta19-drive2-result-20260804.json",
+    "evidence-reaim-trigger-hardware-20260818.json",
+    "evidence-real-go-card-beta55-20260815T204747Z.json",
+    "evidence-routeb-first-hardware-run-20260820.json",
+    "evidence-routeb-retry-overshoot-20260820.json"
+  ],
+  "method": "Correlations computed WITHIN each run, then summarised across runs. Pooling mixes sessions from different days and distances from the proxy; that confound reverses the RSSI result (pooled r = -0.245, within-run ~0).",
+  "ble_rssi": {
+    "runs": 24,
+    "median_r": 0.042,
+    "positive": 14,
+    "negative": 10,
+    "per_run": [
+      {
+        "file": "evidence-beta32-4segment-20260809T183129Z.json",
+        "n": 10,
+        "r": 0.305
+      },
+      {
+        "file": "evidence-beta32-4segment-20260809T210241Z.json",
+        "n": 7,
+        "r": 0.579
+      },
+      {
+        "file": "evidence-beta32-4segment-20260810T002506Z.json",
+        "n": 8,
+        "r": -0.244
+      },
+      {
+        "file": "evidence-beta32-4segment-20260810T193833Z.json",
+        "n": 9,
+        "r": -0.7
+      },
+      {
+        "file": "evidence-beta32-4segment-20260810T205937Z.json",
+        "n": 11,
+        "r": -0.265
+      },
+      {
+        "file": "evidence-beta32-4segment-20260810T232848Z.json",
+        "n": 9,
+        "r": -0.299
+      },
+      {
+        "file": "evidence-beta32-4segment-20260811T001250Z.json",
+        "n": 9,
+        "r": 0.129
+      },
+      {
+        "file": "evidence-beta32-4segment-20260811T235133Z.json",
+        "n": 10,
+        "r": -0.088
+      },
+      {
+        "file": "evidence-beta32-4segment-20260811T235945Z.json",
+        "n": 8,
+        "r": 0.083
+      },
+      {
+        "file": "evidence-beta32-4segment-20260812T001116Z.json",
+        "n": 9,
+        "r": -0.195
+      },
+      {
+        "file": "evidence-beta32-4segment-20260812T002804Z.json",
+        "n": 11,
+        "r": 0.04
+      },
+      {
+        "file": "evidence-beta32-4segment-20260812T185603Z.json",
+        "n": 11,
+        "r": -0.019
+      },
+      {
+        "file": "evidence-beta32-4segment-20260812T191850Z.json",
+        "n": 7,
+        "r": 0.9
+      },
+      {
+        "file": "evidence-beta32-4segment-20260813T002104Z.json",
+        "n": 9,
+        "r": 0.216
+      },
+      {
+        "file": "evidence-beta32-4segment-20260813T002704Z.json",
+        "n": 8,
+        "r": 0.702
+      },
+      {
+        "file": "evidence-beta33-reposition-20260809T184618Z.json",
+        "n": 8,
+        "r": -0.264
+      },
+      {
+        "file": "evidence-gate4-beta20-day2j-real-result-20260805.json",
+        "n": 6,
+        "r": -0.135
+      },
+      {
+        "file": "evidence-gate5-beta57-20260818.json",
+        "n": 12,
+        "r": 0.042
+      },
+      {
+        "file": "evidence-gate5-repass-2-20260812.json",
+        "n": 10,
+        "r": 0.075
+      },
+      {
+        "file": "evidence-longleg-3segment-20260817.json",
+        "n": 20,
+        "r": 0.236
+      },
+      {
+        "file": "evidence-reaim-trigger-hardware-20260818.json",
+        "n": 9,
+        "r": 0.478
+      },
+      {
+        "file": "evidence-real-go-card-beta55-20260815T204747Z.json",
+        "n": 7,
+        "r": -0.088
+      },
+      {
+        "file": "evidence-routeb-first-hardware-run-20260820.json",
+        "n": 17,
+        "r": 0.197
+      },
+      {
+        "file": "evidence-routeb-retry-overshoot-20260820.json",
+        "n": 13,
+        "r": 0.012
+      }
+    ]
+  },
+  "seconds_into_run": {
+    "runs": 24,
+    "median_r": -0.35,
+    "positive": 5,
+    "negative": 19,
+    "per_run": [
+      {
+        "file": "evidence-beta32-4segment-20260809T183129Z.json",
+        "n": 10,
+        "r": 0.041
+      },
+      {
+        "file": "evidence-beta32-4segment-20260809T210241Z.json",
+        "n": 7,
+        "r": -0.741
+      },
+      {
+        "file": "evidence-beta32-4segment-20260810T002506Z.json",
+        "n": 8,
+        "r": -0.189
+      },
+      {
+        "file": "evidence-beta32-4segment-20260810T193833Z.json",
+        "n": 9,
+        "r": 0.105
+      },
+      {
+        "file": "evidence-beta32-4segment-20260810T205937Z.json",
+        "n": 11,
+        "r": -0.485
+      },
+      {
+        "file": "evidence-beta32-4segment-20260810T232848Z.json",
+        "n": 9,
+        "r": -0.516
+      },
+      {
+        "file": "evidence-beta32-4segment-20260811T001250Z.json",
+        "n": 9,
+        "r": -0.292
+      },
+      {
+        "file": "evidence-beta32-4segment-20260811T235133Z.json",
+        "n": 10,
+        "r": -0.315
+      },
+      {
+        "file": "evidence-beta32-4segment-20260811T235945Z.json",
+        "n": 8,
+        "r": -0.453
+      },
+      {
+        "file": "evidence-beta32-4segment-20260812T001116Z.json",
+        "n": 9,
+        "r": 0.039
+      },
+      {
+        "file": "evidence-beta32-4segment-20260812T002804Z.json",
+        "n": 11,
+        "r": -0.174
+      },
+      {
+        "file": "evidence-beta32-4segment-20260812T185603Z.json",
+        "n": 11,
+        "r": -0.511
+      },
+      {
+        "file": "evidence-beta32-4segment-20260812T191850Z.json",
+        "n": 7,
+        "r": -0.37
+      },
+      {
+        "file": "evidence-beta32-4segment-20260813T002104Z.json",
+        "n": 9,
+        "r": -0.516
+      },
+      {
+        "file": "evidence-beta32-4segment-20260813T002704Z.json",
+        "n": 8,
+        "r": -0.427
+      },
+      {
+        "file": "evidence-beta33-reposition-20260809T184618Z.json",
+        "n": 8,
+        "r": -0.137
+      },
+      {
+        "file": "evidence-gate4-beta20-day2j-real-result-20260805.json",
+        "n": 6,
+        "r": -0.374
+      },
+      {
+        "file": "evidence-gate5-beta57-20260818.json",
+        "n": 12,
+        "r": -0.35
+      },
+      {
+        "file": "evidence-gate5-repass-2-20260812.json",
+        "n": 10,
+        "r": 0.032
+      },
+      {
+        "file": "evidence-longleg-3segment-20260817.json",
+        "n": 20,
+        "r": 0.022
+      },
+      {
+        "file": "evidence-reaim-trigger-hardware-20260818.json",
+        "n": 9,
+        "r": -0.002
+      },
+      {
+        "file": "evidence-real-go-card-beta55-20260815T204747Z.json",
+        "n": 7,
+        "r": -0.797
+      },
+      {
+        "file": "evidence-routeb-first-hardware-run-20260820.json",
+        "n": 17,
+        "r": -0.484
+      },
+      {
+        "file": "evidence-routeb-retry-overshoot-20260820.json",
+        "n": 13,
+        "r": -0.45
+      }
+    ]
+  },
+  "cadence_by_time_band": [
+    {
+      "from_s": 0,
+      "to_s": 20,
+      "n": 219,
+      "median_cadence": 0.657,
+      "fraction_stalled_below_0_3": 0.091
+    },
+    {
+      "from_s": 20,
+      "to_s": 45,
+      "n": 41,
+      "median_cadence": 0.692,
+      "fraction_stalled_below_0_3": 0.122
+    },
+    {
+      "from_s": 45,
+      "to_s": 80,
+      "n": 18,
+      "median_cadence": 0.495,
+      "fraction_stalled_below_0_3": 0.167
+    },
+    {
+      "from_s": 80,
+      "to_s": null,
+      "n": 4,
+      "median_cadence": 0.57,
+      "fraction_stalled_below_0_3": 0.25
+    }
+  ],
+  "excluded_predictor": {
+    "refresh_write_duration_ms": "Correlates at r ~ -0.63 but the relation is close to definitional -- cadence counts writes fitting in the window. Useful as a real-time DETECTOR, not a cause."
+  }
+}
