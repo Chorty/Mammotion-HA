@@ -22,13 +22,41 @@ globalThis.customElements = {
   },
 };
 globalThis.window = {};
+// The stub used to be incapable of failing, which is why nothing about quota
+// was ever tested -- and quota is exactly the path the card handled silently.
+// `_quotaBytes` caps total stored size; `_failWrites` refuses every write.
 globalThis.localStorage = {
   _items: new Map(),
+  _quotaBytes: Infinity,
+  _failWrites: false,
+  reset() {
+    this._items = new Map();
+    this._quotaBytes = Infinity;
+    this._failWrites = false;
+  },
+  _usedBytesExcluding(key) {
+    let total = 0;
+    for (const [name, value] of this._items) {
+      if (name !== key) total += name.length + value.length;
+    }
+    return total;
+  },
   getItem(key) {
     return this._items.get(key) ?? null;
   },
   setItem(key, value) {
-    this._items.set(key, String(value));
+    const text = String(value);
+    if (
+      this._failWrites ||
+      this._usedBytesExcluding(key) + key.length + text.length >
+        this._quotaBytes
+    ) {
+      // Same shape browsers throw.
+      const err = new Error("QuotaExceededError");
+      err.name = "QuotaExceededError";
+      throw err;
+    }
+    this._items.set(key, text);
   },
   removeItem(key) {
     this._items.delete(key);
@@ -39,6 +67,7 @@ const {
   ACCEPTED_PROFILE_ACCEPTED_ON,
   LUBA_ACCEPTANCE_PROFILE,
   MAX_NIGHT_SEGMENT_METRES,
+  CARD_VERSION,
   MAX_REAL_SEGMENTS,
   MAX_REAL_SEGMENT_METRES,
   MAX_WAYPOINTS,
@@ -1222,4 +1251,237 @@ test("too many short clicks reports only the click limit, not the split code", (
   assert.ok(blockers.includes(`real_segment_limit_${MAX_REAL_SEGMENTS}`));
   assert.equal(blockers.includes("split_exceeds_real_segment_budget"), false);
   assert.equal(element._plannedSplit().applied, false);
+});
+
+// --- Run retention ----------------------------------------------------------
+//
+// The card kept ten SUMMARIES and exactly ONE full result, overwritten every
+// run. `_segmentLandingRows()` needs the full result, so a summary-only entry
+// renders as [] and the downloaded history was NOT a recovery path. None of the
+// behaviour below -- the cap, ordering, corrupt-JSON guards, `_restoreLastRun`,
+// `_clearHistory`, the download payload, quota -- had a single test.
+
+function storageCard() {
+  localStorage.reset();
+  const element = card();
+  element._config.entity = "lawn_mower.retention";
+  return element;
+}
+
+function runEntry(index) {
+  return {
+    at: new Date(1_700_000_000_000 + index * 1000).toISOString(),
+    elapsed_seconds: 10 + index,
+    service: "raw_pymammotion_execute_multi_segment",
+    waypoints: 1,
+    stop_reason: `stop_${index}`,
+    failed_segment_index: null,
+    segments: [],
+    summary: `run ${index}`,
+  };
+}
+
+function fullResult(index, padBytes = 0) {
+  return {
+    stop_reason: "target_reached",
+    valid: true,
+    marker: index,
+    padding: "x".repeat(padBytes),
+    segments: [
+      {
+        index: 1,
+        passed: true,
+        result: {
+          stop_reason: "target_reached",
+          waypoint_tolerance: 0.15,
+          distance: 0.8,
+          // The shape `_landingDistance()` actually reads.
+          completion_status: { waypoint_distances: [{ distance: 0.09 }] },
+        },
+      },
+    ],
+  };
+}
+
+test("a stored run keeps its full result, so history is a recovery path", () => {
+  const element = storageCard();
+
+  element._saveRunToHistory(runEntry(1), fullResult(1));
+  const [entry] = element._loadHistory();
+
+  assert.equal(entry.result.marker, 1);
+  // The whole point: landing rows are recoverable from a history entry.
+  const rows = element._segmentLandingRows(entry.result);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].landing, 0.09);
+  assert.equal(rows[0].tolerance, 0.15);
+});
+
+test("history is newest-first and capped at ten entries", () => {
+  const element = storageCard();
+
+  for (let i = 1; i <= 13; i += 1) {
+    element._saveRunToHistory(runEntry(i), fullResult(i));
+  }
+  const history = element._loadHistory();
+
+  assert.equal(history.length, 10);
+  assert.equal(history[0].stop_reason, "stop_13");
+  assert.equal(history[9].stop_reason, "stop_4");
+});
+
+test("a run with no result still records its summary", () => {
+  // The failed-call path has no result to store; losing the summary too would
+  // hide the failure from the history entirely.
+  const element = storageCard();
+
+  element._saveRunToHistory(runEntry(1));
+  const [entry] = element._loadHistory();
+
+  assert.equal(entry.stop_reason, "stop_1");
+  assert.equal(entry.result, undefined);
+});
+
+test("over quota, the OLDEST full results are dropped and the operator is told", () => {
+  const element = storageCard();
+  element._saveRunToHistory(runEntry(1), fullResult(1, 40_000));
+  element._saveRunToHistory(runEntry(2), fullResult(2, 40_000));
+
+  // Now clamp the quota so three padded results cannot coexist.
+  localStorage._quotaBytes = 100_000;
+  const saved = element._saveRunToHistory(runEntry(3), fullResult(3, 40_000));
+  const history = element._loadHistory();
+
+  assert.equal(saved, true);
+  assert.equal(history.length, 3);
+  // Newest keeps its result; the oldest lost it.
+  assert.equal(history[0].result.marker, 3);
+  assert.equal(history[2].result, undefined);
+  assert.equal(history[2].result_dropped, true);
+  // Summaries survive stripping -- that is why both bounds exist.
+  assert.equal(history[2].stop_reason, "stop_1");
+  assert.match(element._storageWarning, /Storage is full/);
+  assert.match(
+    element._renderHistoryHtml(),
+    /summary only \(dropped for space\)/,
+  );
+  // The warning renders under the STATUS line, not inside the collapsed
+  // history panel -- Nudge persists a run without touching history at all.
+  element._render = MammotionCustomPathCard.prototype._render;
+  assert.equal(element._renderHistoryHtml().includes("Storage is full"), false);
+});
+
+test("a storage that refuses every write says so instead of failing silently", () => {
+  const element = storageCard();
+  localStorage._failWrites = true;
+
+  const saved = element._saveRunToHistory(runEntry(1), fullResult(1));
+
+  assert.equal(saved, false);
+  assert.equal(element._loadHistory().length, 0);
+  assert.match(element._storageWarning, /Download the run JSON now/);
+});
+
+test("a run that failed to persist does NOT read as stored", () => {
+  // The bug: `_realRunAt` was stamped BEFORE the write, inside a catch
+  // commented "ignore quota failures", so a quota failure left the card
+  // believing it had persisted a run it had not. Same shape as the c196b8b1
+  // motion-gate bug -- state set on intent, not on success.
+  const element = storageCard();
+  localStorage._failWrites = true;
+
+  const persisted = element._persistLastRun({ stop_reason: "target_reached" });
+
+  assert.equal(persisted, false);
+  assert.ok(!element._realRunAt, "an unwritten run must not carry a timestamp");
+  assert.equal(element._runAgeLabel(), "");
+  assert.match(element._storageWarning, /Download the run JSON/);
+});
+
+test("a run that DID persist restores with its timestamp", () => {
+  const element = storageCard();
+
+  assert.equal(
+    element._persistLastRun({ stop_reason: "target_reached" }),
+    true,
+  );
+  const stamped = element._realRunAt;
+
+  const reloaded = storageCardKeepingStorage(element._config.entity);
+  const restored = reloaded._restoreLastRun();
+
+  assert.equal(restored.stop_reason, "target_reached");
+  assert.equal(reloaded._realRunAt, stamped);
+});
+
+function storageCardKeepingStorage(entity) {
+  const element = card();
+  element._config.entity = entity;
+  return element;
+}
+
+test("clearing history does not orphan the last-run timestamp", () => {
+  // It used to remove the run and its history but leave the timestamp key, so
+  // the next restore read a time for a run that no longer existed.
+  const element = storageCard();
+  element._persistLastRun({ stop_reason: "target_reached" });
+  element._saveRunToHistory(runEntry(1), fullResult(1));
+
+  element._clearHistory();
+
+  assert.equal(element._loadHistory().length, 0);
+  assert.equal(localStorage.getItem(element._lastRunKey()), null);
+  assert.equal(localStorage.getItem(element._lastRunAtKey()), null);
+  assert.equal(element._realRunAt, null);
+  assert.equal(
+    storageCardKeepingStorage(element._config.entity)._restoreLastRun(),
+    null,
+  );
+});
+
+test("corrupt stored history reads as empty rather than throwing", () => {
+  const element = storageCard();
+
+  localStorage.setItem(element._historyKey(), "{not json");
+  assert.deepEqual(element._loadHistory(), []);
+
+  // A non-array is equally corrupt: `.map` on it would throw during render.
+  localStorage.setItem(element._historyKey(), '{"runs":[]}');
+  assert.deepEqual(element._loadHistory(), []);
+
+  localStorage.setItem(element._lastRunKey(), "{not json");
+  assert.equal(element._restoreLastRun(), null);
+});
+
+test("the history panel names how many entries carry a full result", () => {
+  // "10 runs" without this reads as ten recoverable runs when it may be one.
+  const element = storageCard();
+  element._saveRunToHistory(runEntry(1));
+  element._saveRunToHistory(runEntry(2), fullResult(2));
+
+  const html = element._renderHistoryHtml();
+
+  assert.match(html, /Run history \(2, 1 with full result\)/);
+  assert.match(html, /summary only/);
+});
+
+test("the downloaded history payload carries the full results", () => {
+  // `#download-history` serializes `{card_version, entity, runs: _loadHistory()}`.
+  // Before retention those runs were summaries, so the download could not
+  // reproduce a single landing table -- it looked like a backup and was not.
+  const element = storageCard();
+  element._saveRunToHistory(runEntry(1), fullResult(1));
+  element._saveRunToHistory(runEntry(2), fullResult(2));
+
+  const payload = {
+    card_version: CARD_VERSION,
+    entity: element._config.entity ?? null,
+    runs: element._loadHistory(),
+  };
+  const round = JSON.parse(JSON.stringify(payload));
+
+  assert.equal(round.runs.length, 2);
+  for (const run of round.runs) {
+    assert.equal(element._segmentLandingRows(run.result).length, 1);
+  }
 });

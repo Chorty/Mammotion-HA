@@ -42,6 +42,32 @@ Geometry evidence banked: `docs/evidence-collinear-split-geometry-20260819.json`
 `would_send: false`) → refusal dry run on 3 × 5 m → only then a supervised
 daylight run, downloading the run JSON immediately.
 
+## 🆕 2026-08-19 — RUN RETENTION: the history download is now a recovery path
+
+The card kept ten **summaries** plus exactly **one** full result, overwritten
+every run. `_segmentLandingRows()` needs the full result, so a summary-only
+entry rendered as `[]` — the downloaded history was **not** a recovery path, and
+the most informative dataset in the corpus survived only because it had been
+manually downloaded to a Desktop.
+
+History entries now carry the full result, bounded by **count (10)** and
+**bytes (2 MB)**, dropping the oldest *results* first and always keeping the
+summaries. The panel names how many entries actually carry a result, and
+summary-only rows say so.
+
+**Two bugs fixed:** `_persistLastRun` stamped `_realRunAt` *before* the write
+inside a catch commented "ignore quota failures", so on quota failure the card
+believed it had persisted a run it had not (same shape as the `c196b8b1`
+motion-gate lesson — state set on intent, not on success); and `_clearHistory`
+orphaned `_lastRunAtKey()`.
+
+**Quota is no longer silent.** There was no quota handling anywhere in the card.
+A failed save now says so under the status line — deliberately *not* in the
+history panel, which is collapsed by default and absent when history is empty,
+and which Nudge never touches.
+
+⚠️ **Until this is deployed, keep downloading the run JSON after every run.**
+
 ## ✅ ANSWERED 2026-08-19 — the reach work is measured INERT
 
 🔑 A recovered long-leg run (1.96 / 1.75 / 2.31 m, 3/3 `target_reached`, mean

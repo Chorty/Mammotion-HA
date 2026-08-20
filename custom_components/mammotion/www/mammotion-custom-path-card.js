@@ -38,6 +38,22 @@ const BUDGET_CHECK_METRES_PER_PULSE = 0.3;
 // ⚠️ 3.81 m is 95% of the longest straight leg ever executed (4.0 m, n = 1).
 // 4 x 3.85 = 15.40 m has never been driven.
 const SPLIT_LEG_TARGET_METRES = 3.85;
+// Run retention. The card used to keep ten SUMMARIES plus exactly ONE full
+// result, overwritten every run -- and `_segmentLandingRows()` needs the full
+// result, so a summary-only entry renders as `[]`. The downloaded history was
+// therefore NOT a recovery path, which is how the most informative dataset in
+// the corpus came within one run of being lost (2026-08-18; it survived only
+// because it had been manually downloaded).
+//
+// Two bounds, because either alone is wrong. A count bound alone would try to
+// hold ten 150-280 KB results against a ~5 MB origin quota; a byte bound alone
+// would let one enormous run evict every summary.
+const HISTORY_MAX_ENTRIES = 10;
+// Conservative against a typical ~5 MB localStorage origin quota, which this
+// key SHARES with the last-run key and anything else on the dashboard origin.
+// At 150-280 KB per full result this retains roughly 7-13 of them, and the
+// shrink-to-fit loop below drops the oldest results first when it does not.
+const HISTORY_MAX_BYTES = 2_000_000;
 const NIGHT_GO_PROFILE = Object.freeze({
   prefer_ble: true,
   turn_mode: "night",
@@ -242,6 +258,12 @@ class MammotionCustomPathCard extends HTMLElement {
     this._confirmNightExperimental = false;
     this._nudgeDistance = 0.5;
     this._rendered = false;
+    // Rendered under the status line -- NOT inside the history panel, which is
+    // collapsed by default and absent entirely when history is empty. Nudge
+    // persists a run without ever touching history, so a history-scoped warning
+    // would be invisible on exactly the path that has no other copy. Null means
+    // "nothing to say"; anything else means a run was not fully stored.
+    this._storageWarning = null;
   }
 
   _renderHistoryHtml() {
@@ -269,10 +291,22 @@ class MammotionCustomPathCard extends HTMLElement {
         const mean = landings.length
           ? ` · mean ${(landings.reduce((sum, value) => sum + value, 0) / landings.length).toFixed(4)} m`
           : "";
-        return `<div class="history-row"><span class="history-when">${this._escapeHtml(when)} (${mins}:${secs})</span> <span class="history-outcome">${this._escapeHtml(entry.stop_reason || "?")}</span>${this._escapeHtml(mean)}${segs ? `<div class="history-segs">${this._escapeHtml(segs)}</div>` : ""}</div>`;
+        // Entries written before retention shipped, and entries whose result
+        // was dropped to make room, are marked -- the download cannot recover
+        // what is not there, and silence would imply it could.
+        const retention = entry.result
+          ? ""
+          : entry.result_dropped
+            ? " · summary only (dropped for space)"
+            : " · summary only";
+        return `<div class="history-row"><span class="history-when">${this._escapeHtml(when)} (${mins}:${secs})</span> <span class="history-outcome">${this._escapeHtml(entry.stop_reason || "?")}</span>${this._escapeHtml(mean)}${this._escapeHtml(retention)}${segs ? `<div class="history-segs">${this._escapeHtml(segs)}</div>` : ""}</div>`;
       })
       .join("");
-    return `<details><summary>Run history (${history.length})</summary>${rows}<div class="history-actions"><button id="download-history" class="history-clear" type="button">Download history JSON</button><button id="clear-history" class="history-clear" type="button">Clear history</button></div></details>`;
+    const withResults = history.filter((entry) => entry.result).length;
+    // Name how many entries the download would actually carry. A summary-only
+    // entry yields no landing rows, so "10 runs" without this reads as ten
+    // recoverable runs when it may be one.
+    return `<details><summary>Run history (${history.length}, ${withResults} with full result${withResults === 1 ? "" : "s"})</summary>${rows}<div class="history-actions"><button id="download-history" class="history-clear" type="button">Download history JSON</button><button id="clear-history" class="history-clear" type="button">Clear history</button></div></details>`;
   }
 
   _historyKey() {
@@ -293,33 +327,79 @@ class MammotionCustomPathCard extends HTMLElement {
     }
   }
 
-  _saveRunToHistory(entry) {
-    try {
-      const history = this._loadHistory();
-      history.unshift(entry);
-      localStorage.setItem(
-        this._historyKey(),
-        JSON.stringify(history.slice(0, 10)),
+  // Store the run, keeping its FULL result so the history download is a real
+  // recovery path. Bounded by count and by bytes, dropping the OLDEST full
+  // results first: a summary is worth little and costs almost nothing, while a
+  // full result is the only thing `_segmentLandingRows()` can read.
+  //
+  // `fullResult` is optional so a failed call (which has no result) still
+  // records its summary.
+  _saveRunToHistory(entry, fullResult = null) {
+    const stored = fullResult ? { ...entry, result: fullResult } : { ...entry };
+    const history = [stored, ...this._loadHistory()].slice(
+      0,
+      HISTORY_MAX_ENTRIES,
+    );
+    // Shrink to fit: strip `result` from the oldest entries until the payload
+    // is under budget, then keep stripping if the write is still refused. The
+    // newest entry keeps its result longest because it is the one the operator
+    // is about to want.
+    for (let stripFrom = history.length; stripFrom >= 0; stripFrom -= 1) {
+      const candidate = history.map((item, index) =>
+        index >= stripFrom && item.result
+          ? { ...item, result: undefined, result_dropped: true }
+          : item,
       );
-    } catch (err) {
-      // History is best-effort; never let persistence break the run flow.
+      const serialized = JSON.stringify(candidate);
+      if (serialized.length > HISTORY_MAX_BYTES && stripFrom > 0) continue;
+      try {
+        localStorage.setItem(this._historyKey(), serialized);
+        this._storageWarning =
+          stripFrom < history.length
+            ? `Storage is full — ${history.length - stripFrom} older run result${history.length - stripFrom === 1 ? "" : "s"} dropped to summaries. Download the history JSON to keep them.`
+            : null;
+        return true;
+      } catch (err) {
+        // Quota, most likely. Fall through and strip one more result.
+        if (stripFrom === 0) {
+          // ⚠️ NOT silent. There was no quota handling anywhere in this card,
+          // and a change that stores MORE must not inherit that silence: the
+          // operator has to know the run was not kept, because the only other
+          // copy is the one they can still download from this page.
+          this._storageWarning =
+            "Could not save this run to history (browser storage is full). Download the run JSON now — it is not stored.";
+          return false;
+        }
+      }
     }
+    return false;
   }
 
   _lastRunAtKey() {
     return `mammotion-path-card-last-run-at:${this._config.entity || "unknown"}`;
   }
 
+  // ⚠️ The timestamp is stamped only AFTER the write succeeds. It used to be
+  // set FIRST, inside a catch commented "ignore quota failures", so on a quota
+  // failure the card believed it had persisted a run it had not -- state set on
+  // intent rather than on success, the same shape as the `c196b8b1` motion-gate
+  // bug where "I called enable" was mistaken for "enable succeeded".
   _persistLastRun(result) {
-    this._realRunAt = new Date().toISOString();
+    const at = new Date().toISOString();
     try {
       localStorage.setItem(this._lastRunKey(), JSON.stringify(result));
       // Stored separately so the restored result keeps its exact backend shape
       // -- wrapping it would break every reader that treats _realRun as the
       // service response, and older stored runs simply have no timestamp.
-      localStorage.setItem(this._lastRunAtKey(), new Date().toISOString());
+      localStorage.setItem(this._lastRunAtKey(), at);
+      this._realRunAt = at;
+      return true;
     } catch (err) {
-      // Full results can be large; ignore quota failures.
+      // Full results can be large. Leave `_realRunAt` alone: an unwritten run
+      // must not read as stored, and `_runAgeLabel()` keys off it.
+      this._storageWarning =
+        "Could not save this run for reload (browser storage is full). Download the run JSON before leaving this page.";
+      return false;
     }
   }
 
@@ -353,9 +433,15 @@ class MammotionCustomPathCard extends HTMLElement {
     try {
       localStorage.removeItem(this._historyKey());
       localStorage.removeItem(this._lastRunKey());
+      // ⚠️ This key was ORPHANED: clearing history removed the run but left its
+      // timestamp behind, so the next restore read a time for a run that no
+      // longer existed and `_runAgeLabel()` dated whatever came next.
+      localStorage.removeItem(this._lastRunAtKey());
     } catch (err) {
       // best-effort
     }
+    this._realRunAt = null;
+    this._storageWarning = null;
     this._status = "Run history cleared.";
     this._render();
   }
@@ -1864,22 +1950,27 @@ class MammotionCustomPathCard extends HTMLElement {
       this._stopRunTicker();
       this._status = `Real Go complete: ${this._segmentProgressText(this._realRun)}`;
       this._persistLastRun(this._realRun);
-      this._saveRunToHistory({
-        at: startedAt.toISOString(),
-        elapsed_seconds: Math.round((Date.now() - startedAt.getTime()) / 1000),
-        service: motion.service,
-        waypoints: this._waypoints.length,
-        stop_reason: this._realRun?.stop_reason ?? null,
-        failed_segment_index: this._realRun?.failed_segment_index ?? null,
-        segments: this._segmentLandingRows(this._realRun).map((row) => ({
-          index: row.index,
-          passed: row.passed,
-          stop_reason: row.stopReason,
-          landing: row.landing,
-          tolerance: row.tolerance,
-        })),
-        summary: this._segmentProgressText(this._realRun),
-      });
+      this._saveRunToHistory(
+        {
+          at: startedAt.toISOString(),
+          elapsed_seconds: Math.round(
+            (Date.now() - startedAt.getTime()) / 1000,
+          ),
+          service: motion.service,
+          waypoints: this._waypoints.length,
+          stop_reason: this._realRun?.stop_reason ?? null,
+          failed_segment_index: this._realRun?.failed_segment_index ?? null,
+          segments: this._segmentLandingRows(this._realRun).map((row) => ({
+            index: row.index,
+            passed: row.passed,
+            stop_reason: row.stopReason,
+            landing: row.landing,
+            tolerance: row.tolerance,
+          })),
+          summary: this._segmentProgressText(this._realRun),
+        },
+        this._realRun,
+      );
     } catch (err) {
       this._stopRunTicker();
       this._status = `Real Go failed: ${err?.message || err}`;
@@ -1944,23 +2035,28 @@ class MammotionCustomPathCard extends HTMLElement {
       this._stopRunTicker();
       this._status = `Night Go complete: ${this._segmentProgressText(this._realRun)}`;
       this._persistLastRun(this._realRun);
-      this._saveRunToHistory({
-        at: startedAt.toISOString(),
-        elapsed_seconds: Math.round((Date.now() - startedAt.getTime()) / 1000),
-        service: motion.service,
-        run_mode: "night",
-        waypoints: 1,
-        stop_reason: this._realRun?.stop_reason ?? null,
-        failed_segment_index: null,
-        segments: this._segmentLandingRows(this._realRun).map((row) => ({
-          index: row.index,
-          passed: row.passed,
-          stop_reason: row.stopReason,
-          landing: row.landing,
-          tolerance: row.tolerance,
-        })),
-        summary: this._segmentProgressText(this._realRun),
-      });
+      this._saveRunToHistory(
+        {
+          at: startedAt.toISOString(),
+          elapsed_seconds: Math.round(
+            (Date.now() - startedAt.getTime()) / 1000,
+          ),
+          service: motion.service,
+          run_mode: "night",
+          waypoints: 1,
+          stop_reason: this._realRun?.stop_reason ?? null,
+          failed_segment_index: null,
+          segments: this._segmentLandingRows(this._realRun).map((row) => ({
+            index: row.index,
+            passed: row.passed,
+            stop_reason: row.stopReason,
+            landing: row.landing,
+            tolerance: row.tolerance,
+          })),
+          summary: this._segmentProgressText(this._realRun),
+        },
+        this._realRun,
+      );
     } catch (err) {
       this._stopRunTicker();
       this._status = `Night Go failed: ${err?.message || err}`;
@@ -2456,6 +2552,7 @@ class MammotionCustomPathCard extends HTMLElement {
         <svg id="path-map"></svg>
         ${coordinateEditor}
         <div class="status">${this._escapeHtml(this._status)}</div>
+        ${this._storageWarning ? `<div class="warnings">⚠️ ${this._escapeHtml(this._storageWarning)}</div>` : ""}
         ${this._realRun ? this._runSummaryHtml(this._realRun) : ""}
         <div class="export-bar">
           <span class="group-label">Export</span>
