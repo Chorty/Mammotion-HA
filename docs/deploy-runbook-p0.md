@@ -8,6 +8,54 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta65 → beta66 — 2026-08-20 19:39-19:55 EDT, motion-disabled
+
+Ships the **advisory correctable-leg-length bound** — the leg length beyond
+which the mid-drive controller cannot protect a landing, which explains both
+3.0 m failures measured earlier the same day. Gate DISARMED before, during and
+after; **no motion was commanded.** Touches no `LUBA_ACCEPTANCE_PROFILE` key,
+so `check_accepted_profile.py` still reports ACCEPTED and no Gate 5 is owed.
+
+| | beta66 |
+| --- | --- |
+| Files | 46/46 byte-identical |
+| Card md5 (both paths + local) | `1032785087cbdfd1f52e41b31b336457` |
+| Archive SHA-256 local = host | `d3bf98fa343904312c8b4f16a258341f80d7612019ac3b5120b74b9b29972d30` |
+| AppleDouble entries | 0 |
+| Backup | `/config/mammotion-backup-20260820-1939-pre-beta66.tgz` |
+| Tag | `v0.6.4-beta66` at `a992d54b` |
+| Quartet on host | manifest `0.6.4-beta66`, CARD_VERSION `0.6.4-beta66` (both paths) |
+| Lovelace resource | `?v=0.6.4-beta66&build=10327850` (read back) |
+| Restart | API up 31 s; 133 Mammotion entities at 114 s |
+| Backend | pymammotion `0.8.12.post1` |
+| Gate after | `enabled: false`, `real_motion_allowed: false`, no session |
+
+**Verified executing live**, not merely deployed. A zero-motion dry run
+(`would_send: false`) returned the three new fields, absent on beta65:
+
+    correctable_leg_length_limit_m = 0.579555495773441
+    longest_leg_length_m           = 3.000004524163255
+    exceeds_correctable_limit      = True
+
+0.579555 matches `0.15 / sin(15°)` computed independently, so the deployed code
+is using the real profile tolerance and the real correction floor.
+
+⚠️ **Two release traps hit during this deploy, both recorded because they nearly
+shipped the wrong thing:**
+
+1. **The workflow was fired while `main` was 10 commits ahead of `origin`.** It
+   would have cut beta66 from `b28252d4` — none of the day's work, including the
+   change being deployed. Caught by checking `git status -sb` after dispatch,
+   cancelled mid-run (30 s), and confirmed clean: remote `main` unmoved, latest
+   tag still beta65, no partial release. **Push before dispatching, always.**
+2. **`pre-commit run --all-files` does not check untracked files.** A new test
+   file was committed with 4 ruff `SIM300` errors after a fully green
+   `pre-commit --all-files`; `ruff check custom_components tests` — the form CI
+   runs — caught them. Confirmed by experiment: once the file was tracked, the
+   same hook flagged it immediately. Same class as the documented hook/CI version
+   skew: a green local gate that is green because it looked at less than CI does.
+
+
 ### beta62 → beta63 — 2026-08-20 14:18-14:30 EDT, motion-disabled
 
 Ships the **keep-out exclusion check**. Gate was DISARMED before, during and

@@ -26,7 +26,61 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: `0.6.4-beta63` released and installed motion-disabled
+## Current build: `0.6.4-beta66` released and installed motion-disabled
+
+🏁 **2026-08-20 — THE CONTROLLER CANNOT PROTECT A LEG LONGER THAN 0.58 m, AND
+NOTHING COMPUTED THAT UNTIL NOW.** A mid-drive correction fires only once aim
+error reaches `_MIN_CORRECTABLE_AIM_ERROR_DEGREES` (= post-turn tolerance 10 +
+deadband 5 = **15°**), so an error just under the floor is never corrected
+whatever it costs, and it buys `distance × sin(floor)`. Setting that equal to
+`waypoint_tolerance` gives `limit = tolerance / sin(floor)` = **0.580 m** on the
+accepted profile. At 3.0 m the same floor permits an uncorrectable **0.776 m**
+miss — 5× tolerance. **That is why ~0.8 m is the measured-good regime.**
+beta57 fixed the re-aim *trigger* from an angle to a projected distance; the
+*floor* is still an angle, so the controller now correctly SEES the miss coming
+and declines to act because the angle looks small.
+`_correctable_leg_length_limit_m` and three `split.*` fields expose it, **verified
+executing on the host** by a zero-motion dry run.
+⚠️ **ADVISORY, not a refusal, and deliberately pessimistic** — a 3.0 m sub-leg
+reached target at 0.094 m the same day; a test pins that case so nobody hardens
+this into a gate. 🚨 **Do NOT respond to a breach by lowering the floor**: it is
+set by the turn primitive's actuation limit, protecting a 3.0 m leg would need a
+~2.9° floor, and the affine sweep bound still permits 20° at the 200 ms floor.
+Moves no `LUBA_ACCEPTANCE_PROFILE` key; profile still ACCEPTED.
+
+🔑 **ROUTE B AT 3.0 m: 2 of 3 sub-legs, the furthest a chain has got** (previous
+end-to-end record was 0 for 2). Sub-leg 1 `target_reached` at **0.094 m**;
+sub-leg 2 failed `vio_realign_incomplete` at 0.2594 m when a **51.025°**
+correction came due at 0.26 m to run and was refused `turn_budget_infeasible`.
+3.0 m legs are now **2 reached / 1 failed, n=3** — not reliable.
+`docs/evidence-routeb-3m-chain-20260820.json`.
+
+🗑️ **A BLE prediction of mine was REFUTED by that run and is recorded as such.**
+Cadence did NOT degrade across the chain — sub-leg 1 mean 0.85, sub-leg 2 mean
+**0.89**, zero stalled pulses in 19 across 130 s. The time-into-run cadence trend
+(`docs/evidence-ble-cadence-predictors-20260821.json`) is a **population tendency
+across 24 runs, not a within-run law**, and must not be used to attribute an
+individual failure.
+
+🔑 **`ble_rssi` DOES NOT PREDICT BLE CADENCE** — within-run median r = **+0.042**
+over 24 runs (14 pos / 10 neg). Pooled it reads −0.245, which is a
+between-session confound. A marginal RSSI is **not** a reason to postpone a run,
+nor to trust one.
+
+🔑 **THE POSITION FEED RUNS AT ~1 Hz, MOVING OR NOT**, so the settle loop's 1.0 s
+poll is already matched to it and **polling faster buys nothing**. The ~2.85 s
+settle is therefore near the **floor** of stop-measure-go, not slack. Motion runs
+at a **29% duty cycle** (4.55 s cycle, 1.30 s of it moving; 57% of a run is
+position-settle). ⚠️ The vendor drives **continuously at ~0.55 m/s on this same
+~1 Hz feed**, so 1 Hz does not block a continuous controller — it is what makes
+stop-measure-go expensive. And next position IS predictable from last fix +
+commanded velocity to **0.029 m median / 0.097 m p90** when refresh cadence holds
+(180 of 262 pulses), which is ~5× better than tolerance.
+`docs/evidence-position-predictability-20260821.json`.
+
+⚠️ **Open items with the check that verifies each: `docs/open-items-20260821.md`.**
+
+## (history) beta63 — keep-out zones are now checked
 
 🏁 **2026-08-20 — KEEP-OUT ZONES ARE NOW CHECKED.** Containment tested inclusion
 in a mowing area and never exclusion from a keep-out, so a supervised 10.8 m run

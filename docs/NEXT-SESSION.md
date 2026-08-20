@@ -11,6 +11,49 @@ measurements stand — but do not act on any build/host/gate state they describe
 "validate what shipped" through to named destinations. Read that for direction;
 read the item below for the specific next run.
 
+## 🏁 2026-08-20 — beta66 DEPLOYED: the leg length the controller can actually protect
+
+**Host runs `0.6.4-beta66`**, motion-disabled, 46/46 byte-identical, card md5
+`1032785087cbdfd1f52e41b31b336457` at both paths, resource
+`?v=0.6.4-beta66&build=10327850`. Gate DISARMED and verified. Full record:
+`docs/deploy-runbook-p0.md` → beta66.
+
+🔑 **`limit = waypoint_tolerance / sin(_MIN_CORRECTABLE_AIM_ERROR_DEGREES)` = 0.580 m.**
+A correction fires only at/above the 15° floor, so an error just under it is
+never corrected and costs `distance × sin(15°)`. At 3.0 m that is an
+uncorrectable **0.776 m**. This is why ~0.8 m works and 3.0 m does not.
+**Verified executing on the host** by a zero-motion dry run returning
+`correctable_leg_length_limit_m = 0.579555`, `exceeds_correctable_limit = True`.
+⚠️ Advisory and pessimistic — a 3.0 m sub-leg landed 0.094 m the same day.
+🚨 The fix is **not** lowering the floor; see `_correctable_leg_length_limit_m`.
+
+**Hardware, 2026-08-20 (two supervised runs, gate disarmed and verified after each):**
+- 3.0 m single sub-leg → `target_reached`, **0.1484 m** (1.6 mm of margin).
+- 3.0 m chain → **2 of 3 sub-legs**, best chain yet. Sub-leg 1 **0.094 m**;
+  sub-leg 2 `vio_realign_incomplete` at 0.2594 m on a refused 51.025° correction.
+- 3.0 m legs: **2 reached / 1 failed, n=3.** Not reliable. ~0.8 m is still the
+  measured-good regime.
+
+**Read-only findings banked the same day** (no motion, all from existing evidence):
+- Position feed is **~1 Hz** moving or stationary → the 1.0 s settle poll is
+  already matched; the 2.85 s settle is a **floor**, not slack. Motion is a
+  **29% duty cycle**; 57% of a run is position-settle.
+- **The vendor drives continuously at ~0.55 m/s on this same ~1 Hz feed**, so
+  1 Hz does not block continuous motion.
+- Next position is predictable from last fix + commanded velocity to
+  **0.029 m median / 0.097 m p90** when cadence holds — ~5× better than tolerance.
+- **`ble_rssi` does not predict cadence** (within-run median r = +0.042 over 24
+  runs). ⚠️ And the time-into-run cadence trend is a population tendency, **not a
+  within-run law** — it failed to predict the chain run, which had zero stalled
+  pulses.
+
+⚠️ **Two release traps hit and recorded in the runbook:** the release workflow was
+fired while `main` was 10 commits ahead of `origin` (cancelled in time), and
+**`pre-commit run --all-files` does not check untracked files** — a new test file
+shipped 4 ruff errors past a green run.
+
+⚠️ **Open items, each with the check that verifies it: `docs/open-items-20260821.md`.**
+
 ## ✅ 2026-08-21 — CORRECTION: the beta42 quadrature term IS applied. Read this before the section below.
 
 **The commit message that banked
