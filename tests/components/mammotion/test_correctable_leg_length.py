@@ -28,10 +28,9 @@ ACCEPTED_TOLERANCE = 0.15
 
 def test_the_floor_is_still_the_post_turn_tolerance_plus_the_deadband() -> None:
     """If this drifts, every bound below moves with it."""
-    assert _MIN_CORRECTABLE_AIM_ERROR_DEGREES == pytest.approx(
-        _POST_TURN_ALIGNMENT_TOLERANCE_DEGREES + 5.0
-    )
-    assert _MIN_CORRECTABLE_AIM_ERROR_DEGREES == pytest.approx(15.0)
+    floor = _MIN_CORRECTABLE_AIM_ERROR_DEGREES
+    assert floor == pytest.approx(_POST_TURN_ALIGNMENT_TOLERANCE_DEGREES + 5.0)
+    assert floor == pytest.approx(15.0)
 
 
 def test_the_accepted_profile_can_only_protect_a_58_cm_leg() -> None:
@@ -72,8 +71,9 @@ def test_the_3m_sub_leg_that_REACHED_target_was_still_over_the_bound() -> None:
     bound means the landing is not GUARANTEED, not that it fails.
     """
     limit = _correctable_leg_length_limit_m(waypoint_tolerance=ACCEPTED_TOLERANCE)
-    assert 3.000002 > limit
-    assert 0.094 < ACCEPTED_TOLERANCE
+    driven_leg_m, landing_m = 3.000002, 0.094
+    assert driven_leg_m > limit
+    assert landing_m < ACCEPTED_TOLERANCE
 
 
 def test_a_tighter_tolerance_shortens_the_protectable_leg() -> None:
