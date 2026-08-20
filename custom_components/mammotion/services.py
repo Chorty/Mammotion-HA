@@ -11729,6 +11729,50 @@ _MIN_CORRECTABLE_AIM_ERROR_DEGREES = (
 _NIGHT_MIN_AIM_BASELINE_M = 0.20
 
 
+def _correctable_leg_length_limit_m(
+    *,
+    waypoint_tolerance: float,
+    min_correctable_aim_degrees: float = _MIN_CORRECTABLE_AIM_ERROR_DEGREES,
+) -> float:
+    """Longest leg whose landing the mid-drive controller can still protect.
+
+    🔑 **This number is implied by two values that were chosen independently, and
+    until 2026-08-20 nothing computed it.** A mid-drive correction fires only
+    once the aim error reaches ``_MIN_CORRECTABLE_AIM_ERROR_DEGREES`` -- below
+    that the turn primitive cannot deliver the correction, so asking for one
+    leaves the mower worse aimed (see ``_mid_drive_realign_decision``). An aim
+    error sitting just under that floor is therefore NEVER corrected, however
+    much it costs, and the miss it produces is ``distance * sin(floor)``.
+
+    Setting that equal to the tolerance gives the longest protectable leg::
+
+        limit = waypoint_tolerance / sin(min_correctable_aim_degrees)
+
+    On the accepted profile -- tolerance 0.15 m, floor 15 deg (post-turn
+    tolerance 10 + deadband 5) -- that is **0.580 m**, which is why the measured
+    -good regime is ~0.8 m and why longer legs miss. At 3.0 m the same floor
+    permits an uncorrectable 0.776 m miss, over 5x the tolerance.
+
+    ⚠️ **This is an ADVISORY bound, not a hard limit, and it is deliberately
+    pessimistic.** It asks what happens when aim error sits just under the floor
+    for the whole leg. Real legs correct repeatedly and often land far better --
+    a 3.0 m sub-leg reached target at 0.094 m on 2026-08-20. Treat it as "beyond
+    here the controller cannot GUARANTEE the landing", not "beyond here the
+    landing fails".
+
+    🚨 **Do not respond to a breach by lowering the floor.** The floor is set by
+    the turn primitive's actuation limit, not by preference: at the 200 ms floor
+    the affine sweep bound still permits 20 deg, so a sub-floor correction
+    manufactures the error it was meant to remove. Two attempts to loosen the
+    re-aim path on thin evidence were reviewed and reverted. The lever is
+    shorter legs, or less cross-track accumulation -- not more late corrections.
+    """
+    floor = abs(float(min_correctable_aim_degrees))
+    if floor <= 0.0 or floor >= 90.0:
+        return float("inf")
+    return float(waypoint_tolerance) / math.sin(math.radians(floor))
+
+
 async def _vio_segment_calibration_drive(  # noqa: C901, PLR0913
     coordinator: MammotionReportUpdateCoordinator,
     *,
@@ -13701,6 +13745,34 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
     # point can land outside a concave area even when both operator clicks are
     # inside it.
     split = _split_long_legs(points, target_length_m=split_leg_target_length_m)
+    # 🔑 Surface the leg length beyond which the mid-drive controller cannot
+    # protect the landing. Advisory, not a refusal: a 3.0 m sub-leg DID reach
+    # target at 0.094 m on 2026-08-20, while its sibling missed by 0.2594 m when
+    # a 51 deg correction came due at 0.26 m to run and was refused
+    # `turn_budget_infeasible`. The bound explains that spread; it does not
+    # forbid the run. See `_correctable_leg_length_limit_m`.
+    correctable_limit = _correctable_leg_length_limit_m(
+        waypoint_tolerance=waypoint_tolerance
+    )
+    split["correctable_leg_length_limit_m"] = correctable_limit
+    longest_sub_leg = max(
+        (float(leg.get("sub_leg_length_m") or 0.0) for leg in split.get("legs") or []),
+        default=0.0,
+    )
+    if not longest_sub_leg:
+        # `legs` only lists legs that were actually split; a short path has none.
+        pts = split["points"]
+        longest_sub_leg = max(
+            (
+                math.dist(
+                    (float(a["x"]), float(a["y"])), (float(b["x"]), float(b["y"]))
+                )
+                for a, b in zip(pts, pts[1:], strict=False)
+            ),
+            default=0.0,
+        )
+    split["longest_leg_length_m"] = longest_sub_leg
+    split["exceeds_correctable_limit"] = longest_sub_leg > correctable_limit
     preview = _preview_custom_path(
         coordinator,
         split["points"],
