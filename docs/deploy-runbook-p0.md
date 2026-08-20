@@ -8,6 +8,62 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta61 → beta62 — 2026-08-19 23:43 - 2026-08-20 00:05 EDT, DEPLOYED WITH THE GATE ARMED
+
+Ships the **deliberate safety-gate override toggles** — one per firing blocker,
+29 registered gates, per-run reset, full echo into the run record.
+
+| | beta62 |
+| --- | --- |
+| Files | 46/46 byte-identical |
+| Card md5 (both paths + local) | `7c92d578951d702626fdb77819c8ae77` |
+| Archive SHA-256 local = host | `63688511a23acdb30e062fa21dc9acddc3f8bc713e4848dc528af4d14292ea69` |
+| AppleDouble entries | 0 |
+| Backup | `/config/mammotion-backup-20260819-2343-pre-beta62.tgz` |
+| Tag | `v0.6.4-beta62` |
+| Quartet on host | manifest `0.6.4-beta62`, CARD_VERSION `0.6.4-beta62` (both paths) |
+| Lovelace resource | `?v=0.6.4-beta62&build=7c92d578` (read back) |
+| Backend | pymammotion `0.8.12.post1` |
+| Restart | API up 41 s; 132 Mammotion entities at 123 s |
+
+Gates before shipping, by exit code: pytest **725**, frontend **76**, ruff
+check, ruff format, mypy, ten pre-commit hooks, `check_accepted_profile.py`
+**ACCEPTED**. No `LUBA_ACCEPTANCE_PROFILE` key moved.
+
+🚨 **THIS DEPLOY BROKE THE RUNBOOK'S OWN PRECONDITION, ON THE OPERATOR'S
+EXPLICIT INSTRUCTION.** At the preflight check the gate read `enabled: true`,
+`real_motion_allowed: true`, **`blockers: []`** — armed, with the mower off its
+dock at `(4.9703, -2.0051)`, `AREA_INSIDE`, RTK Fix, BLE live, `MODE_READY`.
+That is the **fourth** occurrence of the armed-at-rest posture (three were
+recorded on 2026-08-18, one of them likewise with zero blockers off the dock).
+The deploy was paused and the state reported; the operator said to proceed
+anyway, twice. Recorded here because a later session reading "deployed
+motion-disabled" for every other entry must not assume it of this one.
+
+No motion was commanded, `active_session` and `last_session` were both null
+throughout, and after the restart the mower had returned to the dock so the gate
+reads `real_motion_allowed: false` on `position_not_valid_for_motion` — but
+`enabled` is **still true**. The option is on.
+
+⚠️ **The disarm automation is still NOT installed** (verified absent from 69
+automations). Four unexplained armings is the argument for installing it that
+three was not. YAML: `docs/automations/disarm-motion-gate.yaml`.
+
+**Dry-run verification** (`docs/evidence-beta62-override-dryrun-20260819.json`),
+`dry_run: true`, `would_send: false` on every call:
+
+* no overrides → `{"requested": [], "applied": [], "any_applied": false}` and
+  the run stops on `path_validation_failed`, exactly as before the feature.
+* `safety_overrides: ["segment_too_long", "path_validation"]` → `path_validation`
+  **applied** (it was firing: a path from the dock leaves every area polygon),
+  `segment_too_long` recorded as **unused** because it was not firing on this
+  geometry — the summary does not credit an override that did nothing. The gate
+  record reads `original_passed: false, passed: true, overridden: true`, so an
+  overridden run cannot present itself as a clean one.
+* `safety_overrides: ["stop_primitive_available"]` → **HTTP 400**, refused by
+  schema validation. Fail-closed on a non-overridable name confirmed live.
+
+
 ### beta60 → beta61 — 2026-08-19 20:16-20:35 EDT, motion-disabled
 
 Ships **Route B** (a distant click auto-splits into collinear sub-legs of at

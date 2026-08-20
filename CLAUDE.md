@@ -26,7 +26,22 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: `0.6.4-beta61` released and installed motion-disabled
+## Current build: `0.6.4-beta62` released and installed — ⚠️ GATE WAS ARMED AT DEPLOY
+
+🆕 **2026-08-20 — beta62 ADDS DELIBERATE SAFETY-GATE OVERRIDE TOGGLES.** One
+toggle per firing blocker (29 registered gates), each rendering the reason the
+gate exists. Off by default, **reset after every run**, never persisted, and
+echoed into the run record with `original_passed: false` so an overridden run
+can never look like a clean one. A typo is refused by schema, not ignored. Four
+gates are absent as *incoherent* to override, not vetoed —
+`stop_primitive_available` (a `hasattr` check; an override does not create the
+stop method), `turn_mode_valid`, and the two `operator_confirmed_*` gates, which
+ARE the operator's deliberate act. Read `docs/deploy-runbook-p0.md` → beta62.
+
+🚨 **beta62 WAS DEPLOYED WITH THE MOTION GATE ARMED** (`blockers: []`, mower off
+the dock), on the operator's explicit instruction after the deploy was paused
+and the state reported. **Fourth armed-at-rest occurrence.** `enabled` is STILL
+TRUE. The disarm automation remains uninstalled. No motion was commanded.
 
 🆕 **2026-08-19 — ROUTE B IS DEPLOYED (`0.6.4-beta61`), MOTION-DISABLED.**
 **No motion has run on it.** Gate verified `real_motion_allowed: false`, no
