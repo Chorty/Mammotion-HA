@@ -26,7 +26,21 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: `0.6.4-beta66` released and installed motion-disabled
+## Current build: `0.6.4-beta67` released and installed motion-disabled
+
+🆕 **2026-08-20 — THE CARD NOW DRAWS KEEP-OUTS AND REFUSES A CLICK INSIDE ONE.**
+`export_map.keep_out_polygons` has been available since beta63 and the card
+referenced it **zero** times, so an obstacle click looked exactly like a legal
+one — how a 10.8 m run drove into a trampoline. Zones render as dashed red
+polygons **after** areas (both are filled and SVG paints in document order, so
+drawing them first hides a keep-out inside its containing area), and
+`_onMapClick` refuses by kind. The banner also warns when the longest planned
+sub-leg exceeds the **0.58 m** the controller can protect, naming the miss an
+uncorrected sub-floor aim error buys. ⚠️ The advisory **never blocks** — 3.0 m
+reached target at 0.094 m. ⚠️ The keep-out test is **PER-POINT** exactly like the
+backend's, pinned by a test; a leg clipping a corner is caught by neither.
+🚨 **No browser has rendered this yet** — bytes verified on the host, behaviour
+not. See `docs/deploy-runbook-p0.md` → beta67 for the four-point browser check.
 
 🏁 **2026-08-20 — THE CONTROLLER CANNOT PROTECT A LEG LONGER THAN 0.58 m, AND
 NOTHING COMPUTED THAT UNTIL NOW.** A mid-drive correction fires only once aim

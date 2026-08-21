@@ -11,6 +11,28 @@ measurements stand — but do not act on any build/host/gate state they describe
 "validate what shipped" through to named destinations. Read that for direction;
 read the item below for the specific next run.
 
+## 🆕 2026-08-20 — beta67 DEPLOYED: the card draws keep-outs and refuses clicks in them
+
+**Host runs `0.6.4-beta67`**, motion-disabled. 46/46 byte-identical, card md5
+`a582529521ee023deaaa37f22236f4ac` at both paths, resource
+`?v=0.6.4-beta67&build=a5825295`, config entry `loaded`, gate DISARMED.
+Record: `docs/deploy-runbook-p0.md` → beta67.
+
+Both of the day's failures were visible before dispatch and the operator could
+see neither. Now: keep-out zones render as dashed red polygons labelled by kind,
+a click inside one is **refused at click time** (the backend still refuses at
+dispatch — this just saves the daylight), and the banner warns when the longest
+planned sub-leg exceeds the **0.58 m** the controller can protect.
+
+⚠️ The advisory **never blocks**, and the keep-out check is **PER-POINT** exactly
+like the backend's — a leg clipping a corner is caught by neither. Both pinned
+by tests.
+
+🚨 **NOT VERIFIED IN A BROWSER.** The right bytes are on the host and
+`export_map` returns 2 real zones, but nothing has rendered. beta49 is the
+precedent: four card defects existed only against real output. The four-point
+browser check is in the runbook.
+
 ## 🏁 2026-08-20 — beta66 DEPLOYED: the leg length the controller can actually protect
 
 **Host runs `0.6.4-beta66`**, motion-disabled, 46/46 byte-identical, card md5

@@ -8,6 +8,53 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta66 → beta67 — 2026-08-20 21:11-21:20 EDT, motion-disabled
+
+Ships the **card keep-out rendering and the unprotectable-leg advisory**. Gate
+DISARMED before, during and after; **no motion was commanded.** Touches no
+`LUBA_ACCEPTANCE_PROFILE` key; `check_accepted_profile.py` still ACCEPTED.
+
+| | beta67 |
+| --- | --- |
+| Files | 46/46 byte-identical |
+| Card md5 (both paths + local) | `a582529521ee023deaaa37f22236f4ac` |
+| Archive SHA-256 local = host | `9c2a70066f4130a6c36ed6f9be9ddfd61db1445026b0fc3e266a7fe10a66f36b` |
+| AppleDouble entries | 0 |
+| Backup | `/config/mammotion-backup-20260820-2111-pre-beta67.tgz` |
+| Tag | `v0.6.4-beta67` |
+| Quartet on host | manifest `0.6.4-beta67`, CARD_VERSION `0.6.4-beta67` (both paths) |
+| Lovelace resource | `?v=0.6.4-beta67&build=a5825295` (read back) |
+| Restart | API up 30 s; 133 Mammotion entities at 117 s |
+| Backend | pymammotion `0.8.12.post1` |
+| Config entry | `loaded` |
+| Gate after | `enabled: false`, `real_motion_allowed: false`, no session |
+
+**New card code confirmed present in the served copy** (`/config/www/community/…`,
+the path browsers actually fetch), not just in the integration directory:
+`keep_out_polygons` ×2, `_keepOutViolations` ×2, `CORRECTABLE_AIM_FLOOR_DEGREES`
+×7, `_readinessLevel` ×2.
+
+**The data it needs is live**: `export_map` returns **2** keep-out zones
+(`obstacle:1529607395159402290`, `obstacle:3985039798069143977`), so the card
+has real geometry to draw rather than an empty dict.
+
+✅ **The beta66 push-before-dispatch lesson held** — `main` was pushed and in
+sync with `origin` before the workflow was fired, and the release cut the
+intended commit first time.
+
+🚨 **STILL UNVERIFIED, AND ONLY THE OPERATOR CAN CLOSE IT: no browser has
+rendered this card.** Everything above proves the right bytes are on the host.
+It does not prove the zones draw, or that a click inside one is refused. beta49
+is the precedent — four card defects existed *only* against real
+`export_runtime_state` output. Confirm in the browser:
+
+1. Card footer and console banner both read `0.6.4-beta67`.
+2. Two dashed red zones labelled `⛔ obstacle` appear on the map.
+3. A click inside one is refused with "that point is inside a keep-out zone".
+4. A click ~3 m away shows the ⚠️ advisory naming 0.58 m — **as a warning, with
+   the run still available.**
+
+
 ### beta65 → beta66 — 2026-08-20 19:39-19:55 EDT, motion-disabled
 
 Ships the **advisory correctable-leg-length bound** — the leg length beyond
