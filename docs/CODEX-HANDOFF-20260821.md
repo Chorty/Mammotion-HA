@@ -1,5 +1,29 @@
 # Codex handoff — 2026-08-21
 
+## UPDATE — Phase 1 continuous-motion instrumentation implemented, undeployed
+
+The existing `raw_pymammotion_motion_probe` now has disabled-by-default
+`in_window_sample_interval_ms` instrumentation. With the intended 100 ms value
+and a positive motion-refresh interval it starts the bounded report stream
+before dispatch, samples only the coordinator cache on a concurrent task, and
+records x/y, `toward`, VIO, `DeviceHandle.last_report_at`, active command, plus
+every refresh-write completion. The response summarizes fresh report and
+position arrivals, boundary-inclusive position gaps, and pre-stop `toward`
+changes. It does not declare a pass verdict.
+
+Safety behavior is pinned: dry run performs no stream or motion I/O; sampling
+without refreshed motion is refused; stream startup failure occurs before the
+movement command; the 4,000 ms cap, explicit stop, cancellation-stop path,
+exclusive owner, and final forced readback remain in place. Zero preserves the
+old probe path. Verification is **798 pytest, 91 frontend**, ruff, format, mypy,
+all ten pre-commit hooks, 1,159 documentation-symbol claims, and accepted-profile
+ACCEPTED. No deployment, arming, or physical run occurred.
+
+Next: deploy motion-disabled, inspect the 4 s / 100 ms straight and shallow-arc
+dry runs, then obtain separate explicit authorization for each physical window.
+Apply the go/no-go criteria in
+`docs/continuous-motion-feasibility-plan-20260821.md` before designing Phase 2.
+
 ## UPDATE — segment-level containment deployed as beta69
 
 The primary task below is implemented, released, installed, and verified
@@ -164,7 +188,7 @@ The exact frozen route was `(4.8756, -2.4530)` to `(11.7193, -8.2980)`, 9.0000
 m at 319.5°, split with `split_leg_target_length_m: 3.2`. The gate was verified
 disarmed afterward: disabled, no active session, `MODE_PAUSE`.
 
-## CONTINUOUS MOTION — offline Phase 0 only
+## CONTINUOUS MOTION — Phase 1 instrumentation ready, physical capture pending
 
 `continuous_controller.py` and `replay_continuous_controller.py` now provide a
 pure lookahead decision and JSON replay with no HA/coordinator/BLE import or
@@ -174,9 +198,10 @@ cancellation, cross-track, time/distance limits, bounded prediction, and command
 clamping. The 37 focused tests and full **792-test** backend suite pass. **No
 continuous executor or service exists and no mower moved.**
 
-Next is Phase 1 instrumentation: capture x/y and `toward` timestamps inside the
-existing bounded 4 s straight/arc motion windows, then apply the written go/no-go
-criteria before designing a variable-command executor. Full plan:
+Phase 1 instrumentation is now implemented in the existing bounded probe; no
+new executor or dispatch command was added. It must still be deployed and used
+for separately authorized 4 s straight/arc captures, then evaluated against the
+written go/no-go criteria before designing a variable-command executor. Full plan:
 `docs/continuous-motion-feasibility-plan-20260821.md`.
 
 Five payload traps that each cost a run:

@@ -1,7 +1,8 @@
 # Continuous-motion feasibility plan — zero-motion phase
 
-Status: **offline prototype implemented; no runtime executor, service, gate,
-BLE import, or mower dispatch path exists.**
+Status: **offline controller and Phase 1 probe instrumentation implemented;
+no continuous controller executor or new mower dispatch path exists. No Phase 1
+physical capture has been run.**
 
 The pulsed controller's 9 m Route B success took 162.7 s, or 0.055 m/s. The
 vendor moves continuously at roughly 0.55 m/s on the same ~1 Hz position feed.
@@ -53,7 +54,7 @@ built-in shallow-error sequence. Its output states
 `dispatch_capable: false` and `commands_sent: 0`. It loads only the pure module
 file, so it runs without importing the Home Assistant integration package.
 
-## Phase 1 — bounded in-window telemetry measurement
+## Phase 1 — bounded in-window telemetry measurement (instrumentation ready)
 
 Do this before writing a closed-loop executor. The current motion probe records
 the settled result after its window; that proved arc geometry but not feedback
@@ -61,16 +62,32 @@ latency during the arc. `motion_capture.py` samples through Home Assistant REST
 and is useful corroboration, but its multiple sequential HTTP reads are not a
 precise pulse-timescale clock.
 
-Add an **instrumentation-only option** to the existing bounded raw motion probe:
+The existing bounded raw motion probe now has an opt-in
+`in_window_sample_interval_ms` instrumentation field. Zero is the default and
+preserves the old probe behavior. A positive value requires
+`motion_refresh_interval_ms > 0`; otherwise a real probe fails closed before
+stream startup or motion.
 
-1. Start the existing continuous report subscription.
-2. Sample the coordinator cache every 100 ms on a concurrent task without
+The implementation:
+
+1. Starts the existing bounded report-stream helpers before command dispatch;
+   a startup failure sends no movement command.
+2. Samples the coordinator cache every 100 ms on a concurrent task without
    sending extra BLE report requests.
-3. Record monotonic timestamp, x/y, `toward`, VIO heading, report identity or
-   update timestamp, active command, and every refresh-write completion.
+3. Records monotonic elapsed time, UTC capture time, x/y, `toward`, VIO heading
+   and state, `DeviceHandle.last_report_at`, active command, and every
+   refresh-write completion.
 4. Preserve the existing 4,000 ms hard window, 200 ms refresh, mandatory stop,
    cancellation stop, exclusive motion owner, and final forced readback.
-5. Dry run must show the complete plan and send nothing.
+5. Dry run shows the complete plan and sends nothing. At 4,000 ms / 100 ms it
+   declares a maximum of 41 cache samples, the stream-start plan, and zero extra
+   BLE report requests during the window.
+
+The response also summarizes fresh report stamps, fresh x/y arrivals, gaps
+including the start/end boundaries, and `toward` changes observed before stop.
+These are measurements for the criteria below, not a pass verdict. Focused
+tests cover schema bounds, disabled-by-default behavior, dry-run inertness,
+refresh-required refusal, stream-start failure before motion, and summary math.
 
 Two separately authorized physical windows are then sufficient:
 

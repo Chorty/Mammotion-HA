@@ -773,6 +773,14 @@ raw_pymammotion_motion_probe:
           min: 0
           max: 1000
           step: 50
+    in_window_sample_interval_ms:
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 1000
+          step: 50
     duration_ms:
       required: false
       default: 1300

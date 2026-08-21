@@ -1944,6 +1944,16 @@ async def test_raw_pymammotion_motion_probe_defaults_to_dry_run() -> None:
     assert result["dry_run"] is True
     assert result["would_send"] is False
     assert result["reason"] == "dry_run"
+    assert result["in_window_telemetry"] == {
+        "enabled": False,
+        "sample_interval_ms": 0,
+        "source": "coordinator_cache_only",
+        "extra_ble_report_requests_during_window": 0,
+        "planned_max_samples": 0,
+        "report_stream_plan": [],
+        "samples": [],
+        "summary": None,
+    }
     assert result["command_not_sent"] == {
         "manager_method": "send_command_with_args",
         "device_name": "Luba-Test",
@@ -1952,6 +1962,160 @@ async def test_raw_pymammotion_motion_probe_defaults_to_dry_run() -> None:
         "kwargs": {"linear_speed": 400, "angular_speed": 0},
     }
     coordinator.manager.send_command_with_args.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_raw_probe_in_window_instrumentation_dry_run_is_complete_and_inert() -> (
+    None
+):
+    """The Phase-1 plan is inspectable without starting a stream or motion."""
+    coordinator = _pulse_coordinator()
+
+    result = await _raw_pymammotion_motion_probe(
+        coordinator,
+        linear_speed=400,
+        angular_speed=180,
+        motion_refresh_interval_ms=200,
+        in_window_sample_interval_ms=100,
+        duration_ms=4000,
+        sample_delays=(),
+    )
+
+    instrumentation = result["in_window_telemetry"]
+    assert result["reason"] == "dry_run"
+    assert result["would_send"] is False
+    assert instrumentation["enabled"] is True
+    assert instrumentation["planned_max_samples"] == 41
+    assert instrumentation["source"] == "coordinator_cache_only"
+    assert instrumentation["extra_ble_report_requests_during_window"] == 0
+    assert instrumentation["report_stream_plan"] == [
+        "async_start_report_stream",
+        "async_start_continuous_reports",
+    ]
+    coordinator.async_start_report_stream.assert_not_awaited()
+    coordinator.manager.request_iot_sync.assert_not_awaited()
+    coordinator.manager.request_iot_sync_continuous.assert_not_awaited()
+    coordinator.manager.send_command_with_args.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_raw_probe_in_window_instrumentation_requires_refreshed_motion() -> None:
+    """Instrumentation cannot silently produce an empty single-shot capture."""
+    coordinator = _pulse_coordinator()
+
+    result = await _raw_pymammotion_motion_probe(
+        coordinator,
+        in_window_sample_interval_ms=100,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        sample_delays=(),
+    )
+
+    assert result["reason"] == "safety_gates_failed"
+    assert "in_window_sampling_requires_motion_refresh" in result["blockers"]
+    coordinator.async_start_report_stream.assert_not_awaited()
+    coordinator.manager.send_command_with_args.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_raw_probe_stream_start_failure_sends_no_motion() -> None:
+    """A missing dense report feed fails closed before the movement command."""
+    coordinator = _pulse_coordinator()
+    coordinator.async_start_report_stream.side_effect = RuntimeError("stream failed")
+
+    result = await _raw_pymammotion_motion_probe(
+        coordinator,
+        motion_refresh_interval_ms=200,
+        in_window_sample_interval_ms=100,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        sample_delays=(),
+    )
+
+    assert result["reason"] == "report_stream_failed"
+    assert result["command_result"]["attempted"] is False
+    assert result["in_window_telemetry"]["report_stream"]["error"] == (
+        "RuntimeError: stream failed"
+    )
+    coordinator.manager.send_command_with_args.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_in_window_sampler_reads_cache_at_bounded_cadence_without_io(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The sampler polls local state only and stops at the planned sample bound."""
+    coordinator = _pulse_coordinator()
+    handle = coordinator.manager.mower(coordinator.device_name)
+    clock = {"now": 100.0}
+
+    def fake_monotonic() -> float:
+        return clock["now"]
+
+    async def fake_sleep(delay: float) -> None:
+        clock["now"] += delay
+        coordinator.data.mowing_state.pos_x += 0.1
+        coordinator.data.mowing_state.toward += 1.0
+        handle.last_report_at = clock["now"]
+
+    _patch_services_monotonic(monkeypatch, fake_monotonic)
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
+
+    samples = await mammotion_services._capture_in_window_telemetry(  # noqa: SLF001
+        coordinator,
+        sample_interval_ms=100,
+        duration_ms=300,
+        window_started=100.0,
+        stop_event=asyncio.Event(),
+        command="send_movement",
+        command_args={"linear_speed": 400, "angular_speed": 180},
+    )
+
+    assert [sample["elapsed_ms"] for sample in samples] == pytest.approx(
+        [0.0, 100.0, 200.0, 300.0]
+    )
+    assert samples[-1]["position"]["x"] == pytest.approx(1.3)
+    assert samples[-1]["last_report_at_monotonic"] == pytest.approx(100.3)
+    assert samples[-1]["active_command"]["kwargs"] == {
+        "linear_speed": 400,
+        "angular_speed": 180,
+    }
+    coordinator.manager.request_iot_sync.assert_not_awaited()
+    coordinator.manager.request_iot_sync_continuous.assert_not_awaited()
+    coordinator.async_get_reports.assert_not_awaited()
+
+
+def test_in_window_telemetry_summary_measures_freshness_and_course_before_stop() -> (
+    None
+):
+    """Phase-1 go/no-go inputs come from changes observed inside the window."""
+    samples = [
+        {
+            "elapsed_ms": elapsed,
+            "last_report_at_monotonic": stamp,
+            "position": {"x": x, "y": 2.0, "toward": toward},
+        }
+        for elapsed, stamp, x, toward in (
+            (0.0, 10.0, 1.0, 90.0),
+            (100.0, 10.0, 1.0, 90.0),
+            (900.0, 10.9, 1.2, 91.0),
+            (1900.0, 11.9, 1.4, 94.0),
+            (3000.0, 13.0, 1.6, 98.0),
+        )
+    ]
+
+    summary = mammotion_services._summarize_in_window_telemetry(  # noqa: SLF001
+        samples,
+        window_duration_ms=4000,
+    )
+
+    assert summary["fresh_report_arrival_count"] == 3
+    assert summary["fresh_position_arrival_count"] == 3
+    assert summary["max_position_arrival_gap_ms"] == 1100.0
+    assert summary["toward_change_count"] == 3
+    assert summary["toward_changed_before_stop"] is True
 
 
 @pytest.mark.asyncio
@@ -11838,6 +12002,7 @@ async def test_motion_refresh_window_disabled_keeps_single_shot_behaviour(
 
     assert report["refresh_enabled"] is False
     assert report["refresh_commands_sent"] == 0
+    assert report["refresh_write_completions_elapsed_ms"] == []
     assert sends == []
     # The full pulse window is still waited out.
     assert clock["now"] == pytest.approx(104.0)
@@ -11902,6 +12067,9 @@ async def test_motion_refresh_window_stops_at_confirmed_refresh_budget(
     assert report["max_refresh_commands"] == 3
     assert report["refresh_commands_sent"] == 3
     assert len(report["refresh_write_durations_ms"]) == 3
+    assert report["refresh_write_completions_elapsed_ms"] == pytest.approx(
+        [200.0, 400.0, 600.0]
+    )
     assert sends == pytest.approx([100.2, 100.4, 100.6])
     assert clock["now"] == pytest.approx(100.6)
     assert report["elapsed_ms"] == pytest.approx(600.0)

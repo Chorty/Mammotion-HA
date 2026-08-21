@@ -1991,6 +1991,18 @@
           "name": "Prefer BLE",
           "description": "When true, prefer BLE over Wi-Fi/local transport when available."
         },
+        "motion_refresh_interval_ms": {
+          "name": "Motion refresh interval",
+          "description": "Milliseconds between identical movement-command refresh writes. Zero keeps the legacy single-shot behavior."
+        },
+        "in_window_sample_interval_ms": {
+          "name": "In-window sample interval",
+          "description": "Milliseconds between coordinator-cache telemetry samples while a refreshed command is open. Zero disables instrumentation; sampling sends no extra report requests during motion."
+        },
+        "duration_ms": {
+          "name": "Duration",
+          "description": "Bounded movement window in milliseconds, with a hard maximum of 4000."
+        },
         "sample_delays": {
           "name": "Sample delays",
           "description": "Seconds after command dispatch to sample telemetry response."

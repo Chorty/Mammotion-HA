@@ -35,6 +35,7 @@ def test_the_probe_defaults_to_single_shot() -> None:
     """Unchanged behaviour for every existing caller: refresh off."""
     data = _validated()
     assert data["motion_refresh_interval_ms"] == 0
+    assert data["in_window_sample_interval_ms"] == 0
     assert data["duration_ms"] == 1300
 
 
@@ -67,12 +68,28 @@ def test_refresh_interval_is_bounded() -> None:
             _validated(motion_refresh_interval_ms=bad)
 
 
+def test_in_window_sample_interval_is_opt_in_and_bounded() -> None:
+    """Cache sampling is disabled by default and rejects unsafe polling values."""
+    assert (
+        _validated(in_window_sample_interval_ms="0")["in_window_sample_interval_ms"]
+        == 0
+    )
+    assert (
+        _validated(in_window_sample_interval_ms=100)["in_window_sample_interval_ms"]
+        == 100
+    )
+    for bad in (-1, 1, 49, 1001):
+        with pytest.raises(vol.Invalid):
+            _validated(in_window_sample_interval_ms=bad)
+
+
 def test_services_yaml_exposes_both_fields() -> None:
     """A field the schema accepts but services.yaml hides is unusable from the UI."""
     root = Path(__file__).resolve().parents[3] / "custom_components" / "mammotion"
     doc = yaml.safe_load((root / "services.yaml").read_text(encoding="utf-8"))
     fields = doc["raw_pymammotion_motion_probe"]["fields"]
     assert fields["motion_refresh_interval_ms"]["default"] == 0
+    assert fields["in_window_sample_interval_ms"]["default"] == 0
     assert fields["duration_ms"]["default"] == 1300
 
 

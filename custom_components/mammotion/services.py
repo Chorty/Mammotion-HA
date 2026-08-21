@@ -879,6 +879,12 @@ RAW_PYMAMMOTION_MOTION_PROBE_SCHEMA = vol.Schema(
         vol.Optional("motion_refresh_interval_ms", default=0): vol.All(
             vol.Coerce(int), vol.Range(min=0, max=1000)
         ),
+        # Phase-1 continuous-controller feasibility instrumentation. Zero keeps
+        # every existing probe equivalent: no stream startup and no sampler.
+        vol.Optional("in_window_sample_interval_ms", default=0): vol.All(
+            vol.Coerce(int),
+            vol.Any(0, vol.Range(min=50, max=1000)),
+        ),
         # Bounded low: this probe has no closed loop and no waypoint, so the
         # only thing limiting travel is the window. 4000 ms at the app-parity
         # cadence is roughly 1.5 m.
@@ -5664,6 +5670,7 @@ async def _motion_refresh_window(
         "refresh_commands_sent": 0,
         "refresh_command_limit": max_refresh_commands,
         "refresh_write_durations_ms": [],
+        "refresh_write_completions_elapsed_ms": [],
     }
     if refresh_interval_ms <= 0:
         await _motion_open_sleep(coordinator, duration_seconds)
@@ -5745,6 +5752,9 @@ async def _motion_refresh_window(
             break
         report["refresh_write_durations_ms"].append(
             round((time.monotonic() - resend_started) * 1000, 3)
+        )
+        report["refresh_write_completions_elapsed_ms"].append(
+            round((time.monotonic() - window_started) * 1000, 3)
         )
         report["refresh_commands_sent"] += 1
     report["elapsed_ms"] = round((time.monotonic() - window_started) * 1000, 3)
@@ -6603,7 +6613,132 @@ async def _send_manager_command_with_args(
     )
 
 
-async def _raw_pymammotion_motion_probe(
+def _in_window_telemetry_sample(
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    index: int,
+    window_started: float,
+    command: str,
+    command_args: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Capture one compact sample without causing coordinator or BLE I/O."""
+    telemetry = _custom_path_telemetry_snapshot(coordinator)
+    position = telemetry.get("position", {}) or {}
+    try:
+        handle = coordinator.manager.mower(coordinator.device_name)
+    except Exception:  # noqa: BLE001
+        handle = None
+    return {
+        "index": index,
+        "elapsed_ms": round((time.monotonic() - window_started) * 1000, 3),
+        "captured_at": _utc_timestamp(),
+        # DeviceHandle stamps this monotonic value for every received LubaMsg.
+        # Unlike x/y, it proves a fresh report even if position is unchanged.
+        "last_report_at_monotonic": (
+            _safe_attr_path(handle, "last_report_at") if handle is not None else None
+        ),
+        "position": {
+            "source": position.get("source"),
+            "x": position.get("x"),
+            "y": position.get("y"),
+            "toward": position.get("toward"),
+            "pos_type": position.get("pos_type"),
+            "zone_hash": position.get("zone_hash"),
+        },
+        "vio": {
+            "heading": _safe_attr_path(
+                coordinator.data, "report_data.vision_info.heading"
+            ),
+            "state": _safe_attr_path(
+                coordinator.data, "report_data.vision_info.vio_state"
+            ),
+        },
+        "active_command": {"command": command, "kwargs": dict(command_args)},
+    }
+
+
+async def _capture_in_window_telemetry(
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    sample_interval_ms: int,
+    duration_ms: int,
+    window_started: float,
+    stop_event: asyncio.Event,
+    command: str,
+    command_args: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Poll cached telemetry concurrently for one strictly bounded window."""
+    interval_seconds = sample_interval_ms / 1000
+    deadline = window_started + duration_ms / 1000
+    # This count is a second bound when test clocks or sleeps are patched.
+    max_samples = math.ceil(duration_ms / sample_interval_ms) + 1
+    samples: list[dict[str, Any]] = []
+    while len(samples) < max_samples and not stop_event.is_set():
+        samples.append(
+            _in_window_telemetry_sample(
+                coordinator,
+                index=len(samples),
+                window_started=window_started,
+                command=command,
+                command_args=command_args,
+            )
+        )
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        await asyncio.sleep(min(interval_seconds, remaining))
+    return samples
+
+
+def _summarize_in_window_telemetry(
+    samples: Sequence[Mapping[str, Any]], *, window_duration_ms: int
+) -> dict[str, Any]:
+    """Summarize fresh reports and position/course changes in cached samples."""
+    report_arrivals: list[float] = []
+    position_arrivals: list[float] = []
+    toward_changes: list[float] = []
+    unset = object()
+    previous_report: Any = unset
+    previous_position: tuple[Any, Any] | None = None
+    previous_toward: Any = None
+    for sample in samples:
+        elapsed_ms = float(sample.get("elapsed_ms", 0.0))
+        report_stamp = sample.get("last_report_at_monotonic")
+        position = sample.get("position", {}) or {}
+        xy = (position.get("x"), position.get("y"))
+        toward = position.get("toward")
+        if previous_report is not unset and report_stamp != previous_report:
+            report_arrivals.append(elapsed_ms)
+        if previous_position is not None and xy != previous_position:
+            position_arrivals.append(elapsed_ms)
+        if previous_toward is not None and toward != previous_toward:
+            toward_changes.append(elapsed_ms)
+        previous_report = report_stamp
+        previous_position = xy
+        previous_toward = toward
+
+    position_boundaries = [0.0, *position_arrivals, float(window_duration_ms)]
+    position_gaps = [
+        round(later - earlier, 3)
+        for earlier, later in zip(
+            position_boundaries, position_boundaries[1:], strict=False
+        )
+    ]
+    return {
+        "sample_count": len(samples),
+        "fresh_report_arrival_count": len(report_arrivals),
+        "fresh_report_arrivals_elapsed_ms": report_arrivals,
+        "fresh_position_arrival_count": len(position_arrivals),
+        "fresh_position_arrivals_elapsed_ms": position_arrivals,
+        "position_arrival_gaps_including_boundaries_ms": position_gaps,
+        "max_position_arrival_gap_ms": max(position_gaps, default=None),
+        "toward_change_count": len(toward_changes),
+        "toward_changes_elapsed_ms": toward_changes,
+        "toward_changed_before_stop": bool(toward_changes),
+    }
+
+
+async def _raw_pymammotion_motion_probe(  # noqa: C901
     coordinator: MammotionReportUpdateCoordinator,
     *,
     command: str = "send_movement",
@@ -6612,6 +6747,7 @@ async def _raw_pymammotion_motion_probe(
     speed: float = 0.4,
     prefer_ble: bool = True,
     motion_refresh_interval_ms: int = 0,
+    in_window_sample_interval_ms: int = 0,
     duration_ms: int = 1300,
     sample_delays: list[float] | tuple[float, ...] = (0, 5, 10, 20, 30, 45, 60),
     dry_run: bool = True,
@@ -6641,6 +6777,8 @@ async def _raw_pymammotion_motion_probe(
         confirm_clear_area=confirm_clear_area,
     )
     blockers = [gate["name"] for gate in gates if not gate["passed"]]
+    if in_window_sample_interval_ms > 0 and motion_refresh_interval_ms <= 0:
+        blockers.append("in_window_sampling_requires_motion_refresh")
     command_args = _raw_pymammotion_command_args(
         command,
         linear_speed=linear_speed,
@@ -6656,6 +6794,24 @@ async def _raw_pymammotion_motion_probe(
         "prefer_ble": prefer_ble,
         "transport_preference": "ble_preferred" if prefer_ble else "default",
         "motion_refresh_interval_ms": motion_refresh_interval_ms,
+        "in_window_telemetry": {
+            "enabled": in_window_sample_interval_ms > 0,
+            "sample_interval_ms": in_window_sample_interval_ms,
+            "source": "coordinator_cache_only",
+            "extra_ble_report_requests_during_window": 0,
+            "planned_max_samples": (
+                math.ceil(duration_ms / in_window_sample_interval_ms) + 1
+                if in_window_sample_interval_ms > 0
+                else 0
+            ),
+            "report_stream_plan": (
+                ["async_start_report_stream", "async_start_continuous_reports"]
+                if in_window_sample_interval_ms > 0
+                else []
+            ),
+            "samples": [],
+            "summary": None,
+        },
         "duration_ms": duration_ms,
         # Named so the record says what kind of motion this was without anyone
         # having to re-read the speeds.
@@ -6699,6 +6855,33 @@ async def _raw_pymammotion_motion_probe(
         }
         return result
 
+    if in_window_sample_interval_ms > 0:
+        stream_duration_ms = max(10_000, duration_ms + 5_000)
+        stream_result: dict[str, Any] = {
+            "attempted": True,
+            "duration_ms": stream_duration_ms,
+            "started": False,
+            "continuous_started": False,
+            "error": None,
+        }
+        result["in_window_telemetry"]["report_stream"] = stream_result
+        try:
+            if hasattr(coordinator, "async_start_report_stream"):
+                await coordinator.async_start_report_stream(
+                    duration_ms=stream_duration_ms
+                )
+                stream_result["started"] = True
+            if hasattr(coordinator, "async_start_continuous_reports"):
+                await coordinator.async_start_continuous_reports(
+                    duration_ms=stream_duration_ms
+                )
+                stream_result["continuous_started"] = True
+            stream_result["queue_settle"] = await _settle_ble_command_queue(coordinator)
+        except Exception as err:  # noqa: BLE001
+            stream_result["error"] = f"{type(err).__name__}: {err}"
+            result["reason"] = "report_stream_failed"
+            return result
+
     started = time.monotonic()
     result["command_result"]["attempted"] = True
     try:
@@ -6734,15 +6917,45 @@ async def _raw_pymammotion_motion_probe(
                 command_kwargs=command_args,
             )
 
-        result["motion_refresh"] = await _motion_refresh_window(
-            coordinator,
-            resend=_resend,
-            duration_seconds=duration_ms / 1000.0,
-            refresh_interval_ms=motion_refresh_interval_ms,
-        )
+        window_started = time.monotonic()
+        sampler_stop = asyncio.Event()
+        sampler_task: asyncio.Task[list[dict[str, Any]]] | None = None
+        if in_window_sample_interval_ms > 0:
+            sampler_task = asyncio.create_task(
+                _capture_in_window_telemetry(
+                    coordinator,
+                    sample_interval_ms=in_window_sample_interval_ms,
+                    duration_ms=duration_ms,
+                    window_started=window_started,
+                    stop_event=sampler_stop,
+                    command=command,
+                    command_args=command_args,
+                )
+            )
+        try:
+            result["motion_refresh"] = await _motion_refresh_window(
+                coordinator,
+                resend=_resend,
+                duration_seconds=duration_ms / 1000.0,
+                refresh_interval_ms=motion_refresh_interval_ms,
+            )
+        except BaseException:
+            sampler_stop.set()
+            if sampler_task is not None:
+                with contextlib.suppress(BaseException):
+                    await sampler_task
+            raise
+        sampler_stop.set()
         result["stop_result"] = await _manual_velocity_stop_attempt(
             coordinator, use_wifi=not prefer_ble
         )
+        if sampler_task is not None:
+            in_window_samples = await sampler_task
+            result["in_window_telemetry"]["samples"] = in_window_samples
+            result["in_window_telemetry"]["summary"] = _summarize_in_window_telemetry(
+                in_window_samples,
+                window_duration_ms=duration_ms,
+            )
 
     # 🚨 FORCE A REPORT REFRESH, THEN WAIT FOR THE FEED TO SETTLE. Without this
     # the probe reads whatever the coordinator last cached and is blind to its
@@ -16450,6 +16663,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             speed=call.data["speed"],
             prefer_ble=call.data["prefer_ble"],
             motion_refresh_interval_ms=call.data["motion_refresh_interval_ms"],
+            in_window_sample_interval_ms=call.data["in_window_sample_interval_ms"],
             duration_ms=call.data["duration_ms"],
             sample_delays=tuple(call.data["sample_delays"]),
             dry_run=call.data["dry_run"],

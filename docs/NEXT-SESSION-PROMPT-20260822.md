@@ -29,13 +29,21 @@ The gate was armed only around the authorized run and verified DISARMED after:
 `MODE_PAUSE`. Combined 3.0 m evidence is now **5 reached / 1 failed, n = 6**;
 this proves a 3-leg chain can complete, not that 3.0 m is reliable.
 
-## UPDATE — continuous motion Phase 0 is offline only
+## UPDATE — continuous motion Phase 1 instrumentation is ready, undeployed
 
 A pure lookahead controller and JSON replay now exercise bounded steering and
 fail-closed fault decisions with **no Home Assistant import or dispatch path**.
-No continuous executor/service exists and no mower command was sent for this
-work. Before any closed loop, Phase 1 must measure x/y and `toward` timestamps
-*inside* bounded 4 s straight and shallow-arc windows. Exact go/no-go criteria:
+The existing bounded raw probe now also accepts opt-in
+`in_window_sample_interval_ms`; at 100 ms it concurrently records cached x/y,
+`toward`, VIO, `last_report_at`, active command, and refresh completions without
+extra in-window BLE report requests. It fails closed if refresh is off or stream
+startup fails, and dry run starts no stream and sends no command.
+
+This code is **not deployed**, no physical capture was run, and no mower command
+was sent for the instrumentation work. No continuous executor/service exists.
+Next, deploy motion-disabled and dry-run the exact straight and shallow-arc
+plans; each later 4 s physical window needs separate explicit authorization.
+Exact go/no-go criteria:
 `docs/continuous-motion-feasibility-plan-20260821.md`.
 
 ## STATE (verified 2026-08-21 ~end of session — RE-VERIFY BEFORE ACTING)
@@ -47,7 +55,7 @@ work. Before any closed loop, Phase 1 must measure x/y and `toward` timestamps
 - Motion gate **DISARMED and verified** (`enabled: false`).
 - Mower was last seen at `(11.7615, -8.2563)`, `AREA_INSIDE`, RTK Fix,
   `MODE_PAUSE`, not charging, after the successful chain.
-- Current baseline: **792 pytest, 91 frontend**, ruff, ruff format, mypy, ten
+- Current baseline: **798 pytest, 91 frontend**, ruff, ruff format, mypy, ten
   pre-commit hooks, `check_doc_symbols.py` 1143 claims, and
   `check_accepted_profile.py` **ACCEPTED**.
 
