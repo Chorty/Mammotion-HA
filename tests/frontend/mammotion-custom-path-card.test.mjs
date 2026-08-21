@@ -74,6 +74,7 @@ const {
   NIGHT_GO_PROFILE,
   PROFILE_KEYS,
   SPLIT_LEG_TARGET_METRES,
+  CORRECTABLE_AIM_FLOOR_DEGREES,
   MammotionCustomPathCard,
 } =
   await import("../../custom_components/mammotion/www/mammotion-custom-path-card.js");
@@ -1629,4 +1630,180 @@ test("an armed override panel says so loudly", () => {
   assert.match(armed, /1 safety gate overridden/);
   assert.match(armed, /reset automatically/);
   assert.match(armed, /recorded in the run JSON/);
+});
+
+// ---------------------------------------------------------------------------
+// Keep-out zones and the correctable-leg-length bound (beta66 card work)
+//
+// The polygon below is the REAL trampoline obstacle from the live map --
+// `obstacle:1529607395159402290`, the zone a supervised 10.8 m run drove into
+// on 2026-08-20 -- not an invented rectangle. beta49 is the precedent: four
+// card defects existed only because it had been tested against fixtures rather
+// than real `export_map` output.
+// ---------------------------------------------------------------------------
+
+const TRAMPOLINE_ZONE = [
+  { x: 11.976, y: -2.54 },
+  { x: 13.11, y: -2.49 },
+  { x: 13.601, y: -2.274 },
+  { x: 14.175, y: -1.707 },
+  { x: 14.45, y: -0.86 },
+  { x: 14.2, y: 0.6 },
+  { x: 13.4, y: 1.4 },
+  { x: 12.1, y: 1.53 },
+  { x: 10.9, y: 0.9 },
+  { x: 10.47, y: -0.4 },
+  { x: 10.9, y: -1.9 },
+];
+
+function cardWithZone() {
+  const element = card();
+  element._mapData = {
+    area_polygons: {},
+    keep_out_polygons: { "obstacle:1529607395159402290": TRAMPOLINE_ZONE },
+  };
+  return element;
+}
+
+test("a click inside a real keep-out zone is refused before dispatch", () => {
+  const element = cardWithZone();
+  element._mapT = {};
+  // The zone centroid -- unambiguously inside the trampoline polygon.
+  element._svgPointFromEvent = () => ({ x: 12.185, y: -0.76 });
+  let previews = 0;
+  element._validateAndPreview = () => {
+    previews += 1;
+  };
+
+  element._onMapClick({ target: {} });
+
+  assert.equal(element._waypoints.length, 0, "the waypoint must not be added");
+  assert.equal(previews, 0, "a refused click must not trigger a preview");
+  assert.match(element._status, /keep-out zone \(obstacle\)/);
+});
+
+test("a click clear of every keep-out is still accepted", () => {
+  const element = cardWithZone();
+  element._mapT = {};
+  element._svgPointFromEvent = () => ({ x: 4.0, y: -5.0 });
+  let previews = 0;
+  element._validateAndPreview = () => {
+    previews += 1;
+  };
+
+  element._onMapClick({ target: {} });
+
+  assert.deepEqual(element._waypoints, [{ x: 4.0, y: -5.0 }]);
+  assert.equal(previews, 1);
+});
+
+test("a map with no keep-out geometry refuses nothing", () => {
+  // Absence of geometry must not read as "everywhere is a zone".
+  const element = card();
+  element._mapData = { area_polygons: {} };
+  element._mapT = {};
+  element._svgPointFromEvent = () => ({ x: 12.185, y: -0.76 });
+  element._validateAndPreview = () => {};
+
+  element._onMapClick({ target: {} });
+
+  assert.equal(element._waypoints.length, 1);
+});
+
+test("the keep-out test is PER-POINT, matching the backend's gap", () => {
+  // ⚠️ Pinned deliberately, mirroring
+  // test_a_leg_that_clips_a_corner_is_not_caught in the backend suite. A leg
+  // whose ENDPOINTS straddle a zone is not caught by either side. If segment
+  // -level containment ever lands, this test should fail and be rewritten.
+  const element = cardWithZone();
+  const straddling = [
+    { x: 9.0, y: -0.76 },
+    { x: 16.0, y: -0.76 },
+  ];
+  assert.equal(element._keepOutViolations(straddling).length, 0);
+});
+
+test("the correctable leg limit is tolerance / sin(floor)", () => {
+  const element = card();
+  element._config = { ...element._config, waypoint_tolerance: 0.15 };
+  const limit = element._correctableLegLimitMetres();
+  const expected =
+    0.15 / Math.sin((CORRECTABLE_AIM_FLOOR_DEGREES * Math.PI) / 180);
+  assert.ok(Math.abs(limit - expected) < 1e-9);
+  assert.ok(Math.abs(limit - 0.5796) < 1e-3, `expected ~0.5796, got ${limit}`);
+});
+
+test("the card's correctable floor matches the backend constant", () => {
+  // services.py derives _MIN_CORRECTABLE_AIM_ERROR_DEGREES as
+  // _POST_TURN_ALIGNMENT_TOLERANCE_DEGREES (10) + _REALIGN_DEADBAND_DEGREES (5).
+  // Drift here and the card advises against a floor the backend does not use.
+  const services = readFileSync(
+    "custom_components/mammotion/services.py",
+    "utf8",
+  );
+  const postTurn = services.match(
+    /^_POST_TURN_ALIGNMENT_TOLERANCE_DEGREES = ([\d.]+)/m,
+  );
+  const deadband = services.match(/^_REALIGN_DEADBAND_DEGREES = ([\d.]+)/m);
+  assert.ok(postTurn && deadband, "both backend constants must be findable");
+  assert.equal(
+    CORRECTABLE_AIM_FLOOR_DEGREES,
+    Number(postTurn[1]) + Number(deadband[1]),
+  );
+});
+
+test("a leg over the bound warns but never blocks the run", () => {
+  const element = card();
+  element._config = { ...element._config, waypoint_tolerance: 0.15 };
+  element._waypoints = [{ x: 1, y: 4 }]; // 3 m from the mower at (1,1)
+  element._confirmBlades = true;
+  element._confirmClear = true;
+
+  const longest = element._longestPlannedLegMetres();
+  assert.ok(longest > 2.9 && longest < 3.1, `longest was ${longest}`);
+
+  // The advisory must not CHANGE the level -- whatever the underlying banner
+  // says, adding a warning line must leave it exactly as it was.
+  const banner = element._readiness();
+  assert.equal(
+    banner.level,
+    element._readinessLevel().level,
+    "the advisory must not alter the readiness level",
+  );
+  const advisory = banner.details.find((line) => line.includes("can protect"));
+  assert.ok(advisory, `no advisory in: ${JSON.stringify(banner.details)}`);
+  assert.match(advisory, /0\.58 m/);
+  assert.match(advisory, /warning, not a blocker/);
+});
+
+test("a leg inside the bound produces no advisory", () => {
+  const element = card();
+  element._config = { ...element._config, waypoint_tolerance: 0.15 };
+  element._waypoints = [{ x: 1, y: 1.4 }]; // 0.4 m -- under 0.58
+  element._confirmBlades = true;
+  element._confirmClear = true;
+
+  const banner = element._readiness();
+  assert.equal(
+    banner.details.find((line) => line.includes("can protect")),
+    undefined,
+  );
+});
+
+test("the leg advisory is visible while still arming, not only when ready", () => {
+  // 🔑 Regression: the advisory was first written inside the "ready" branch,
+  // so it stayed hidden through the whole period an operator is choosing where
+  // to click. The warning is only useful BEFORE everything is confirmed.
+  const element = card();
+  element._config = { ...element._config, waypoint_tolerance: 0.15 };
+  element._waypoints = [{ x: 1, y: 4 }];
+  element._confirmBlades = false;
+  element._confirmClear = false;
+
+  const banner = element._readiness();
+  assert.notEqual(banner.level, "ready", "precondition: not yet ready");
+  assert.ok(
+    banner.details.some((line) => line.includes("can protect")),
+    `advisory missing while arming: ${JSON.stringify(banner.details)}`,
+  );
 });

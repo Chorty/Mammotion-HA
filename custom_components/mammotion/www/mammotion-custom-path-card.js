@@ -38,6 +38,25 @@ const BUDGET_CHECK_METRES_PER_PULSE = 0.3;
 // ⚠️ 3.81 m is 95% of the longest straight leg ever executed (4.0 m, n = 1).
 // 4 x 3.85 = 15.40 m has never been driven.
 const SPLIT_LEG_TARGET_METRES = 3.85;
+
+// 🚨 The mid-drive controller only fires a correction once aim error reaches
+// _MIN_CORRECTABLE_AIM_ERROR_DEGREES in services.py (post-turn tolerance 10 +
+// deadband 5). An error just under that floor is NEVER corrected, whatever it
+// costs, and it buys `distance * sin(floor)`. Setting that equal to
+// waypoint_tolerance gives the longest leg whose landing can be protected:
+//
+//     limit = waypoint_tolerance / sin(CORRECTABLE_AIM_FLOOR_DEGREES)
+//
+// On the accepted profile (tolerance 0.15) that is 0.580 m. At 3.0 m the same
+// floor permits an uncorrectable 0.776 m miss -- 5x tolerance -- which is why
+// the measured-good regime is ~0.8 m and why 3.0 m legs miss.
+//
+// ⚠️ ADVISORY and deliberately pessimistic: it asks what happens if aim sits at
+// the floor for a whole leg. Real legs correct repeatedly -- a 3.0 m sub-leg
+// reached target at 0.094 m on 2026-08-20 while its sibling missed by 0.259 m.
+// The card WARNS; it must never refuse on this. Mirrors
+// `_correctable_leg_length_limit_m` in services.py; keep the two in step.
+const CORRECTABLE_AIM_FLOOR_DEGREES = 15.0;
 // Deliberate safety-gate overrides, 2026-08-19, at the operator's explicit
 // request: every blocker gets a toggle so a restriction can be lifted ON
 // PURPOSE instead of being worked around by editing a constant and redeploying.
@@ -762,7 +781,34 @@ class MammotionCustomPathCard extends HTMLElement {
   // Readiness banner
   // ---------------------------------------------------------------------
 
+  // The leg-length advisory is appended to WHATEVER banner comes back, not
+  // just the "ready" one. It was originally added inside the ready branch and
+  // a test caught that immediately: readiness sits at "arming" or "blocked"
+  // for most of the time an operator is actually choosing where to click, so
+  // the warning was invisible during the only window in which it is useful.
   _readiness() {
+    const banner = this._readinessLevel();
+    const limit = this._correctableLegLimitMetres();
+    const longest = this._longestPlannedLegMetres();
+    if (limit && longest > limit) {
+      const worst =
+        longest * Math.sin((CORRECTABLE_AIM_FLOOR_DEGREES * Math.PI) / 180);
+      // ⚠️ ADVISORY ONLY -- never downgrade `level`. A leg past this bound can
+      // still land well (3.0 m reached target at 0.094 m on 2026-08-20) and a
+      // leg inside it can still miss. The bound says the controller can no
+      // longer GUARANTEE the landing, because aim error under the correction
+      // floor is never corrected at all.
+      banner.details = [
+        ...(banner.details || []),
+        `⚠️ Longest leg is ${longest.toFixed(2)} m, over the ${limit.toFixed(2)} m the controller can protect. ` +
+          `Aim error below the ${CORRECTABLE_AIM_FLOOR_DEGREES.toFixed(0)}° correction floor is never corrected, so this leg can miss by up to ${worst.toFixed(2)} m. ` +
+          `Measured-good is ~0.8 m. This is a warning, not a blocker.`,
+      ];
+    }
+    return banner;
+  }
+
+  _readinessLevel() {
     if (this._motionRunActive()) {
       return {
         level: "busy",
@@ -806,15 +852,16 @@ class MammotionCustomPathCard extends HTMLElement {
     const headline = split.applied
       ? `Ready — Real Go will drive ${legs} leg${legs === 1 ? "" : "s"} to reach ${destinations} destination${destinations === 1 ? "" : "s"}.`
       : `Ready — Real Go will drive ${legs} segment${legs === 1 ? "" : "s"}.`;
+    const details = split.applied
+      ? [
+          `Long legs are split into collinear sub-legs of at most ${SPLIT_LEG_TARGET_METRES.toFixed(2)} m; the extra junctions are 0° turns and cost no turn commands.`,
+        ]
+      : [];
+    details.push(this._profileLabel());
     return {
       level: "ready",
       headline,
-      details: split.applied
-        ? [
-            `Long legs are split into collinear sub-legs of at most ${SPLIT_LEG_TARGET_METRES.toFixed(2)} m; the extra junctions are 0° turns and cost no turn commands.`,
-            this._profileLabel(),
-          ]
-        : [this._profileLabel()],
+      details,
     };
   }
 
@@ -945,6 +992,90 @@ class MammotionCustomPathCard extends HTMLElement {
     if (start) points.push(start);
     points.push(...this._waypoints);
     return points;
+  }
+
+  // 🚨 Keep-out geometry, exposed by `export_map` since beta63. Until this the
+  // card drew mowing areas ONLY, so a click landing in an obstacle zone looked
+  // exactly like a legal one -- which is how a supervised 10.8 m run drove into
+  // a trampoline on 2026-08-20. The backend refuses such a path at dispatch;
+  // drawing it here refuses it at CLICK time, before daylight is spent.
+  //
+  // Sibling dicts of `map.area` in HashList: obstacle, no_go_zone,
+  // virtual_wall, no_go_zone_variant, visual_obstacle_zone -- already flattened
+  // by the backend into `keep_out_polygons`, keyed `"<kind>:<hash>"`.
+  _keepOutPolygons() {
+    const zones = this._mapData?.keep_out_polygons;
+    if (!zones || typeof zones !== "object") return {};
+    return zones;
+  }
+
+  // Ray-cast point-in-polygon, matching `_point_in_polygon` in services.py.
+  // ⚠️ Boundary cases are not defined identically in the two implementations,
+  // so this must never be the ONLY thing standing between a click and a zone --
+  // the backend check remains authoritative. This exists to warn early.
+  _pointInPolygon(point, polygon) {
+    if (!Array.isArray(polygon) || polygon.length < 3) return false;
+    const x = Number(point?.x);
+    const y = Number(point?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    let inside = false;
+    for (let i = 0; i < polygon.length; i += 1) {
+      const a = polygon[i];
+      const b = polygon[(i + 1) % polygon.length];
+      const ax = Number(a.x);
+      const ay = Number(a.y);
+      const bx = Number(b.x);
+      const by = Number(b.y);
+      if (!Number.isFinite(ax) || !Number.isFinite(by)) continue;
+      if (ay > y !== by > y && x < ((bx - ax) * (y - ay)) / (by - ay) + ax) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  }
+
+  // Which of these points sit inside a keep-out, and which zone caught them.
+  // ⚠️ PER-POINT, exactly like the backend's check -- a leg that clips a corner
+  // with neither endpoint inside is NOT caught here either. Segment-level
+  // containment is the real fix; this deliberately does not pretend otherwise.
+  _keepOutViolations(points) {
+    const zones = this._keepOutPolygons();
+    const found = [];
+    (points || []).forEach((point, index) => {
+      for (const [name, polygon] of Object.entries(zones)) {
+        if (this._pointInPolygon(point, polygon)) {
+          found.push({ index, zone: name, point });
+          break;
+        }
+      }
+    });
+    return found;
+  }
+
+  // Longest leg whose landing the controller can still protect. See
+  // CORRECTABLE_AIM_FLOOR_DEGREES. Returns null when the tolerance is unknown,
+  // so callers show nothing rather than inventing a bound.
+  _correctableLegLimitMetres() {
+    const tolerance = Number(this._profileValue("waypoint_tolerance"));
+    if (!Number.isFinite(tolerance) || tolerance <= 0) return null;
+    const floor = (CORRECTABLE_AIM_FLOOR_DEGREES * Math.PI) / 180;
+    const sine = Math.sin(floor);
+    if (!(sine > 0)) return null;
+    return tolerance / sine;
+  }
+
+  // The longest sub-leg the current click would actually drive, AFTER splitting.
+  _longestPlannedLegMetres() {
+    const points = this._plannedSplit().points || [];
+    let longest = 0;
+    for (let i = 1; i < points.length; i += 1) {
+      const length = Math.hypot(
+        points[i].x - points[i - 1].x,
+        points[i].y - points[i - 1].y,
+      );
+      if (Number.isFinite(length) && length > longest) longest = length;
+    }
+    return longest;
   }
 
   _currentPositionPoint() {
@@ -1577,6 +1708,19 @@ class MammotionCustomPathCard extends HTMLElement {
     if (!point) return;
     if (this._waypoints.length >= MAX_WAYPOINTS) {
       this._status = `Maximum ${MAX_WAYPOINTS} waypoints reached. Remove one before adding another.`;
+      this._render();
+      return;
+    }
+    // 🚨 Refuse at CLICK time, not at dispatch. The backend refuses this path
+    // too (`path_points_inside_keep_out_zone`, beta63), but only once the
+    // operator has positioned the mower and spent the daylight getting there.
+    // ⚠️ PER-POINT, like the backend: a leg CLIPPING a zone corner with neither
+    // endpoint inside is still not caught by either. Do not read this as
+    // segment-level containment.
+    const blocked = this._keepOutViolations([point]);
+    if (blocked.length) {
+      const kind = String(blocked[0].zone).split(":")[0];
+      this._status = `Refused: that point is inside a keep-out zone (${kind}). Pick a point outside the red zones.`;
       this._render();
       return;
     }
@@ -2482,6 +2626,45 @@ class MammotionCustomPathCard extends HTMLElement {
       svgEl.appendChild(label);
     }
 
+    // 🚨 Keep-outs AFTER areas, so an obstacle can never be painted over by the
+    // mowing zone that contains it. Both are filled, and SVG paints in document
+    // order: draw these first and a keep-out inside "Backyard Right" would be
+    // invisible -- the precise failure mode that let a leg be clicked straight
+    // through a trampoline on 2026-08-20.
+    for (const [name, points] of Object.entries(this._keepOutPolygons())) {
+      if (!Array.isArray(points) || points.length < 3) continue;
+      svgEl.appendChild(
+        el("polygon", {
+          points: points
+            .map(
+              (point) =>
+                `${mt.toSX(point.x).toFixed(1)},${mt.toSY(point.y).toFixed(1)}`,
+            )
+            .join(" "),
+          fill: "rgba(239,68,68,0.22)",
+          stroke: "#ef4444",
+          "stroke-width": "2",
+          "stroke-dasharray": "5,3",
+          "stroke-linejoin": "round",
+          "pointer-events": "none",
+        }),
+      );
+      const centre = this._centroid(points);
+      const marker = el("text", {
+        x: mt.toSX(centre.x).toFixed(1),
+        y: mt.toSY(centre.y).toFixed(1),
+        "text-anchor": "middle",
+        "dominant-baseline": "middle",
+        fill: "#fca5a5",
+        "font-size": "11",
+        "pointer-events": "none",
+      });
+      // The kind ("obstacle", "no_go_zone", ...) is the informative half; the
+      // hash after the colon is noise at a glance.
+      marker.textContent = `⛔ ${String(name).split(":")[0]}`;
+      svgEl.appendChild(marker);
+    }
+
     const start = this._currentPositionPoint();
     // ⚠️ Draw and colour against the SPLIT path, not [start, ...waypoints].
     // `runResult.segments` is one entry per DRIVEN leg, so once a split turns
@@ -2998,6 +3181,7 @@ export {
   MAX_WAYPOINTS,
   NIGHT_GO_PROFILE,
   SPLIT_LEG_TARGET_METRES,
+  CORRECTABLE_AIM_FLOOR_DEGREES,
   PROFILE_KEYS,
   MammotionCustomPathCard,
 };
