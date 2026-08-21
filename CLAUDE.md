@@ -26,7 +26,33 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: `0.6.4-beta67` released and installed motion-disabled
+## Current build: `0.6.4-beta68` released and installed motion-disabled
+
+🚨 **2026-08-21 — A LEG CAN BE DRAWN STRAIGHT THROUGH A KEEP-OUT ZONE, AND
+NEITHER THE CARD NOR THE BACKEND REFUSES IT.** Found in a browser, not by a
+test: click two legal points either side of an obstacle zone and the path is
+drawn — and would be driven — through it. Containment is **PER-POINT** on both
+sides, so both endpoints being outside is enough to pass. beta68's
+`_legsCrossingKeepOuts` tests the leg against every zone edge, paints a crossing
+leg red/dashed, and says in the banner that neither will refuse it.
+⚠️ **It WARNS, it does not block** — the backend still dispatches such a path,
+so a card refusal would be stricter than the machine that drives, and the
+operator's standing decision is that being wrongly blocked is the worse failure.
+**Segment-level containment in the BACKEND is the real fix and is still open.**
+
+✅ **beta67 was fully verified in a browser (2026-08-21)** — version, two dashed
+red `obstacle` zones rendering, a click inside one refused, and the leg-length
+advisory reading *"Longest leg is 3.11 m, over the 0.58 m the controller can
+protect… can miss by up to 0.80 m. This is a warning, not a blocker."*
+3.11 × sin 15° = 0.805, so the bound is right end to end on real geometry.
+
+🔑 **THE ONE-SIDED AIM DRIFT IS REAL — three independent runs.** A 2.27 m card
+segment reached target at **0.11378 m** while running **8 of 8 pulses negative,
+mean −10.87°**, growing −7.7° → −19.8° as range closed — the same signature as
+the chain run's failed sub-leg 2 (−10.29°, 9 of 9). It is **not noise**: it is
+consistent within a run and inflates as bearing-to-target rotates. That run
+succeeded *because the leg was shorter*, which is direct support for the bound
+below. `docs/evidence-vector-segment-2p27m-20260820.json`.
 
 🆕 **2026-08-20 — THE CARD NOW DRAWS KEEP-OUTS AND REFUSES A CLICK INSIDE ONE.**
 `export_map.keep_out_polygons` has been available since beta63 and the card

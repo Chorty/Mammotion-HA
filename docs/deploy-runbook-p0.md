@@ -8,6 +8,50 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta67 → beta68 — 2026-08-21 13:12-13:22 EDT, motion-disabled
+
+Ships **leg-level keep-out warning** and a **legend entry** for the zones.
+Gate was found ARMED at rest before the deploy (no active session, mower
+stationary) and was DISARMED for it; **no motion was commanded.** Touches no
+`LUBA_ACCEPTANCE_PROFILE` key; `check_accepted_profile.py` still ACCEPTED.
+
+| | beta68 |
+| --- | --- |
+| Files | 46/46 byte-identical |
+| Card md5 (both paths + local) | `f143465a5bb120ed759ab328c15dad9f` |
+| Archive SHA-256 local = host | `3b03fa2633395162a9696a07f0b699abddd51f28e7d72837aedf71e75572247a` |
+| AppleDouble entries | 0 |
+| Backup | `/config/mammotion-backup-20260821-1312-pre-beta68.tgz` |
+| Tag | `v0.6.4-beta68` |
+| Quartet on host | manifest `0.6.4-beta68`, CARD_VERSION `0.6.4-beta68` (both paths) |
+| Lovelace resource | `?v=0.6.4-beta68&build=f143465a` (read back) |
+| Restart | API up 45 s; 133 Mammotion entities at 154 s |
+| Config entry | `loaded` |
+| Gate after | `enabled: false`, `real_motion_allowed: false`, no session |
+
+New code confirmed in the **served** copy (`/config/www/community/…`):
+`_legsCrossingKeepOuts` ×3, `_segmentsIntersect` ×2, `"keep-out zone"` ×3.
+
+🔑 **beta67 was fully verified in a browser first**, and that is what produced
+this build. All four checks passed — version, two dashed red `obstacle` zones
+rendering, a click inside one refused, and the advisory reading
+*"Longest leg is 3.11 m, over the 0.58 m the controller can protect… can miss by
+up to 0.80 m. This is a warning, not a blocker."* (3.11 × sin 15° = 0.805, so
+the arithmetic is right end to end.)
+
+🚨 **The browser check also found a real defect: a LEG can be drawn straight
+through a keep-out zone.** Both waypoints legal, containment per-point, so
+neither card nor backend objects. beta68 detects the crossing, paints the leg
+red and dashed, and says in the banner that neither will refuse it.
+⚠️ **It warns; it does not block** — the backend still dispatches such a path,
+so refusing here would make the card stricter than the machine that drives.
+Segment-level containment in the BACKEND is still the real fix.
+
+🚨 **Browser check owed for beta68**: draw a path *through* a zone and confirm
+the leg renders red/dashed with the 🚨 banner line, and that Real Go stays
+available.
+
+
 ### beta66 → beta67 — 2026-08-20 21:11-21:20 EDT, motion-disabled
 
 Ships the **card keep-out rendering and the unprotectable-leg advisory**. Gate

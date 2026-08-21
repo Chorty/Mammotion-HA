@@ -11,6 +11,25 @@ measurements stand — but do not act on any build/host/gate state they describe
 "validate what shipped" through to named destinations. Read that for direction;
 read the item below for the specific next run.
 
+## 🚨 2026-08-21 — beta68: a LEG through a keep-out is refused by NOBODY
+
+**Host runs `0.6.4-beta68`**, motion-disabled, 46/46 byte-identical, card md5
+`f143465a5bb120ed759ab328c15dad9f` at both paths, resource
+`?v=0.6.4-beta68&build=f143465a`, gate DISARMED. Record:
+`docs/deploy-runbook-p0.md` → beta68.
+
+**beta67 passed all four browser checks.** That check then found the defect:
+click two legal points either side of a zone and the path is drawn straight
+through it. Containment is PER-POINT on both card and backend, so both
+endpoints outside is enough to pass. beta68 detects it, paints the leg
+red/dashed, and says plainly that neither will refuse it.
+
+⚠️ **Warns, does not block.** Segment-level containment in the BACKEND remains
+the real fix and is still open.
+
+🚨 **Browser check owed for beta68**: draw a path *through* a zone; confirm the
+leg goes red/dashed with the 🚨 banner line and Real Go stays available.
+
 ## 🆕 2026-08-20 — beta67 DEPLOYED: the card draws keep-outs and refuses clicks in them
 
 **Host runs `0.6.4-beta67`**, motion-disabled. 46/46 byte-identical, card md5
