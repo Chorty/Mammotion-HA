@@ -788,6 +788,21 @@ class MammotionCustomPathCard extends HTMLElement {
   // the warning was invisible during the only window in which it is useful.
   _readiness() {
     const banner = this._readinessLevel();
+    // A leg THROUGH a zone is more dangerous than a click inside one, because
+    // nothing refuses it -- neither this card nor the backend.
+    const crossings = this._legsCrossingKeepOuts(this._plannedSplit().points);
+    if (crossings.length) {
+      const kinds = [
+        ...new Set(crossings.map((c) => String(c.zone).split(":")[0])),
+      ].join(", ");
+      banner.details = [
+        ...(banner.details || []),
+        `🚨 The path crosses a keep-out zone (${kinds}) even though every ` +
+          `waypoint is outside it. Containment is checked PER POINT, so neither ` +
+          `this card nor the mower will refuse this path. Move a waypoint so the ` +
+          `line goes around the zone.`,
+      ];
+    }
     const limit = this._correctableLegLimitMetres();
     const longest = this._longestPlannedLegMetres();
     if (limit && longest > limit) {
@@ -1050,6 +1065,61 @@ class MammotionCustomPathCard extends HTMLElement {
       }
     });
     return found;
+  }
+
+  // Do two segments properly cross? Standard orientation test.
+  _segmentsIntersect(p1, p2, p3, p4) {
+    const side = (a, b, c) =>
+      Math.sign((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
+    const d1 = side(p3, p4, p1);
+    const d2 = side(p3, p4, p2);
+    const d3 = side(p1, p2, p3);
+    const d4 = side(p1, p2, p4);
+    return d1 !== d2 && d3 !== d4;
+  }
+
+  // 🚨 Does this LEG cross a keep-out, even with both endpoints outside it?
+  //
+  // The per-point check cannot see this, backend or card: on 2026-08-21 an
+  // operator clicked two legal points either side of an obstacle zone and the
+  // card happily drew -- and would have driven -- a path straight through it.
+  // Both endpoints were outside, so nothing objected.
+  //
+  // ⚠️ This WARNS and colours the leg; it does NOT refuse. The backend will
+  // still dispatch such a path (`path_points_inside_keep_out_zone` is
+  // per-point), so a card refusal here would be stricter than the machine that
+  // actually drives -- and the operator's standing decision is that being
+  // wrongly BLOCKED is the worse failure. Segment-level containment in the
+  // backend is the real fix; this makes the gap visible meanwhile.
+  _legsCrossingKeepOuts(points) {
+    const zones = this._keepOutPolygons();
+    const crossings = [];
+    for (let i = 1; i < (points || []).length; i += 1) {
+      const a = points[i - 1];
+      const b = points[i];
+      for (const [name, polygon] of Object.entries(zones)) {
+        if (!Array.isArray(polygon) || polygon.length < 3) continue;
+        let hit =
+          this._pointInPolygon(a, polygon) || this._pointInPolygon(b, polygon);
+        for (let e = 0; !hit && e < polygon.length; e += 1) {
+          if (
+            this._segmentsIntersect(
+              a,
+              b,
+              polygon[e],
+              polygon[(e + 1) % polygon.length],
+            )
+          ) {
+            hit = true;
+          }
+        }
+        if (hit) {
+          crossings.push({ legIndex: i - 1, zone: name });
+          break;
+        }
+      }
+    }
+    return crossings;
   }
 
   // Longest leg whose landing the controller can still protect. See
@@ -2678,10 +2748,19 @@ class MammotionCustomPathCard extends HTMLElement {
       ? runResult.segments
       : null;
 
+    const crossingLegs = new Set(
+      this._legsCrossingKeepOuts(pathPoints).map((c) => c.legIndex),
+    );
     if (pathPoints.length >= 2) {
       for (let i = 0; i < pathPoints.length - 1; i += 1) {
         let stroke = this._validation?.valid === false ? "#ef4444" : "#22c55e";
         let dashArray = null;
+        // Paint a leg that cuts through a keep-out, so the hazard is visible on
+        // the map and not only in the banner text.
+        if (crossingLegs.has(i)) {
+          stroke = "#ef4444";
+          dashArray = "4,3";
+        }
         if (segments) {
           const seg = segments[i];
           if (!seg || seg.passed == null) {

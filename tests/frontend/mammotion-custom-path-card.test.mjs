@@ -1820,5 +1820,67 @@ test("the legend explains the keep-out zones it draws", () => {
   const legend = source.match(/class="legend"[^<]*<[^>]*><\/span>[^<]*/g) || [];
   const keepOut = legend.find((line) => /keep-out/i.test(line));
   assert.ok(keepOut, "no legend entry mentions keep-out zones");
-  assert.match(keepOut, /refused/i, "the legend must say clicks there are refused");
+  assert.match(
+    keepOut,
+    /refused/i,
+    "the legend must say clicks there are refused",
+  );
+});
+
+test("a leg THROUGH a keep-out is detected even with both endpoints legal", () => {
+  // 🚨 Reported from the live card on 2026-08-21: the operator clicked two
+  // legal points either side of an obstacle zone and the card drew the path
+  // straight through it. Both endpoints are outside, so the per-point check --
+  // card AND backend -- sees nothing wrong.
+  const element = cardWithZone();
+  const through = [
+    { x: 9.0, y: -0.76 }, // west of the zone, legal
+    { x: 16.0, y: -0.76 }, // east of the zone, legal
+  ];
+  assert.equal(
+    element._keepOutViolations(through).length,
+    0,
+    "per-point is blind",
+  );
+
+  const crossings = element._legsCrossingKeepOuts(through);
+  assert.equal(crossings.length, 1, "the LEG must be detected");
+  assert.equal(crossings[0].legIndex, 0);
+  assert.match(crossings[0].zone, /obstacle/);
+});
+
+test("a leg that goes around the zone is not flagged", () => {
+  const element = cardWithZone();
+  const around = [
+    { x: 9.0, y: -8.0 },
+    { x: 16.0, y: -8.0 },
+  ];
+  assert.equal(element._legsCrossingKeepOuts(around).length, 0);
+});
+
+test("a crossing leg warns loudly but is NOT blocked", () => {
+  // ⚠️ Deliberate: the BACKEND will still dispatch this path, so a card refusal
+  // would be stricter than the machine that drives. The operator's standing
+  // decision is that being wrongly blocked is the worse failure.
+  const element = cardWithZone();
+  element._waypoints = [{ x: 16.0, y: -0.76 }];
+  element._currentPositionPoint = () => ({ x: 9.0, y: -0.76 });
+  element._confirmBlades = true;
+  element._confirmClear = true;
+
+  const banner = element._readiness();
+  assert.equal(
+    banner.level,
+    element._readinessLevel().level,
+    "the crossing warning must not change the readiness level",
+  );
+  const warning = banner.details.find((line) =>
+    line.includes("crosses a keep-out"),
+  );
+  assert.ok(
+    warning,
+    `no crossing warning in: ${JSON.stringify(banner.details)}`,
+  );
+  assert.match(warning, /PER POINT/);
+  assert.match(warning, /neither this card nor the mower will refuse/i);
 });
