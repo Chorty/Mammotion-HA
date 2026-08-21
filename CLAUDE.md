@@ -26,14 +26,20 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: `0.6.4-beta68` released and installed motion-disabled
+## Current build: `0.6.4-beta69` released and installed motion-disabled
 
-⚠️ **UNRELEASED WORKING-TREE FIX:** segment-level keep-out containment is
-implemented but not installed on the beta68 host. `_keep_out_leg_violations`
-checks legal-endpoint legs against every keep-out edge,
-`_validate_custom_path` refuses with `path_legs_cross_keep_out_zone`, and the
-card blocks the same path locally. Boundary touches and collinear overlap count
-as violations. See `docs/CODEX-HANDOFF-20260821.md` for verification state.
+✅ **SEGMENT-LEVEL KEEP-OUT CONTAINMENT IS DEPLOYED AND VERIFIED.**
+`_keep_out_leg_violations` checks legal-endpoint legs against every keep-out
+edge, `_validate_custom_path` refuses with `path_legs_cross_keep_out_zone`, and
+the card blocks the same path locally. Boundary touches and collinear overlap
+count as violations. Live zero-motion validation against the real map refused
+the crossing `(9.0, -0.76) → (15.0, -0.76)` solely by the new reason and
+accepted the legal control `(9.0, -5.0) → (15.0, -5.0)`. Browser verification
+passed: beta69 footer/console, red dashed crossing, named refusal, Real Go
+disabled. Gate DISARMED; no motion commanded. Full record:
+`docs/deploy-runbook-p0.md` → beta69.
+
+## (history) beta68 released and installed motion-disabled
 
 🚨 **2026-08-21 — A LEG CAN BE DRAWN STRAIGHT THROUGH A KEEP-OUT ZONE, AND
 NEITHER THE CARD NOR THE BACKEND REFUSES IT.** Found in a browser, not by a

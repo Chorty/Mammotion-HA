@@ -8,15 +8,14 @@ keep-out zone.
 a trampoline on 2026-08-20.** `export_map` exposes `keep_out_polygons` (beta63);
 any bearing scan that ignores them is the same bug with a different number.
 
-Two ways this is deliberately STRICTER than the shipped pre-dispatch check:
+One way this is deliberately STRICTER than the shipped pre-dispatch check:
 
-1. **It samples the whole leg, not just the endpoints.** The backend's
-   `_validate_custom_path` keep-out test is PER-POINT, so a leg that clips a
-   corner with neither endpoint inside is not caught -- pinned deliberately by
-   `test_a_leg_that_clips_a_corner_is_not_caught`. This walks the segment at
-   `--step` metres and rejects the whole ray at first contact.
-2. **It holds a clearance margin**, not just containment, so a landing error of
+1. **It holds a clearance margin**, not just containment, so a landing error of
    up to the margin still cannot put the mower in a zone.
+
+The backend now checks complete segments with `_keep_out_leg_violations`, so
+sampling is no longer a stricter *containment* rule. This scanner still samples
+at `--step` to measure clearance along the ray.
 
 🔑 **Bearing convention is the integration's own**: heading = ``atan2(dy, dx)``,
 degrees CCW from +x (`services.py:4256`). An earlier version of this scan used a
@@ -176,7 +175,7 @@ def main() -> int:
         f"margins          : area {args.margin_area} m, keep-out "
         f"{args.margin_keepout} m, sampled every {args.step} m"
     )
-    print("convention       : heading = atan2(dy,dx), CCW from +x (services.py:4256)")
+    print("convention       : heading = atan2(dy,dx), CCW from +x")
     print()
 
     steps = int(round(360.0 / args.resolution))

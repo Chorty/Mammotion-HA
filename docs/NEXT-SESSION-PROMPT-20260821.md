@@ -75,9 +75,9 @@ mower drove into a trampoline on 2026-08-20.
 
 ## OTHER OPEN ITEMS (not scheduled — ask before starting)
 
-1. **Keep-out check is PER-POINT.** A leg clipping a corner with neither
-   endpoint inside is not caught; `test_a_leg_that_clips_a_corner_is_not_caught`
-   pins this deliberately. Segment-level containment is the real fix.
+1. ✅ **Keep-out segment containment shipped in beta69.**
+   `test_a_leg_that_clips_a_corner_is_caught` pins the closed gap; live map and
+   browser verification passed.
 2. **`safety_overrides` is not wired into the primitives** — `MOVEMENT_SCHEMA`
    and `MANUAL_VELOCITY_PULSE_TEST_SCHEMA` cannot express an override. That gap
    is why the nudge buttons had to be ungated rather than override-gated.

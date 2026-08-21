@@ -1,0 +1,118 @@
+{
+  "recorded_at": "2026-08-21T14:11:00-04:00",
+  "release": {
+    "version": "0.6.4-beta69",
+    "implementation_commit": "6d5444f767e2a6c138b82682a01a81dde4721521",
+    "version_commit_and_tag": "6a8744c2acbde69c8f8800df73daa6cf91e320d5",
+    "workflow_run": "https://github.com/Chorty/Mammotion-HA/actions/runs/32511039622",
+    "release_url": "https://github.com/Chorty/Mammotion-HA/releases/tag/v0.6.4-beta69"
+  },
+  "deployment": {
+    "motion_disabled": true,
+    "motion_commanded": false,
+    "archive_sha256": "bddb3941e735ef995b60653f7d4c3d8ebe7da752d08ee35c07c99aa9c36757e4",
+    "backup": "/config/mammotion-backup-20260821-140148-pre-beta69.tgz",
+    "backup_sha256": "d9580aa3285eaaa0ca0ff423cd96ba5f1f949030bea27c239105ceae02c75ac9",
+    "code_file_count": 46,
+    "code_files_byte_identical": 46,
+    "normalized_md5_list_sha256": "495d65c5370a357b124bf1a1d0a525e9f4c6bcdb47d7b3ff97ea4bd96e163a45",
+    "appledouble_entries": 0,
+    "card_md5_local_and_both_host_paths": "60dec49d1018c174715baca04de30f41",
+    "lovelace_resource": "/hacsfiles/mammotion/mammotion-custom-path-card.js?v=0.6.4-beta69&build=60dec49d",
+    "api_up_seconds": 50,
+    "mammotion_entity_count": 133,
+    "mammotion_entities_settled_seconds": 131,
+    "config_entry_state": "loaded",
+    "pymammotion_version": "0.8.12.post1"
+  },
+  "safety": {
+    "found_armed_before_deployment": true,
+    "pre_deploy_active_session": null,
+    "pre_deploy_work_mode": "MODE_PAUSE",
+    "final_enabled": false,
+    "final_real_motion_allowed": false,
+    "final_blockers": [
+      "experimental_motion_disabled"
+    ],
+    "final_active_session": null,
+    "final_work_mode": "MODE_PAUSE"
+  },
+  "real_map": {
+    "area_hash": "1343645155037768237",
+    "area_name": "Backyard Right",
+    "keep_out_zones_checked": 2,
+    "crossing_preview": {
+      "points": [
+        {
+          "x": 9.0,
+          "y": -0.76
+        },
+        {
+          "x": 15.0,
+          "y": -0.76
+        }
+      ],
+      "valid": false,
+      "errors": [
+        "path_legs_cross_keep_out_zone"
+      ],
+      "warnings": [],
+      "keep_out_violations": [],
+      "keep_out_leg_violations": [
+        {
+          "leg_index": 0,
+          "start_point_index": 0,
+          "end_point_index": 1,
+          "start": {
+            "x": 9.0,
+            "y": -0.76
+          },
+          "end": {
+            "x": 15.0,
+            "y": -0.76
+          },
+          "keep_out_type": "obstacle",
+          "keep_out_hash": "1529607395159402290"
+        }
+      ]
+    },
+    "legal_control_preview": {
+      "points": [
+        {
+          "x": 9.0,
+          "y": -5.0
+        },
+        {
+          "x": 15.0,
+          "y": -5.0
+        }
+      ],
+      "valid": true,
+      "errors": [],
+      "warnings": [],
+      "keep_out_violations": [],
+      "keep_out_leg_violations": []
+    }
+  },
+  "browser": {
+    "footer_version": "0.6.4-beta69",
+    "console_version": "0.6.4-beta69",
+    "resource_build": "60dec49d",
+    "status": "Invalid path: path_legs_cross_keep_out_zone",
+    "named_crossing_blocker": true,
+    "crossing_leg_stroke": "#ef4444",
+    "crossing_leg_dasharray": "4,3",
+    "real_go_enabled": false,
+    "temporary_path_cleared": true
+  },
+  "local_gates": {
+    "pytest": 755,
+    "frontend": 91,
+    "ruff": "passed",
+    "ruff_format": "passed",
+    "mypy": "passed",
+    "pre_commit_hooks": 10,
+    "check_doc_symbols": "passed",
+    "check_accepted_profile": "ACCEPTED"
+  }
+}

@@ -2,6 +2,18 @@ Continue the Mammotion-HA work. Read `CLAUDE.md` "Start here" and
 `docs/NEXT-SESSION.md` §0 first, then this. **It is daytime and supervised
 mower runs are available**, so the hardware items below are live.
 
+## UPDATE — beta69 supersedes the state and Task 1 below
+
+Beta69 is released, installed motion-disabled, and browser-verified. It closes
+the keep-out segment gap: the backend and card refuse a crossing/touching leg
+with `path_legs_cross_keep_out_zone`. Real-map crossing and legal-control
+previews passed; browser beta69 footer/console, named refusal, red/dashed leg,
+and disabled Real Go passed. Gate DISARMED, no active session, no motion
+commanded. See `docs/deploy-runbook-p0.md` → beta69.
+
+The beta67 browser check in Task 1 is complete and superseded. Do not expect
+Real Go to remain available for a crossing leg on beta69; refusal is the fix.
+
 ## STATE (verified 2026-08-21 ~end of session — RE-VERIFY BEFORE ACTING)
 
 - Host runs **`0.6.4-beta67`**, motion-disabled, deployed and verified: 46/46
@@ -139,10 +151,9 @@ while the geometry is still forgiving** — not more late corrections.
 
 ## OTHER OPEN ITEMS — `docs/open-items-20260821.md` names the check for each
 
-1. **Keep-out containment is PER-POINT**, backend *and* card. A leg clipping a
-   corner with neither endpoint inside is caught by neither.
-   `test_a_leg_that_clips_a_corner_is_not_caught` pins it deliberately, and a
-   card-side test mirrors it. Segment-level containment is the real fix.
+1. ✅ **Keep-out segment containment shipped in beta69.** Backend and card
+   refuse crossing/touching legal-endpoint legs; real-map and browser checks
+   passed. `test_a_leg_that_clips_a_corner_is_caught` pins the closed gap.
 2. **`safety_overrides` is not wired into the movement primitives** —
    `MOVEMENT_SCHEMA` and `MANUAL_VELOCITY_PULSE_TEST_SCHEMA` cannot express an
    override. That gap is *why* the nudge buttons had to be ungated outright.

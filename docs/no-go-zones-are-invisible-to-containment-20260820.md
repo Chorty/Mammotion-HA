@@ -105,20 +105,16 @@ progress detector would have let it push indefinitely.
 
 ## What to fix, in order
 
-1. ✅ **DONE — exclusion check shipped.** `_keep_out_polygons` /
+1. ✅ **DONE IN BETA63 — waypoint exclusion shipped.** `_keep_out_polygons` /
    `_keep_out_violations`, wired into `_validate_custom_path` and `export_map`.
    Pinned by `tests/components/mammotion/test_keep_out_zones.py`.
-   ⚠️ **NOT YET VERIFIED ON THE HOST** — that needs a deploy, and the decisive
-   test is whether `export_map.keep_out_polygons` returns hash
-   1529607395159402290 and whether the recorded 10.8 m click is refused.
-2. ⚠️ **The check is PER-POINT, like the inclusion check beside it.** A leg
-   clipping a keep-out corner with neither endpoint inside is NOT caught. Route
-   B's split narrows the gap (a point every ~3.85 m) but a 4 m keep-out can
-   still fit between two split points. Segment-level containment is the real
-   fix; `test_a_leg_that_clips_a_corner_is_not_caught` pins the limitation so it
-   cannot be mistaken for coverage.
-3. **Card work still owed.** The card should draw keep-outs from
-   `keep_out_polygons` and refuse the click before the operator ever sends it.
+   Verified on the host against the recorded obstacle hash.
+2. ✅ **DONE IN BETA69 — complete segment containment.**
+   `_keep_out_leg_violations` catches legal-endpoint legs crossing or touching
+   a keep-out, pinned by `test_a_leg_that_clips_a_corner_is_caught` and verified
+   against the live map.
+3. ✅ **DONE IN BETA67/BETA69 — card visibility and refusal.** The card draws
+   keep-outs, refuses inside clicks, and blocks crossing legs locally.
 4. **Consider a travel-collapse obstacle detector.** The signature here was
    unmistakable and arrived two pulses before the zone gate. It is a separate
    question from `min_progress_distance`, which is set for final-approach

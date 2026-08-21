@@ -124,32 +124,24 @@ extracted from the card literal; `poll_interval_seconds` read at
 
 ## 3. Keep-out containment is now per-segment in the working tree
 
-**Status: fixed in the working tree; not released or installed.**
+**Status: fixed, released, installed, and verified zero-motion in beta69.**
 
 `_keep_out_leg_violations` now checks every legal-endpoint leg against every
 keep-out edge, including boundary touches and collinear overlap.
 `_validate_custom_path` refuses with `path_legs_cross_keep_out_zone`, while the
 card mirrors the same geometry and blocks Real Go locally. The former gap test
 is now `test_a_leg_that_clips_a_corner_is_caught`; split-path behavior and a
-clear negative case are pinned too. The beta68 host remains per-point until the
-next release.
+clear negative case are pinned too. A real-map crossing preview was refused
+solely by the new reason, its legal control passed, and the browser showed the
+named blocker with Real Go disabled.
 
-beta63 made keep-outs checked at all — a real fix, verified refusing the exact
-recorded trampoline click. But a leg that **clips a corner with neither endpoint
-inside is still not caught**. `test_a_leg_that_clips_a_corner_is_not_caught`
-(`tests/components/mammotion/test_keep_out_zones.py:149`) pins the gap on
-purpose.
+beta63 made waypoint exclusion work; beta69 closes the segment gap. The scanner
+still samples the whole leg every 5 cm because its clearance margin is stricter
+than boundary-only containment, not because the backend is blind between
+points.
 
-Segment-level containment is the real fix. Consequence scales with leg length,
-so this and item 5 are the same risk viewed twice.
-
-**Partial mitigation shipped this session:** `scripts/scan_contained_bearings.py`
-samples the *whole* leg every 5 cm against area **and** keep-out geometry, with a
-clearance margin. It is a planning aid only — **it does not change what the
-backend will dispatch.**
-
-*Checked:* test exists at the named line; card has **zero** references to
-`keep_out_polygons`.
+*Checked:* `test_a_leg_that_clips_a_corner_is_caught`, live real-map crossing
+and legal-control previews, and deployed browser behavior.
 
 ---
 

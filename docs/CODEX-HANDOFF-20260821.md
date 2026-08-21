@@ -1,10 +1,10 @@
 # Codex handoff — 2026-08-21
 
-## UPDATE — segment-level containment implemented, not released
+## UPDATE — segment-level containment deployed as beta69
 
-The primary task below is now implemented in the working tree and remains
-**unreleased/uninstalled**. The host still runs beta68 with the old per-point
-backend behavior.
+The primary task below is implemented, released, installed, and verified
+zero-motion against the real map and browser. The host runs beta69
+motion-disabled.
 
 - `_keep_out_leg_violations` checks each legal-endpoint leg against every
   keep-out edge and reports the leg indices, endpoints, zone kind, and hash.
@@ -19,11 +19,14 @@ backend behavior.
 - Verification: 755 pytest, 91 frontend, ruff, ruff format, mypy, all ten
   pre-commit hooks, `check_doc_symbols.py`, and
   `check_accepted_profile.py` ACCEPTED.
+- Live crossing preview refused solely by `path_legs_cross_keep_out_zone`; the
+  paired path around the same zone passed. Browser beta69 footer/console,
+  red/dashed crossing, named refusal, and disabled Real Go all passed.
+- The gate was found ARMED yet again before deployment. It was disarmed before
+  the backup and remains DISARMED with no active session. No motion commanded.
 
-Release behavior change: paths with legal waypoints whose connecting leg
-crosses or touches a keep-out will now be refused. On the next deployed build,
-repeat the browser check below but expect **Real Go to be disabled**, with the
-named crossing reason. No mower motion is needed to verify this.
+Full hashes, backup, restart timing, and payloads:
+`docs/deploy-runbook-p0.md` → beta69.
 
 Read `CLAUDE.md` "Start here" and `docs/NEXT-SESSION.md` §0 before acting.
 This file is the session-specific brief; those two are the standing state.
@@ -71,38 +74,31 @@ ship next, and re-run the beta68 browser check below afterwards.
   pre-commit hooks, `check_doc_symbols.py`, `check_accepted_profile.py`
   **ACCEPTED**.
 
-## THE ONE THING MOST WORTH DOING: segment-level containment
+## COMPLETED IN BETA69: segment-level containment
 
-**A leg can be driven straight through a keep-out zone and nothing refuses it.**
+**Former defect:** a leg could be driven straight through a keep-out zone and
+nothing refused it.
 
-Containment is **per-point** on both sides. Click two legal points either side
-of an obstacle zone and the path goes through it: `_validate_custom_path` tests
-each point, sees both outside, and passes. Confirmed in a browser on
-2026-08-21, and it is easy to do by accident.
+Containment was **per-point** on both sides. Clicking two legal points either
+side of an obstacle zone produced a path through it: `_validate_custom_path`
+tested each point, saw both outside, and passed. Confirmed in a browser on
+2026-08-21.
 
-- Backend: `_keep_out_violations` is per-point, pinned deliberately by
-  `test_a_leg_that_clips_a_corner_is_not_caught`.
-- Card (beta68): `_legsCrossingKeepOuts` now detects the crossing, paints the
-  leg red/dashed and warns — but **the card cannot refuse what the backend will
-  still dispatch.**
+- Backend: `_keep_out_violations` remains the waypoint diagnostic;
+  `_keep_out_leg_violations` now covers complete segments and
+  `test_a_leg_that_clips_a_corner_is_caught` pins the closed gap.
+- Card: `_legsCrossingKeepOuts` mirrors the backend, paints the leg red/dashed,
+  and blocks Real Go locally.
 
-**The fix is segment-level containment in the backend.** If you implement it:
+**Implemented behavior:**
 
-1. Test the **segment** against every keep-out edge, not just its endpoints.
-   The card's `_segmentsIntersect` / `_legsCrossingKeepOuts` are a working
-   reference — mirror the semantics so the two cannot disagree.
-2. It must refuse with a **named reason**, matching how every other gate in
-   `services.py` refuses.
-3. ⚠️ **`test_a_leg_that_clips_a_corner_is_not_caught` should then FAIL.** That
-   is the point of it — rewrite it to assert the leg IS caught, and say in the
-   docstring that the gap is closed.
-4. ⚠️ Consider the **split** interaction: `_split_long_legs` inserts collinear
-   points *before* validation, so a long leg through a zone may already produce
-   an inserted point inside it. Check whether segment-level containment changes
-   behaviour for already-split paths.
-5. It moves no `LUBA_ACCEPTANCE_PROFILE` key, so it owes no Gate 5 — but it
-   **can refuse runs that previously dispatched**, which is a behaviour change
-   the operator should be told about explicitly.
+1. Every segment is tested against every keep-out edge, including boundary
+   touches and collinear overlap.
+2. Backend refusal is named `path_legs_cross_keep_out_zone` and includes the
+   leg indices, endpoints, zone kind, and hash.
+3. Split interaction is pinned: collinear subdivision cannot weaken the check,
+   and inserted points inside a zone retain the point-level diagnostic.
+4. It moves no `LUBA_ACCEPTANCE_PROFILE` key and owed no Gate 5.
 
 ## SECOND: the control-law problem, stated precisely
 

@@ -1,11 +1,12 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
-⚠️ **UNRELEASED WORKING-TREE FIX:** segment-level keep-out containment is
-implemented and fully gated, but the host still runs beta68's per-point backend.
-The next build will refuse a crossing/touching leg with
-`path_legs_cross_keep_out_zone`, and the card will disable Real Go locally.
-See `docs/CODEX-HANDOFF-20260821.md` for the exact verification state and
-release browser expectation.
+✅ **BETA69 DEPLOYED MOTION-DISABLED:** segment-level keep-out containment is
+live. The backend refuses a crossing/touching legal-endpoint leg with
+`path_legs_cross_keep_out_zone`, and the card disables Real Go locally. Real-map
+crossing and legal-control previews passed; browser footer/console, named
+refusal, red/dashed crossing, and disabled Real Go all passed. Gate DISARMED,
+no active session, no motion commanded. Full record:
+`docs/deploy-runbook-p0.md` → beta69.
 
 ⚠️ **Everything below the "2026-08-13 HANDOFF" section is older and its build
 state is stale.** Those sections remain accurate as *evidence* — the
@@ -18,7 +19,7 @@ measurements stand — but do not act on any build/host/gate state they describe
 "validate what shipped" through to named destinations. Read that for direction;
 read the item below for the specific next run.
 
-## 🚨 2026-08-21 — beta68: a LEG through a keep-out is refused by NOBODY
+## (history) 🚨 2026-08-21 — beta68: a LEG through a keep-out was refused by NOBODY
 
 **Host runs `0.6.4-beta68`**, motion-disabled, 46/46 byte-identical, card md5
 `f143465a5bb120ed759ab328c15dad9f` at both paths, resource

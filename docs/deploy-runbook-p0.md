@@ -8,7 +8,52 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
-### beta67 → beta68 — 2026-08-21 13:12-13:22 EDT, motion-disabled
+### beta68 → beta69 — 2026-08-21 14:01-14:11 EDT, motion-disabled
+
+Ships **segment-level keep-out containment**. A path with legal endpoints whose
+connecting leg crosses or touches a keep-out is now refused by the backend with
+`path_legs_cross_keep_out_zone`; the card mirrors the geometry, blocks Real Go,
+and keeps the crossing leg red/dashed. No `LUBA_ACCEPTANCE_PROFILE` key moved;
+`check_accepted_profile.py` remains ACCEPTED.
+
+The gate was found **ARMED at rest again** before deployment (`enabled: true`,
+no active session, `MODE_PAUSE`). It was disarmed and verified before the
+backup, immediately before deployment, and after all validation. **No motion
+was commanded.**
+
+| | beta69 |
+| --- | --- |
+| Files | 46/46 byte-identical |
+| Normalized per-file MD5-list SHA-256, local = host | `495d65c5370a357b124bf1a1d0a525e9f4c6bcdb47d7b3ff97ea4bd96e163a45` |
+| Card md5 (both paths + local) | `60dec49d1018c174715baca04de30f41` |
+| Archive SHA-256 local = host | `bddb3941e735ef995b60653f7d4c3d8ebe7da752d08ee35c07c99aa9c36757e4` |
+| AppleDouble entries | 0 |
+| Backup | `/config/mammotion-backup-20260821-140148-pre-beta69.tgz` |
+| Backup SHA-256 | `d9580aa3285eaaa0ca0ff423cd96ba5f1f949030bea27c239105ceae02c75ac9` |
+| Tag | `v0.6.4-beta69` at version commit `6a8744c2` |
+| Quartet on host | manifest `0.6.4-beta69`, CARD_VERSION `0.6.4-beta69` (both paths) |
+| Lovelace resource | `?v=0.6.4-beta69&build=60dec49d` (read back) |
+| Restart | API up 50 s; 133 Mammotion entities at 131 s |
+| Config entry | `loaded` |
+| Dependency | `pymammotion 0.8.12.post1` |
+| Gate after | `enabled: false`, `real_motion_allowed: false`, no session |
+
+**Live zero-motion validation against the real map:**
+
+- Crossing `(9.0, -0.76) → (15.0, -0.76)`, both endpoints inside Backyard
+  Right: `valid: false`, sole error `path_legs_cross_keep_out_zone`, zero point
+  violations, leg 0 identified against obstacle `1529607395159402290`.
+- Legal control `(9.0, -5.0) → (15.0, -5.0)`: `valid: true`, no errors and no
+  point or leg violations. Both checks loaded two keep-out zones.
+
+**Browser verification passed:** footer and console loaded beta69 from the new
+resource URL; the crossing path was refused by name; crossing sub-legs rendered
+red with `stroke-dasharray="4,3"`; the banner named the obstacle and whole-leg
+check; Real Go was disabled. The temporary waypoint was cleared afterwards.
+Machine-readable record:
+`docs/evidence-beta69-segment-containment-deploy-20260821.json`.
+
+### (history) beta67 → beta68 — 2026-08-21 13:12-13:22 EDT, motion-disabled
 
 Ships **leg-level keep-out warning** and a **legend entry** for the zones.
 Gate was found ARMED at rest before the deploy (no active session, mower
