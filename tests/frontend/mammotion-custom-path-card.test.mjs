@@ -1807,3 +1807,18 @@ test("the leg advisory is visible while still arming, not only when ready", () =
     `advisory missing while arming: ${JSON.stringify(banner.details)}`,
   );
 });
+
+test("the legend explains the keep-out zones it draws", () => {
+  // 🔑 Caught by a screenshot on 2026-08-21, not by a test: the card drew red
+  // dashed polygons and the legend explained the mower dot, the click marker
+  // and the split point -- but not the zones. A marker with no legend entry is
+  // an unexplained shape, and this one silently changes what a click does.
+  const source = readFileSync(
+    "custom_components/mammotion/www/mammotion-custom-path-card.js",
+    "utf8",
+  );
+  const legend = source.match(/class="legend"[^<]*<[^>]*><\/span>[^<]*/g) || [];
+  const keepOut = legend.find((line) => /keep-out/i.test(line));
+  assert.ok(keepOut, "no legend entry mentions keep-out zones");
+  assert.match(keepOut, /refused/i, "the legend must say clicks there are refused");
+});

@@ -3007,6 +3007,10 @@ class MammotionCustomPathCard extends HTMLElement {
           <span class="legend"><span class="dot" style="background:#22c55e"></span>Green = mower position; arrow only with trusted live orientation</span>
           <span class="legend"><span class="dot" style="background:#f97316"></span>Click the map to add destinations (max ${MAX_WAYPOINTS}), driven in order</span>
           <span class="legend"><span class="dot" style="background:transparent;border:2px dashed #fbbf24"></span>Auto-inserted split point — a leg over ${SPLIT_LEG_TARGET_METRES.toFixed(2)} m is driven as collinear sub-legs (max ${MAX_REAL_SEGMENTS} per click)</span>
+          <!-- Every other marker on this map is explained; the red zones were
+               not, so a viewer saw dashed red polygons with no way to know what
+               they were or why a click there did nothing. -->
+          <span class="legend"><span class="dot" style="background:rgba(239,68,68,0.22);border:2px dashed #ef4444"></span>Red dashed = keep-out zone (obstacle, no-go, virtual wall). Clicks inside one are refused.</span>
         </div>
         <svg id="path-map"></svg>
         ${coordinateEditor}
