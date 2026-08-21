@@ -114,7 +114,7 @@ not caught. Segment-level containment is the real fix.
 ## (history) beta62 — ⚠️ GATE WAS ARMED AT DEPLOY
 
 🆕 **2026-08-20 — beta62 ADDS DELIBERATE SAFETY-GATE OVERRIDE TOGGLES.** One
-toggle per firing blocker (29 registered gates), each rendering the reason the
+toggle per firing blocker (28 registered gates), each rendering the reason the
 gate exists. Off by default, **reset after every run**, never persisted, and
 echoed into the run record with `original_passed: false` so an overridden run
 can never look like a clean one. A typo is refused by schema, not ignored. Four
@@ -236,7 +236,7 @@ The review verified this independently rather than trusting green CI: the
 byte-identical across beta54 and the PR tip (SHA-256 `0a0ab014…d858ea` and
 `7665c302…8cef2fdbc`); the nine original `turn_mode == "vio"` blocks all survive
 and the four new sites are feedback handling only; the queue-settle refusal at
-`services.py:12340` precedes both the mid-drive re-aim dispatch and the next
+the `ble_link_not_ready_after_feedback` refusal precedes both the mid-drive re-aim dispatch and the next
 linear dispatch, so no dispatch can follow a non-live queue. Replayed against
 the recorded beta54 geometry, the night fix refuses pulse 3 (residual bearing
 155.636° vs movement heading 0.423°) and lands 0.0827 m out instead of 0.1171 m
@@ -256,7 +256,7 @@ movement/stop succeeded. Read `docs/real-go-throughput-hardware-20260814.md`.
 ever exercised the night fix on hardware.**
 
 The segment executor's legacy branch
-(`services.py:12023-12045`, the `else` arm; line numbers verified 2026-08-17)
+(the `else` arm of the segment executor's turn branch)
 omits `motion_refresh_interval_ms` (primitive default
 `0`) and passes `angular_speed_fast/slow` at the schema default **180**, which
 does not break static friction on a stationary pivot (~3°/pulse). Every
@@ -359,7 +359,7 @@ that a leg exhausting the budget stops safely, which is a measurement.
 `docs/reach-20ft-and-the-reaim-trigger-20260817.md`.
 
 ⚠️ **Raising `vio_max_realignments` (default 3, shared by the post-turn gate at
-`services.py:12185` and mid-drive re-aim at `:12831`; line numbers verified 2026-08-17) is the WRONG fix.** The
+the `_POST_TURN_ALIGNMENT_TOLERANCE_DEGREES` gate and `_mid_drive_realign_decision`) is the WRONG fix.** The
 loop was diverging — aim errors grew 16.96 → 21.22 → 24.975° while each
 correction "succeeded" against an 18° turn tolerance, leaving 9.7 / 11.5 / 13.6°
 of residual against a bearing rotating −3.2 / −9.7 / **−15.4°** per pulse and
@@ -822,7 +822,7 @@ realignment on a *separate* budget; the turn phase stopped at
 the true per-segment ceiling is **14**. The real fragility is **overshoot against
 tolerance**: pulse 3 overshot the target heading by **13.258°** against
 `heading_tolerance_degrees: 18` — **4.74° of margin**. The 2.6× rate spread is
-partly an accounting artifact (`services.py:8091` divides by *nominal* pulse
+partly an accounting artifact (`observed_rotation_ms` accumulates *nominal* pulse
 duration, never measured `elapsed_ms`); on elapsed time two of the three pulses
 agree to ~3% and only pulse 3 is anomalous. Pulse 3's rotation is nonetheless
 real, and unexplained.
@@ -832,7 +832,7 @@ a 80.6° turn, yet a later run completed *larger* turns while showing degraded B
 (writes median 540 ms) without tripping. Treat it as the tail of a latency
 distribution, not a mystery. ⚠️ The stop confirmations 1175/1819/402/628 ms are
 the **calibration and linear stops**, not turn stops — turn pulses record no stop
-duration at all (`services.py:3321-3333`).
+duration at all (`_vio_turn_to_heading` records none).
 
 ⚠️ `waypoint_tolerance` changed 0.08 → **0.15** in beta30 on hardware evidence
 (`docs/evidence-slow-tier-validation-20260808.json`). The position feed is
@@ -874,10 +874,10 @@ its course-over-ground premise was refuted. The `vio_active` gate keys off
 `turn_mode == "vio"` unconditionally, not off whether a turn is needed, and
 `_VIO_TURN_MODES` was `("vio", "legacy")` only. ⚠️ **That symbol no longer
 exists**: it is now `_SEGMENT_TURN_MODES = ("vio", "legacy", "night")`
-(`services.py:10939`), so the "no night-safe mode" half of this argument is
+(`_SEGMENT_TURN_MODES`), so the "no night-safe mode" half of this argument is
 dead — night v1 added exactly that. *(Refined 2026-08-11 — read
 `docs/night-motion-options-20260811.md`. The gate is created ONLY for
-`turn_mode == "vio"` (`services.py:10965`), so `legacy` skips it; but `legacy`
+`turn_mode == "vio"` (the `vio_active` gate), so `legacy` skips it; but `legacy`
 closes on `position.toward`, which was then believed to be course-over-ground and therefore blind to
 in-place rotation **at any hour**, not just at night. The real constraint is not
 "no heading at night", it is **"no heading while stationary"** — which is why an
@@ -907,7 +907,7 @@ host.** All CI gates pass locally (533 pytest, 20 frontend, ruff, mypy,
 pre-commit). It touches **no `LUBA_ACCEPTANCE_PROFILE` key**, so the profile stays
 accepted and no §4 re-pinning is owed.
 
-1. **`REAL_CLICK_TO_GO_SEGMENT_LIMIT` 2 → 4** (`manual_motion.py:24`, mirrored by
+1. **`REAL_CLICK_TO_GO_SEGMENT_LIMIT` 2 → 4** (`REAL_CLICK_TO_GO_SEGMENT_LIMIT`, mirrored by
    the card's `MAX_REAL_SEGMENTS`). ⚠️ **Segment 3+ has never been executed.** The
    VIO forward-heading offset is refreshed only from linear travel and never
    re-derived across a turn, so cumulative cross-track error past segment 2 is

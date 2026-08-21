@@ -11,7 +11,9 @@ Three claim classes are checked, all extracted from inline backtick spans:
 
   symbol    a code identifier (contains `_`), must appear somewhere in the tree
   path      a repo-relative file path, must exist
-  citation  `file.py:1234`, the file must exist and the line be within EOF
+  citation  `file.py:1234` is REFUSED for in-repo files -- cite the symbol,
+            which does not move and can actually be validated. Out-of-repo
+            paths (pymammotion) are left alone.
 
 ⚠️ **A clean run is necessary, not sufficient.** This proves a name still
 exists; it cannot prove the surrounding prose still describes it correctly. The
@@ -115,6 +117,48 @@ def spans(text: str):
         yield text.count("\n", 0, match.start()) + 1, " ".join(match.group(1).split())
 
 
+def _check_citation(
+    cite: re.Match[str], span: str, index: dict[str, list[pathlib.Path]]
+) -> tuple[int, list[tuple[str, str, str]]]:
+    """Validate one `file:line` citation."""
+    target, end = cite.group(1), cite.group(3)
+    high = int(end) if end else int(cite.group(2))
+    found = (
+        [ROOT / target]
+        if (ROOT / target).exists()
+        else index.get(pathlib.PurePath(target).name, [])
+    )
+    if not found:
+        return 0, []  # out-of-repo reference, not ours to police
+    total = len(found[0].read_text(errors="ignore").splitlines())
+    if high > total:
+        why = f"{found[0].relative_to(ROOT)} has {total} lines"
+        return 1, [("citation", span, why)]
+    # 🚨 An in-repo line number is REFUSED even when it is inside the file.
+    #
+    # Being within EOF proves nothing about whether the line still holds
+    # what the prose says. Audited 2026-08-20: of 10 sampled citations, 8
+    # pointed at unrelated code -- `services.py:10939` was cited for
+    # `_SEGMENT_TURN_MODES`, which had moved to 11613 and left a
+    # `dry_run=dry_run,` argument behind. Two carried the annotation "line
+    # numbers verified 2026-08-17", so the verification itself had rotted.
+    #
+    # No checker can validate a bare number: nothing states what SHOULD be
+    # there. A symbol can be validated, and does not move. So cite the
+    # symbol -- `_SEGMENT_TURN_MODES`, not `services.py:10939` -- and this
+    # check becomes real instead of decorative.
+    # Markdown-to-markdown citations get the EOF check only: a prose
+    # section has no symbol to cite instead, so refusing them would leave
+    # no correct way to reference one.
+    if found[0].suffix.lower() not in {".py", ".js", ".pyi", ".mjs"}:
+        return 1, []
+    why = (
+        "in-repo line numbers rot silently; cite the symbol instead "
+        "(8 of 10 sampled citations were stale on 2026-08-20)"
+    )
+    return 1, [("citation", span, why)]
+
+
 def check_span(
     span: str,
     *,
@@ -125,20 +169,7 @@ def check_span(
     """Return (claims checked, [(kind, name, why)]) for one inline span."""
     cite = CITATION.match(span)
     if cite:
-        target, end = cite.group(1), cite.group(3)
-        high = int(end) if end else int(cite.group(2))
-        found = (
-            [ROOT / target]
-            if (ROOT / target).exists()
-            else index.get(pathlib.PurePath(target).name, [])
-        )
-        if not found:
-            return 0, []  # out-of-repo reference, not ours to police
-        total = len(found[0].read_text(errors="ignore").splitlines())
-        if high > total:
-            why = f"{found[0].relative_to(ROOT)} has {total} lines"
-            return 1, [("citation", span, why)]
-        return 1, []
+        return _check_citation(cite, span, index)
 
     if PATHLIKE.match(span) and "/" in span:
         if span.startswith("/"):

@@ -133,7 +133,7 @@ daylight, together with the turn-quantum work (VIO is alive only then).
 
 ⚠️ **Superseded — do not act on the paragraph above.** `_VIO_TURN_MODES` no
 longer exists; it is `_SEGMENT_TURN_MODES = ("vio", "legacy", "night")`
-(`services.py:10939`). Night v1 added an RTK-only night branch and beta54/55
+(`_SEGMENT_TURN_MODES`). Night v1 added an RTK-only night branch and beta54/55
 expose it as a guarded Night Go card control, so "cannot run after dark" is
 false as a statement about the current build.
 
@@ -205,7 +205,7 @@ throughout and a rover-side `sync_rtk_and_dock` could not clear it.
 1. **The RTK sensors LATCH.** They were frozen 15:40→18:39, so polling re-read
    one stale value that looked like a stable signal. Caught by forcing 50
    reports and seeing **no** RTK entity refresh. `rtk_position` comes from
-   `basestation_info.rtk_status` (`sensor.py:570`) and holds its last value
+   `basestation_info.rtk_status` and holds its last value
    rather than going unavailable. Claims of Float *persistence*, and the resync
    and relocation as RTK tests, were invalidated and corrected in the evidence.
 2. **`rtk_correction_age` / `rtk_signal_quality` are dead fields** — unpopulated
@@ -648,7 +648,7 @@ arbitrary constant — which is how 111.43 / 113.29 / 115.54 arose and why they
 drifted upward. Do not act on the ~11°-low claim. Separately,
 `calibrated_forward_heading_offset_degrees` is **not used for turn targeting**
 in VIO mode (`provided_offset_degrees` reads `vio_heading_offset_degrees`,
-`services.py:9533`), so 102.4 was inert during Gate 4 and cannot explain its
+`vio_heading_offset_degrees`), so 102.4 was inert during Gate 4 and cannot explain its
 4.70 cm cross-track miss. One anomaly: drive 3 aborted `stop_failed_aborting`
 on `command_queue_backlogged` (safe, by design) while the BLE link report was
 clean — a queue-state condition, not a link fault. Evidence:

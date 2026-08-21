@@ -289,7 +289,7 @@ to the right shape, though the −99° junction sits in the documented contested
 **Watch:** whether any mid-drive correction fires at all — none ever has on the
 new code. If one does, whether the budget holds. ⚠️ A leg following a junction
 turn has an effective mid-drive budget of **2, not 3**: the post-turn gate at
-`services.py:12184` spends the same counter.
+the `_POST_TURN_ALIGNMENT_TOLERANCE_DEGREES` gate spends the same counter.
 
 **Tools ready:** `scripts/replay_reaim_trigger.py` (self-validating; run it on
 the new evidence and it will say whether old and new diverged),
@@ -522,7 +522,7 @@ runaway-safety claim is **wrong**; the banner at its top says so.
 1. **The standalone turn service and the segment executor's legacy branch are NOT
    the same code path.** Five night turns converged by calling
    `raw_pymammotion_turn_to_heading` **directly**. The segment's legacy branch
-   (`services.py:11498-11517`) supplies *different defaults* for two parameters
+   supplies *different defaults* for two parameters
    that decide whether the mower moves at all: it omits
    `motion_refresh_interval_ms` (primitive default `0`) and passes
    `angular_speed_fast/slow` at the schema default **180**, which does not break
@@ -1704,7 +1704,7 @@ happen**. Read that file before re-deriving anything here.
    *nominal* duration the pulses read 20.31 / 14.78 / 38.42 °/s; against
    *measured* elapsed they read 14.91 / 14.49 / 32.74, so pulses 1 and 2 agree to
    ~3% and **only pulse 3 is anomalous**. The artifact is proven:
-   `services.py:8091` accumulates `observed_rotation_ms += pulse_ms`, the nominal
+   The turn loop accumulates `observed_rotation_ms += pulse_ms`, the nominal
    duration, never the measured `elapsed_ms`. Pulse 3's rotation is nonetheless
    **real, not a measurement error** — see the five-step argument in the evidence
    file. Why it rotated 2.6× per delivered write is unexplained and is not
@@ -1716,7 +1716,7 @@ happen**. Read that file before re-deriving anything here.
    which is a real diagnosis and the basis for the next work item.
    ⚠️ **Attribution corrected:** the stop confirmations 1175/1819/402/628 ms are
    the **calibration drive stop plus the three linear stops**, not turn stops.
-   Turn pulses record no stop duration at all (`services.py:3321-3333`), so no
+   Turn pulses record no stop duration at all (`_vio_turn_to_heading`), so no
    rate table may add stop latency to turn-pulse elapsed time.
 
 ### The measured picture, for anyone re-deriving it
@@ -1789,7 +1789,7 @@ warming requires a bright scene. ~~**A closed-loop segment cannot run after dark
 by design.**~~ 11 of 12 gates passed; this was the 12th.
 
 ⚠️ **Superseded.** That symbol is now `_SEGMENT_TURN_MODES = ("vio", "legacy",
-"night")` (`services.py:10939`), and night v1 is the night-safe mode this
+"night")` (`_SEGMENT_TURN_MODES`), and night v1 is the night-safe mode this
 paragraph says does not exist.
 
 In daylight it should simply run. The prediction under test: a waypoint approach
@@ -1991,7 +1991,7 @@ did. **Precision work is unblocked.** Full record:
    so repeated polling re-read one stale value while looking like a stable
    signal. A forced burst of 50 reports refreshed **no** RTK entity, which is how
    it was caught. `rtk_position` derives from `basestation_info.rtk_status`
-   (`sensor.py:570`) and holds its last value instead of going unavailable when
+   and holds its last value instead of going unavailable when
    the device stops sending that structure — same failure class as latched blade
    RPM, cached `vio_heading`, frozen `toward`. Mid-session conclusions about
    Float *persistence*, and both the resync and relocation as RTK tests, were
@@ -2293,7 +2293,7 @@ That ≈90° is the signature of the standard conversion between a **math angle*
 project already fixed once in `orientation` (beta18:
 `direction = (-orientation) % 360`); it was never applied to `toward`.
 
-**The bug** is at `services.py:2932-2935`:
+**The bug** is in the `path_points_outside_known_area_geometry` check:
 
 ```python
 reported_heading  = float(current_heading)                    # toward (compass)
@@ -2495,7 +2495,7 @@ measurement behind it and should not be acted on.
 
 **Structural finding: `calibrated_forward_heading_offset_degrees` is not used
 for turn targeting in `turn_mode: "vio"`.** `provided_offset_degrees` reads the
-separate `vio_heading_offset_degrees` parameter (`services.py:9533`, emitted at
+separate `vio_heading_offset_degrees` parameter (emitted at
 `:9803`); passing 102.4 left it `null` with `offset_source: calibration_drive`.
 Gate 4 ran `turn_mode: "vio"`, so **102.4 was inert there and cannot explain its
 4.70 cm cross-track miss.**
