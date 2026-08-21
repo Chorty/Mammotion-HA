@@ -1884,3 +1884,21 @@ test("a crossing leg warns loudly but is NOT blocked", () => {
   assert.match(warning, /PER POINT/);
   assert.match(warning, /neither this card nor the mower will refuse/i);
 });
+
+test("a crossing leg stays red even after a run says the segment passed", () => {
+  // 🚨 Regression, found 2026-08-21 by looking at a screenshot: the crossing
+  // colour was applied BEFORE the segment-verdict block, so a completed run
+  // with passed:true repainted the leg green and the hazard vanished from the
+  // map -- exactly when there was a real drive through the zone to look at.
+  const source = readFileSync(
+    "custom_components/mammotion/www/mammotion-custom-path-card.js",
+    "utf8",
+  );
+  const crossingAt = source.indexOf("crossingLegs.has(i)");
+  const verdictAt = source.indexOf("seg.passed === false");
+  assert.ok(crossingAt > 0 && verdictAt > 0, "both branches must exist");
+  assert.ok(
+    crossingAt > verdictAt,
+    "the keep-out colour must be applied AFTER the run verdict, or it is overwritten",
+  );
+});

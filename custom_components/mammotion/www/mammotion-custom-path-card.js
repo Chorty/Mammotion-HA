@@ -2755,12 +2755,6 @@ class MammotionCustomPathCard extends HTMLElement {
       for (let i = 0; i < pathPoints.length - 1; i += 1) {
         let stroke = this._validation?.valid === false ? "#ef4444" : "#22c55e";
         let dashArray = null;
-        // Paint a leg that cuts through a keep-out, so the hazard is visible on
-        // the map and not only in the banner text.
-        if (crossingLegs.has(i)) {
-          stroke = "#ef4444";
-          dashArray = "4,3";
-        }
         if (segments) {
           const seg = segments[i];
           if (!seg || seg.passed == null) {
@@ -2771,6 +2765,18 @@ class MammotionCustomPathCard extends HTMLElement {
           } else {
             stroke = "#22c55e";
           }
+        }
+        // 🚨 LAST, so it cannot be repainted by the run verdict above.
+        //
+        // Ordering bug found 2026-08-21: this was applied BEFORE the segment
+        // block, so once a run existed a leg crossing a keep-out was recoloured
+        // green by `seg.passed === true` -- the hazard disappeared from the map
+        // at exactly the moment there was a completed drive through the zone to
+        // look at. "The segment reached its target" and "the leg goes through an
+        // obstacle" are different claims, and the second one has to survive.
+        if (crossingLegs.has(i)) {
+          stroke = "#ef4444";
+          dashArray = "4,3";
         }
         const segAttrs = {
           points: [pathPoints[i], pathPoints[i + 1]]
