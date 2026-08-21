@@ -28,6 +28,13 @@ this file every time.
 
 ## Current build: `0.6.4-beta68` released and installed motion-disabled
 
+⚠️ **UNRELEASED WORKING-TREE FIX:** segment-level keep-out containment is
+implemented but not installed on the beta68 host. `_keep_out_leg_violations`
+checks legal-endpoint legs against every keep-out edge,
+`_validate_custom_path` refuses with `path_legs_cross_keep_out_zone`, and the
+card blocks the same path locally. Boundary touches and collinear overlap count
+as violations. See `docs/CODEX-HANDOFF-20260821.md` for verification state.
+
 🚨 **2026-08-21 — A LEG CAN BE DRAWN STRAIGHT THROUGH A KEEP-OUT ZONE, AND
 NEITHER THE CARD NOR THE BACKEND REFUSES IT.** Found in a browser, not by a
 test: click two legal points either side of an obstacle zone and the path is

@@ -13,11 +13,9 @@ reported obstacle hash 1529607395159402290 at contact and the geojson names it
 "Obstacle 1", "Obstacle in Backyard Right", roughly 4.0 x 4.1 m. `_area_polygons`
 simply read one dict of several.
 
-⚠️ This is a PER-POINT test, exactly like the inclusion check it sits beside.
-A leg that clips the corner of a keep-out with neither endpoint inside it is
-NOT caught. Route B's split narrows the gap by inserting a point every ~3.85 m,
-but does not close it. `test_a_leg_that_clips_a_corner_is_not_caught` pins that
-limitation deliberately, so nobody reads this as segment-level containment.
+Containment now tests both waypoints and the complete segment between each pair.
+`test_a_leg_that_clips_a_corner_is_caught` pins the closed gap so a future
+per-point regression cannot silently restore it.
 """
 
 from __future__ import annotations
@@ -26,8 +24,11 @@ from types import SimpleNamespace
 
 from custom_components.mammotion.services import (
     _KEEP_OUT_MAP_FIELDS,
+    _keep_out_leg_violations,
     _keep_out_polygons,
     _keep_out_violations,
+    _segments_intersect,
+    _split_long_legs,
     _validate_custom_path,
 )
 
@@ -146,15 +147,8 @@ def test_a_keep_out_is_honoured_even_with_no_area_geometry() -> None:
     assert "path_points_inside_keep_out_zone" in result["errors"]
 
 
-def test_a_leg_that_clips_a_corner_is_not_caught() -> None:
-    """⚠️ PINS A KNOWN LIMITATION, deliberately.
-
-    This is a per-point test, like the inclusion check beside it. A segment
-    passing through a keep-out with neither endpoint inside is not detected.
-    Route B's split narrows the gap -- a point every ~3.85 m -- but a 4 m
-    keep-out can still sit between two split points. Do not read this check as
-    segment-level containment.
-    """
+def test_a_leg_that_clips_a_corner_is_caught() -> None:
+    """Pin the closed gap: legal endpoints cannot hide an illegal segment."""
     coordinator = _with_keep_out()
 
     result = _validate_custom_path(
@@ -163,8 +157,62 @@ def test_a_leg_that_clips_a_corner_is_not_caught() -> None:
         area_hash=123,
     )
 
-    assert result["valid"] is True
+    assert result["valid"] is False
     assert result["keep_out_violations"] == []
+    assert "path_legs_cross_keep_out_zone" in result["errors"]
+    assert result["keep_out_leg_violations"] == [
+        {
+            "leg_index": 0,
+            "start_point_index": 0,
+            "end_point_index": 1,
+            "start": {"x": 6.0, "y": -1.0},
+            "end": {"x": 14.0, "y": -1.0},
+            "keep_out_type": "obstacle",
+            "keep_out_hash": "1529607395159402290",
+        }
+    ]
+
+
+def test_a_leg_touching_a_keep_out_boundary_is_caught() -> None:
+    """Containment includes the boundary, for both points and segments."""
+    coordinator = _with_keep_out()
+
+    result = _validate_custom_path(
+        coordinator,
+        [{"x": 6.0, "y": -3.0}, {"x": 14.0, "y": -3.0}],
+        area_hash=123,
+    )
+
+    assert result["valid"] is False
+    assert "path_legs_cross_keep_out_zone" in result["errors"]
+
+
+def test_splitting_a_crossing_leg_remains_refused() -> None:
+    """Inserted collinear points do not weaken segment containment.
+
+    This split lands points inside the zone, so the established point-level
+    reason fires too. The path was already refused before segment containment;
+    the new check preserves that behaviour.
+    """
+    coordinator = _with_keep_out()
+    split = _split_long_legs(
+        [{"x": 6.0, "y": -1.0}, {"x": 14.0, "y": -1.0}],
+        target_length_m=3.2,
+    )
+
+    result = _validate_custom_path(coordinator, split["points"], area_hash=123)
+
+    assert result["valid"] is False
+    assert "path_points_inside_keep_out_zone" in result["errors"]
+
+
+def test_segment_and_leg_helpers_ignore_a_clear_path() -> None:
+    """The paired negative case prevents the edge test from blocking broadly."""
+    polygon = [{"x": x, "y": y} for x, y in _TRAMPOLINE]
+    points = [{"x": 6.0, "y": -5.0}, {"x": 14.0, "y": -5.0}]
+
+    assert not _segments_intersect(points[0], points[1], polygon[0], polygon[1])
+    assert not _keep_out_leg_violations(points, {"obstacle:1": polygon})
 
 
 def test_polygons_come_back_in_map_local_xy_with_no_conversion() -> None:

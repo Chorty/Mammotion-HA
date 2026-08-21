@@ -1959,14 +1959,7 @@ def _keep_out_violations(
     points: list[dict[str, float]],
     keep_outs: dict[str, list[dict[str, float]]],
 ) -> list[dict[str, Any]]:
-    """Return every (point index, keep-out) pair where the path enters a keep-out.
-
-    Per-point, matching the existing containment check. ⚠️ This tests the
-    POINTS, not the segments between them, so a leg that clips the corner of a
-    keep-out without either endpoint inside it is NOT caught. Route B's split
-    narrows that gap considerably -- it inserts a point every ~3.85 m along the
-    line -- but it does not close it.
-    """
+    """Return every (point index, keep-out) pair where a waypoint is forbidden."""
     violations: list[dict[str, Any]] = []
     for index, point in enumerate(points):
         for key, polygon in keep_outs.items():
@@ -1978,6 +1971,97 @@ def _keep_out_violations(
                     {
                         "point_index": index,
                         "point": point,
+                        "keep_out_type": field_name,
+                        "keep_out_hash": hash_text,
+                    }
+                )
+    return violations
+
+
+def _segments_intersect(
+    first_start: dict[str, float],
+    first_end: dict[str, float],
+    second_start: dict[str, float],
+    second_end: dict[str, float],
+) -> bool:
+    """Return whether two closed line segments intersect, including touching."""
+
+    def orientation(
+        start: dict[str, float],
+        end: dict[str, float],
+        point: dict[str, float],
+    ) -> float:
+        return (end["x"] - start["x"]) * (point["y"] - start["y"]) - (
+            end["y"] - start["y"]
+        ) * (point["x"] - start["x"])
+
+    first_side_start = orientation(first_start, first_end, second_start)
+    first_side_end = orientation(first_start, first_end, second_end)
+    second_side_start = orientation(second_start, second_end, first_start)
+    second_side_end = orientation(second_start, second_end, first_end)
+
+    if (
+        first_side_start > 0 > first_side_end or first_side_start < 0 < first_side_end
+    ) and (
+        second_side_start > 0 > second_side_end
+        or second_side_start < 0 < second_side_end
+    ):
+        return True
+
+    return (
+        (
+            first_side_start == 0
+            and _point_on_segment(second_start, first_start, first_end)
+        )
+        or (
+            first_side_end == 0
+            and _point_on_segment(second_end, first_start, first_end)
+        )
+        or (
+            second_side_start == 0
+            and _point_on_segment(first_start, second_start, second_end)
+        )
+        or (
+            second_side_end == 0
+            and _point_on_segment(first_end, second_start, second_end)
+        )
+    )
+
+
+def _keep_out_leg_violations(
+    points: list[dict[str, float]],
+    keep_outs: dict[str, list[dict[str, float]]],
+) -> list[dict[str, Any]]:
+    """Return legal-endpoint legs that cross or touch a keep-out boundary.
+
+    Endpoint containment remains in `_keep_out_violations`; this closes the gap
+    where both endpoints are legal but the segment between them is not. Keeping
+    the diagnostics separate makes the refusal reason unambiguous.
+    """
+    violations: list[dict[str, Any]] = []
+    for leg_index, (start, end) in enumerate(zip(points, points[1:], strict=False)):
+        for key, polygon in keep_outs.items():
+            if len(polygon) < 3:
+                continue
+            if _point_in_polygon(start, polygon) or _point_in_polygon(end, polygon):
+                continue
+            if any(
+                _segments_intersect(
+                    start,
+                    end,
+                    polygon[edge_index],
+                    polygon[(edge_index + 1) % len(polygon)],
+                )
+                for edge_index in range(len(polygon))
+            ):
+                field_name, _, hash_text = key.partition(":")
+                violations.append(
+                    {
+                        "leg_index": leg_index,
+                        "start_point_index": leg_index,
+                        "end_point_index": leg_index + 1,
+                        "start": start,
+                        "end": end,
                         "keep_out_type": field_name,
                         "keep_out_hash": hash_text,
                     }
@@ -2941,9 +3025,12 @@ def _validate_custom_path(  # noqa: C901
     # honoured even when no area geometry is available to contain the path.
     keep_outs = _keep_out_polygons(coordinator)
     keep_out_violations = _keep_out_violations(normalized_points, keep_outs)
+    keep_out_leg_violations = _keep_out_leg_violations(normalized_points, keep_outs)
     if keep_out_violations:
         errors.append("path_points_inside_keep_out_zone")
-    elif not keep_outs:
+    if keep_out_leg_violations:
+        errors.append("path_legs_cross_keep_out_zone")
+    if not keep_outs:
         # Silence here would read as "no keep-outs on the path" when it means
         # "no keep-out geometry was loaded". Those are very different, and the
         # second one is how the trampoline run passed validation.
@@ -2962,6 +3049,7 @@ def _validate_custom_path(  # noqa: C901
         # "nothing was loaded to violate".
         "keep_out_zones_checked": len(keep_outs),
         "keep_out_violations": keep_out_violations,
+        "keep_out_leg_violations": keep_out_leg_violations,
         "coordinate_system": "mower_map_xy",
         "blade_mode": blade_mode,
         "speed": speed,
@@ -13740,10 +13828,10 @@ async def _raw_pymammotion_execute_multi_segment(  # noqa: C901, PLR0913
     calibration drives and turn immediately on the shared offset.
     """
     normalized_area_hash = _coerce_optional_int(area_hash)
-    # Route B: split long legs BEFORE the preview, so `_validate_custom_path`'s
-    # per-point containment check judges the inserted points too -- an inserted
+    # Route B: split long legs BEFORE the preview, so `_validate_custom_path`
+    # judges both the inserted points and every resulting sub-leg. An inserted
     # point can land outside a concave area even when both operator clicks are
-    # inside it.
+    # inside it; segment containment is invariant under this collinear split.
     split = _split_long_legs(points, target_length_m=split_leg_target_length_m)
     # 🔑 Surface the leg length beyond which the mid-drive controller cannot
     # protect the landing. Advisory, not a refusal: a 3.0 m sub-leg DID reach

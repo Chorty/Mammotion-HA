@@ -1,5 +1,30 @@
 # Codex handoff — 2026-08-21
 
+## UPDATE — segment-level containment implemented, not released
+
+The primary task below is now implemented in the working tree and remains
+**unreleased/uninstalled**. The host still runs beta68 with the old per-point
+backend behavior.
+
+- `_keep_out_leg_violations` checks each legal-endpoint leg against every
+  keep-out edge and reports the leg indices, endpoints, zone kind, and hash.
+- `_validate_custom_path` refuses it by name with
+  `path_legs_cross_keep_out_zone`.
+- Backend and card both include boundary touches and collinear edge overlap;
+  the card now blocks Real Go locally instead of showing an advisory-only
+  warning.
+- The former gap test is now `test_a_leg_that_clips_a_corner_is_caught`.
+- Split interaction is pinned: an already-split crossing path remains refused;
+  inserted points inside a zone retain the existing point-level reason.
+- Verification: 755 pytest, 91 frontend, ruff, ruff format, mypy, all ten
+  pre-commit hooks, `check_doc_symbols.py`, and
+  `check_accepted_profile.py` ACCEPTED.
+
+Release behavior change: paths with legal waypoints whose connecting leg
+crosses or touches a keep-out will now be refused. On the next deployed build,
+repeat the browser check below but expect **Real Go to be disabled**, with the
+named crossing reason. No mower motion is needed to verify this.
+
 Read `CLAUDE.md` "Start here" and `docs/NEXT-SESSION.md` §0 before acting.
 This file is the session-specific brief; those two are the standing state.
 

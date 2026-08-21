@@ -1,5 +1,12 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
+⚠️ **UNRELEASED WORKING-TREE FIX:** segment-level keep-out containment is
+implemented and fully gated, but the host still runs beta68's per-point backend.
+The next build will refuse a crossing/touching leg with
+`path_legs_cross_keep_out_zone`, and the card will disable Real Go locally.
+See `docs/CODEX-HANDOFF-20260821.md` for the exact verification state and
+release browser expectation.
+
 ⚠️ **Everything below the "2026-08-13 HANDOFF" section is older and its build
 state is stale.** Those sections remain accurate as *evidence* — the
 measurements stand — but do not act on any build/host/gate state they describe.

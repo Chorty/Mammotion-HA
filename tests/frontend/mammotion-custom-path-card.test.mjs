@@ -1710,11 +1710,9 @@ test("a map with no keep-out geometry refuses nothing", () => {
   assert.equal(element._waypoints.length, 1);
 });
 
-test("the keep-out test is PER-POINT, matching the backend's gap", () => {
-  // ⚠️ Pinned deliberately, mirroring
-  // test_a_leg_that_clips_a_corner_is_not_caught in the backend suite. A leg
-  // whose ENDPOINTS straddle a zone is not caught by either side. If segment
-  // -level containment ever lands, this test should fail and be rewritten.
+test("point diagnostics stay per-point after leg containment closes the gap", () => {
+  // Point diagnostics stay point-scoped; `_legsCrossingKeepOuts` and the
+  // backend's separate leg diagnostic close the gap between endpoints.
   const element = cardWithZone();
   const straddling = [
     { x: 9.0, y: -0.76 },
@@ -1858,10 +1856,7 @@ test("a leg that goes around the zone is not flagged", () => {
   assert.equal(element._legsCrossingKeepOuts(around).length, 0);
 });
 
-test("a crossing leg warns loudly but is NOT blocked", () => {
-  // ⚠️ Deliberate: the BACKEND will still dispatch this path, so a card refusal
-  // would be stricter than the machine that drives. The operator's standing
-  // decision is that being wrongly blocked is the worse failure.
+test("a crossing leg is blocked locally and named loudly", () => {
   const element = cardWithZone();
   element._waypoints = [{ x: 16.0, y: -0.76 }];
   element._currentPositionPoint = () => ({ x: 9.0, y: -0.76 });
@@ -1869,10 +1864,9 @@ test("a crossing leg warns loudly but is NOT blocked", () => {
   element._confirmClear = true;
 
   const banner = element._readiness();
-  assert.equal(
-    banner.level,
-    element._readinessLevel().level,
-    "the crossing warning must not change the readiness level",
+  assert.equal(banner.level, "blocked");
+  assert.ok(
+    element._preflight().blockers.includes("path_legs_cross_keep_out_zone"),
   );
   const warning = banner.details.find((line) =>
     line.includes("crosses a keep-out"),
@@ -1881,8 +1875,28 @@ test("a crossing leg warns loudly but is NOT blocked", () => {
     warning,
     `no crossing warning in: ${JSON.stringify(banner.details)}`,
   );
-  assert.match(warning, /PER POINT/);
-  assert.match(warning, /neither this card nor the mower will refuse/i);
+  assert.match(warning, /Refused/);
+  assert.match(warning, /Both the card and backend check the whole leg/i);
+});
+
+test("segment containment includes a collinear keep-out boundary", () => {
+  const element = card();
+  element._mapData = {
+    area_polygons: {},
+    keep_out_polygons: {
+      "obstacle:1": [
+        { x: 0, y: 0 },
+        { x: 2, y: 0 },
+        { x: 2, y: 2 },
+        { x: 0, y: 2 },
+      ],
+    },
+  };
+  const alongBoundary = [
+    { x: -1, y: 0 },
+    { x: 3, y: 0 },
+  ];
+  assert.equal(element._legsCrossingKeepOuts(alongBoundary).length, 1);
 });
 
 test("a crossing leg stays red even after a run says the segment passed", () => {

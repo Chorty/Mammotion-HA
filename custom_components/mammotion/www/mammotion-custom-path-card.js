@@ -363,6 +363,8 @@ const BLOCKER_HELP = Object.freeze({
     "No trustworthy current facing. Course-over-ground is last-travel only and cannot see an in-place turn.",
   path_validation_failed:
     "The path failed validation — check the warnings above (usually a point outside the selected area).",
+  path_legs_cross_keep_out_zone:
+    "A leg crosses or touches a red keep-out zone. Move a waypoint so the line goes around it.",
   experimental_motion_disabled:
     "Turn on the integration option 'Enable experimental BLE-only manual motion'.",
   experimental_motion_backend_not_ready:
@@ -788,8 +790,8 @@ class MammotionCustomPathCard extends HTMLElement {
   // the warning was invisible during the only window in which it is useful.
   _readiness() {
     const banner = this._readinessLevel();
-    // A leg THROUGH a zone is more dangerous than a click inside one, because
-    // nothing refuses it -- neither this card nor the backend.
+    // Name the local geometry refusal directly; the backend independently
+    // applies the same segment test during preview and again before dispatch.
     const crossings = this._legsCrossingKeepOuts(this._plannedSplit().points);
     if (crossings.length) {
       const kinds = [
@@ -797,10 +799,9 @@ class MammotionCustomPathCard extends HTMLElement {
       ].join(", ");
       banner.details = [
         ...(banner.details || []),
-        `🚨 The path crosses a keep-out zone (${kinds}) even though every ` +
-          `waypoint is outside it. Containment is checked PER POINT, so neither ` +
-          `this card nor the mower will refuse this path. Move a waypoint so the ` +
-          `line goes around the zone.`,
+        `🚨 Refused: the path crosses a keep-out zone (${kinds}) even though ` +
+          `every waypoint is outside it. Both the card and backend check the ` +
+          `whole leg. Move a waypoint so the line goes around the zone.`,
       ];
     }
     const limit = this._correctableLegLimitMetres();
@@ -1024,10 +1025,23 @@ class MammotionCustomPathCard extends HTMLElement {
     return zones;
   }
 
-  // Ray-cast point-in-polygon, matching `_point_in_polygon` in services.py.
-  // ⚠️ Boundary cases are not defined identically in the two implementations,
-  // so this must never be the ONLY thing standing between a click and a zone --
-  // the backend check remains authoritative. This exists to warn early.
+  _pointOnSegment(point, start, end, tolerance = 1e-9) {
+    const squaredLength = (end.x - start.x) ** 2 + (end.y - start.y) ** 2;
+    if (squaredLength <= tolerance) {
+      return (point.x - start.x) ** 2 + (point.y - start.y) ** 2 <= tolerance;
+    }
+    const cross =
+      (point.y - start.y) * (end.x - start.x) -
+      (point.x - start.x) * (end.y - start.y);
+    if (Math.abs(cross) > tolerance) return false;
+    const dot =
+      (point.x - start.x) * (end.x - start.x) +
+      (point.y - start.y) * (end.y - start.y);
+    return dot >= -tolerance && dot <= squaredLength + tolerance;
+  }
+
+  // Ray-cast point-in-polygon, including the boundary, matching
+  // `_point_in_polygon` in services.py.
   _pointInPolygon(point, polygon) {
     if (!Array.isArray(polygon) || polygon.length < 3) return false;
     const x = Number(point?.x);
@@ -1041,7 +1055,10 @@ class MammotionCustomPathCard extends HTMLElement {
       const ay = Number(a.y);
       const bx = Number(b.x);
       const by = Number(b.y);
-      if (!Number.isFinite(ax) || !Number.isFinite(by)) continue;
+      if (![ax, ay, bx, by].every(Number.isFinite)) continue;
+      if (this._pointOnSegment({ x, y }, { x: ax, y: ay }, { x: bx, y: by })) {
+        return true;
+      }
       if (ay > y !== by > y && x < ((bx - ax) * (y - ay)) / (by - ay) + ax) {
         inside = !inside;
       }
@@ -1050,9 +1067,7 @@ class MammotionCustomPathCard extends HTMLElement {
   }
 
   // Which of these points sit inside a keep-out, and which zone caught them.
-  // ⚠️ PER-POINT, exactly like the backend's check -- a leg that clips a corner
-  // with neither endpoint inside is NOT caught here either. Segment-level
-  // containment is the real fix; this deliberately does not pretend otherwise.
+  // Leg containment is checked separately by `_legsCrossingKeepOuts`.
   _keepOutViolations(points) {
     const zones = this._keepOutPolygons();
     const found = [];
@@ -1067,30 +1082,39 @@ class MammotionCustomPathCard extends HTMLElement {
     return found;
   }
 
-  // Do two segments properly cross? Standard orientation test.
+  // Do two closed segments intersect? Includes endpoint touches and collinear
+  // overlap, matching `_segments_intersect` in services.py.
   _segmentsIntersect(p1, p2, p3, p4) {
-    const side = (a, b, c) =>
-      Math.sign((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
-    const d1 = side(p3, p4, p1);
-    const d2 = side(p3, p4, p2);
-    const d3 = side(p1, p2, p3);
-    const d4 = side(p1, p2, p4);
-    return d1 !== d2 && d3 !== d4;
+    const orientation = (a, b, c) =>
+      (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+    const d1 = orientation(p1, p2, p3);
+    const d2 = orientation(p1, p2, p4);
+    const d3 = orientation(p3, p4, p1);
+    const d4 = orientation(p3, p4, p2);
+    if (
+      ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+      ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))
+    ) {
+      return true;
+    }
+    return (
+      (d1 === 0 && this._pointOnSegment(p3, p1, p2)) ||
+      (d2 === 0 && this._pointOnSegment(p4, p1, p2)) ||
+      (d3 === 0 && this._pointOnSegment(p1, p3, p4)) ||
+      (d4 === 0 && this._pointOnSegment(p2, p3, p4))
+    );
   }
 
   // 🚨 Does this LEG cross a keep-out, even with both endpoints outside it?
   //
-  // The per-point check cannot see this, backend or card: on 2026-08-21 an
-  // operator clicked two legal points either side of an obstacle zone and the
-  // card happily drew -- and would have driven -- a path straight through it.
-  // Both endpoints were outside, so nothing objected.
+  // The former per-point check could not see this: on 2026-08-21 an operator
+  // clicked two legal points either side of an obstacle zone and the card
+  // happily drew -- and would have driven -- a path straight through it. Both
+  // endpoints were outside, so nothing objected. The backend now mirrors this
+  // whole-leg check and refuses it before dispatch.
   //
-  // ⚠️ This WARNS and colours the leg; it does NOT refuse. The backend will
-  // still dispatch such a path (`path_points_inside_keep_out_zone` is
-  // per-point), so a card refusal here would be stricter than the machine that
-  // actually drives -- and the operator's standing decision is that being
-  // wrongly BLOCKED is the worse failure. Segment-level containment in the
-  // backend is the real fix; this makes the gap visible meanwhile.
+  // The card uses this for immediate feedback; the backend independently
+  // refuses the same geometry with `path_legs_cross_keep_out_zone`.
   _legsCrossingKeepOuts(points) {
     const zones = this._keepOutPolygons();
     const crossings = [];
@@ -1380,6 +1404,9 @@ class MammotionCustomPathCard extends HTMLElement {
     // banner cannot receive.
     if (this._linearBudgetReachMetres() < this._longestSegmentMetres()) {
       blockers.push("linear_budget_insufficient_for_segment");
+    }
+    if (this._legsCrossingKeepOuts(plannedSplit.points).length) {
+      blockers.push("path_legs_cross_keep_out_zone");
     }
     if (experimental.real_motion_allowed !== true) {
       if (
@@ -1784,9 +1811,9 @@ class MammotionCustomPathCard extends HTMLElement {
     // 🚨 Refuse at CLICK time, not at dispatch. The backend refuses this path
     // too (`path_points_inside_keep_out_zone`, beta63), but only once the
     // operator has positioned the mower and spent the daylight getting there.
-    // ⚠️ PER-POINT, like the backend: a leg CLIPPING a zone corner with neither
-    // endpoint inside is still not caught by either. Do not read this as
-    // segment-level containment.
+    // Point containment is the immediate click-time check. Whole-leg
+    // containment runs in `_preflight` and in the backend preview/dispatch
+    // validator once the new point joins the path.
     const blocked = this._keepOutViolations([point]);
     if (blocked.length) {
       const kind = String(blocked[0].zone).split(":")[0];

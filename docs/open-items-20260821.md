@@ -122,9 +122,17 @@ extracted from the card literal; `poll_interval_seconds` read at
 
 ---
 
-## 3. Keep-out containment is PER-POINT, not per-segment
+## 3. Keep-out containment is now per-segment in the working tree
 
-**Status: known, pinned by a test, deliberately open.**
+**Status: fixed in the working tree; not released or installed.**
+
+`_keep_out_leg_violations` now checks every legal-endpoint leg against every
+keep-out edge, including boundary touches and collinear overlap.
+`_validate_custom_path` refuses with `path_legs_cross_keep_out_zone`, while the
+card mirrors the same geometry and blocks Real Go locally. The former gap test
+is now `test_a_leg_that_clips_a_corner_is_caught`; split-path behavior and a
+clear negative case are pinned too. The beta68 host remains per-point until the
+next release.
 
 beta63 made keep-outs checked at all — a real fix, verified refusing the exact
 recorded trampoline click. But a leg that **clips a corner with neither endpoint
