@@ -42,10 +42,27 @@ appear as a blocker depending on where it sits. On the dock it is expected.
 on 2026-08-20 got 1-of-3 and 2-of-3. Nobody has seen 3-of-3.
 
 Current record at 3.0 m: **2 reached / 1 failed, n = 3.**
+A **2.27 m** single vector segment also reached target at **0.11378 m**
+(`docs/evidence-vector-segment-2p27m-20260820.json`, recovered from the card's
+run history 2026-08-21 before it was overwritten).
+
+🔑 **The one-sided aim drift is now seen in three independent runs** — that
+2.27 m segment ran **8 of 8 pulses negative, mean −10.87°**, growing −7.7° →
+−19.8° as range closed, the same signature as the chain run's sub-leg 2
+(−10.29°, 9 of 9). It is **not noise**. It reached target anyway *because the
+leg was shorter*, which is direct support for the correctable-leg-length bound:
+outcome is set by how much cross-track the leg length lets an uncorrectable aim
+error accumulate.
 
 - 3.0 m single sub-leg → `target_reached` at **0.1484 m** (1.6 mm of margin)
 - 3.0 m chain → sub-leg 1 **0.094 m**, sub-leg 2 failed at 0.2594 m
 - Measured-good regime is still **~0.8 m**
+
+⚠️ **One run is still unrecovered.** The card's landing table shows an earlier
+2-segment run at **2.72 m** (landings 0.1319 / 0.0716, mean 0.1017, 2 of 2
+`target_reached`). It is not the file above and the card keeps only ~3–5 full
+results, so it may already be gone. If it is still in the history, download and
+bank it — it is two more long-leg landings.
 
 Procedure that worked, in order:
 
