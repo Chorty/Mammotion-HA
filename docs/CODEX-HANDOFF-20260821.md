@@ -12,17 +12,37 @@ review this session's work, pass an explicit base:
 `b28252d4` is the commit before this session started; everything since is the
 work described below.
 
+## ⚠️ UNDEPLOYED COMMIT ON MAIN — fold it into your next build
+
+`main` is **one card fix ahead of the host**. beta68 is deployed; commit
+`1b27cf15` is not.
+
+**What it fixes:** the keep-out crossing colour was applied *before* the
+segment-verdict block in the SVG draw loop, so `if (segments)` overwrote it.
+Once a run existed, a leg crossing an obstacle zone was repainted **green** by
+`seg.passed === true` — the hazard vanished from the map exactly when there was
+a completed drive through the zone to look at. The crossing colour is now
+applied last, pinned by a test asserting source order (a value assertion would
+not catch a re-ordering, which is the real failure mode).
+
+**Nothing is broken on the host meanwhile**: the 🚨 banner warning is deployed
+and confirmed working live on beta68. Only the redundant map colouring is
+affected, and only after a run completes.
+
+**Action:** no separate release needed — bump and deploy it with whatever you
+ship next, and re-run the beta68 browser check below afterwards.
+
 ## STATE (re-verify before acting)
 
 - Host runs **`0.6.4-beta68`**, motion-disabled. 46/46 byte-identical, card md5
   `f143465a5bb120ed759ab328c15dad9f` at both paths, resource
   `?v=0.6.4-beta68&build=f143465a`, config entry `loaded`.
-- `main` clean and pushed.
+- `main` clean and pushed, **one commit ahead of the host** (see above).
 - Motion gate **DISARMED**. ⚠️ It was found **ARMED at rest** before this
   deploy — the third such occurrence in two days.
 - Mower off the dock, `MODE_PAUSE`, around `(4.88, −2.45)`. **It moves between
   sessions; re-scan, never trust a recorded position.**
-- Gate baseline: **752 pytest, 89 frontend**, ruff, ruff format, mypy, ten
+- Gate baseline: **752 pytest, 90 frontend**, ruff, ruff format, mypy, ten
   pre-commit hooks, `check_doc_symbols.py`, `check_accepted_profile.py`
   **ACCEPTED**.
 
