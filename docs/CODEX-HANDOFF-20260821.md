@@ -164,6 +164,21 @@ The exact frozen route was `(4.8756, -2.4530)` to `(11.7193, -8.2980)`, 9.0000
 m at 319.5°, split with `split_leg_target_length_m: 3.2`. The gate was verified
 disarmed afterward: disabled, no active session, `MODE_PAUSE`.
 
+## CONTINUOUS MOTION — offline Phase 0 only
+
+`continuous_controller.py` and `replay_continuous_controller.py` now provide a
+pure lookahead decision and JSON replay with no HA/coordinator/BLE import or
+dispatch path. Fault inputs return zero-speed stop decisions; focused tests pin
+stale telemetry, refresh/BLE loss, containment, RTK/area/blade/work-mode state,
+cancellation, cross-track, time/distance limits, bounded prediction, and command
+clamping. The 37 focused tests and full **792-test** backend suite pass. **No
+continuous executor or service exists and no mower moved.**
+
+Next is Phase 1 instrumentation: capture x/y and `toward` timestamps inside the
+existing bounded 4 s straight/arc motion windows, then apply the written go/no-go
+criteria before designing a variable-command executor. Full plan:
+`docs/continuous-motion-feasibility-plan-20260821.md`.
+
 Five payload traps that each cost a run:
 
 1. **Freeze the scanned endpoint.** A dispatcher that re-derives it from live

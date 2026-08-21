@@ -47,6 +47,13 @@ with no active session and `MODE_PAUSE`. Current 3.0 m evidence is **5 reached /
 1 failed, n=6**: feasibility is proven, reliability is not.
 `docs/evidence-route-b-3x3m-beta69-20260821T193417Z.json`.
 
+🧪 **CONTINUOUS MOTION PHASE 0 IS OFFLINE ONLY.** A pure lookahead controller
+and standalone JSON replay now return bounded steering or fail-closed zero-speed
+decisions without importing Home Assistant, registering a service, or exposing
+a dispatch path. No continuous executor exists and no mower moved for this
+phase. Next is in-window telemetry instrumentation, not a closed-loop run; see
+`docs/continuous-motion-feasibility-plan-20260821.md`.
+
 ## (history) beta68 released and installed motion-disabled
 
 🚨 **2026-08-21 — A LEG CAN BE DRAWN STRAIGHT THROUGH A KEEP-OUT ZONE, AND

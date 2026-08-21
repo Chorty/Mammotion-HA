@@ -4,9 +4,21 @@
 live. The backend refuses a crossing/touching legal-endpoint leg with
 `path_legs_cross_keep_out_zone`, and the card disables Real Go locally. Real-map
 crossing and legal-control previews passed; browser footer/console, named
-refusal, red/dashed crossing, and disabled Real Go all passed. Gate DISARMED,
-no active session, no motion commanded. Full record:
-`docs/deploy-runbook-p0.md` → beta69.
+refusal, red/dashed crossing, and disabled Real Go all passed. The deployment
+itself commanded no motion. Full record: `docs/deploy-runbook-p0.md` → beta69.
+
+✅ **POST-DEPLOY HARDWARE:** the supervised 9.0000 m Route B run completed all
+three 3.0000 m sub-legs at 0.14388 / 0.11413 / 0.06070 m from target. The gate
+was verified DISARMED afterward with no active session. Combined 3.0 m evidence
+is 5 reached / 1 failed, n=6: feasibility is proven, reliability is not.
+`docs/evidence-route-b-3x3m-beta69-20260821T193417Z.json`.
+
+🧪 **CONTINUOUS MOTION PHASE 0 IS OFFLINE ONLY:** a pure lookahead controller
+and standalone JSON replay now produce bounded drive/stop decisions without
+importing Home Assistant or exposing any dispatch path. No continuous service
+or executor exists and this phase sent no mower command. Phase 1 must measure
+position and `toward` timestamps inside bounded straight/arc windows before a
+closed loop is designed. `docs/continuous-motion-feasibility-plan-20260821.md`.
 
 ⚠️ **Everything below the "2026-08-13 HANDOFF" section is older and its build
 state is stale.** Those sections remain accurate as *evidence* — the
@@ -80,8 +92,9 @@ uncorrectable **0.776 m**. This is why ~0.8 m works and 3.0 m does not.
 - 3.0 m single sub-leg → `target_reached`, **0.1484 m** (1.6 mm of margin).
 - 3.0 m chain → **2 of 3 sub-legs**, best chain yet. Sub-leg 1 **0.094 m**;
   sub-leg 2 `vio_realign_incomplete` at 0.2594 m on a refused 51.025° correction.
-- 3.0 m legs: **2 reached / 1 failed, n=3.** Not reliable. ~0.8 m is still the
-  measured-good regime.
+- The later beta69 chain added three successful 3.0 m landings, making the
+  combined record **5 reached / 1 failed, n=6.** A chain can complete, but 3.0 m
+  is not yet proven reliable.
 
 **Read-only findings banked the same day** (no motion, all from existing evidence):
 - Position feed is **~1 Hz** moving or stationary → the 1.0 s settle poll is

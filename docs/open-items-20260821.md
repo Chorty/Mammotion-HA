@@ -40,7 +40,16 @@ times, and the cost of it firing mid-run is one re-arm.
 
 ## 2. 🆕 Motion is 71% standing still — the "slow and not fluid" complaint, measured
 
-**Status: newly quantified this session, no fix attempted.**
+**Status: offline controller/replay prototype implemented; no runtime executor
+or hardware continuous-control test exists.**
+
+`continuous_controller.py` now implements a pure, non-dispatching lookahead
+decision with bounded prediction and fail-closed results for stale telemetry,
+refresh/BLE faults, invalid RTK/area/blade/work-mode state, cancellation,
+containment, cross-track, time, and distance limits. The standalone replay says
+`dispatch_capable: false`, sends zero commands, and has focused fault tests.
+The staged go/no-go plan is
+`docs/continuous-motion-feasibility-plan-20260821.md`.
 
 Reconstructed from `sent_at_utc` in
 `docs/evidence-routeb-retry-overshoot-20260820.json`:
