@@ -145,18 +145,29 @@ and legal-control previews, and deployed browser behavior.
 
 ---
 
-## 4. Route B retry at 3.0 m sub-legs — not run
+## 4. Route B retry at 3.0 m sub-legs — completed
 
-**Status: ready, blocked only on authorization and a fresh scan.**
+**Status: completed 3 of 3 on beta69; reliability question remains open.**
+
+The authorized 9.0000 m route split into three 3.0000 m collinear legs and all
+three stopped `target_reached` at **0.14388 / 0.11413 / 0.06070 m** (mean
+0.10624 m). It ran from `(4.8756, -2.4530)` to `(11.7193, -8.2980)`, with
+measured scan clearances of 1.21 m to the area edge and 4.41 m to keep-outs.
+The gate was verified disarmed afterward. Evidence:
+`docs/evidence-route-b-3x3m-beta69-20260821T193417Z.json`.
+
+Combined 3.0 m landing evidence is **5 reached / 1 failed, n = 6**. This closes
+the feasibility question (a 3-of-3 chain can complete), but one complete run
+does not make 3.0 m a reliable control regime.
 
 `split_leg_target_length_m` accepts **0.5–6.10** (`services.py:1426`) and is
 **not** a `LUBA_ACCEPTANCE_PROFILE` key, so 3.0 costs no Gate 5.
 
-⚠️ **Do not expect this to succeed.** The 3.85 m failure was an 18.083° opening
+The prior risk remains informative. The 3.85 m failure was an 18.083° opening
 aim error → a mid-drive correction after pulse 2 → two suppressions on final
 approach → 0.16734 m landing on `target_requires_reverse_recovery`. **Leg length
 was not obviously the proximate cause**, and a 3.0 m leg opening at 18° can
-reproduce every step. The measured-good regime is ~0.8 m.
+reproduce every step. The new success does not erase that failure mode.
 
 🔑 **The reachable distance depends entirely on where the mower is standing, and
 it moves.** Two scans 20 minutes apart in this session:
@@ -167,11 +178,11 @@ it moves.** Two scans 20 minutes apart in this session:
 | (7.3963, −0.3307) | **12.30 m** at heading 303.0° |
 
 **So "an ~11.5 m click" is not a property of the yard — re-scan immediately
-before every run.** Route B is **0 for 2** end-to-end; neither failure was the
-splitter.
+before every run.** Route B is now **1 for 3** end-to-end; neither earlier
+failure was the splitter.
 
-*Checked:* schema range read from source; both scans run live against
-`export_map`.
+*Checked:* schema range read from source; scans run live against `export_map`;
+full beta69 response banked and final gate state verified.
 
 ---
 

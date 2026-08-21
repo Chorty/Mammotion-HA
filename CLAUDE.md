@@ -36,8 +36,16 @@ count as violations. Live zero-motion validation against the real map refused
 the crossing `(9.0, -0.76) → (15.0, -0.76)` solely by the new reason and
 accepted the legal control `(9.0, -5.0) → (15.0, -5.0)`. Browser verification
 passed: beta69 footer/console, red dashed crossing, named refusal, Real Go
-disabled. Gate DISARMED; no motion commanded. Full record:
-`docs/deploy-runbook-p0.md` → beta69.
+disabled. Full deployment record: `docs/deploy-runbook-p0.md` → beta69.
+
+✅ **ROUTE B 3 x 3.0 m COMPLETED ON BETA69.** A later supervised, explicitly
+authorized run completed all three collinear 3.0000 m legs with
+`target_reached` landings at **0.14388 / 0.11413 / 0.06070 m** (mean 0.10624
+m). The frozen 9.0000 m route ran from `(4.8756, -2.4530)` to
+`(11.7193, -8.2980)` with zero blockers. The gate was then verified DISARMED,
+with no active session and `MODE_PAUSE`. Current 3.0 m evidence is **5 reached /
+1 failed, n=6**: feasibility is proven, reliability is not.
+`docs/evidence-route-b-3x3m-beta69-20260821T193417Z.json`.
 
 ## (history) beta68 released and installed motion-disabled
 
@@ -101,12 +109,14 @@ set by the turn primitive's actuation limit, protecting a 3.0 m leg would need a
 ~2.9° floor, and the affine sweep bound still permits 20° at the 200 ms floor.
 Moves no `LUBA_ACCEPTANCE_PROFILE` key; profile still ACCEPTED.
 
-🔑 **ROUTE B AT 3.0 m: 2 of 3 sub-legs, the furthest a chain has got** (previous
-end-to-end record was 0 for 2). Sub-leg 1 `target_reached` at **0.094 m**;
+🔑 **ROUTE B AT 3.0 m: 3 of 3 now completed.** The earlier chain's sub-leg 1
+`target_reached` at **0.094 m**;
 sub-leg 2 failed `vio_realign_incomplete` at 0.2594 m when a **51.025°**
 correction came due at 0.26 m to run and was refused `turn_budget_infeasible`.
-3.0 m legs are now **2 reached / 1 failed, n=3** — not reliable.
-`docs/evidence-routeb-3m-chain-20260820.json`.
+the new beta69 chain added three successful landings, making the combined record
+**5 reached / 1 failed, n=6**. It can complete, but is not yet proven reliable.
+`docs/evidence-routeb-3m-chain-20260820.json` and
+`docs/evidence-route-b-3x3m-beta69-20260821T193417Z.json`.
 
 🗑️ **A BLE prediction of mine was REFUTED by that run and is recorded as such.**
 Cadence did NOT degrade across the chain — sub-leg 1 mean 0.85, sub-leg 2 mean

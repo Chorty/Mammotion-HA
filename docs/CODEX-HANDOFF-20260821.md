@@ -152,10 +152,17 @@ while the geometry is still forgiving**.
   within-run law.** It failed to predict the chain run, which had zero stalled
   pulses in 19 across 130 s.
 
-## HARDWARE, IF DAYLIGHT AND AUTHORIZATION ALLOW
+## HARDWARE RESULT — 3 x 3.0 m chain completed
 
-**Does a 3-sub-leg collinear chain complete at 3.0 m?** Best so far is 2 of 3.
-Current record at 3.0 m: **2 reached / 1 failed, n = 3**.
+**Yes.** A supervised beta69 run completed all three 3.0000 m collinear legs at
+0.14388 / 0.11413 / 0.06070 m from target (mean 0.10624 m), with no blockers
+or failed segment. Current 3.0 m record: **5 reached / 1 failed, n = 6**. This
+demonstrates feasibility, not reliability. Evidence:
+`docs/evidence-route-b-3x3m-beta69-20260821T193417Z.json`.
+
+The exact frozen route was `(4.8756, -2.4530)` to `(11.7193, -8.2980)`, 9.0000
+m at 319.5°, split with `split_leg_target_length_m: 3.2`. The gate was verified
+disarmed afterward: disabled, no active session, `MODE_PAUSE`.
 
 Five payload traps that each cost a run:
 

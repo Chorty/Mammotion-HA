@@ -14,17 +14,31 @@ commanded. See `docs/deploy-runbook-p0.md` → beta69.
 The beta67 browser check in Task 1 is complete and superseded. Do not expect
 Real Go to remain available for a crossing leg on beta69; refusal is the fix.
 
+## UPDATE — the 3 x 3.0 m Route B chain completed
+
+The supervised beta69 run completed **3 of 3** collinear 3.0000 m sub-legs with
+`target_reached` landings at **0.14388 / 0.11413 / 0.06070 m** (mean 0.10624 m),
+no blockers, and no failed segment. The 9.0000 m frozen route ran from
+`(4.8756, -2.4530)` to `(11.7193, -8.2980)` at heading 319.5°. Its pre-run scan
+held 1.2 m area and 1.5 m keep-out margins; measured minimum clearances were
+1.21 m and 4.41 m respectively. Full evidence:
+`docs/evidence-route-b-3x3m-beta69-20260821T193417Z.json`.
+
+The gate was armed only around the authorized run and verified DISARMED after:
+`enabled: false`, `real_motion_allowed: false`, no active session,
+`MODE_PAUSE`. Combined 3.0 m evidence is now **5 reached / 1 failed, n = 6**;
+this proves a 3-leg chain can complete, not that 3.0 m is reliable.
+
 ## STATE (verified 2026-08-21 ~end of session — RE-VERIFY BEFORE ACTING)
 
-- Host runs **`0.6.4-beta67`**, motion-disabled, deployed and verified: 46/46
-  byte-identical, card md5 `a582529521ee023deaaa37f22236f4ac` at both paths,
-  resource `?v=0.6.4-beta67&build=a5825295`, config entry `loaded`.
-- `main` clean and pushed at **`17e99533`**.
+- Host runs **`0.6.4-beta69`**, motion-disabled after the authorized Route B
+  run; deployment and browser verification are recorded in
+  `docs/deploy-runbook-p0.md`.
+- Pre-run repository baseline was clean and pushed at **`11843e71`**.
 - Motion gate **DISARMED and verified** (`enabled: false`).
-- Mower was last seen at `(4.4216, 1.4305)`, `AREA_INSIDE`, RTK Fix,
-  `MODE_PAUSE`, **not charging** — i.e. **off the dock**. It moved after
-  docking, so **its position is not what you think it is. Re-scan.**
-- Gate baseline: **752 pytest, 85 frontend**, ruff, ruff format, mypy, ten
+- Mower was last seen at `(11.7615, -8.2563)`, `AREA_INSIDE`, RTK Fix,
+  `MODE_PAUSE`, not charging, after the successful chain.
+- Gate baseline: **755 pytest, 91 frontend**, ruff, ruff format, mypy, ten
   pre-commit hooks, `check_doc_symbols.py` 1143 claims, and
   `check_accepted_profile.py` **ACCEPTED**.
 
@@ -48,12 +62,13 @@ Ask the operator to load the dashboard and confirm four things:
 ⚠️ The mower is off the dock, so `position_not_valid_for_motion` may or may not
 appear as a blocker depending on where it sits. On the dock it is expected.
 
-## TASK 2 — finish the 3.0 m Route B chain (needs daylight + authorization)
+## TASK 2 — COMPLETE: 3.0 m Route B chain
 
-**The question: does a 3-sub-leg collinear chain complete at 3.0 m?** Two runs
-on 2026-08-20 got 1-of-3 and 2-of-3. Nobody has seen 3-of-3.
+**Yes: a 3-sub-leg collinear chain completed at 3.0 m.** The beta69 run reached
+all three targets at 0.14388 / 0.11413 / 0.06070 m. Earlier runs got 1-of-3 and
+2-of-3, so the result demonstrates feasibility but not reliability.
 
-Current record at 3.0 m: **2 reached / 1 failed, n = 3.**
+Current record at 3.0 m: **5 reached / 1 failed, n = 6.**
 A **2.27 m** single vector segment also reached target at **0.11378 m**
 (`docs/evidence-vector-segment-2p27m-20260820.json`, recovered from the card's
 run history 2026-08-21 before it was overwritten).
@@ -68,7 +83,8 @@ error accumulate.
 
 - 3.0 m single sub-leg → `target_reached` at **0.1484 m** (1.6 mm of margin)
 - 3.0 m chain → sub-leg 1 **0.094 m**, sub-leg 2 failed at 0.2594 m
-- Measured-good regime is still **~0.8 m**
+- A complete 3.0 m chain is now demonstrated, but one of six measured 3.0 m
+  landings still failed and the conservative controller bound remains open.
 
 ⚠️ **One run is still unrecovered.** The card's landing table shows an earlier
 2-segment run at **2.72 m** (landings 0.1319 / 0.0716, mean 0.1017, 2 of 2
@@ -101,8 +117,8 @@ Procedure that worked, in order:
    whose `finally` disarms → run → **disarm and verify** → bank evidence
    immediately.
 
-⚠️ **Do not present this as likely to succeed.** Both failures were the control
-law, not the splitter and not BLE.
+⚠️ **Do not promote this single complete chain into a reliability claim.** The
+earlier failure was the control law, not the splitter and not BLE.
 
 ## THE OPEN PROBLEM, STATED PRECISELY
 
@@ -114,7 +130,7 @@ until the error is already too expensive.**
 **never corrected**, and it buys `distance × sin(floor)`. Hence
 `_correctable_leg_length_limit_m` = `tolerance / sin(floor)` = **0.580 m** on
 the accepted profile. At 3.0 m the same floor permits an uncorrectable
-**0.776 m** miss. That is why ~0.8 m works and 3.0 m does not.
+**0.776 m** miss. That is why ~0.8 m is robust while 3.0 m can still fail.
 
 Sub-leg 2 died exactly this way: a one-sided aim error grew −7.3° → −18.1° over
 nine pulses, corrected once, then needed **51.025°** at 0.2594 m to run and was
