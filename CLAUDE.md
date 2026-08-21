@@ -26,7 +26,16 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: `0.6.4-beta69` released and installed motion-disabled
+## Current build: `0.6.4-beta70` released and installed motion-disabled
+
+🧪 **CONTINUOUS MOTION PHASE 1 INSTRUMENTATION IS DEPLOYED.** The existing
+bounded raw probe now records 100 ms coordinator-cache samples inside refreshed
+motion windows, including x/y, `toward`, VIO, report timestamps, active command,
+and refresh completions. It remains opt-in and fails closed; there is no new
+continuous executor. Deployed straight and shallow-arc dry runs both planned 41
+samples and returned `would_send: false`, `command_result.attempted: false`.
+Browser beta70 and the final disabled gate were verified. No mower command was
+sent. See `docs/evidence-beta70-continuous-phase1-deploy-20260821.json`.
 
 ✅ **SEGMENT-LEVEL KEEP-OUT CONTAINMENT IS DEPLOYED AND VERIFIED.**
 `_keep_out_leg_violations` checks legal-endpoint legs against every keep-out
@@ -47,11 +56,12 @@ with no active session and `MODE_PAUSE`. Current 3.0 m evidence is **5 reached /
 1 failed, n=6**: feasibility is proven, reliability is not.
 `docs/evidence-route-b-3x3m-beta69-20260821T193417Z.json`.
 
-🧪 **CONTINUOUS MOTION PHASE 0 IS OFFLINE ONLY.** A pure lookahead controller
+✅ **CONTINUOUS MOTION PHASE 0 IS OFFLINE ONLY.** A pure lookahead controller
 and standalone JSON replay now return bounded steering or fail-closed zero-speed
 decisions without importing Home Assistant, registering a service, or exposing
 a dispatch path. No continuous executor exists and no mower moved for this
-phase. Next is in-window telemetry instrumentation, not a closed-loop run; see
+phase. Phase 1 instrumentation is now deployed, but its two separately
+authorized physical captures remain pending; see
 `docs/continuous-motion-feasibility-plan-20260821.md`.
 
 ## (history) beta68 released and installed motion-disabled

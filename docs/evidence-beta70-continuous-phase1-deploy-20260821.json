@@ -1,0 +1,110 @@
+{
+  "captured_at": "2026-08-21T19:57:06-04:00",
+  "release": {
+    "version": "0.6.4-beta70",
+    "tag": "v0.6.4-beta70",
+    "version_commit": "a40fa32e",
+    "feature_commit": "ed5e3b6a",
+    "workflow_run": "https://github.com/Chorty/Mammotion-HA/actions/runs/32538277234"
+  },
+  "deployment": {
+    "motion_commanded": false,
+    "experimental_motion_armed": false,
+    "backup": "/config/mammotion-backup-20260821-195101-pre-beta70.tgz",
+    "backup_sha256": "420e8418805f5e72ca2693227ebb8b8553e05453311a1fa7a436906aca46c772",
+    "archive_sha256_local_and_host": "fd84013575efb83be969dcfb60db6b2f627b447a3c016fe51300a6817d5ebd15",
+    "deployable_file_count": 47,
+    "normalized_md5_list_sha256_local_and_host": "c8ed7e2aab0690dfbcaefbd81dd31bd3392b2ca60cdaa057285485098b4027b9",
+    "appledouble_or_bytecode_entries": 0,
+    "card_md5_local_and_both_host_paths": "ab85de303d6deef6f7f13c0f892302e0",
+    "restart": {
+      "api_up_seconds": 31,
+      "mammotion_entities": 133,
+      "entities_ready_seconds": 95
+    },
+    "config_entry_state": "loaded",
+    "installed_pymammotion_version": "0.8.12.post1",
+    "backend_verified": true,
+    "backend_capabilities_missing": []
+  },
+  "installed_version": {
+    "manifest": "0.6.4-beta70",
+    "integration_card": "0.6.4-beta70",
+    "hacs_compatibility_card": "0.6.4-beta70",
+    "lovelace_resource": "/hacsfiles/mammotion/mammotion-custom-path-card.js?v=0.6.4-beta70&build=ab85de30",
+    "browser_footer": "card v0.6.4-beta70",
+    "browser_console_banner": "MAMMOTION-CUSTOM-PATH-CARD v0.6.4-beta70"
+  },
+  "runtime": {
+    "position": {
+      "x": 11.7615,
+      "y": -8.2563,
+      "pos_type": "AREA_INSIDE",
+      "rtk": "Fix"
+    },
+    "work_mode": "MODE_PAUSE",
+    "blade_rpm": 0,
+    "active_transport": "none",
+    "ble_link_live": false,
+    "ble_note": "BLE did not reconnect after restart; this independently blocks real motion and does not affect dry-run verification."
+  },
+  "phase1_dry_runs": [
+    {
+      "control": "straight",
+      "command_args": {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      "motion_axes": "linear",
+      "motion_refresh_interval_ms": 200,
+      "in_window_sample_interval_ms": 100,
+      "duration_ms": 4000,
+      "planned_max_samples": 41,
+      "sampling_source": "coordinator_cache_only",
+      "extra_ble_report_requests_during_window": 0,
+      "report_stream_plan": [
+        "async_start_report_stream",
+        "async_start_continuous_reports"
+      ],
+      "dry_run": true,
+      "reason": "dry_run",
+      "would_send": false,
+      "command_attempted": false,
+      "stream_started": false
+    },
+    {
+      "control": "shallow_arc",
+      "command_args": {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      "motion_axes": "arc",
+      "motion_refresh_interval_ms": 200,
+      "in_window_sample_interval_ms": 100,
+      "duration_ms": 4000,
+      "planned_max_samples": 41,
+      "sampling_source": "coordinator_cache_only",
+      "extra_ble_report_requests_during_window": 0,
+      "report_stream_plan": [
+        "async_start_report_stream",
+        "async_start_continuous_reports"
+      ],
+      "dry_run": true,
+      "reason": "dry_run",
+      "would_send": false,
+      "command_attempted": false,
+      "stream_started": false
+    }
+  ],
+  "final_motion_gate": {
+    "enabled": false,
+    "real_motion_allowed": false,
+    "blockers": [
+      "experimental_motion_disabled",
+      "ble_transport_not_registered"
+    ],
+    "active_session": null,
+    "work_mode": "MODE_PAUSE"
+  },
+  "conclusion": "Beta70 is deployed and browser-verified motion-disabled. Phase 1 instrumentation dry runs execute on the host and send no stream or mower command. No physical Phase 1 capture has been authorized or run."
+}

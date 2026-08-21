@@ -8,6 +8,44 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta69 → beta70 — 2026-08-21 19:50-19:57 EDT, motion-disabled
+
+Ships Phase 1 continuous-motion **instrumentation only** in the existing
+bounded raw probe. `in_window_sample_interval_ms` is disabled by default; at
+100 ms it samples coordinator cache while refreshed motion is open, without
+extra in-window BLE report requests. There is still no continuous controller
+executor or new dispatch command.
+
+| | beta70 |
+| --- | --- |
+| Files | 47/47 byte-identical |
+| Normalized per-file MD5-list SHA-256, local = host | `c8ed7e2aab0690dfbcaefbd81dd31bd3392b2ca60cdaa057285485098b4027b9` |
+| Card md5 (both paths + local) | `ab85de303d6deef6f7f13c0f892302e0` |
+| Archive SHA-256 local = host | `fd84013575efb83be969dcfb60db6b2f627b447a3c016fe51300a6817d5ebd15` |
+| AppleDouble/bytecode entries | 0 |
+| Backup | `/config/mammotion-backup-20260821-195101-pre-beta70.tgz` |
+| Backup SHA-256 | `420e8418805f5e72ca2693227ebb8b8553e05453311a1fa7a436906aca46c772` |
+| Tag | `v0.6.4-beta70` at version commit `a40fa32e` |
+| Quartet on host | manifest and both card paths `0.6.4-beta70` |
+| Lovelace resource | `?v=0.6.4-beta70&build=ab85de30` (read back) |
+| Restart | API up 31 s; 133 Mammotion entities at 95 s |
+| Config entry | `loaded` |
+| Dependency | `pymammotion 0.8.12.post1`, backend verified, missing capabilities `[]` |
+| Gate after | `enabled: false`, `real_motion_allowed: false`, no session, `MODE_PAUSE` |
+
+Both exact Phase 1 plans executed as dry runs on the deployed integration:
+straight `(linear 400, angular 0)` and shallow arc `(linear 400, angular 180)`,
+each at 200 ms refresh, 100 ms cache sampling, and a 4,000 ms hard window. Both
+returned `reason: dry_run`, `would_send: false`, `command_result.attempted:
+false`, 41 planned samples, and zero extra in-window BLE report requests. No
+stream was started and no mower command was sent. BLE had not reconnected after
+restart, which independently kept real motion blocked.
+
+Browser verification passed: footer and fresh console banner both loaded
+beta70 from the new cache key. The final gate readback remained disabled with
+no active session. Machine-readable record:
+`docs/evidence-beta70-continuous-phase1-deploy-20260821.json`.
+
 ### beta68 → beta69 — 2026-08-21 14:01-14:11 EDT, motion-disabled
 
 Ships **segment-level keep-out containment**. A path with legal endpoints whose

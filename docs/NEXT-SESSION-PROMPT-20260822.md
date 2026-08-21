@@ -29,7 +29,7 @@ The gate was armed only around the authorized run and verified DISARMED after:
 `MODE_PAUSE`. Combined 3.0 m evidence is now **5 reached / 1 failed, n = 6**;
 this proves a 3-leg chain can complete, not that 3.0 m is reliable.
 
-## UPDATE — continuous motion Phase 1 instrumentation is ready, undeployed
+## UPDATE — continuous motion Phase 1 instrumentation is deployed
 
 A pure lookahead controller and JSON replay now exercise bounded steering and
 fail-closed fault decisions with **no Home Assistant import or dispatch path**.
@@ -39,17 +39,18 @@ The existing bounded raw probe now also accepts opt-in
 extra in-window BLE report requests. It fails closed if refresh is off or stream
 startup fails, and dry run starts no stream and sends no command.
 
-This code is **not deployed**, no physical capture was run, and no mower command
-was sent for the instrumentation work. No continuous executor/service exists.
-Next, deploy motion-disabled and dry-run the exact straight and shallow-arc
-plans; each later 4 s physical window needs separate explicit authorization.
+Beta70 is deployed motion-disabled and browser-verified. The exact straight and
+shallow-arc plans both passed deployed dry run with 41 planned samples,
+`would_send: false`, and no command or stream attempt. No physical capture was
+run and no mower command was sent. No continuous executor/service exists. Each
+later 4 s physical window needs separate explicit authorization.
 Exact go/no-go criteria:
 `docs/continuous-motion-feasibility-plan-20260821.md`.
 
 ## STATE (verified 2026-08-21 ~end of session — RE-VERIFY BEFORE ACTING)
 
-- Host runs **`0.6.4-beta69`**, motion-disabled after the authorized Route B
-  run; deployment and browser verification are recorded in
+- Host runs **`0.6.4-beta70`**, motion-disabled after the Phase 1 instrumentation
+  deploy; deployment and browser verification are recorded in
   `docs/deploy-runbook-p0.md`.
 - Pre-run repository baseline was clean and pushed at **`11843e71`**.
 - Motion gate **DISARMED and verified** (`enabled: false`).

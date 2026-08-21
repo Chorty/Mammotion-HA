@@ -1,6 +1,6 @@
 # Codex handoff — 2026-08-21
 
-## UPDATE — Phase 1 continuous-motion instrumentation implemented, undeployed
+## UPDATE — Phase 1 continuous-motion instrumentation deployed as beta70
 
 The existing `raw_pymammotion_motion_probe` now has disabled-by-default
 `in_window_sample_interval_ms` instrumentation. With the intended 100 ms value
@@ -19,8 +19,13 @@ old probe path. Verification is **798 pytest, 91 frontend**, ruff, format, mypy,
 all ten pre-commit hooks, 1,159 documentation-symbol claims, and accepted-profile
 ACCEPTED. No deployment, arming, or physical run occurred.
 
-Next: deploy motion-disabled, inspect the 4 s / 100 ms straight and shallow-arc
-dry runs, then obtain separate explicit authorization for each physical window.
+Beta70 is installed motion-disabled and browser-verified. Both 4 s / 100 ms
+straight and shallow-arc dry runs passed with no stream or command attempt. The
+final gate is disabled with no active session. BLE had not reconnected after
+restart, so real motion was independently blocked as well. Evidence:
+`docs/evidence-beta70-continuous-phase1-deploy-20260821.json`.
+
+Next: obtain separate explicit authorization for each physical window.
 Apply the go/no-go criteria in
 `docs/continuous-motion-feasibility-plan-20260821.md` before designing Phase 2.
 

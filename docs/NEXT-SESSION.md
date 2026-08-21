@@ -1,7 +1,15 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
-✅ **BETA69 DEPLOYED MOTION-DISABLED:** segment-level keep-out containment is
-live. The backend refuses a crossing/touching legal-endpoint leg with
+✅ **BETA70 DEPLOYED MOTION-DISABLED:** Phase 1 in-window telemetry
+instrumentation is live in the existing bounded raw probe. Straight and
+shallow-arc 4 s / 100 ms plans both passed deployed dry run with 41 planned
+samples, `would_send: false`, and no stream or command attempt. Browser footer
+and console show beta70; the final gate is disabled with no active session. No
+mower command was sent. Full record:
+`docs/evidence-beta70-continuous-phase1-deploy-20260821.json`.
+
+✅ **BETA69 SEGMENT-LEVEL KEEP-OUT CONTAINMENT REMAINS LIVE.** The backend
+refuses a crossing/touching legal-endpoint leg with
 `path_legs_cross_keep_out_zone`, and the card disables Real Go locally. Real-map
 crossing and legal-control previews passed; browser footer/console, named
 refusal, red/dashed crossing, and disabled Real Go all passed. The deployment
@@ -13,12 +21,13 @@ was verified DISARMED afterward with no active session. Combined 3.0 m evidence
 is 5 reached / 1 failed, n=6: feasibility is proven, reliability is not.
 `docs/evidence-route-b-3x3m-beta69-20260821T193417Z.json`.
 
-🧪 **CONTINUOUS MOTION PHASE 0 IS OFFLINE ONLY:** a pure lookahead controller
+✅ **CONTINUOUS MOTION PHASE 0 IS OFFLINE ONLY:** a pure lookahead controller
 and standalone JSON replay now produce bounded drive/stop decisions without
 importing Home Assistant or exposing any dispatch path. No continuous service
-or executor exists and this phase sent no mower command. Phase 1 must measure
-position and `toward` timestamps inside bounded straight/arc windows before a
-closed loop is designed. `docs/continuous-motion-feasibility-plan-20260821.md`.
+or executor exists and this phase sent no mower command. Phase 1 instrumentation
+is deployed, but its separately authorized physical straight/arc captures must
+measure position and `toward` timestamps before a closed loop is designed.
+`docs/continuous-motion-feasibility-plan-20260821.md`.
 
 ⚠️ **Everything below the "2026-08-13 HANDOFF" section is older and its build
 state is stale.** Those sections remain accurate as *evidence* — the
