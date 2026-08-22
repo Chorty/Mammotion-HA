@@ -3,6 +3,27 @@ Continue the Mammotion-HA work. Read `CLAUDE.md` "Start here" and
 operator reports the mower is charging after its battery died. Do not perform
 hardware work until daylight and a fresh safety check.**
 
+## UNCOMMITTED WORKTREE — preserve and review before staging
+
+The preserved work below was created after clean base **`2aca5e0a`**. Run
+`git log -1 --oneline` for the handoff note's own commit. The worktree is
+intentionally **not clean** at handoff. These pre-existing/user-owned changes
+appeared after that base:
+
+- modified `docs/NEXT-SESSION.md` with an open refresh-cadence finding;
+- untracked `docs/refresh-cadence-may-be-3x-too-fast-20260819.md`;
+- untracked `scripts/analyze_refresh_cadence.py`; and
+- untracked `PyMammotion examples/` containing 13 example Python files.
+
+Do not discard, overwrite, or commit these wholesale. Inspect provenance and
+intent first. The refresh analyzer passes Ruff and reproduces 120 cruising
+pulses with median speed flat through the 400–700 ms write-duration bucket,
+then lower in the thin 700–1200 ms (`n=13`) and 1200+ ms (`n=2`) tails. That is
+correlational proxy evidence, not permission to change the frozen 200 ms
+profile. The copied examples are untracked and six files contain
+authentication-related fields; perform a secrets/provenance review before any
+staging. No network or mower call was used to verify this handoff note.
+
 ## CURRENT NEXT ACTION — Phase 1 captures at first safe daylight opportunity
 
 Offline preparation is complete at pushed commit **`d105f4ca`**. Do not design
@@ -87,7 +108,10 @@ inputs, and cannot dispatch or authorize motion. Usage and input schema:
 - Host runs **`0.6.4-beta70`**, motion-disabled after the Phase 1 instrumentation
   deploy; deployment and browser verification are recorded in
   `docs/deploy-runbook-p0.md`.
-- Repository is clean and pushed through analyzer commit **`d105f4ca`**.
+- The preserved cadence work began after documentation commit **`2aca5e0a`**;
+  analyzer commit **`d105f4ca`** is its parent. The worktree has the uncommitted
+  cadence-analysis and example files listed at the top of this file; do not
+  infer cleanliness from the later handoff-note commit.
 - Motion gate was last **DISARMED and verified** after beta70
   (`enabled: false`); re-read it before treating that as current state.
 - Last banked telemetry saw the mower at `(11.7615, -8.2563)`, `AREA_INSIDE`,
