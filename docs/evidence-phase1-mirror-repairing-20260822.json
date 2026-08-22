@@ -1,0 +1,155 @@
+{
+  "mode": "offline_mirror_pairing_reanalysis",
+  "authoritative": false,
+  "note": "Exploratory. analyze_phase1_capture.py holds the verdict and it is no_go. This changes no threshold and authorizes nothing.",
+  "moving_position_sigma_m": 0.007,
+  "min_chord_m": 0.15,
+  "captures": {
+    "straight": {
+      "path": "docs/evidence-phase1-straight-20260822T202600Z.json",
+      "steps": [
+        {
+          "elapsed_ms": 947.899,
+          "chord_m": 0.04563441683641818,
+          "bearing_degrees": 274.39870535499534,
+          "toward_rotation_degrees": 0.0,
+          "error_at_start": -2.007894645004626,
+          "error_at_midpoint": -2.007894645004626,
+          "error_at_end": -2.007894645004626,
+          "noise_bearing_uncertainty_degrees": 12.239558297776655
+        },
+        {
+          "elapsed_ms": 1970.961,
+          "chord_m": 0.24897777009203081,
+          "bearing_degrees": 276.850998867833,
+          "toward_rotation_degrees": 0.0,
+          "error_at_start": 0.44439886783300153,
+          "error_at_midpoint": 0.44439886783300153,
+          "error_at_end": 0.44439886783300153,
+          "noise_bearing_uncertainty_degrees": 2.2769127809518364
+        },
+        {
+          "elapsed_ms": 2982.806,
+          "chord_m": 0.2691911588444167,
+          "bearing_degrees": 277.6424648545274,
+          "toward_rotation_degrees": 0.0,
+          "error_at_start": 1.235864854527449,
+          "error_at_midpoint": 1.235864854527449,
+          "error_at_end": 1.235864854527449,
+          "noise_bearing_uncertainty_degrees": 2.106101091326753
+        },
+        {
+          "elapsed_ms": 3903.421,
+          "chord_m": 0.27449744989708014,
+          "bearing_degrees": 277.57809146953196,
+          "toward_rotation_degrees": -1.0707000000000164,
+          "error_at_start": 1.1714914695319294,
+          "error_at_midpoint": 0.6361414695319354,
+          "error_at_end": 0.1007914695319414,
+          "noise_bearing_uncertainty_degrees": 2.065423806627773
+        }
+      ],
+      "summary": {
+        "step_count": 4,
+        "all_steps": {
+          "step_count": 4,
+          "error_at_start": {
+            "max_abs_degrees": 2.008,
+            "passes_10_deg": true
+          },
+          "error_at_midpoint": {
+            "max_abs_degrees": 2.008,
+            "passes_10_deg": true
+          },
+          "error_at_end": {
+            "max_abs_degrees": 2.008,
+            "passes_10_deg": true
+          }
+        },
+        "chord_ge_0.15m": {
+          "step_count": 3,
+          "error_at_start": {
+            "max_abs_degrees": 1.236,
+            "passes_10_deg": true
+          },
+          "error_at_midpoint": {
+            "max_abs_degrees": 1.236,
+            "passes_10_deg": true
+          },
+          "error_at_end": {
+            "max_abs_degrees": 1.236,
+            "passes_10_deg": true
+          }
+        }
+      }
+    },
+    "shallow_arc": {
+      "path": "docs/evidence-phase1-shallow-arc-20260822T203400Z.json",
+      "steps": [
+        {
+          "elapsed_ms": 882.704,
+          "chord_m": 0.07603242729257051,
+          "bearing_degrees": 285.40713160382614,
+          "toward_rotation_degrees": 1.8485000000000014,
+          "error_at_start": 7.929831603826187,
+          "error_at_midpoint": 8.854081603826103,
+          "error_at_end": 9.778331603826132,
+          "noise_bearing_uncertainty_degrees": 7.418234576703942
+        },
+        {
+          "elapsed_ms": 1896.77,
+          "chord_m": 0.24194367113028606,
+          "bearing_degrees": 278.1501967347372,
+          "toward_rotation_degrees": 10.110000000000014,
+          "error_at_start": 2.521396734737209,
+          "error_at_midpoint": 7.576396734737273,
+          "error_at_end": 12.631396734737223,
+          "noise_bearing_uncertainty_degrees": 2.3430373947360117
+        },
+        {
+          "elapsed_ms": 2919.176,
+          "chord_m": 0.23827003588365842,
+          "bearing_degrees": 267.83529342184556,
+          "toward_rotation_degrees": 9.000399999999985,
+          "error_at_start": 2.316493421845564,
+          "error_at_midpoint": 6.816693421845571,
+          "error_at_end": 11.316893421845549,
+          "noise_bearing_uncertainty_degrees": 2.379121030229233
+        }
+      ],
+      "summary": {
+        "step_count": 3,
+        "all_steps": {
+          "step_count": 3,
+          "error_at_start": {
+            "max_abs_degrees": 7.93,
+            "passes_10_deg": true
+          },
+          "error_at_midpoint": {
+            "max_abs_degrees": 8.854,
+            "passes_10_deg": true
+          },
+          "error_at_end": {
+            "max_abs_degrees": 12.631,
+            "passes_10_deg": false
+          }
+        },
+        "chord_ge_0.15m": {
+          "step_count": 2,
+          "error_at_start": {
+            "max_abs_degrees": 2.521,
+            "passes_10_deg": true
+          },
+          "error_at_midpoint": {
+            "max_abs_degrees": 7.576,
+            "passes_10_deg": true
+          },
+          "error_at_end": {
+            "max_abs_degrees": 12.631,
+            "passes_10_deg": false
+          }
+        }
+      }
+    }
+  }
+}

@@ -49,6 +49,19 @@ deliberately in the plan, before a re-run — never by editing a threshold after
 seeing the data that failed it. Read
 `docs/phase1-continuous-motion-captures-20260822.md`.
 
+🔑 **CONFIRMED OFFLINE THE SAME DAY: the shipped END pairing is the ONLY one that
+fails.** Re-scored against both banked captures, worst error is START **7.930°**
+/ MIDPOINT **8.854°** / END **12.631°**, and `err@end = err@start + rotation`
+holds to 0.001° on every row. Filtered to informative steps the arc scores
+**2.521°** under START — the same regime as the straight control's 1.236°. A
+**second, independent defect**: the criterion has no minimum chord, so it scores
+steps whose position-noise bearing bound is **±12.2°** and **±7.4°**, at or above
+the 10° threshold — those rows cannot test anything. ⚠️ Which pairing is
+physically right is **NOT settled** (two informative steps, one arc), and the fix
+must not be "pick whichever passes". Read
+`docs/phase1-mirror-criterion-is-ill-posed-20260822.md`;
+`scripts/reanalyze_mirror_pairing.py` re-derives it with no mower.
+
 ✅ **What the straight capture DID establish**, all 17 criteria passed: position
 fixes arrive at ~1 Hz **during** motion (4 arrivals, max gap **1023 ms** against
 a 2000 ms limit), mirror error **max 2.008°**, 1.1029 m travelled, 19 refresh

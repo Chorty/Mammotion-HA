@@ -14,7 +14,11 @@ accepted-profile checks passing.
 at night. This is an operator report, not a fresh telemetry readback. The
 ✅ the straight and shallow-arc physical Phase 1 captures are **COMPLETE** as
 of 2026-08-22 and the analyzer verdict is **`no_go`** on one criterion; read
-`docs/phase1-continuous-motion-captures-20260822.md` before any Phase 2 talk.
+`docs/phase1-continuous-motion-captures-20260822.md` before any Phase 2 talk,
+then `docs/phase1-mirror-criterion-is-ill-posed-20260822.md`, which shows
+offline that the shipped END pairing is the only one that fails and that the
+criterion also lacks a minimum chord length. The next step is a reviewed plan
+revision, NOT another capture.
 Historical note, now satisfied: the two captures were pending here. Do no mower
 work until daylight and a fresh state/safety check; then scan new contained
 routes and request separate authorization for each 4 s capture. The analyzer
