@@ -74,6 +74,23 @@ a 2000 ms limit), mirror error **max 2.008°**, 1.1029 m travelled, 19 refresh
 writes all completing in order, full containment. The ~1 Hz feed does not
 degrade while the mower drives.
 
+🏁 **CONTINUOUS MOTION IS WORTH 4.88x, AND IT IS ALL DEAD TIME, 2026-08-22.**
+In-pulse speed over 212 banked linear-400 pulses is **0.2584 m/s**; a continuous
+window sustains **0.2757 m/s**; the 9.0 m collinear Route B chain managed
+**0.0565 m/s** end to end (9.0 m in 159.3 s wall clock). Effective duty cycle
+**21.9%**; a 9 m route would go 159 s → ~33 s.
+🗑️ **This refutes the guess that short pulses never reach full speed** — a
+**500 ms** pulse already medians 0.2422 m/s, indistinguishable from continuous.
+The apparent in-window ramp (0.243 → 0.266 → 0.298 m/s) is the ~1 Hz feed's
+reporting lag unwinding, not the drivetrain; total window travel matches the
+pulse corpus, which is the check that settles it. **The entire gain is not
+stopping.** ⚠️ 4.88x is a **ceiling, not a forecast** — a real controller must
+still steer on ~1 Hz feedback — and it extrapolates a **4 s** window to a 159 s
+route, which nothing has demonstrated. 🔑 An untested cheaper lever: linear 400
+is ~47% of the app's ±850 scale and the vendor drives ~0.55 m/s, so commanding
+faster multiplies with the duty-cycle win — at the cost of more blind distance
+per correction. Read `docs/what-continuous-motion-is-worth-20260822.md`.
+
 🔑 **POSITION AND HEADING ARE ONE ~1 Hz BUNDLE — THAT IS THE FEEDBACK CEILING,
 2026-08-22.** Across both Phase 1 captures, `position x/y`, `toward` and VIO
 heading change on **exactly the same instants, zero exceptions**. VIO is not an

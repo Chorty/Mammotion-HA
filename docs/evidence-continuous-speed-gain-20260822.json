@@ -1,0 +1,23 @@
+{
+  "mode": "offline_pulsed_vs_continuous_speed",
+  "authoritative": false,
+  "in_pulse": {
+    "pulse_count": 212,
+    "median_in_pulse_speed_ms": 0.2584,
+    "max_in_pulse_speed_ms": 0.3762
+  },
+  "pulsed_end_to_end": {
+    "path": "docs/evidence-route-b-3x3m-beta69-20260821T193417Z.json",
+    "distance_m": 9.0,
+    "wall_clock_s": 159.3,
+    "effective_speed_ms": 0.0565
+  },
+  "continuous_window": {
+    "path": "docs/evidence-phase1-straight-20260822T202600Z.json",
+    "distance_m": 1.1029,
+    "window_s": 4.0,
+    "sustained_speed_ms": 0.2757
+  },
+  "effective_duty_cycle": 0.2187,
+  "continuous_speedup_x": 4.88
+}

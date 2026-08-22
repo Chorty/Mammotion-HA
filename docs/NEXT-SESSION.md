@@ -40,8 +40,18 @@ is untouched and still says `no_go`.
 only show a rate fits itself. Re-fitting after the run would prove nothing — the
 same failure as moving a threshold.
 
-🔑 **The dominant prediction error is the acceleration transient, not
-curvature.** The first interval of each capture is spin-up and misses by
+🏁 **THE FLUIDITY CASE IS QUANTIFIED: 4.88x, all of it dead time.** Pulsed
+motion runs at a 21.9% duty cycle — 9.0 m took 159.3 s wall clock at
+0.0565 m/s, while the drivetrain does 0.2584 m/s whenever it is actually moving.
+🗑️ Short pulses do NOT lose speed: a 500 ms pulse already medians 0.2422 m/s.
+⚠️ 4.88x is a ceiling extrapolated from a **4 s** window to a 159 s route.
+🔑 **Consider spending the one budgeted run on a LONGER window rather than a
+second arc** — a longer window tests the assumption the whole 4.88x rests on;
+`duration_ms` is schema-capped at 4000 ms, so raising it is a deliberate change
+with its own safety review. Read
+`docs/what-continuous-motion-is-worth-20260822.md`.
+
+⚠️ **What looked like an acceleration transient is mostly feed lag.** The first interval of each capture is spin-up and misses by
 0.1579 m / 0.1138 m; every steady-state interval after it lands 0.020–0.077 m.
 A 4 s window spends its first quarter in a regime no constant-velocity model
 fits, which flatters the old mirror check and punishes the predictor.
