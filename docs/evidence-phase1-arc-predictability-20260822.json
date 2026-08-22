@@ -1,0 +1,71 @@
+{
+  "mode": "offline_arc_predictability",
+  "authoritative": false,
+  "k_lin": 0.0005369570581250152,
+  "k_ang": 0.03989367017540013,
+  "k_ang_source": "IN-SAMPLE (optimistic)",
+  "scored_path": "docs/evidence-phase1-shallow-arc-20260822T203400Z.json",
+  "steps": [
+    {
+      "dt_s": 0.8822450000000001,
+      "start": {
+        "source": "report_data.locations[0]",
+        "x": 5.0725,
+        "y": -3.6671,
+        "toward": 172.5227,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "observed_dx": 0.020199999999999996,
+      "observed_dy": -0.07330000000000014,
+      "toward_rotation_degrees": 1.8485000000000014,
+      "predicted_dx": 0.035407624912778664,
+      "predicted_dy": -0.18605536292475724,
+      "error_m": 0.11377628805591021
+    },
+    {
+      "dt_s": 1.0140660000000001,
+      "start": {
+        "source": "report_data.locations[0]",
+        "x": 5.0927,
+        "y": -3.7404,
+        "toward": 174.3712,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "observed_dx": 0.0343,
+      "observed_dy": -0.23950000000000005,
+      "toward_rotation_degrees": 10.110000000000014,
+      "predicted_dx": 0.03554810499095358,
+      "predicted_dy": -0.21473489834729853,
+      "error_m": 0.024796532538584555
+    },
+    {
+      "dt_s": 1.022406,
+      "start": {
+        "source": "report_data.locations[0]",
+        "x": 5.127,
+        "y": -3.9799,
+        "toward": -175.5188,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "observed_dx": -0.008999999999999453,
+      "observed_dy": -0.23809999999999976,
+      "toward_rotation_degrees": 9.000399999999985,
+      "predicted_dx": -0.0026056001886456915,
+      "predicted_dy": -0.2194295752620405,
+      "error_m": 0.019735073064046215
+    }
+  ],
+  "all_intervals": {
+    "count": 3,
+    "median_m": 0.0248,
+    "max_m": 0.1138
+  },
+  "excluding_first_interval": {
+    "count": 2,
+    "median_m": 0.0248,
+    "max_m": 0.0248
+  }
+}

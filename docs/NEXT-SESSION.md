@@ -28,10 +28,23 @@ Read in this order:
    pairing is the only one that fails; the measured offset is
    `alpha = -0.253 ± 0.174`, excluding END at 7.19σ.
 
-The open decision is **mirror identity or one-step position prediction error**,
-plus a minimum chord length so noise-dominated steps stop being scored. Both are
-desk work. ⚠️ Do not fix the criterion by picking whichever pairing passes, and
-do not re-run before the revision is committed.
+✅ **DECIDED 2026-08-22 by the operator:** continuous motion continues because
+fluidity is the point; the criterion becomes **one-step prediction error**; and
+**one** further mower run is budgeted, which must be decisive. The drafted
+revision is `docs/phase1-criterion-revision-proposal-20260822.md` — **it is a
+PROPOSAL awaiting review and is not implemented**; `analyze_phase1_capture.py`
+is untouched and still says `no_go`.
+
+🔑 **The decisive run is a second arc at a DIFFERENT `angular_speed`, scored with
+`k_lin` and `k_ang` frozen in a committed file BEFORE it runs.** Today's arc can
+only show a rate fits itself. Re-fitting after the run would prove nothing — the
+same failure as moving a threshold.
+
+🔑 **The dominant prediction error is the acceleration transient, not
+curvature.** The first interval of each capture is spin-up and misses by
+0.1579 m / 0.1138 m; every steady-state interval after it lands 0.020–0.077 m.
+A 4 s window spends its first quarter in a regime no constant-velocity model
+fits, which flatters the old mirror check and punishes the predictor.
 
 🌙 **Operator state:** as of the 2026-08-22 captures the mower was in
 "Backyard Right" at `(5.0155, -4.6187)`, `AREA_INSIDE`, `MODE_READY`, blades OFF
