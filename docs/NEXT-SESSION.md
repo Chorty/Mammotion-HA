@@ -15,7 +15,9 @@ at night. This is an operator report, not a fresh telemetry readback. The
 straight and shallow-arc physical Phase 1 captures remain pending. Do no mower
 work until daylight and a fresh state/safety check; then scan new contained
 routes and request separate authorization for each 4 s capture. The analyzer
-commit is pushed as `d105f4ca`. The timed-disarm automation remains on hold.
+commit is pushed as `d105f4ca`. ✅ The timed-disarm automation is **installed**
+as of 2026-08-22 (`automation.mammotion_disarm_motion_gate_when_left_armed`,
+live and enabled); it is one-way and cannot interrupt a run.
 
 ✅ **BETA70 DEPLOYED MOTION-DISABLED:** Phase 1 in-window telemetry
 instrumentation is live in the existing bounded raw probe. Straight and

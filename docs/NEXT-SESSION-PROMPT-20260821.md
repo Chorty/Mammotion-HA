@@ -83,8 +83,8 @@ mower drove into a trampoline on 2026-08-20.
    is why the nudge buttons had to be ungated rather than override-gated.
 3. **The card does not draw keep-outs yet.** `export_map.keep_out_polygons` is
    available; refusing at click time beats refusing at dispatch.
-4. **The disarm automation is still NOT installed** (verified absent from 69
-   automations). The gate was found armed at rest **four** times, once with zero
+4. ✅ **SUPERSEDED — installed 2026-08-22.** *(Was: still NOT installed,
+   verified absent from 69 automations.)* The gate was found armed at rest **four** times, once with zero
    blockers and the mower off its dock. YAML:
    `docs/automations/disarm-motion-gate.yaml`. Operator's call.
 5. Ceiling `14 -> 22` still untested; needs a leg over ~5 m.

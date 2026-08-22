@@ -23,7 +23,8 @@ The verified analyzer and documentation were committed and pushed as
 clean and synchronized afterward. The next hardware work is not authorized by
 that commit: after charging, wait for daylight, scan fresh contained straight
 and shallow-arc routes, and obtain separate authorization for each 4 s window.
-The operator's timed-disarm automation decision remains **hold**. The older
+The operator's timed-disarm automation decision remains **hold**. *(Superseded
+2026-08-22: the operator authorized it and it is installed.)* The older
 2.72 m card-history recovery is optional archival work, not a Phase 1 blocker.
 
 ## UPDATE — Phase 1 continuous-motion instrumentation deployed as beta70

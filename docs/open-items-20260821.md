@@ -30,11 +30,21 @@ that disarms on sight and an operator who arms to drive will fight each other
 silently. That is an argument FOR the automation, not against it: a timer-based
 disarm is visible and predictable, an agent's judgement call is neither.
 
-`docs/automations/disarm-motion-gate.yaml` **exists in the repo** and is
-**not installed** on the host. Operator's call — it has been deferred four
-times, and the cost of it firing mid-run is one re-arm.
+✅ **CLOSED 2026-08-22 — the automation is installed.** After four deferrals
+the operator authorized it. `docs/automations/disarm-motion-gate.yaml` was
+appended to the host's `/config/automations.yaml` and loaded by
+`automation.reload` (no HA restart), and is live as
+`automation.mammotion_disarm_motion_gate_when_left_armed` (id `1755900000001`,
+state `on`, `last_triggered: None`).
 
-*Checked:* two live `export_runtime_state` calls; `ls docs/automations/`.
+The "it may interrupt an operator run" worry above does **not** apply to it:
+`disarm_experimental_motion` refuses while a session is active, and there is no
+arm service, so the automation can only ever close an idle gate. Worst case is
+one re-arm, exactly as predicted.
+
+*Checked:* two live `export_runtime_state` calls; `ls docs/automations/`; and
+2026-08-22 live `/api/states` showing the automation entity `on` with the YAML's
+two entity ids matching the install.
 
 ---
 

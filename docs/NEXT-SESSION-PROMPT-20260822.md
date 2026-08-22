@@ -47,7 +47,8 @@ or implement Phase 2 yet. When the mower is charged and the operator is present:
    fresh frozen-corridor JSON. A `no_go` stops the experiment. A `go` permits
    Phase 2 design discussion only; it does not authorize another physical run.
 
-The deferred timed-disarm automation remains on hold. Recovering the older
+The deferred timed-disarm automation is **no longer on hold — it was installed
+2026-08-22** (see open item 3 below). Recovering the older
 2.72 m card-history result is useful archival evidence but is not a prerequisite
 for Phase 1 and should not displace the fresh capture work.
 
@@ -255,9 +256,16 @@ while the geometry is still forgiving** — not more late corrections.
 2. **`safety_overrides` is not wired into the movement primitives** —
    `MOVEMENT_SCHEMA` and `MANUAL_VELOCITY_PULSE_TEST_SCHEMA` cannot express an
    override. That gap is *why* the nudge buttons had to be ungated outright.
-3. **The disarm automation is still NOT installed.** The gate was found armed at
-   rest **twice on 2026-08-20 alone**. YAML:
-   `docs/automations/disarm-motion-gate.yaml`. Operator's call.
+3. ✅ **CLOSED 2026-08-22 — the disarm automation IS installed.** The gate had
+   been found armed at rest four times, twice on 2026-08-20 alone.
+   `automation.mammotion_disarm_motion_gate_when_left_armed` is live on the host
+   (id `1755900000001`, state `on`, `last_triggered: None`), appended to
+   `/config/automations.yaml` and loaded by `automation.reload`. It is one-way —
+   no arm service exists — and `disarm_experimental_motion` refuses while a
+   session is active, so it cannot interrupt a supervised run. Host backup:
+   `/config/automations.yaml.bak.claude-20260821-disarm`.
+   *Checked:* live `/api/states` shows the automation entity on; entity ids in
+   the YAML match the live install.
 4. Ceiling `14 → 22` still untested; needs a leg over ~5 m.
 
 ## DISCIPLINE THIS REPO ENFORCES (all of these bit someone on 2026-08-20)

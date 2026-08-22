@@ -64,6 +64,19 @@ accepted the legal control `(9.0, -5.0) → (15.0, -5.0)`. Browser verification
 passed: beta69 footer/console, red dashed crossing, named refusal, Real Go
 disabled. Full deployment record: `docs/deploy-runbook-p0.md` → beta69.
 
+✅ **THE DISARM AUTOMATION IS INSTALLED, 2026-08-22.** The gate had been found
+armed at rest four times and the automation had been deferred four times.
+`automation.mammotion_disarm_motion_gate_when_left_armed` is now live on the
+host (id `1755900000001`, state `on`, never yet triggered), appended to
+`/config/automations.yaml` from `docs/automations/disarm-motion-gate.yaml` and
+loaded by `automation.reload` — no HA restart. It fires 15 minutes after
+`binary_sensor.back_yard_clip_skywalker_real_motion_ready` reads on, plus a
+23:00 sweep, and notifies only when it actually closed something.
+⚠️ **It is one-way and cannot interrupt a run** — there is no arm service, and
+`disarm_experimental_motion` refuses while a session is active. Backup of the
+pre-change host file: `/config/automations.yaml.bak.claude-20260821-disarm`.
+Record: `docs/deploy-runbook-p0.md` → "disarm automation installed".
+
 ✅ **ROUTE B 3 x 3.0 m COMPLETED ON BETA69.** A later supervised, explicitly
 authorized run completed all three collinear 3.0000 m legs with
 `target_reached` landings at **0.14388 / 0.11413 / 0.06070 m** (mean 0.10624
@@ -211,6 +224,8 @@ ARE the operator's deliberate act. Read `docs/deploy-runbook-p0.md` → beta62.
 the dock), on the operator's explicit instruction after the deploy was paused
 and the state reported. **Fourth armed-at-rest occurrence.** `enabled` is STILL
 TRUE. The disarm automation remains uninstalled. No motion was commanded.
+*(Superseded 2026-08-22 — the automation is now installed; see "Current build".
+Kept because it records the posture at the time of the beta62 deploy.)*
 
 🆕 **2026-08-19 — ROUTE B IS DEPLOYED (`0.6.4-beta61`), MOTION-DISABLED.**
 **No motion has run on it.** Gate verified `real_motion_allowed: false`, no

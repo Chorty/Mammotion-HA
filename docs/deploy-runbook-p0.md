@@ -8,6 +8,44 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### disarm automation installed — 2026-08-22, no integration change
+
+Host config only. **No integration files changed, no version bump, no HA
+restart, no mower command, and the motion gate was not armed.**
+
+`docs/automations/disarm-motion-gate.yaml` was appended to
+`/config/automations.yaml` and applied with the `automation/reload` service.
+
+| step | result |
+| --- | --- |
+| backup taken first | `/config/automations.yaml.bak.claude-20260821-disarm`, md5 `5b08acc1ea54f2e3fe983155495b9795`, identical to the pre-change file |
+| entity ids checked against the live install | `binary_sensor.back_yard_clip_skywalker_real_motion_ready` (`off`) and `lawn_mower.back_yard_clip_skywalker` (`paused`) — both match the YAML |
+| appended | 54,526 → 55,686 bytes |
+| host-side YAML re-parse | valid, 60 automations |
+| applied | `POST /api/services/automation/reload` → HTTP 200 |
+| loaded | `automation.mammotion_disarm_motion_gate_when_left_armed`, id `1755900000001`, state `on`, `last_triggered: None` |
+
+Given an `id:` (the repo YAML has none) so HA treats it as a UI-editable entry
+like the other 59.
+
+🔒 **One-way by construction.** There is no arm service — arming stays behind
+the options flow — and `disarm_experimental_motion` refuses while a session is
+active, so this can never interrupt a supervised run. Worst case is one re-arm.
+It notifies only when `result.changed` is true, so a nightly sweep that finds
+the gate already closed is silent.
+
+**Rollback:** `cp /config/automations.yaml.bak.claude-20260821-disarm
+/config/automations.yaml` then call `automation/reload`. Or just disable the
+automation entity in the UI.
+
+⚠️ A second Mammotion automation already existed and was **not** touched:
+`Mammotion - resync map when it goes stale` presses `sync_maps` after
+`map_sync_status` reads `out_of_sync` for 15 minutes (last triggered
+2026-07-25). A `sync_maps` press once held the motion queue 12-17 s, but
+`async_sync_maps` is now guarded against firing while `manual_motion_owner` is
+set, so it is contained. Worth knowing it can fire unattended during a run
+window.
+
 ### beta69 → beta70 — 2026-08-21 19:50-19:57 EDT, motion-disabled
 
 Ships Phase 1 continuous-motion **instrumentation only** in the existing
@@ -315,6 +353,8 @@ throughout, and after the restart the mower had returned to the dock so the gate
 reads `real_motion_allowed: false` on `position_not_valid_for_motion` — but
 `enabled` is **still true**. The option is on.
 
+⚠️ *(Superseded 2026-08-22 — it is now installed; see "disarm automation
+installed" below. Kept as the record of the posture at this deploy.)*
 ⚠️ **The disarm automation is still NOT installed** (verified absent from 69
 automations). Four unexplained armings is the argument for installing it that
 three was not. YAML: `docs/automations/disarm-motion-gate.yaml`.

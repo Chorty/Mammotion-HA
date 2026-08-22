@@ -47,3 +47,7 @@ toward_first                                    # variable in the --summarise of
 
 # --- keys that live only in a docs/evidence-*.json record ---
 CORRECTION_read_this_first                      # a JSON key inside docs/evidence-routeb-retry-overshoot-20260820.json, holding the 2026-08-21 correction to commit 845ddf3e. The checker scans code trees only, so an evidence-file key can never resolve
+
+# --- Home Assistant entity ids on the host, not code identifiers ---
+mammotion_disarm_motion_gate_when_left_armed    # the disarm automation's entity id, created from docs/automations/disarm-motion-gate.yaml in the host's /config/automations.yaml on 2026-08-22. Host config, so it can never resolve in this tree
+back_yard_clip_skywalker_real_motion_ready      # the binary_sensor entity id that automation triggers on. Built at runtime from the device name plus the `real_motion_ready` key in binary_sensor.py, so the full id exists only on the host
