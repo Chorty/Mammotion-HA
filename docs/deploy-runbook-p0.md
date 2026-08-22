@@ -8,6 +8,61 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta70 → beta71 — 2026-08-22 19:26-19:35 EDT, motion-disabled
+
+Ships **one** change: the bounded raw motion probe's window is now bounded by
+**distance** rather than by a time proxy. `duration_ms` was capped at 4000 ms
+with the comment "the only thing limiting travel is the window"; that capped the
+longest continuous run this project can perform at ~1.1 m, while the case for
+continuous motion (4.88x) extrapolates a 4 s window to a 159 s route. The
+in-window sampler is now also the guard: it measures displacement from where the
+window started and aborts once `max_travel_m` is exceeded. Moves no
+`LUBA_ACCEPTANCE_PROFILE` key; profile still ACCEPTED.
+
+| | beta71 |
+| --- | --- |
+| tag / HEAD | `v0.6.4-beta71` at `1219de84` |
+| feature commit | `8e22bfac` |
+| version quartet | manifest `0.6.4-beta71`, pyproject `0.6.4-beta71`, `CARD_VERSION` `0.6.4-beta71`, uv.lock `0.6.4b71` |
+| archive SHA-256 | `cd1f3d555257b36e8e3566c346a71125138a629f28695ddd0be678035c11bd65`, identical local and host |
+| file verification | **47 of 47 byte-identical**, zero AppleDouble `._*` files |
+| card md5 | `575e8510826fbbec178b1fc258a67a1b` at both serving paths and locally |
+| Lovelace resource | `?v=0.6.4-beta71&build=575e8510`, verified by re-read |
+| host backup | `/config/mammotion-backup-20260822-1927-pre-beta71.tgz` |
+| restart | API up after **46 s**, 132 Mammotion entities at 134 s |
+| config entry | `loaded` |
+| backend | pymammotion `0.8.12.post1`, unchanged |
+| gate after | `enabled: false`, `real_motion_allowed: false`, no session, `MODE_READY` |
+
+**Zero-motion dry runs prove the new guard executes on the host**, all
+`would_send: false`, `command_result.attempted: false`, 11 of 11 gates passed:
+
+* `duration_ms: 8000` + `max_travel_m: 2.0` + 100 ms sampling → **no blockers**,
+  81 planned samples, and
+  `travel_guard: {"enabled": true, "max_travel_m": 2.0, "expected_overshoot_m": 0.35, "corridor_must_cover_m": 2.35, "tripped": false}`.
+* `duration_ms: 8000` with sampling but **no** guard → refused
+  `duration_over_4000ms_requires_max_travel_m`.
+* `duration_ms: 8000` with a guard but **no** sampling → refused
+  `duration_over_4000ms_requires_in_window_sampling`.
+* `duration_ms: 4000`, no guard → **no blockers**. Every existing caller is
+  unaffected and keeps the historic 4000 ms bound.
+
+⚠️ **No mower command was sent and no physical long window has been run.** The
+recommended first one is `duration_ms: 8000`, `max_travel_m: 2.0`, on a corridor
+frozen to cover **≥3.5 m** — sized for the case where the new guard does
+nothing, at the maximum observed 0.3762 m/s, because the guard is the thing
+under test and must not also be the containment.
+
+⚠️ **The runbook's "five entities read unavailable" note is stale.** Three do:
+`start_camera_on_mower`, `image.…_last_event`, and `sensor.…_recognized_people`.
+The four `emergency_nudge_*` buttons are now **available** because
+`_nudge_available` returns `True` unconditionally by the operator's explicit
+decision — that is the ungated-nudge change, not a regression.
+
+🚨 **Not browser-verified.** Bytes and behaviour are confirmed on the host; no
+browser has loaded beta71. Ask the operator to confirm the card footer and
+console banner both read `0.6.4-beta71`.
+
 ### disarm automation installed — 2026-08-22, no integration change
 
 Host config only. **No integration files changed, no version bump, no HA

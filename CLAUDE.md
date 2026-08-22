@@ -26,7 +26,26 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: `0.6.4-beta70` released and installed motion-disabled
+## Current build: `0.6.4-beta71` released and installed motion-disabled
+
+🆕 **beta71 BOUNDS THE MOTION WINDOW BY DISTANCE, NOT BY A TIME PROXY,
+2026-08-22.** The probe's `duration_ms` was capped at 4000 ms because "the only
+thing limiting travel is the window" — a time proxy that capped the longest
+continuous run at ~1.1 m, while the 4.88x case extrapolates a 4 s window to a
+159 s route. The in-window sampler is now also the guard: it measures
+displacement from the window start and aborts once `max_travel_m` is exceeded,
+which can only shorten a drive. **Fails closed** — the ceiling moves to 12000 ms
+but a window over 4000 ms is REFUSED without BOTH `max_travel_m` and in-window
+sampling (`duration_over_4000ms_requires_max_travel_m`,
+`duration_over_4000ms_requires_in_window_sampling`). ⚠️ The guard trips **late by
+~0.35 m** (~1 Hz cache plus one refresh interval at 0.2757 m/s), so the response
+reports `expected_overshoot_m` and `corridor_must_cover_m`; **size a corridor for
+the guard doing nothing**, since it is the thing under test. Verified executing
+on the host by zero-motion dry runs including both refusals. Moves no
+`LUBA_ACCEPTANCE_PROFILE` key. 🚨 **Not browser-verified**; no physical long
+window has been run. Record: `docs/deploy-runbook-p0.md` → beta71.
+
+## (history) beta70 released and installed motion-disabled
 
 🏁 **PHASE 1 CAPTURES ARE DONE AND THE VERDICT IS `no_go`, 2026-08-22.** Both
 separately authorized 4 s windows ran on beta70, moved the mower, stopped on

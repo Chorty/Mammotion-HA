@@ -40,6 +40,18 @@ is untouched and still says `no_go`.
 only show a rate fits itself. Re-fitting after the run would prove nothing — the
 same failure as moving a threshold.
 
+🆕 **BETA71 IS DEPLOYED MOTION-DISABLED (2026-08-22).** It bounds the probe
+window by **distance** instead of by the clock, so a continuous window longer
+than 4 s is possible for the first time. Fails closed: over 4000 ms needs BOTH
+`max_travel_m` and in-window sampling, and both refusals were verified live.
+⚠️ **Not browser-verified** and no physical long window has been run.
+🔑 **Recommended first long run: `duration_ms: 8000`, `max_travel_m: 2.0`, on a
+corridor frozen to cover ≥3.5 m** — sized for the guard doing NOTHING, at the
+maximum observed 0.3762 m/s, because the guard is under test and must not also
+be the containment. Expect it to trip at ~7.3 s / 2.0 m, which is deliberate: its
+first live use should be one where it actually fires. ~7 usable steps against
+today's 3. Record: `docs/deploy-runbook-p0.md` → beta71.
+
 🏁 **THE FLUIDITY CASE IS QUANTIFIED: 4.88x, all of it dead time.** Pulsed
 motion runs at a 21.9% duty cycle — 9.0 m took 159.3 s wall clock at
 0.0565 m/s, while the drivetrain does 0.2584 m/s whenever it is actually moving.
