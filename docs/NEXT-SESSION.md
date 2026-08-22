@@ -10,21 +10,35 @@ or any motion dispatcher. Its `go` never authorizes motion or Phase 2. See
 frontend tests, with lint, formatting, typing, documentation-symbol, and frozen
 accepted-profile checks passing.
 
-🌙 **LATEST OPERATOR STATE:** the mower battery died and was put on its charger
-at night. This is an operator report, not a fresh telemetry readback. The
-✅ the straight and shallow-arc physical Phase 1 captures are **COMPLETE** as
-of 2026-08-22 and the analyzer verdict is **`no_go`** on one criterion; read
-`docs/phase1-continuous-motion-captures-20260822.md` before any Phase 2 talk,
-then `docs/phase1-mirror-criterion-is-ill-posed-20260822.md`, which shows
-offline that the shipped END pairing is the only one that fails and that the
-criterion also lacks a minimum chord length. The next step is a reviewed plan
-revision, NOT another capture.
-Historical note, now satisfied: the two captures were pending here. Do no mower
-work until daylight and a fresh state/safety check; then scan new contained
-routes and request separate authorization for each 4 s capture. The analyzer
-commit is pushed as `d105f4ca`. ✅ The timed-disarm automation is **installed**
-as of 2026-08-22 (`automation.mammotion_disarm_motion_gate_when_left_armed`,
-live and enabled); it is one-way and cannot interrupt a run.
+✅ **BOTH PHASE 1 CAPTURES ARE COMPLETE, 2026-08-22, verdict `no_go`.** Run in
+daylight with the operator present, each under its own authorization. Both moved
+the mower, stopped on command, stayed inside their prevalidated corridors, and
+left the gate verified disarmed. One criterion of 17 failed. **The next step is
+a reviewed plan decision, NOT another capture.**
+
+Read in this order:
+
+1. `docs/phase1-continuous-motion-captures-20260822.md` — what ran and what the
+   straight capture established.
+2. `docs/the-1hz-bundle-is-the-ceiling-20260822.md` — 🔑 **read this before
+   proposing any follow-up run.** Position, `toward` and VIO heading arrive as
+   ONE ~1 Hz bundle, so every run yields ~3 usable steps whatever the criterion
+   says. "More measurements per run" is dead, and driving slower is worse.
+3. `docs/phase1-mirror-criterion-is-ill-posed-20260822.md` — the shipped END
+   pairing is the only one that fails; the measured offset is
+   `alpha = -0.253 ± 0.174`, excluding END at 7.19σ.
+
+The open decision is **mirror identity or one-step position prediction error**,
+plus a minimum chord length so noise-dominated steps stop being scored. Both are
+desk work. ⚠️ Do not fix the criterion by picking whichever pairing passes, and
+do not re-run before the revision is committed.
+
+🌙 **Operator state:** as of the 2026-08-22 captures the mower was in
+"Backyard Right" at `(5.0155, -4.6187)`, `AREA_INSIDE`, `MODE_READY`, blades OFF
+at 0 rpm, gate `enabled: false`. Verified by telemetry, not reported. Battery
+was 100% at the start of that session. ✅ The timed-disarm automation is
+**installed** (`automation.mammotion_disarm_motion_gate_when_left_armed`, live
+and enabled, three triggers); it is one-way and cannot interrupt a run.
 
 ✅ **BETA70 DEPLOYED MOTION-DISABLED:** Phase 1 in-window telemetry
 instrumentation is live in the existing bounded raw probe. Straight and
