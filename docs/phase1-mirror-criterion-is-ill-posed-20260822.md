@@ -46,13 +46,46 @@ threshold itself. **A step whose noise bound exceeds the threshold cannot test
 anything**, yet both are scored. The arc's shortest step is exactly the row that
 still reads 7.930 deg under START pairing, and its noise bound is 7.4.
 
-## What is NOT settled
+## The pairing is a measurable parameter, and it was measured
 
-⚠️ **Which pairing is physically correct is NOT determined by this data.** START
-scoring better than MIDPOINT is suggestive -- it would mean `toward` at an
-arrival already describes the course over the interval that follows, rather than
-the one that precedes it -- but that rests on **two** informative steps from
-**one** arc. It is a hypothesis with an obvious test, not a finding.
+Write the error as `err(alpha) = err_at_start + alpha * rotation`, where alpha
+is the fraction of the interval supplying `toward`: **0 = start, 0.5 = midpoint,
+1 = end**. That form is exact -- it reproduces every row to 0.001 deg. Solving
+each step for the alpha that would zero its error turns "which convention?" into
+a measurement with an uncertainty, inherited from the chord's own noise bound.
+
+The two informative arc steps agree closely:
+
+| chord | rotation | err at alpha=0 | implied alpha | +- |
+| ---: | ---: | ---: | ---: | ---: |
+| 0.2419 m | 10.11 deg | 2.521 | **-0.249** | 0.232 |
+| 0.2383 m |  9.00 deg | 2.316 | **-0.257** | 0.264 |
+
+Combined: **alpha = -0.253 +- 0.174**.
+
+| convention | distance from the measurement |
+| --- | ---: |
+| START (0) | **1.45 sigma** -- consistent |
+| MIDPOINT (0.5) | 4.32 sigma -- excluded |
+| END (1), shipped | **7.19 sigma** -- strongly excluded |
+
+🔑 **Only a turning capture can measure this.** Rotation is the denominator, so
+the straight control contributes nothing: all four of its steps are
+ill-conditioned. That is a constraint on any future test design, not a defect in
+the straight run.
+
+⚠️ **It is still two steps from one arc**, and the close agreement between them
+(0.008 apart, against +-0.23 uncertainties) is better than that uncertainty
+predicts -- which is luck, not extra confidence. Treat alpha as
+*measured once*, not established.
+
+⚠️ **A negative alpha is not explained.** It says the chord over an interval
+matches `toward` from slightly BEFORE that interval began, which no simple
+kinematic model predicts -- averaging alone would give +0.5. It is consistent
+with the position samples lagging the heading samples inside the same report,
+which would fit this project's documented ~1031 ms feed staleness, but this
+data cannot separate a position lag from a heading lead. Do not write that
+mechanism down as established.
 
 ⚠️ **Do not fix this by picking whichever pairing passes.** That is the same
 move as moving the threshold, one level of indirection away. The pairing has to

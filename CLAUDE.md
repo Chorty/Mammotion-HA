@@ -57,8 +57,14 @@ holds to 0.001° on every row. Filtered to informative steps the arc scores
 **second, independent defect**: the criterion has no minimum chord, so it scores
 steps whose position-noise bearing bound is **±12.2°** and **±7.4°**, at or above
 the 10° threshold — those rows cannot test anything. ⚠️ Which pairing is
-physically right is **NOT settled** (two informative steps, one arc), and the fix
-must not be "pick whichever passes". Read
+physically right is now **MEASURED, not chosen**: writing
+`err(alpha) = err_at_start + alpha × rotation` (exact to 0.001° on every row) and
+solving gives **alpha = −0.253 ± 0.174**, putting START at 1.45σ (consistent),
+MIDPOINT at 4.32σ and the shipped END at **7.19σ** (excluded). ⚠️ Two steps from
+one arc, and **only a turning capture can measure it** — rotation is the
+denominator, so all four straight-run steps are ill-conditioned. ⚠️ The negative
+sign is **unexplained**; averaging alone predicts +0.5. Do not write a mechanism
+down as established. The fix must still not be "pick whichever passes". Read
 `docs/phase1-mirror-criterion-is-ill-posed-20260822.md`;
 `scripts/reanalyze_mirror_pairing.py` re-derives it with no mower.
 

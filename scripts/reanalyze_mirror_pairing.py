@@ -95,6 +95,50 @@ def steps(samples: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return records
 
 
+def pairing_offset(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Solve each step for the pairing that would zero its mirror error.
+
+    Write the error as `err(alpha) = err_at_start + alpha * rotation`, where
+    alpha is which fraction of the interval supplies `toward`: 0 = start,
+    0.5 = midpoint, 1 = end. Setting it to zero gives that step's preferred
+    alpha, with an uncertainty inherited from the chord's noise bound.
+
+    🔑 A step that barely rotates cannot constrain alpha at all -- the rotation
+    is the denominator. Only a TURNING capture can measure this, which is why
+    the straight control contributes nothing here.
+    """
+    usable = []
+    for record in records:
+        rotation = record["toward_rotation_degrees"]
+        # Below this the denominator is comparable to its own noise.
+        if abs(rotation) < 3.0:
+            record["alpha"] = None
+            record["alpha_uncertainty"] = None
+            continue
+        record["alpha"] = -record["error_at_start"] / rotation
+        record["alpha_uncertainty"] = abs(
+            record["noise_bearing_uncertainty_degrees"] / rotation
+        )
+        usable.append(record)
+
+    if not usable:
+        return {"usable_step_count": 0, "alpha": None}
+
+    weights = [1.0 / r["alpha_uncertainty"] ** 2 for r in usable]
+    alpha = sum(w * r["alpha"] for w, r in zip(weights, usable, strict=True)) / sum(
+        weights
+    )
+    sigma = math.sqrt(1.0 / sum(weights))
+    return {
+        "usable_step_count": len(usable),
+        "alpha": round(alpha, 4),
+        "alpha_uncertainty": round(sigma, 4),
+        "sigma_from_start_0": round(abs(alpha - 0.0) / sigma, 2),
+        "sigma_from_midpoint_0p5": round(abs(alpha - 0.5) / sigma, 2),
+        "sigma_from_end_1": round(abs(alpha - 1.0) / sigma, 2),
+    }
+
+
 def report(
     name: str, records: list[dict[str, Any]], min_chord: float
 ) -> dict[str, Any]:
@@ -167,10 +211,24 @@ def main() -> int:
     }
     for name, path in (("straight", args.straight), ("shallow_arc", args.arc)):
         records = steps(_samples(path))
+        summary = report(name, records, args.min_chord)
+        offset = pairing_offset(records)
+        summary["pairing_offset"] = offset
+        if offset["alpha"] is None:
+            print("  pairing offset: no step rotates enough to constrain alpha")
+        else:
+            print(
+                f"  pairing offset: alpha = {offset['alpha']:+.3f} "
+                f"+- {offset['alpha_uncertainty']:.3f} "
+                f"from {offset['usable_step_count']} step(s) -- "
+                f"start {offset['sigma_from_start_0']} sigma, "
+                f"midpoint {offset['sigma_from_midpoint_0p5']} sigma, "
+                f"end {offset['sigma_from_end_1']} sigma away"
+            )
         result["captures"][name] = {
             "path": str(path),
             "steps": records,
-            "summary": report(name, records, args.min_chord),
+            "summary": summary,
         }
 
     if args.output:
