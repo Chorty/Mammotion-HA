@@ -1,6 +1,34 @@
 Continue the Mammotion-HA work. Read `CLAUDE.md` "Start here" and
-`docs/NEXT-SESSION.md` §0 first, then this. **It is daytime and supervised
-mower runs are available**, so the hardware items below are live.
+`docs/NEXT-SESSION.md` §0 first, then this. **At handoff it is night and the
+operator reports the mower is charging after its battery died. Do not perform
+hardware work until daylight and a fresh safety check.**
+
+## CURRENT NEXT ACTION — Phase 1 captures at first safe daylight opportunity
+
+Offline preparation is complete at pushed commit **`d105f4ca`**. Do not design
+or implement Phase 2 yet. When the mower is charged and the operator is present:
+
+1. Re-read the live host state. Treat the last beta70 disarm result as evidence,
+   not current truth; verify the experimental gate is off before preparation.
+2. Freshly scan and freeze contained routes from the mower's then-current
+   position. Each route needs at least 1.2 m area margin and 1.5 m keep-out
+   margin. Do not reuse the Route B scan or guess corridor metadata.
+3. Confirm daylight, clear route, blades off, operator present, and accessible
+   emergency stop. Show the exact straight 4 s route and obtain authorization
+   for that individual run only.
+4. Run the predeclared straight profile (`linear 400`, `angular 0`, 4,000 ms,
+   200 ms refresh, 100 ms cache sampling) inside a `try`/`finally` that disarms
+   and verifies the gate afterward. Bank the complete response.
+5. Repeat the route display and explicit-authorization step separately for the
+   shallow arc (`linear 400`, `angular 180`); do not treat straight-run consent
+   as arc-run consent. Bank the complete response and verified final disarm.
+6. Run `scripts/analyze_phase1_capture.py` offline with both responses and the
+   fresh frozen-corridor JSON. A `no_go` stops the experiment. A `go` permits
+   Phase 2 design discussion only; it does not authorize another physical run.
+
+The deferred timed-disarm automation remains on hold. Recovering the older
+2.72 m card-history result is useful archival evidence but is not a prerequisite
+for Phase 1 and should not displace the fresh capture work.
 
 ## UPDATE — beta69 supersedes the state and Task 1 below
 
@@ -59,13 +87,18 @@ inputs, and cannot dispatch or authorize motion. Usage and input schema:
 - Host runs **`0.6.4-beta70`**, motion-disabled after the Phase 1 instrumentation
   deploy; deployment and browser verification are recorded in
   `docs/deploy-runbook-p0.md`.
-- Pre-run repository baseline was clean and pushed at **`11843e71`**.
-- Motion gate **DISARMED and verified** (`enabled: false`).
-- Mower was last seen at `(11.7615, -8.2563)`, `AREA_INSIDE`, RTK Fix,
-  `MODE_PAUSE`, not charging, after the successful chain.
+- Repository is clean and pushed through analyzer commit **`d105f4ca`**.
+- Motion gate was last **DISARMED and verified** after beta70
+  (`enabled: false`); re-read it before treating that as current state.
+- Last banked telemetry saw the mower at `(11.7615, -8.2563)`, `AREA_INSIDE`,
+  RTK Fix, `MODE_PAUSE`. Afterward its battery died; the operator reports it is
+  now charging. Charging state and any position change are not telemetry-verified.
 - Current baseline: **806 pytest, 91 frontend**, ruff, ruff format, mypy, ten
-  pre-commit hooks, `check_doc_symbols.py` 1168 claims, and
+  pre-commit hooks, `check_doc_symbols.py` 1172 claims, and
   `check_accepted_profile.py` **ACCEPTED**.
+
+Everything below this state block is retained as evidence or a superseded task
+record. The current next action above takes precedence.
 
 ## TASK 1 — the browser check nobody has done (do this first, it is free)
 

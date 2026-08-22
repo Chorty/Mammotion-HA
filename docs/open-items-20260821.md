@@ -41,7 +41,9 @@ times, and the cost of it firing mid-run is one re-arm.
 ## 2. 🆕 Motion is 71% standing still — the "slow and not fluid" complaint, measured
 
 **Status: offline controller/replay and Phase 1 capture analyzer implemented;
-no runtime executor or hardware continuous-control test exists.**
+no runtime executor or hardware continuous-control test exists. The mower is
+charging at night, so both separately authorized Phase 1 captures remain
+pending until daylight.**
 
 `continuous_controller.py` now implements a pure, non-dispatching lookahead
 decision with bounded prediction and fail-closed results for stale telemetry,
@@ -54,6 +56,11 @@ and also has no dispatch path. Its `go` is not motion authorization. See
 `docs/phase1-capture-analyzer.md`.
 The staged go/no-go plan is
 `docs/continuous-motion-feasibility-plan-20260821.md`.
+
+Next evidence: freshly scan contained straight and shallow-arc routes, run the
+two 4 s profiles under separate explicit authorizations, bank both complete
+responses, and evaluate them with the offline analyzer. Do not begin Phase 2
+from dry-run evidence or from the existence of the analyzer itself.
 
 Reconstructed from `sent_at_utc` in
 `docs/evidence-routeb-retry-overshoot-20260820.json`:

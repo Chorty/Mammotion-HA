@@ -18,6 +18,14 @@ pytest, 91 frontend**, ruff, format, mypy for both integration and analyzer,
 charging at night; this work made no live calls, gate changes, deployments, or
 mower commands.
 
+The verified analyzer and documentation were committed and pushed as
+**`d105f4ca`** (`feat: add offline phase 1 capture analyzer`); the tree was
+clean and synchronized afterward. The next hardware work is not authorized by
+that commit: after charging, wait for daylight, scan fresh contained straight
+and shallow-arc routes, and obtain separate authorization for each 4 s window.
+The operator's timed-disarm automation decision remains **hold**. The older
+2.72 m card-history recovery is optional archival work, not a Phase 1 blocker.
+
 ## UPDATE — Phase 1 continuous-motion instrumentation deployed as beta70
 
 The existing `raw_pymammotion_motion_probe` now has disabled-by-default

@@ -10,6 +10,13 @@ or any motion dispatcher. Its `go` never authorizes motion or Phase 2. See
 frontend tests, with lint, formatting, typing, documentation-symbol, and frozen
 accepted-profile checks passing.
 
+🌙 **LATEST OPERATOR STATE:** the mower battery died and was put on its charger
+at night. This is an operator report, not a fresh telemetry readback. The
+straight and shallow-arc physical Phase 1 captures remain pending. Do no mower
+work until daylight and a fresh state/safety check; then scan new contained
+routes and request separate authorization for each 4 s capture. The analyzer
+commit is pushed as `d105f4ca`. The timed-disarm automation remains on hold.
+
 ✅ **BETA70 DEPLOYED MOTION-DISABLED:** Phase 1 in-window telemetry
 instrumentation is live in the existing bounded raw probe. Straight and
 shallow-arc 4 s / 100 ms plans both passed deployed dry run with 41 planned
@@ -39,6 +46,10 @@ is deployed, but its separately authorized physical straight/arc captures must
 measure position and `toward` timestamps before a closed loop is designed.
 `docs/continuous-motion-feasibility-plan-20260821.md`. Analyze the captures
 offline as described in `docs/phase1-capture-analyzer.md`.
+
+➡️ **NEXT:** follow `docs/NEXT-SESSION-PROMPT-20260822.md` “CURRENT NEXT ACTION.”
+The old tasks below are evidence and may be superseded; they do not override
+the current charging/night state or the per-run authorization requirement.
 
 ⚠️ **Everything below the "2026-08-13 HANDOFF" section is older and its build
 state is stale.** Those sections remain accurate as *evidence* — the

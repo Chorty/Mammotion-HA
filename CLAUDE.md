@@ -37,6 +37,23 @@ samples and returned `would_send: false`, `command_result.attempted: false`.
 Browser beta70 and the final disabled gate were verified. No mower command was
 sent. See `docs/evidence-beta70-continuous-phase1-deploy-20260821.json`.
 
+✅ **THE PHASE 1 ANALYZER IS BANKED OFFLINE.**
+`scripts/analyze_phase1_capture.py` evaluates the required straight and
+shallow-arc response files plus fresh frozen-corridor metadata without importing
+Home Assistant or exposing network, BLE, gate, service, or dispatch access. It
+recomputes the written timing, compass-mirror, turn, stop, refresh, and
+containment criteria; records SHA-256 input hashes; and fails closed on missing
+evidence. A `go` is telemetry-feasibility evidence only and never authorizes
+Phase 2 or mower motion. Commit `d105f4ca`; usage:
+`docs/phase1-capture-analyzer.md`.
+
+🌙 **LATEST OPERATOR STATE:** the beta70 physical Phase 1 captures have not
+been run. The mower battery died and the operator put it on the charger at
+night. No telemetry readback verified charging or changed the last deployed
+gate evidence. Do only offline work until daylight, an operator is present, the
+emergency stop is accessible, and each individual 4 s run is explicitly
+authorized after a fresh contained-route scan.
+
 ✅ **SEGMENT-LEVEL KEEP-OUT CONTAINMENT IS DEPLOYED AND VERIFIED.**
 `_keep_out_leg_violations` checks legal-endpoint legs against every keep-out
 edge, `_validate_custom_path` refuses with `path_legs_cross_keep_out_zone`, and
@@ -62,7 +79,8 @@ decisions without importing Home Assistant, registering a service, or exposing
 a dispatch path. No continuous executor exists and no mower moved for this
 phase. Phase 1 instrumentation is now deployed, but its two separately
 authorized physical captures remain pending; see
-`docs/continuous-motion-feasibility-plan-20260821.md`.
+`docs/continuous-motion-feasibility-plan-20260821.md`. Analyze the resulting
+files with `scripts/analyze_phase1_capture.py` before any Phase 2 design.
 
 ## (history) beta68 released and installed motion-disabled
 
