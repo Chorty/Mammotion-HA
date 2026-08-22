@@ -74,6 +74,23 @@ a 2000 ms limit), mirror error **max 2.008°**, 1.1029 m travelled, 19 refresh
 writes all completing in order, full containment. The ~1 Hz feed does not
 degrade while the mower drives.
 
+🔑 **POSITION AND HEADING ARE ONE ~1 Hz BUNDLE — THAT IS THE FEEDBACK CEILING,
+2026-08-22.** Across both Phase 1 captures, `position x/y`, `toward` and VIO
+heading change on **exactly the same instants, zero exceptions**. VIO is not an
+independent faster channel. ⚠️ Report stamps run at ~2 Hz and are **not**
+feedback — only every other frame carries new `sys.toapp_report_data`, so
+counting stamps doubles the apparent rate. Consequences: a continuous controller
+can observe at ~1 Hz whatever it consumes, which at the measured 0.28 m/s is a
+correction every ~0.28 m against a 0.15 m tolerance — **feed-forward-dominated
+by necessity, not a tight tracking loop**. 🗑️ **"More measurements per run" is
+dead**: `duration_ms` is schema-capped at 4000 ms, so every run yields ~4
+observations and ~3 steps regardless of criterion. 🗑️ **Driving slower is
+worse** — sample count is set by time, not distance, so shorter chords just add
+noise. 🔑 For the pairing question the lever is **rotation per interval, not more
+intervals** (uncertainty = bearing noise / rotation). Read
+`docs/the-1hz-bundle-is-the-ceiling-20260822.md`;
+`scripts/measure_telemetry_bundling.py` re-derives it with no mower.
+
 🧪 **CONTINUOUS MOTION PHASE 1 INSTRUMENTATION IS DEPLOYED.** The existing
 bounded raw probe now records 100 ms coordinator-cache samples inside refreshed
 motion windows, including x/y, `toward`, VIO, report timestamps, active command,

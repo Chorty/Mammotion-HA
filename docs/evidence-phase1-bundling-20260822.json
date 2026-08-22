@@ -1,0 +1,112 @@
+{
+  "mode": "offline_telemetry_bundling",
+  "captures": {
+    "docs/evidence-phase1-straight-20260822T202600Z.json": {
+      "window_ms": 4000.6,
+      "cache_sample_count": 40,
+      "fields": {
+        "report_stamp": {
+          "update_count": 8,
+          "rate_hz": 2.0,
+          "elapsed_ms": [
+            137.5,
+            947.9,
+            1149.8,
+            1971.0,
+            2173.0,
+            2982.8,
+            3085.0,
+            3903.4
+          ]
+        },
+        "position_xy": {
+          "update_count": 4,
+          "rate_hz": 1.0,
+          "elapsed_ms": [
+            947.9,
+            1971.0,
+            2982.8,
+            3903.4
+          ]
+        },
+        "toward": {
+          "update_count": 1,
+          "rate_hz": 0.25,
+          "elapsed_ms": [
+            3903.4
+          ]
+        },
+        "vio_heading": {
+          "update_count": 4,
+          "rate_hz": 1.0,
+          "elapsed_ms": [
+            947.9,
+            1971.0,
+            2982.8,
+            3903.4
+          ]
+        },
+        "vio_state": {
+          "update_count": 0,
+          "rate_hz": 0.0,
+          "elapsed_ms": []
+        }
+      },
+      "heading_updates_without_new_position": 0,
+      "heading_is_bundled_with_position": true
+    },
+    "docs/evidence-phase1-shallow-arc-20260822T203400Z.json": {
+      "window_ms": 4000.4,
+      "cache_sample_count": 39,
+      "fields": {
+        "report_stamp": {
+          "update_count": 7,
+          "rate_hz": 1.75,
+          "elapsed_ms": [
+            645.1,
+            882.7,
+            1593.7,
+            1896.8,
+            2603.6,
+            2919.2,
+            3625.8
+          ]
+        },
+        "position_xy": {
+          "update_count": 3,
+          "rate_hz": 0.75,
+          "elapsed_ms": [
+            882.7,
+            1896.8,
+            2919.2
+          ]
+        },
+        "toward": {
+          "update_count": 3,
+          "rate_hz": 0.75,
+          "elapsed_ms": [
+            882.7,
+            1896.8,
+            2919.2
+          ]
+        },
+        "vio_heading": {
+          "update_count": 3,
+          "rate_hz": 0.75,
+          "elapsed_ms": [
+            882.7,
+            1896.8,
+            2919.2
+          ]
+        },
+        "vio_state": {
+          "update_count": 0,
+          "rate_hz": 0.0,
+          "elapsed_ms": []
+        }
+      },
+      "heading_updates_without_new_position": 0,
+      "heading_is_bundled_with_position": true
+    }
+  }
+}
