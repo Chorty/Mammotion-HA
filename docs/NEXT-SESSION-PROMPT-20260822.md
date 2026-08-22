@@ -24,7 +24,19 @@ profile. The copied examples are untracked and six files contain
 authentication-related fields; perform a secrets/provenance review before any
 staging. No network or mower call was used to verify this handoff note.
 
-## CURRENT NEXT ACTION — Phase 1 captures at first safe daylight opportunity
+## ✅ SUPERSEDED 2026-08-22 — the Phase 1 captures are DONE, verdict `no_go`
+
+Both windows ran under separate authorizations, moved the mower, stopped, and
+left the gate verified disarmed. One criterion of 17 failed,
+`shallow_arc.bearing_toward_compass_mirror` at 12.631° against 10°. The
+diagnosis is that the criterion compares an interval-average chord bearing to an
+instantaneous `toward` sample on a body rotating ~10° per interval; VIO
+corroborates that `toward` tracked the rotation correctly. **The `no_go` stands
+and Phase 2 is not unlocked.** Full writeup and the next question:
+`docs/phase1-continuous-motion-captures-20260822.md`. The numbered procedure
+below is kept as the record of how the captures were run.
+
+## (superseded) CURRENT NEXT ACTION — Phase 1 captures at first safe daylight opportunity
 
 Offline preparation is complete at pushed commit **`d105f4ca`**. Do not design
 or implement Phase 2 yet. When the mower is charged and the operator is present:

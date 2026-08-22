@@ -1,0 +1,591 @@
+{
+  "mode": "offline_phase1_capture_analysis",
+  "dispatch_capable": false,
+  "network_access": false,
+  "commands_sent": 0,
+  "physical_run_authorized": false,
+  "thresholds": {
+    "duration_ms": 4000,
+    "refresh_interval_ms": 200,
+    "sample_interval_ms": 100,
+    "min_fresh_position_arrivals": 3,
+    "max_position_arrival_gap_ms": 2000.0,
+    "compass_mirror_sum_degrees": 90.0,
+    "max_compass_mirror_error_degrees": 10.0,
+    "min_area_margin_m": 1.2,
+    "min_keepout_margin_m": 1.5,
+    "max_start_drift_m": 0.3
+  },
+  "captures": {
+    "straight": {
+      "control": "straight",
+      "passed": true,
+      "failed_criteria": [],
+      "criteria": [
+        {
+          "name": "control_profile",
+          "passed": true,
+          "observed": {
+            "service": "raw_pymammotion_motion_probe",
+            "dry_run": false,
+            "duration_ms": 4000,
+            "motion_refresh_interval_ms": 200,
+            "instrumentation_enabled": true,
+            "sample_interval_ms": 100,
+            "instrumentation_source": "coordinator_cache_only",
+            "extra_ble_report_requests_during_window": 0,
+            "motion_axes": "linear",
+            "command_args": {
+              "linear_speed": 400,
+              "angular_speed": 0
+            }
+          },
+          "required": {
+            "service": "raw_pymammotion_motion_probe",
+            "dry_run": false,
+            "duration_ms": 4000,
+            "motion_refresh_interval_ms": 200,
+            "instrumentation_enabled": true,
+            "sample_interval_ms": 100,
+            "instrumentation_source": "coordinator_cache_only",
+            "extra_ble_report_requests_during_window": 0,
+            "motion_axes": "linear",
+            "command_args": {
+              "linear_speed": 400,
+              "angular_speed": 0
+            }
+          }
+        },
+        {
+          "name": "command_confirmed",
+          "passed": true,
+          "observed": {
+            "attempted": true,
+            "ok": true,
+            "ack": null,
+            "error": null,
+            "duration_ms": 233.268
+          },
+          "required": "movement command attempted and confirmed"
+        },
+        {
+          "name": "report_stream_started",
+          "passed": true,
+          "observed": {
+            "attempted": true,
+            "duration_ms": 10000,
+            "started": true,
+            "continuous_started": true,
+            "error": null,
+            "queue_settle": {
+              "live": true,
+              "reason": null,
+              "is_connected": true,
+              "is_usable": true,
+              "cooldown_active": false,
+              "cooldown_remaining_seconds": 0.0,
+              "last_send_age_seconds": 0.0,
+              "queue_depth": 0,
+              "queue_dispatch_paused": false,
+              "saga_active": false,
+              "stall_threshold_seconds": 15.0,
+              "queue_depth_limit": 0
+            }
+          },
+          "required": "bounded and continuous streams started; queue settled live"
+        },
+        {
+          "name": "refresh_writes_confirmed",
+          "passed": true,
+          "observed": {
+            "refresh_enabled": true,
+            "refresh_interval_ms": 200,
+            "refresh_error": null,
+            "refresh_commands_sent": 19,
+            "completion_count": 19
+          },
+          "required": "enabled at 200 ms; no refresh error; positive, ordered completion per refresh"
+        },
+        {
+          "name": "stop_confirmed",
+          "passed": true,
+          "observed": {
+            "attempted": true,
+            "ok": true,
+            "error": null,
+            "coordinator_method": "async_stop_manual_motion",
+            "use_wifi": false,
+            "transport_preference": "ble_preferred",
+            "ack": {
+              "movement_ok": true
+            },
+            "duration_ms": 101.549
+          },
+          "required": "explicit stop attempted and confirmed"
+        },
+        {
+          "name": "capture_completed",
+          "passed": true,
+          "observed": "completed",
+          "required": "completed"
+        },
+        {
+          "name": "samples_valid",
+          "passed": true,
+          "observed": {
+            "valid_sample_count": 40,
+            "invalid_sample_count": 0
+          },
+          "required": "at least one sample; zero malformed samples"
+        },
+        {
+          "name": "fresh_position_arrivals",
+          "passed": true,
+          "observed": 4,
+          "required": ">= 3"
+        },
+        {
+          "name": "maximum_position_arrival_gap",
+          "passed": true,
+          "observed": 1023.062,
+          "required": "<= 2000.0 ms including boundaries"
+        },
+        {
+          "name": "bearing_toward_compass_mirror",
+          "passed": true,
+          "observed": {
+            "moving_step_count": 4,
+            "moving_steps_with_toward_count": 4,
+            "max_error_degrees": 2.007895
+          },
+          "required": ">= 3 moving steps, every step with |bearing + toward - 90.0| <= 10.0 degrees"
+        },
+        {
+          "name": "corridor_prevalidated",
+          "passed": true,
+          "observed": true,
+          "required": true
+        },
+        {
+          "name": "area_margin",
+          "passed": true,
+          "observed": 1.2,
+          "required": ">= 1.2 m"
+        },
+        {
+          "name": "keepout_margin",
+          "passed": true,
+          "observed": 1.5,
+          "required": ">= 1.5 m"
+        },
+        {
+          "name": "frozen_route_present",
+          "passed": true,
+          "observed": {
+            "frozen_start": [
+              4.9328,
+              -2.5731
+            ],
+            "frozen_endpoint": [
+              5.217975563912765,
+              -5.056781722312067
+            ]
+          },
+          "required": "finite frozen_start and frozen_endpoint"
+        },
+        {
+          "name": "start_drift",
+          "passed": true,
+          "observed": 0.0,
+          "required": "<= 0.3 m"
+        },
+        {
+          "name": "corridor_polygon_valid",
+          "passed": true,
+          "observed": 4,
+          "required": ">= 3 finite vertices"
+        },
+        {
+          "name": "observed_positions_inside_corridor",
+          "passed": true,
+          "observed": {
+            "outside_sample_indices": []
+          },
+          "required": "every in-window position inside/on prevalidated polygon"
+        }
+      ],
+      "position_diagnostics": {
+        "sample_count": 39,
+        "fresh_position_arrival_count": 4,
+        "fresh_position_arrivals_elapsed_ms": [
+          947.899,
+          1970.961,
+          2982.806,
+          3903.421
+        ],
+        "position_arrival_gaps_including_boundaries_ms": [
+          947.899,
+          1023.062,
+          1011.845,
+          920.615,
+          96.579
+        ],
+        "max_position_arrival_gap_ms": 1023.062,
+        "moving_steps": [
+          {
+            "from_sample_index": 0,
+            "to_sample_index": 9,
+            "distance_m": 0.045634,
+            "bearing_degrees": 274.398705,
+            "toward_degrees": 173.5934,
+            "bearing_plus_toward_error_degrees": 2.007895
+          },
+          {
+            "from_sample_index": 9,
+            "to_sample_index": 19,
+            "distance_m": 0.248978,
+            "bearing_degrees": 276.850999,
+            "toward_degrees": 173.5934,
+            "bearing_plus_toward_error_degrees": 0.444399
+          },
+          {
+            "from_sample_index": 19,
+            "to_sample_index": 29,
+            "distance_m": 0.269191,
+            "bearing_degrees": 277.642465,
+            "toward_degrees": 173.5934,
+            "bearing_plus_toward_error_degrees": 1.235865
+          },
+          {
+            "from_sample_index": 29,
+            "to_sample_index": 38,
+            "distance_m": 0.274497,
+            "bearing_degrees": 277.578091,
+            "toward_degrees": 172.5227,
+            "bearing_plus_toward_error_degrees": 0.100791
+          }
+        ],
+        "moving_step_count": 4,
+        "moving_steps_with_toward_count": 4,
+        "max_bearing_plus_toward_error_degrees": 2.007895,
+        "toward_change_count": 1,
+        "total_absolute_toward_change_degrees": 1.0707,
+        "toward_changed_before_stop": true,
+        "path_length_m": 0.8383,
+        "net_displacement_m": 0.838228,
+        "samples_after_window_count": 1
+      },
+      "corridor_diagnostics": {
+        "prevalidated": true,
+        "area_margin_m": 1.2,
+        "keepout_margin_m": 1.5,
+        "frozen_start": [
+          4.9328,
+          -2.5731
+        ],
+        "frozen_endpoint": [
+          5.217975563912765,
+          -5.056781722312067
+        ],
+        "start_drift_m": 0.0,
+        "polygon_vertex_count": 4,
+        "outside_sample_indices": []
+      }
+    },
+    "shallow_arc": {
+      "control": "shallow_arc",
+      "passed": false,
+      "failed_criteria": [
+        "bearing_toward_compass_mirror"
+      ],
+      "criteria": [
+        {
+          "name": "control_profile",
+          "passed": true,
+          "observed": {
+            "service": "raw_pymammotion_motion_probe",
+            "dry_run": false,
+            "duration_ms": 4000,
+            "motion_refresh_interval_ms": 200,
+            "instrumentation_enabled": true,
+            "sample_interval_ms": 100,
+            "instrumentation_source": "coordinator_cache_only",
+            "extra_ble_report_requests_during_window": 0,
+            "motion_axes": "arc",
+            "command_args": {
+              "linear_speed": 400,
+              "angular_speed": 180
+            }
+          },
+          "required": {
+            "service": "raw_pymammotion_motion_probe",
+            "dry_run": false,
+            "duration_ms": 4000,
+            "motion_refresh_interval_ms": 200,
+            "instrumentation_enabled": true,
+            "sample_interval_ms": 100,
+            "instrumentation_source": "coordinator_cache_only",
+            "extra_ble_report_requests_during_window": 0,
+            "motion_axes": "arc",
+            "command_args": {
+              "linear_speed": 400,
+              "angular_speed": 180
+            }
+          }
+        },
+        {
+          "name": "command_confirmed",
+          "passed": true,
+          "observed": {
+            "attempted": true,
+            "ok": true,
+            "ack": null,
+            "error": null,
+            "duration_ms": 467.991
+          },
+          "required": "movement command attempted and confirmed"
+        },
+        {
+          "name": "report_stream_started",
+          "passed": true,
+          "observed": {
+            "attempted": true,
+            "duration_ms": 10000,
+            "started": true,
+            "continuous_started": true,
+            "error": null,
+            "queue_settle": {
+              "live": true,
+              "reason": null,
+              "is_connected": true,
+              "is_usable": true,
+              "cooldown_active": false,
+              "cooldown_remaining_seconds": 0.0,
+              "last_send_age_seconds": 0.0,
+              "queue_depth": 0,
+              "queue_dispatch_paused": false,
+              "saga_active": false,
+              "stall_threshold_seconds": 15.0,
+              "queue_depth_limit": 0
+            }
+          },
+          "required": "bounded and continuous streams started; queue settled live"
+        },
+        {
+          "name": "refresh_writes_confirmed",
+          "passed": true,
+          "observed": {
+            "refresh_enabled": true,
+            "refresh_interval_ms": 200,
+            "refresh_error": null,
+            "refresh_commands_sent": 17,
+            "completion_count": 17
+          },
+          "required": "enabled at 200 ms; no refresh error; positive, ordered completion per refresh"
+        },
+        {
+          "name": "stop_confirmed",
+          "passed": true,
+          "observed": {
+            "attempted": true,
+            "ok": true,
+            "error": null,
+            "coordinator_method": "async_stop_manual_motion",
+            "use_wifi": false,
+            "transport_preference": "ble_preferred",
+            "ack": {
+              "movement_ok": true
+            },
+            "duration_ms": 179.787
+          },
+          "required": "explicit stop attempted and confirmed"
+        },
+        {
+          "name": "capture_completed",
+          "passed": true,
+          "observed": "completed",
+          "required": "completed"
+        },
+        {
+          "name": "samples_valid",
+          "passed": true,
+          "observed": {
+            "valid_sample_count": 39,
+            "invalid_sample_count": 0
+          },
+          "required": "at least one sample; zero malformed samples"
+        },
+        {
+          "name": "fresh_position_arrivals",
+          "passed": true,
+          "observed": 3,
+          "required": ">= 3"
+        },
+        {
+          "name": "maximum_position_arrival_gap",
+          "passed": true,
+          "observed": 1080.824,
+          "required": "<= 2000.0 ms including boundaries"
+        },
+        {
+          "name": "bearing_toward_compass_mirror",
+          "passed": false,
+          "observed": {
+            "moving_step_count": 3,
+            "moving_steps_with_toward_count": 3,
+            "max_error_degrees": 12.631397
+          },
+          "required": ">= 3 moving steps, every step with |bearing + toward - 90.0| <= 10.0 degrees"
+        },
+        {
+          "name": "corridor_prevalidated",
+          "passed": true,
+          "observed": true,
+          "required": true
+        },
+        {
+          "name": "area_margin",
+          "passed": true,
+          "observed": 1.2,
+          "required": ">= 1.2 m"
+        },
+        {
+          "name": "keepout_margin",
+          "passed": true,
+          "observed": 1.5,
+          "required": ">= 1.5 m"
+        },
+        {
+          "name": "frozen_route_present",
+          "passed": true,
+          "observed": {
+            "frozen_start": [
+              5.0725,
+              -3.6671
+            ],
+            "frozen_endpoint": [
+              5.403443722732988,
+              -6.145098436719367
+            ]
+          },
+          "required": "finite frozen_start and frozen_endpoint"
+        },
+        {
+          "name": "start_drift",
+          "passed": true,
+          "observed": 0.0,
+          "required": "<= 0.3 m"
+        },
+        {
+          "name": "corridor_polygon_valid",
+          "passed": true,
+          "observed": 4,
+          "required": ">= 3 finite vertices"
+        },
+        {
+          "name": "observed_positions_inside_corridor",
+          "passed": true,
+          "observed": {
+            "outside_sample_indices": []
+          },
+          "required": "every in-window position inside/on prevalidated polygon"
+        },
+        {
+          "name": "toward_changed_before_stop",
+          "passed": true,
+          "observed": {
+            "toward_change_count": 3,
+            "total_absolute_change_degrees": 20.9589
+          },
+          "required": true
+        }
+      ],
+      "position_diagnostics": {
+        "sample_count": 38,
+        "fresh_position_arrival_count": 3,
+        "fresh_position_arrivals_elapsed_ms": [
+          882.704,
+          1896.77,
+          2919.176
+        ],
+        "position_arrival_gaps_including_boundaries_ms": [
+          882.704,
+          1014.066,
+          1022.406,
+          1080.824
+        ],
+        "max_position_arrival_gap_ms": 1080.824,
+        "moving_steps": [
+          {
+            "from_sample_index": 0,
+            "to_sample_index": 7,
+            "distance_m": 0.076032,
+            "bearing_degrees": 285.407132,
+            "toward_degrees": 174.3712,
+            "bearing_plus_toward_error_degrees": 9.778332
+          },
+          {
+            "from_sample_index": 7,
+            "to_sample_index": 17,
+            "distance_m": 0.241944,
+            "bearing_degrees": 278.150197,
+            "toward_degrees": -175.5188,
+            "bearing_plus_toward_error_degrees": 12.631397
+          },
+          {
+            "from_sample_index": 17,
+            "to_sample_index": 27,
+            "distance_m": 0.23827,
+            "bearing_degrees": 267.835293,
+            "toward_degrees": -166.5184,
+            "bearing_plus_toward_error_degrees": 11.316893
+          }
+        ],
+        "moving_step_count": 3,
+        "moving_steps_with_toward_count": 3,
+        "max_bearing_plus_toward_error_degrees": 12.631397,
+        "toward_change_count": 3,
+        "total_absolute_toward_change_degrees": 20.9589,
+        "toward_changed_before_stop": true,
+        "path_length_m": 0.556246,
+        "net_displacement_m": 0.552776,
+        "samples_after_window_count": 1
+      },
+      "corridor_diagnostics": {
+        "prevalidated": true,
+        "area_margin_m": 1.2,
+        "keepout_margin_m": 1.5,
+        "frozen_start": [
+          5.0725,
+          -3.6671
+        ],
+        "frozen_endpoint": [
+          5.403443722732988,
+          -6.145098436719367
+        ],
+        "start_drift_m": 0.0,
+        "polygon_vertex_count": 4,
+        "outside_sample_indices": []
+      }
+    }
+  },
+  "failed_criteria": [
+    "shallow_arc.bearing_toward_compass_mirror"
+  ],
+  "verdict": "no_go",
+  "verdict_scope": "Phase 1 telemetry feasibility only; never authorizes Phase 2 or motion",
+  "inputs": {
+    "straight": {
+      "path": "docs/evidence-phase1-straight-20260822T202600Z.json",
+      "sha256": "beb4b9b8568e52319d9419612ce6c98f2b5e23af55bff163c78629902c1f27b6"
+    },
+    "shallow_arc": {
+      "path": "docs/evidence-phase1-shallow-arc-20260822T203400Z.json",
+      "sha256": "c20c1b103cb44ed17815f0894279b5b4c4b7381493c6499f0cf66f951bb6dbb3"
+    },
+    "corridors": {
+      "path": "docs/evidence-phase1-corridors-20260822T203400Z.json",
+      "sha256": "440c39ea422484e2e2bee33c98597d00651c54297cceefdff6a55ef06a58cbd3"
+    }
+  }
+}

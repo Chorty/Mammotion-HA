@@ -28,6 +28,33 @@ this file every time.
 
 ## Current build: `0.6.4-beta70` released and installed motion-disabled
 
+🏁 **PHASE 1 CAPTURES ARE DONE AND THE VERDICT IS `no_go`, 2026-08-22.** Both
+separately authorized 4 s windows ran on beta70, moved the mower, stopped on
+command, stayed inside their prevalidated corridors, and left the gate verified
+disarmed. The analyzer failed **one** criterion of 17:
+`shallow_arc.bearing_toward_compass_mirror` at **12.631°** against a 10°
+threshold. **The `no_go` stands; it was not re-run and the threshold was not
+moved.**
+
+🔑 **The failure is the criterion's pairing, not `toward`.** The check compares a
+chord bearing — an interval average between position fixes ~1 s apart — against a
+single `toward` sample. On the arc the mower rotates ~10° per interval, so the
+result swings by that whole rotation depending on which end you pair with:
+**2.5° / 2.3°** using the interval's START against **12.6° / 11.3°** using its
+END. VIO independently agrees `toward` tracked the rotation (VIO −9.92/−9.13°
+against `toward` +10.11/+9.00°, the known mirror sign flip). The one remaining
+row is a **0.076 m** chord against a 2–4 cm position-noise floor, so it is noise.
+⚠️ **This does NOT make it a `go`.** An ill-posed criterion gets fixed
+deliberately in the plan, before a re-run — never by editing a threshold after
+seeing the data that failed it. Read
+`docs/phase1-continuous-motion-captures-20260822.md`.
+
+✅ **What the straight capture DID establish**, all 17 criteria passed: position
+fixes arrive at ~1 Hz **during** motion (4 arrivals, max gap **1023 ms** against
+a 2000 ms limit), mirror error **max 2.008°**, 1.1029 m travelled, 19 refresh
+writes all completing in order, full containment. The ~1 Hz feed does not
+degrade while the mower drives.
+
 🧪 **CONTINUOUS MOTION PHASE 1 INSTRUMENTATION IS DEPLOYED.** The existing
 bounded raw probe now records 100 ms coordinator-cache samples inside refreshed
 motion windows, including x/y, `toward`, VIO, report timestamps, active command,

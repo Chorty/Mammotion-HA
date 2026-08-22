@@ -12,7 +12,10 @@ accepted-profile checks passing.
 
 🌙 **LATEST OPERATOR STATE:** the mower battery died and was put on its charger
 at night. This is an operator report, not a fresh telemetry readback. The
-straight and shallow-arc physical Phase 1 captures remain pending. Do no mower
+✅ the straight and shallow-arc physical Phase 1 captures are **COMPLETE** as
+of 2026-08-22 and the analyzer verdict is **`no_go`** on one criterion; read
+`docs/phase1-continuous-motion-captures-20260822.md` before any Phase 2 talk.
+Historical note, now satisfied: the two captures were pending here. Do no mower
 work until daylight and a fresh state/safety check; then scan new contained
 routes and request separate authorization for each 4 s capture. The analyzer
 commit is pushed as `d105f4ca`. ✅ The timed-disarm automation is **installed**
