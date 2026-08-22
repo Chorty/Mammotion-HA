@@ -853,6 +853,20 @@ MANUAL_VELOCITY_HEADING_CALIBRATION_TEST_SCHEMA = vol.Schema(
     extra=vol.ALLOW_EXTRA,
 )
 
+# The historic open-loop window cap, still the ceiling whenever no distance
+# guard is supplied. Measured: 4000 ms at linear 400 travels ~1.1 m.
+_PROBE_DURATION_MS_WITHOUT_TRAVEL_GUARD_MAX = 4000
+# With a distance guard the window may run longer, because distance -- not time
+# -- is then what bounds it. Still finite so a wedged guard cannot drive forever.
+_PROBE_DURATION_MS_MAX = 12_000
+# Hard ceiling on the guard itself, so no caller can request an unbounded drive.
+_PROBE_MAX_TRAVEL_M_CEILING = 3.0
+# How far past `max_travel_m` the guard is expected to let the mower run before
+# the stop lands: the ~1 Hz position bundle is up to ~1 s stale and the refresh
+# loop then notices within one interval, at a measured 0.2757 m/s. Reported so a
+# corridor is sized against the real bound rather than the requested one.
+_PROBE_TRAVEL_GUARD_OVERSHOOT_M = 0.35
+
 RAW_PYMAMMOTION_MOTION_PROBE_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_ENTITY_ID): cv.entity_id,
@@ -885,11 +899,22 @@ RAW_PYMAMMOTION_MOTION_PROBE_SCHEMA = vol.Schema(
             vol.Coerce(int),
             vol.Any(0, vol.Range(min=50, max=1000)),
         ),
-        # Bounded low: this probe has no closed loop and no waypoint, so the
-        # only thing limiting travel is the window. 4000 ms at the app-parity
-        # cadence is roughly 1.5 m.
+        # This probe has no closed loop and no waypoint, so historically the
+        # only thing limiting travel was the window -- 4000 ms at the app-parity
+        # cadence is roughly 1.1 m measured. Windows ABOVE 4000 ms are allowed
+        # only together with `max_travel_m`, which bounds the real safety
+        # property (distance) instead of a time proxy for it. See
+        # `_raw_pymammotion_motion_probe` and the
+        # `duration_over_4000ms_requires_max_travel_m` blocker.
         vol.Optional("duration_ms", default=1300): vol.All(
-            vol.Coerce(int), vol.Range(min=50, max=4000)
+            vol.Coerce(int), vol.Range(min=50, max=_PROBE_DURATION_MS_MAX)
+        ),
+        # In-window distance guard. Zero disables it and pins duration_ms to the
+        # historic 4000 ms ceiling. A positive value aborts the window as soon
+        # as the sampled position has moved this far from where it started.
+        vol.Optional("max_travel_m", default=0.0): vol.All(
+            vol.Coerce(float),
+            vol.Any(0.0, vol.Range(min=0.10, max=_PROBE_MAX_TRAVEL_M_CEILING)),
         ),
         vol.Optional("prefer_ble", default=True): cv.boolean,
         vol.Optional("sample_delays", default=[0, 5, 10, 20, 30, 45, 60]): vol.All(
@@ -5649,6 +5674,7 @@ async def _motion_refresh_window(
     duration_seconds: float,
     refresh_interval_ms: int,
     max_refresh_commands: int | None = None,
+    abort_event: asyncio.Event | None = None,
 ) -> dict[str, Any]:
     """Hold a movement command open for ``duration_seconds``.
 
@@ -5692,6 +5718,13 @@ async def _motion_refresh_window(
         max_refreshes = min(max_refreshes, max(int(max_refresh_commands), 0))
     report["max_refresh_commands"] = max_refreshes
     while report["refresh_commands_sent"] < max_refreshes:
+        # Stop refreshing the moment the distance guard trips. The caller's
+        # mandatory stop follows immediately, exactly as it does when the
+        # window runs to its deadline, so this shortens a drive and can never
+        # extend one.
+        if abort_event is not None and abort_event.is_set():
+            report["aborted_early"] = True
+            break
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             break
@@ -6666,23 +6699,54 @@ async def _capture_in_window_telemetry(
     stop_event: asyncio.Event,
     command: str,
     command_args: Mapping[str, Any],
+    max_travel_m: float = 0.0,
+    travel_abort: asyncio.Event | None = None,
 ) -> list[dict[str, Any]]:
-    """Poll cached telemetry concurrently for one strictly bounded window."""
+    """Poll cached telemetry concurrently for one strictly bounded window.
+
+    With ``max_travel_m`` positive this also acts as the window's **distance**
+    guard: as soon as a sampled position has moved that far from the first
+    sampled position, ``travel_abort`` is set and the refresh loop stops
+    refreshing, which brings the caller's mandatory stop forward.
+
+    ⚠️ **The guard trips late, and by a knowable amount.** It reads the same
+    ~1 Hz coordinator cache everything else does, so the position it compares
+    is up to ~1 s stale, and the refresh loop then notices within one refresh
+    interval. At the measured 0.28 m/s that is roughly **0.3 m of overshoot**
+    past ``max_travel_m``. A corridor must cover ``max_travel_m`` plus that
+    overshoot, never ``max_travel_m`` alone.
+    """
     interval_seconds = sample_interval_ms / 1000
     deadline = window_started + duration_ms / 1000
     # This count is a second bound when test clocks or sleeps are patched.
     max_samples = math.ceil(duration_ms / sample_interval_ms) + 1
     samples: list[dict[str, Any]] = []
+    origin: tuple[float, float] | None = None
     while len(samples) < max_samples and not stop_event.is_set():
-        samples.append(
-            _in_window_telemetry_sample(
-                coordinator,
-                index=len(samples),
-                window_started=window_started,
-                command=command,
-                command_args=command_args,
-            )
+        sample = _in_window_telemetry_sample(
+            coordinator,
+            index=len(samples),
+            window_started=window_started,
+            command=command,
+            command_args=command_args,
         )
+        samples.append(sample)
+
+        if max_travel_m > 0:
+            position = sample.get("position") or {}
+            x, y = position.get("x"), position.get("y")
+            if isinstance(x, (int, float)) and isinstance(y, (int, float)):
+                if origin is None:
+                    origin = (float(x), float(y))
+                else:
+                    travelled = math.hypot(x - origin[0], y - origin[1])
+                    sample["travelled_from_origin_m"] = round(travelled, 4)
+                    if travelled >= max_travel_m:
+                        sample["travel_guard_tripped"] = True
+                        if travel_abort is not None:
+                            travel_abort.set()
+                        break
+
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             break
@@ -6749,6 +6813,7 @@ async def _raw_pymammotion_motion_probe(  # noqa: C901
     motion_refresh_interval_ms: int = 0,
     in_window_sample_interval_ms: int = 0,
     duration_ms: int = 1300,
+    max_travel_m: float = 0.0,
     sample_delays: list[float] | tuple[float, ...] = (0, 5, 10, 20, 30, 45, 60),
     dry_run: bool = True,
     confirm_blades_off: bool = False,
@@ -6779,6 +6844,15 @@ async def _raw_pymammotion_motion_probe(  # noqa: C901
     blockers = [gate["name"] for gate in gates if not gate["passed"]]
     if in_window_sample_interval_ms > 0 and motion_refresh_interval_ms <= 0:
         blockers.append("in_window_sampling_requires_motion_refresh")
+    # A window longer than the historic open-loop cap is only allowed when
+    # something bounds DISTANCE, and the guard is the sampler, so it needs the
+    # sampler running too. Fails closed: without both, the long window is
+    # refused rather than silently clamped.
+    if duration_ms > _PROBE_DURATION_MS_WITHOUT_TRAVEL_GUARD_MAX:
+        if max_travel_m <= 0:
+            blockers.append("duration_over_4000ms_requires_max_travel_m")
+        if in_window_sample_interval_ms <= 0:
+            blockers.append("duration_over_4000ms_requires_in_window_sampling")
     command_args = _raw_pymammotion_command_args(
         command,
         linear_speed=linear_speed,
@@ -6813,6 +6887,22 @@ async def _raw_pymammotion_motion_probe(  # noqa: C901
             "summary": None,
         },
         "duration_ms": duration_ms,
+        "travel_guard": {
+            "enabled": max_travel_m > 0,
+            "max_travel_m": max_travel_m,
+            # The guard reads the ~1 Hz cache and the refresh loop notices
+            # within one interval, so it trips late by a knowable amount. A
+            # corridor must cover the sum, never `max_travel_m` alone.
+            "expected_overshoot_m": (
+                round(_PROBE_TRAVEL_GUARD_OVERSHOOT_M, 3) if max_travel_m > 0 else 0.0
+            ),
+            "corridor_must_cover_m": (
+                round(max_travel_m + _PROBE_TRAVEL_GUARD_OVERSHOOT_M, 3)
+                if max_travel_m > 0
+                else 0.0
+            ),
+            "tripped": False,
+        },
         # Named so the record says what kind of motion this was without anyone
         # having to re-read the speeds.
         "motion_axes": (
@@ -6919,6 +7009,7 @@ async def _raw_pymammotion_motion_probe(  # noqa: C901
 
         window_started = time.monotonic()
         sampler_stop = asyncio.Event()
+        travel_abort = asyncio.Event()
         sampler_task: asyncio.Task[list[dict[str, Any]]] | None = None
         if in_window_sample_interval_ms > 0:
             sampler_task = asyncio.create_task(
@@ -6930,6 +7021,8 @@ async def _raw_pymammotion_motion_probe(  # noqa: C901
                     stop_event=sampler_stop,
                     command=command,
                     command_args=command_args,
+                    max_travel_m=max_travel_m,
+                    travel_abort=travel_abort,
                 )
             )
         try:
@@ -6938,6 +7031,7 @@ async def _raw_pymammotion_motion_probe(  # noqa: C901
                 resend=_resend,
                 duration_seconds=duration_ms / 1000.0,
                 refresh_interval_ms=motion_refresh_interval_ms,
+                abort_event=travel_abort if max_travel_m > 0 else None,
             )
         except BaseException:
             sampler_stop.set()
@@ -6956,6 +7050,18 @@ async def _raw_pymammotion_motion_probe(  # noqa: C901
                 in_window_samples,
                 window_duration_ms=duration_ms,
             )
+            if max_travel_m > 0:
+                tripped = any(
+                    sample.get("travel_guard_tripped") for sample in in_window_samples
+                )
+                result["travel_guard"]["tripped"] = tripped
+                result["travel_guard"]["observed_travel_m"] = max(
+                    (
+                        sample.get("travelled_from_origin_m", 0.0)
+                        for sample in in_window_samples
+                    ),
+                    default=0.0,
+                )
 
     # 🚨 FORCE A REPORT REFRESH, THEN WAIT FOR THE FEED TO SETTLE. Without this
     # the probe reads whatever the coordinator last cached and is blind to its
@@ -16665,6 +16771,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             motion_refresh_interval_ms=call.data["motion_refresh_interval_ms"],
             in_window_sample_interval_ms=call.data["in_window_sample_interval_ms"],
             duration_ms=call.data["duration_ms"],
+            max_travel_m=call.data["max_travel_m"],
             sample_delays=tuple(call.data["sample_delays"]),
             dry_run=call.data["dry_run"],
             confirm_blades_off=call.data["confirm_blades_off"],

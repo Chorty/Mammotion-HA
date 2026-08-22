@@ -54,9 +54,16 @@ def test_the_window_is_bounded() -> None:
 
     The probe has no closed loop and no waypoint, so the window is capped where
     the other pulse services cap theirs.
+
+    ⚠️ 2026-08-22: the schema ceiling moved 4000 -> 12000 ms so a longer
+    continuous window is expressible at all. The 4000 ms open-loop bound did not
+    go away -- it became a *blocker* rather than a schema error, because going
+    past it now requires `max_travel_m`, which bounds distance directly instead
+    of using time as a proxy for it. See
+    `test_travel_guard_bounds_the_long_window` for the replacement guarantee.
     """
     assert _validated(duration_ms=4000)["duration_ms"] == 4000
-    for bad in (49, 4001):
+    for bad in (49, 12001):
         with pytest.raises(vol.Invalid):
             _validated(duration_ms=bad)
 
