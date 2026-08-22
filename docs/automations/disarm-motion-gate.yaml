@@ -38,6 +38,30 @@ triggers:
   # Belt and braces: sweep nightly in case the sensor flapped and the `for:`
   # timer never matured. Cheap, idempotent, and catches the case where the gate
   # was armed while some other blocker happened to be masking it.
+  # 🚨 THE DOCK-BLOCKED CASE, added 2026-08-22. `real_motion_ready` is `off`
+  # whenever ANY blocker fires, so an armed gate sitting behind
+  # `position_not_valid_for_motion` (mower on the dock) is invisible to the
+  # trigger above -- and that is precisely the state found on 2026-08-22, a
+  # FIFTH armed-at-rest occurrence. It is dangerous because the blocker
+  # evaporates the moment the mower is moved off the dock: the gate goes live
+  # with an empty blocker list and nobody armed it deliberately.
+  #
+  # The gate's own `enabled` flag is a config-entry option, not an entity, so
+  # there is nothing to watch directly. The readiness sensor publishes the
+  # blocker list as an attribute, and `experimental_motion_disabled` appears in
+  # it exactly when the gate is closed -- so its ABSENCE means armed.
+  - trigger: template
+    value_template: >-
+      {{ is_state('binary_sensor.back_yard_clip_skywalker_real_motion_ready',
+                  'off')
+         and 'experimental_motion_disabled' not in
+             (state_attr(
+                'binary_sensor.back_yard_clip_skywalker_real_motion_ready',
+                'blockers') or []) }}
+    for:
+      minutes: 15
+    id: armed_but_blocked
+
   - trigger: time
     at: "23:00:00"
     id: nightly_sweep

@@ -34,9 +34,26 @@ active, so this can never interrupt a supervised run. Worst case is one re-arm.
 It notifies only when `result.changed` is true, so a nightly sweep that finds
 the gate already closed is silent.
 
+**Amended 2026-08-22 — third trigger `armed_but_blocked`.** The next morning
+the gate was found `enabled: true` with the sole blocker
+`position_not_valid_for_motion` (mower docked) — a fifth armed-at-rest
+occurrence that **neither original trigger could see**, because
+`real_motion_ready` reads `off` whenever any blocker fires. The danger is that
+the dock blocker disappears as soon as the mower is moved, leaving a live gate
+nobody armed. `enabled` is a config-entry option with no entity, so the new
+trigger watches the readiness sensor's `blockers` attribute:
+`experimental_motion_disabled` is in that list exactly when the gate is closed,
+so its absence means armed. Rendered against live state via `/api/template`
+before installing (returned `False` with the gate closed, as it must).
+Reinstalled by truncating at the block's first line and re-appending; host-side
+re-parse 60 automations, `automation/reload` HTTP 200, entity back `on` with
+triggers `idle_and_ready` / `armed_but_blocked` / `nightly_sweep`. Backup:
+`/config/automations.yaml.bak.claude-20260822-trigger`. 56,128 bytes.
+
 **Rollback:** `cp /config/automations.yaml.bak.claude-20260821-disarm
-/config/automations.yaml` then call `automation/reload`. Or just disable the
-automation entity in the UI.
+/config/automations.yaml` (pre-automation) or
+`/config/automations.yaml.bak.claude-20260822-trigger` (two-trigger version),
+then call `automation/reload`. Or just disable the automation entity in the UI.
 
 ⚠️ A second Mammotion automation already existed and was **not** touched:
 `Mammotion - resync map when it goes stale` presses `sync_maps` after

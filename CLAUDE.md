@@ -71,7 +71,21 @@ host (id `1755900000001`, state `on`, never yet triggered), appended to
 `/config/automations.yaml` from `docs/automations/disarm-motion-gate.yaml` and
 loaded by `automation.reload` — no HA restart. It fires 15 minutes after
 `binary_sensor.back_yard_clip_skywalker_real_motion_ready` reads on, plus a
-23:00 sweep, and notifies only when it actually closed something.
+23:00 sweep, and — added 2026-08-22 — a third `armed_but_blocked` trigger. It
+notifies only when it actually closed something.
+
+🚨 **FIFTH ARMED-AT-REST OCCURRENCE, 2026-08-22.** The gate was found
+`enabled: true` with the sole blocker `position_not_valid_for_motion` — armed,
+and held shut only by the mower being on the dock. **That blocker evaporates the
+moment the mower is moved off the dock**, so the gate would have gone live with
+an empty blocker list without anyone arming it. The first two triggers could not
+see it: `real_motion_ready` is `off` whenever *any* blocker fires, so an armed
+gate behind the dock is invisible to them. The gate's `enabled` flag is a
+config-entry option with no entity, so the new trigger keys off the readiness
+sensor's `blockers` attribute instead — `experimental_motion_disabled` is
+present exactly when the gate is closed, so its **absence** means armed.
+Disarmed on the operator's instruction and verified
+(`enabled: false`, two blockers).
 ⚠️ **It is one-way and cannot interrupt a run** — there is no arm service, and
 `disarm_experimental_motion` refuses while a session is active. Backup of the
 pre-change host file: `/config/automations.yaml.bak.claude-20260821-disarm`.
