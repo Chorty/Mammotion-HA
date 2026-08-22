@@ -47,3 +47,6 @@ LubaLogTools.exe
 LubaLogTools.zip
 RTKReferenceStationUpgradeTools/
 LubaBaseStationUpgrade.app/
+
+# Local copy of upstream pymammotion examples (reference only, not part of this integration)
+PyMammotion examples/

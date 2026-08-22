@@ -373,6 +373,40 @@ daylight, not at dusk. See `docs/vio-telemetry-fields.md`.
 
 ---
 
+## 🔬 OPEN — we may refresh 3x faster than the mower needs
+
+🔑 Median pulse speed is **flat out to ~700 ms between refresh writes**, and
+`motion_refresh_interval_ms` is **200**. 120 cruising pulses from data already on
+disk. `docs/refresh-cadence-may-be-3x-too-fast-20260819.md`; re-derive with
+`scripts/analyze_refresh_cadence.py`.
+
+200 ms came from the vendor app and is corroborated by upstream pymammotion's
+joystick example, which drives a 0.2 s periodic thread. Sound as *what the app
+does*; never tested as *what the mower needs*.
+
+Why it matters: BLE write latency is the measured failure mode. A 1303 ms write
+that landed one refresh of six dropped a turn to 9.23 deg/s against 23-43
+cadence-intact. Fewer writes means less queue pressure.
+
+**Settle it with:** one fixed-duration forward pulse at refresh 200 / 400 / 600 /
+800 ms, measuring travel. Four pulses of ~0.4 m, everything else held constant.
+
+⚠️ Correlational, on a proxy, n=13 and n=2 in the degraded buckets. It bounds
+the watchdog above 400 ms; it does not measure it. And
+`motion_refresh_interval_ms` **is** a `LUBA_ACCEPTANCE_PROFILE` key — changing it
+owes a Gate 5, so the A/B is a measurement run via the service, not a profile
+change.
+
+⚠️ Also from the same upstream examples folder, so nobody re-checks: it contains
+**no vendor go-to-point** (confirming `docs/night-motion-options-20260811.md` §2)
+and **no VIO fields** — nothing on detect-feature counts, VIO survival distance
+or fuse status. Its dev console is a useful REPL (passive listen mode, ESPHome
+proxy routing) but exposes **no device command we do not already have**. And the
+`toward` in those examples is the mowing row angle from route generation —
+unrelated to `position.toward`.
+
+---
+
 ## 🐛 OPEN ×3 — entity naming, from the 2026-08-18 audit
 
 **There are no duplicated entities in the integration code** — that result is
