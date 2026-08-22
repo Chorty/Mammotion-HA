@@ -1,5 +1,15 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
+✅ **OFFLINE PHASE 1 ANALYZER READY:**
+`scripts/analyze_phase1_capture.py` reads the straight response, shallow-arc
+response, and frozen corridor JSON files; recomputes the written telemetry and
+containment checks; and banks input hashes plus a scoped `go`/`no_go`. It uses
+only the Python standard library and cannot call HA, BLE, the gate, a service,
+or any motion dispatcher. Its `go` never authorizes motion or Phase 2. See
+`docs/phase1-capture-analyzer.md`. Current verification is 806 backend and 91
+frontend tests, with lint, formatting, typing, documentation-symbol, and frozen
+accepted-profile checks passing.
+
 ✅ **BETA70 DEPLOYED MOTION-DISABLED:** Phase 1 in-window telemetry
 instrumentation is live in the existing bounded raw probe. Straight and
 shallow-arc 4 s / 100 ms plans both passed deployed dry run with 41 planned
@@ -27,7 +37,8 @@ importing Home Assistant or exposing any dispatch path. No continuous service
 or executor exists and this phase sent no mower command. Phase 1 instrumentation
 is deployed, but its separately authorized physical straight/arc captures must
 measure position and `toward` timestamps before a closed loop is designed.
-`docs/continuous-motion-feasibility-plan-20260821.md`.
+`docs/continuous-motion-feasibility-plan-20260821.md`. Analyze the captures
+offline as described in `docs/phase1-capture-analyzer.md`.
 
 ⚠️ **Everything below the "2026-08-13 HANDOFF" section is older and its build
 state is stale.** Those sections remain accurate as *evidence* — the

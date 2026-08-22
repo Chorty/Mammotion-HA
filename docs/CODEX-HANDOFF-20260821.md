@@ -1,5 +1,23 @@
 # Codex handoff — 2026-08-21
 
+## UPDATE — offline Phase 1 capture analyzer ready
+
+`scripts/analyze_phase1_capture.py` now evaluates the required straight and
+shallow-arc response files entirely offline. It independently recomputes fresh
+position arrivals, boundary-inclusive gaps, moving-step compass-mirror error,
+pre-stop `toward` change, start drift, and polygon containment. It also pins the
+exact command/instrumentation/refresh/stop profile, fails closed on missing or
+malformed evidence, and records SHA-256 hashes for all three input files.
+
+The script imports only Python's standard library and has no HA, network, BLE,
+gate, service, or dispatch path. Its `go` is Phase 1 feasibility evidence only
+and never authorizes Phase 2 or motion. Eight focused tests pass. Input schema
+and command: `docs/phase1-capture-analyzer.md`. Full verification is **806
+pytest, 91 frontend**, ruff, format, mypy for both integration and analyzer,
+1,168 documentation-symbol claims, and accepted-profile ACCEPTED. The mower was
+charging at night; this work made no live calls, gate changes, deployments, or
+mower commands.
+
 ## UPDATE — Phase 1 continuous-motion instrumentation deployed as beta70
 
 The existing `raw_pymammotion_motion_probe` now has disabled-by-default
@@ -204,9 +222,10 @@ clamping. The 37 focused tests and full **792-test** backend suite pass. **No
 continuous executor or service exists and no mower moved.**
 
 Phase 1 instrumentation is now implemented in the existing bounded probe; no
-new executor or dispatch command was added. It must still be deployed and used
-for separately authorized 4 s straight/arc captures, then evaluated against the
-written go/no-go criteria before designing a variable-command executor. Full plan:
+new executor or dispatch command was added. It is deployed, but still needs
+separately authorized 4 s straight/arc captures. Evaluate them with the offline
+analyzer and written go/no-go criteria before designing a variable-command
+executor. Full plan:
 `docs/continuous-motion-feasibility-plan-20260821.md`.
 
 Five payload traps that each cost a run:

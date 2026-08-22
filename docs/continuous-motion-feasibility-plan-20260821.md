@@ -1,8 +1,8 @@
 # Continuous-motion feasibility plan — zero-motion phase
 
-Status: **offline controller and Phase 1 probe instrumentation implemented;
-no continuous controller executor or new mower dispatch path exists. No Phase 1
-physical capture has been run.**
+Status: **offline controller, Phase 1 probe instrumentation, and offline capture
+analyzer implemented; no continuous controller executor or new mower dispatch
+path exists. No Phase 1 physical capture has been run.**
 
 The pulsed controller's 9 m Route B success took 162.7 s, or 0.055 m/s. The
 vendor moves continuously at roughly 0.55 m/s on the same ~1 Hz position feed.
@@ -88,6 +88,12 @@ including the start/end boundaries, and `toward` changes observed before stop.
 These are measurements for the criteria below, not a pass verdict. Focused
 tests cover schema bounds, disabled-by-default behavior, dry-run inertness,
 refresh-required refusal, stream-start failure before motion, and summary math.
+
+After both responses are banked, run the non-dispatching analyzer documented in
+`docs/phase1-capture-analyzer.md`. It recomputes timing, compass-mirror,
+pre-stop-turn, and containment criteria from the raw sample arrays, fails
+closed on missing evidence, records input SHA-256 digests, and returns a scoped
+`go` or `no_go`. Its `go` never authorizes Phase 2 or another physical run.
 
 Two separately authorized physical windows are then sufficient:
 

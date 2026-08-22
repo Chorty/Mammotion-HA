@@ -47,6 +47,13 @@ later 4 s physical window needs separate explicit authorization.
 Exact go/no-go criteria:
 `docs/continuous-motion-feasibility-plan-20260821.md`.
 
+The offline Phase 1 analyzer is also implemented and tested. After the two
+separately authorized captures exist, use `scripts/analyze_phase1_capture.py`
+with the straight response, shallow-arc response, and freshly validated frozen
+corridor metadata. It recomputes the criteria from raw samples, hashes all
+inputs, and cannot dispatch or authorize motion. Usage and input schema:
+`docs/phase1-capture-analyzer.md`.
+
 ## STATE (verified 2026-08-21 ~end of session — RE-VERIFY BEFORE ACTING)
 
 - Host runs **`0.6.4-beta70`**, motion-disabled after the Phase 1 instrumentation
@@ -56,8 +63,8 @@ Exact go/no-go criteria:
 - Motion gate **DISARMED and verified** (`enabled: false`).
 - Mower was last seen at `(11.7615, -8.2563)`, `AREA_INSIDE`, RTK Fix,
   `MODE_PAUSE`, not charging, after the successful chain.
-- Current baseline: **798 pytest, 91 frontend**, ruff, ruff format, mypy, ten
-  pre-commit hooks, `check_doc_symbols.py` 1143 claims, and
+- Current baseline: **806 pytest, 91 frontend**, ruff, ruff format, mypy, ten
+  pre-commit hooks, `check_doc_symbols.py` 1168 claims, and
   `check_accepted_profile.py` **ACCEPTED**.
 
 ## TASK 1 — the browser check nobody has done (do this first, it is free)

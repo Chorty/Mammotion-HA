@@ -40,14 +40,18 @@ times, and the cost of it firing mid-run is one re-arm.
 
 ## 2. 🆕 Motion is 71% standing still — the "slow and not fluid" complaint, measured
 
-**Status: offline controller/replay prototype implemented; no runtime executor
-or hardware continuous-control test exists.**
+**Status: offline controller/replay and Phase 1 capture analyzer implemented;
+no runtime executor or hardware continuous-control test exists.**
 
 `continuous_controller.py` now implements a pure, non-dispatching lookahead
 decision with bounded prediction and fail-closed results for stale telemetry,
 refresh/BLE faults, invalid RTK/area/blade/work-mode state, cancellation,
 containment, cross-track, time, and distance limits. The standalone replay says
 `dispatch_capable: false`, sends zero commands, and has focused fault tests.
+The standalone Phase 1 analyzer evaluates paired capture files, independently
+recomputes the written timing/course/containment criteria, hashes its inputs,
+and also has no dispatch path. Its `go` is not motion authorization. See
+`docs/phase1-capture-analyzer.md`.
 The staged go/no-go plan is
 `docs/continuous-motion-feasibility-plan-20260821.md`.
 
