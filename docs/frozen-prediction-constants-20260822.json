@@ -1,0 +1,29 @@
+{
+  "purpose": "Constants FROZEN BEFORE the out-of-sample arc run of 2026-08-22. Committed first so the prediction model cannot be tuned to the run it is scored against; re-fitting after the run would prove nothing, exactly as moving a threshold after seeing the data proves nothing.",
+  "model": "v = k_lin * linear_speed; w = k_ang * angular_speed; integrated as a circular arc of radius v/w from the mirror-derived facing at the interval start",
+  "k_lin": 6.204299e-04,
+  "k_lin_source": "16 steady-state in-window steps across three straight captures (4 s Phase 1, 8 s sustain, guard run), first interval of each dropped as spin-up plus feed-lag unwind",
+  "k_lin_implied_speed_at_400_ms": 0.2482,
+  "k_ang": 3.989367e-02,
+  "k_ang_source": "the single angular-180 shallow-arc capture of 2026-08-22, 3 steps. IN-SAMPLE for that run and therefore the thing this out-of-sample test exists to check.",
+  "k_ang_implied_rate_at_180_deg_s": 7.181,
+  "scored_against": "an arc at a DIFFERENT angular_speed, never 180",
+  "planned_run": {
+    "linear_speed": 400,
+    "angular_speed": 120,
+    "duration_ms": 8000,
+    "motion_refresh_interval_ms": 200,
+    "in_window_sample_interval_ms": 100,
+    "max_travel_m": 1.5,
+    "why_gentler_not_tighter": "scripts/freeze_phase1_corridors.py sizes its arc lateral allowance from the measured angular-180 radius, so it UNDER-estimates the drift of a tighter arc. Going gentler than 180 keeps the real path inside a corridor validated for a tighter one.",
+    "prediction_at_these_constants": {
+      "rotation_over_8s_deg": 38.3,
+      "travel_over_8s_m": 1.99
+    }
+  },
+  "pass_criteria_proposed_not_frozen": {
+    "max_one_step_error_m": 0.10,
+    "basis": "two thirds of the 0.15 m waypoint tolerance, leaving a third for the steering law and sensing floor; see docs/phase1-criterion-revision-proposal-20260822.md",
+    "note": "steady-state steps only; the first interval of a window mixes dispatch latency, drivetrain ramp and ~1 s feed staleness and cannot be separated with one sample per run"
+  }
+}

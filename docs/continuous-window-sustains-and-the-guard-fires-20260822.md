@@ -93,10 +93,15 @@ than 4.88x. The conclusion is unchanged; the arithmetic should not overstate it.
   second arc at a different `angular_speed`, with both constants frozen in a
   committed file beforehand — see
   `docs/phase1-criterion-revision-proposal-20260822.md`, still a proposal.
-- ⚠️ **An arc corridor does not currently fit.** Freezing from both of tonight's
-  end positions FAILED the arc leg on area margin (0.84 m and 0.01 m against the
-  required 1.2 m) while the straight leg passed. The mower has driven into a
-  part of "Backyard Right" with no room to curve. **A future arc run needs the
-  mower repositioned first**, and the corridor freezer correctly refuses to mark
-  such a route prevalidated.
+- ⚠️ **An arc corridor fits, but only a SHORT one — corrected 2026-08-22.** A
+  first check froze arc corridors at a **3.5 m** length and both failed on area
+  margin (0.84 m and 0.01 m against the required 1.2 m), which I wrote up as
+  "an arc does not fit". Re-checked at **2.5 m** from the guard run's end
+  position it passes at **1.2987 m** area edge and 5.86 m keep-out. So an arc
+  run is possible without repositioning, at a shorter corridor. The corridor
+  freezer refused the long one correctly; the over-general claim was mine.
+  ⚠️ The freezer sizes its arc lateral allowance from the measured
+  `angular 180` radius, so it **under**-estimates the drift of a TIGHTER arc. A
+  different-angular run should go *gentler* than 180, not tighter, unless the
+  freezer is taught the commanded angular first.
 - The Phase 1 analyzer verdict remains **`no_go`** and nothing here changes it.

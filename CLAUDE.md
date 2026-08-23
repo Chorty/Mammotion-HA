@@ -44,9 +44,11 @@ safety margin and being wrong is asymmetric.
 ⚠️ **0.2757 m/s is the TOP of the range, not the planning number**: three runs
 span 0.237–0.276 m/s (~15%) while the within-run trend is flat, so size on
 ~0.25 m/s and call the end-to-end gain **~4.5x**, not 4.88x.
-⚠️ **An arc corridor no longer fits from where the mower now sits** — the arc leg
-failed area margin at 0.84 m and 0.01 m against 1.2 m from tonight's two end
-positions, so a future arc run needs repositioning first. Read
+⚠️ **An arc corridor fits only SHORT from where the mower now sits** — at a
+3.5 m length the arc leg fails area margin (0.84 / 0.01 m against 1.2 m), but at
+**2.5 m it passes at 1.2987 m**. No repositioning needed; a shorter corridor is.
+⚠️ The freezer sizes arc lateral drift from the `angular 180` radius, so it
+UNDER-estimates a tighter arc — go gentler than 180, not tighter. Read
 `docs/continuous-window-sustains-and-the-guard-fires-20260822.md`.
 
 🆕 **beta71 BOUNDS THE MOTION WINDOW BY DISTANCE, NOT BY A TIME PROXY,
