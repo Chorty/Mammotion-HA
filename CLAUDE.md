@@ -49,6 +49,17 @@ alpha = -0.149 ± 0.043 pairing residual (`docs/codex-adjudication-20260823.md`,
 ~7 mm/step cost, unmodelled). ⚠️ The prediction-error criterion is still NOT
 implemented; this `go` rests on the repaired mirror criterion alone.
 
+🎯 **PHASE 2 DESIGN DECIDED, 2026-08-23 — design only, no implementation, no
+mower run.** Straight-line segments only (no turns in v1); extend the
+bounded-window pattern rather than build a new dispatch loop; correct every
+~1 Hz step using measured heading, never an integrated yaw model; stop safely
+on a BLE stall (>600 ms between refresh completions), same as the beta72 guard.
+🔑 `custom_components/mammotion/continuous_controller.py` (Phase 0) already
+matches three of the four — it just needs its constants reconciled to this
+week's measurements (`nominal_speed_mps` 0.28 vs measured 0.2482;
+`max_refresh_age_s` 1.20 s vs the registered 600 ms stall rule) before any code
+changes. Read `docs/phase2-continuous-motion-design-20260823.md`.
+
 🆕 **beta72 CLOSES THE GUARD'S FAIL-OPEN PATHS AND MAKES THE ARC SCOREABLE,
 2026-08-23.** Both are prerequisites for the Phase 1b arc.
 **(1)** A frozen feed, a missing position, or a dead sampler each now **trip**

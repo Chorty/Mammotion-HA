@@ -45,9 +45,15 @@ ORIGINAL plan's command (`linear 400, angular 180`) against the pre-registered
 protocol: all 18 arc criteria passed, mirror error 4.264° against a 10° limit,
 7 informative steps against 3 required. Read `docs/phase1b-go-20260823.md`.
 🔒 **Scope is explicit: telemetry feasibility only, does NOT authorize Phase 2
-implementation or another physical run.** What's next is Phase 2 DESIGN
-DISCUSSION. The ~1 Hz ceiling and the unexplained ~7 mm pairing residual still
-bound that design.
+implementation or another physical run.**
+
+🎯 **PHASE 2 DESIGN DECIDED, 2026-08-23.** Straight-line only v1, extend the
+bounded-window pattern, correct every ~1 Hz step on measured heading, stop safely
+on a BLE stall. `continuous_controller.py` (Phase 0) already matches 3 of 4 —
+reconcile its constants first (`nominal_speed_mps`, `max_refresh_age_s`), then
+validate by REPLAYING against the two 2026-08-22 continuous captures already
+banked, before proposing any new physical run. Read
+`docs/phase2-continuous-motion-design-20260823.md`.
 
 🆕 **BETA72 IS DEPLOYED MOTION-DISABLED (2026-08-23) — both Phase 1b blockers
 are cleared.** The travel guard's three fail-open paths are closed, its overshoot
