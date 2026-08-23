@@ -28,6 +28,27 @@ this file every time.
 
 ## Current build: `0.6.4-beta71` released and installed motion-disabled
 
+🏁 **THE 8 s WINDOW SUSTAINS AND THE DISTANCE GUARD FIRES, 2026-08-22.** Two
+separately authorized supervised runs on beta71. **(1) Speed does not decay:**
+8000.7 ms, 1.8952 m, 8 position arrivals → **7 steady steps** (against 3 in a 4 s
+window), steady mean **0.2479 m/s**, trend **+0.0073 m/s per step** — drifting
+*up*. BLE held too: **39 refresh writes, 39 completions**, median 123.8 ms. Open-loop
+bearing held 241.3–243.5° against a frozen 243.5°, ~**5 cm cross-track over
+1.9 m**. So the 4.88x fluidity case no longer extrapolates from 4 s.
+**(2) The guard fired on hardware:** at a 1.5 m bound it tripped at 6771.6 ms /
+1.5731 m sampled, `aborted_early: true`, 33 of 40 refreshes, stop confirmed —
+**actual travel 1.776 m against the published `corridor_must_cover_m` of 1.850**,
+so the 0.35 m overshoot estimate is conservative by 7 cm and honest.
+⚠️ **Do NOT tighten `_PROBE_TRAVEL_GUARD_OVERSHOOT_M` on one sample** — it is a
+safety margin and being wrong is asymmetric.
+⚠️ **0.2757 m/s is the TOP of the range, not the planning number**: three runs
+span 0.237–0.276 m/s (~15%) while the within-run trend is flat, so size on
+~0.25 m/s and call the end-to-end gain **~4.5x**, not 4.88x.
+⚠️ **An arc corridor no longer fits from where the mower now sits** — the arc leg
+failed area margin at 0.84 m and 0.01 m against 1.2 m from tonight's two end
+positions, so a future arc run needs repositioning first. Read
+`docs/continuous-window-sustains-and-the-guard-fires-20260822.md`.
+
 🆕 **beta71 BOUNDS THE MOTION WINDOW BY DISTANCE, NOT BY A TIME PROXY,
 2026-08-22.** The probe's `duration_ms` was capped at 4000 ms because "the only
 thing limiting travel is the window" — a time proxy that capped the longest

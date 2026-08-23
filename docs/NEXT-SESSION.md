@@ -40,6 +40,16 @@ is untouched and still says `no_go`.
 only show a rate fits itself. Re-fitting after the run would prove nothing — the
 same failure as moving a threshold.
 
+🏁 **TWO SUPERVISED beta71 RUNS DONE 2026-08-22 — sustain PROVEN, guard PROVEN.**
+Speed does not decay over 8 s (7 steady steps, mean 0.2479 m/s, trend +0.0073 per
+step), BLE held 39/39 refreshes, and open-loop cross-track was ~5 cm over 1.9 m.
+The distance guard fired on hardware at 1.5731 m sampled and stopped the mower at
+**1.776 m actual against a published 1.850 m bound**. ⚠️ Size future work on
+**~0.25 m/s**, not 0.2757 — three runs span 15% — so the fluidity gain is
+**~4.5x**. ⚠️ **A future ARC run needs the mower repositioned**: the arc corridor
+failed area margin from both of tonight's end positions. Read
+`docs/continuous-window-sustains-and-the-guard-fires-20260822.md`.
+
 🆕 **BETA71 IS DEPLOYED MOTION-DISABLED (2026-08-22).** It bounds the probe
 window by **distance** instead of by the clock, so a continuous window longer
 than 4 s is possible for the first time. Fails closed: over 4000 ms needs BOTH
