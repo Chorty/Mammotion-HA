@@ -30,7 +30,16 @@ gives 0.2148 m/s and a median error of 0.0508 m; the frozen 0.2482 m/s, averaged
 over three runs, gives **0.0175 m**. Nearly 3x better on data neither was fitted
 to.
 
-## 2. 🗑️ The yaw term `w = k_ang * angular_speed` is REFUTED
+## 2. ⚠️ WITHDRAWN 2026-08-23 — this section claimed a refutation it cannot support
+
+🚨 **Read `docs/corrections-to-the-20260822-analysis-20260823.md` §1.** The 45% figure below is an artifact of fitting `k_lin`
+**excluding** spin-up and `k_ang` **including** it. Under the same rule the error
+is **11%**, and like-for-like the data sits 2.31 sigma from "no dependence" and
+2.28 sigma from "proportional" — it cannot distinguish them. The section is kept
+as written because the *measurements* are right; the **conclusion is withdrawn**,
+including the instruction to Phase 2 to drop the model.
+
+## 2. 🗑️ (WITHDRAWN) The yaw term `w = k_ang * angular_speed` is REFUTED
 
 The frozen constant predicted **4.787 deg/s** at `angular 120`. Observed:
 **47.1 deg over 6.79 s in-window = 6.94 deg/s**, and 50.8 deg settled across the

@@ -15,6 +15,14 @@ captures. `scripts/measure_telemetry_bundling.py`, evidence
 | VIO state | 0 | 0 |
 | **heading updated without a new position** | **0** | **0** |
 
+⚠️ **CORRECTED 2026-08-23 — true for VIO, FALSE for `toward`.** Across all five
+banked captures, `toward` updated **1 / 3 / 1 / 1 / 7** times against position's
+**4 / 3 / 8 / 7 / 7**: it **latches on near-straight motion**, once in 8 seconds.
+What is true is the weaker claim — *no heading update arrives without a position
+update*, and **VIO heading** is 1:1 with position. See `docs/corrections-to-the-20260822-analysis-20260823.md` §2, which also
+records that this undercuts the "heading feedback at ~1 Hz" conclusion drawn
+below.
+
 🔑 **Position, `toward`, and VIO heading change on exactly the same instants, in
 both captures, without a single exception.** They are one bundle. VIO is not an
 independent faster channel; it is delivered in the same frame as the position it

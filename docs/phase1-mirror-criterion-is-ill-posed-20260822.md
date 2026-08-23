@@ -38,7 +38,10 @@ over the interval -- `err@end = err@start + rotation`, which holds to 0.001 deg
 on every row. At ~10 deg of rotation per interval the criterion's answer is
 therefore set by an arbitrary convention, not by the mower.
 
-**2. No minimum chord.** Position noise alone buys a bearing uncertainty of
+**2. The minimum chord is far too small.** *(Corrected 2026-08-23: I originally
+wrote "No minimum chord". There is one — `MIN_MOVING_STEP_M = 0.01` — but at
+1 cm it is three orders below the noise floor and excludes only exactly-zero
+steps. The defect is real; my description of it was false.)* Position noise alone buys a bearing uncertainty of
 `atan(sigma*sqrt(2) / chord)`. At the ~0.7 cm RMS the feed shows during
 continuous motion, that is **+-12.2 deg** on the straight capture's 0.0456 m
 step and **+-7.4 deg** on the arc's 0.0760 m step -- at or above the 10 deg
@@ -50,7 +53,9 @@ still reads 7.930 deg under START pairing, and its noise bound is 7.4.
 
 Write the error as `err(alpha) = err_at_start + alpha * rotation`, where alpha
 is the fraction of the interval supplying `toward`: **0 = start, 0.5 = midpoint,
-1 = end**. That form is exact -- it reproduces every row to 0.001 deg. Solving
+1 = end**. That form is exact -- it reproduces every row to 0.001 deg. ⚠️ *(Corrected
+2026-08-23: that is an algebraic identity, true by construction, not
+corroborating evidence. It cannot come out otherwise.)* Solving
 each step for the alpha that would zero its error turns "which convention?" into
 a measurement with an uncertainty, inherited from the chord's own noise bound.
 
@@ -62,6 +67,14 @@ The two informative arc steps agree closely:
 | 0.2383 m |  9.00 deg | 2.316 | **-0.257** | 0.264 |
 
 Combined: **alpha = -0.253 +- 0.174**.
+
+🚨 **SUPERSEDED 2026-08-23 — do not quote this number.** It used 2 steps when 8
+were available, and its assumed 0.007 m position sigma is measurably wrong (the
+16 straight steady steps imply **0.0031 m**). Re-derived on all 8 informative arc
+steps: **alpha = -0.165 +- 0.043**, which puts **START at 3.1-3.9 sigma —
+excluded too**. No simple pairing is correct; END is merely the worst by far. The
+"the close agreement is luck" reading below was also wrong — the noise model was
+inflated. See `docs/corrections-to-the-20260822-analysis-20260823.md` §5.
 
 | convention | distance from the measurement |
 | --- | ---: |

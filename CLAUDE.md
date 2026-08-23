@@ -28,6 +28,28 @@ this file every time.
 
 ## Current build: `0.6.4-beta71` released and installed motion-disabled
 
+🚨 **AN INDEPENDENT REVIEW REJECTED THE CRITERION PROPOSAL AND FOUND FOUR FALSE
+CLAIMS OF MINE, 2026-08-23.** All re-derived from the banked evidence and all
+confirmed. Read `docs/corrections-to-the-20260822-analysis-20260823.md` before quoting anything from 2026-08-22.
+🗑️ **The yaw "REFUTED" is WITHDRAWN** — an artifact of fitting `k_lin` excluding
+spin-up and `k_ang` including it; same rule gives 11%, not 45%, and the data is
+2.31σ from "no dependence" against 2.28σ from "proportional", i.e. it cannot
+tell them apart. 🗑️ **"`toward` updates with position, zero exceptions" is FALSE**
+— true for VIO, but `toward` **latches on straight motion**, updating once in 8 s.
+🗑️ **"No minimum chord" is FALSE** — `MIN_MOVING_STEP_M` exists; it is 0.01 m,
+which is far too small, and that was the real defect. ⚠️ **`alpha = −0.253 ± 0.174`
+is SUPERSEDED** — on all 8 arc steps with the measured noise it is
+**−0.165 ± 0.043**, which excludes **START too** at 3.1σ; no simple pairing is
+right. ⚠️ **The proposed 0.10 m threshold is breached by my own unscored data** —
+the 8 s run maxes at **0.1418 m**, 42% over, after an 810 ms refresh write, and
+the budget does not close against the 0.065 m sensing floor.
+🔑 **The pre-registration held** (verified from git) and is what made the yaw
+error findable. ⚠️ **The verdict stays `no_go`** and the criterion revision is
+REJECTED as written; the review's recommendation is to **repair** the mirror
+criterion and **add** prediction error rather than substitute it, because
+substituting loosens the certified heading bound from 10° to ~23°, which would
+saturate the Phase 0 steering law's ±180 clamp.
+
 🏁 **THE PREDICTION MODEL HOLDS OUT OF SAMPLE, AND ITS YAW TERM DOES NOT,
 2026-08-22.** An `angular 120` arc scored against constants **committed before it
 ran** (`docs/frozen-prediction-constants-20260822.json`, `c6f16f07`). Excluding

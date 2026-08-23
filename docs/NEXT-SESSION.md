@@ -40,6 +40,16 @@ is untouched and still says `no_go`.
 only show a rate fits itself. Re-fitting after the run would prove nothing — the
 same failure as moving a threshold.
 
+🚨 **READ THIS FIRST: an independent review REJECTED the criterion proposal and
+found four false claims in the 2026-08-22 analysis, 2026-08-23.** All confirmed
+by re-derivation. `docs/corrections-to-the-20260822-analysis-20260823.md` lists them: the yaw "REFUTED" is withdrawn, the
+`toward`-bundles-with-position claim is false, "no minimum chord" is false, and
+`alpha = −0.253 ± 0.174` is superseded by **−0.165 ± 0.043** which excludes START
+too. The proposed 0.10 m threshold is **breached at 0.1418 m** by the 8 s run,
+which nobody had scored. **Verdict stays `no_go`.** The fix is to REPAIR the
+mirror criterion and ADD prediction error, not substitute it — substituting
+loosens the heading bound 10° → ~23° and would saturate the steering law.
+
 🏁 **THE OUT-OF-SAMPLE PREDICTION TEST PASSED, 2026-08-22.** An `angular 120`
 arc scored against constants committed *before* it ran: excluding spin-up,
 **6 steps, median 0.0175 m, max 0.0628 m** against a proposed 0.10 m.

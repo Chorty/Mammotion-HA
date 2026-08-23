@@ -22,8 +22,8 @@ one budgeted run got spent here rather than on a second arc.
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | m/s | 0.199 | 0.312 | 0.242 | 0.130 | 0.297 | 0.294 | 0.261 |
 
-Steady-state mean **0.2479 m/s**; trend **+0.0073 m/s per step**, i.e. drifting
-*up*. First half 0.2027, second half 0.2454. **No decay over twice the
+Steady-state mean **0.2479 m/s**; trend **+0.0073 +- 0.0130 m/s per step** — ⚠️ *0.56 sigma, i.e. noise, corrected
+2026-08-23. The defensible claim is only that speed did NOT decay.* First half 0.2027, second half 0.2454. **No decay over twice the
 previously tested duration.**
 
 🔑 **This matters because the 4.88x fluidity estimate extrapolated a 4 s window

@@ -16,8 +16,8 @@ Evidence, banked including the failure:
 ## The verdict
 
 `shallow_arc.bearing_toward_compass_mirror` — max error **12.631°** against the
-written 10° threshold. Every other criterion passed on both captures: 17 of 17
-straight, 16 of 17 arc.
+written 10° threshold. Every other criterion passed on both captures: **17 of 17
+straight, 17 of 18 arc** *(corrected 2026-08-23; the arc has 18 criteria)*.
 
 **The `no_go` stands. It was not re-run, and the threshold was not moved.**
 
