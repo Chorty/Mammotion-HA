@@ -26,7 +26,24 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: `0.6.4-beta71` released and installed motion-disabled
+## Current build: `0.6.4-beta72` released and installed motion-disabled
+
+🆕 **beta72 CLOSES THE GUARD'S FAIL-OPEN PATHS AND MAKES THE ARC SCOREABLE,
+2026-08-23.** Both are prerequisites for the Phase 1b arc.
+**(1)** A frozen feed, a missing position, or a dead sampler each now **trip**
+the travel guard instead of silently returning the run to the wall clock;
+`_PROBE_TRAVEL_GUARD_OVERSHOOT_M` is **0.50 m** (was 0.35, which measurement
+showed would be exceeded ~42% of the time); and `corridor_must_cover_m` is the
+**worst case**, not the nominal one. 🔑 Verified live: the identical dry run
+reports **2.24 m** where beta71 said **1.85 m** — 39 cm more corridor for the
+same command.
+**(2)** Phase 1 duration is now **per control** — straight 4000 ms, arc
+**8000 ms** — never a menu, pinned by two tests.
+⚠️ **The banked 2026-08-22 arc is therefore INADMISSIBLE**, not merely failing;
+a Phase 1b `go` needs a NEW arc. Phase 1's `no_go` stands on its own terms.
+🚨 **Not browser-verified.** Record: `docs/deploy-runbook-p0.md` → beta72.
+
+## (history) beta71 released and installed motion-disabled
 
 🔧 **THE MIRROR CRITERION IS REPAIRED AND STILL SAYS `no_go`, 2026-08-23.** Per
 the review: **repaired, not replaced.** `toward` now pairs with the **START** of

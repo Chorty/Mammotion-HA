@@ -40,6 +40,17 @@ is untouched and still says `no_go`.
 only show a rate fits itself. Re-fitting after the run would prove nothing — the
 same failure as moving a threshold.
 
+🆕 **BETA72 IS DEPLOYED MOTION-DISABLED (2026-08-23) — both Phase 1b blockers
+are cleared.** The travel guard's three fail-open paths are closed, its overshoot
+constant is 0.50 m, and `corridor_must_cover_m` is the worst case (live proof:
+2.24 m where beta71 said 1.85 for the identical command). Phase 1 duration is now
+per control, arc at 8000 ms, so a Phase 1b capture can be scored.
+🚨 **Not browser-verified** — confirm the card footer/console read `0.6.4-beta72`.
+🔑 **NEXT PHYSICAL STEP: the Phase 1b arc**, per
+`docs/phase1b-arc-protocol-20260823.md`. Mower is ON THE DOCK and must be moved
+off first. Size the corridor from the dry run's `corridor_must_cover_m`, not from
+`max_travel_m`.
+
 🔧 **THE CRITERION IS REPAIRED (2026-08-23) AND THE VERDICT IS STILL `no_go`.**
 START pairing + a real 0.15 m minimum chord, threshold untouched. The arc's error
 is now 2.521° but it has only **2 informative steps against 3 required** — the

@@ -8,6 +8,48 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta71 → beta72 — 2026-08-23 13:12-13:20 EDT, motion-disabled
+
+Two changes, both prerequisites for the Phase 1b arc:
+
+1. **The travel guard's three runtime fail-open paths are closed** and its bounds
+   resized. `_PROBE_TRAVEL_GUARD_OVERSHOOT_M` 0.35 → **0.50 m**;
+   `corridor_must_cover_m` is now the **worst case** rather than the nominal one;
+   a frozen feed, a missing position, or a dead sampler each trip the guard
+   instead of silently returning the run to the wall clock.
+2. **Phase 1 duration is expressed per control** — straight 4000 ms, arc
+   **8000 ms** — so a Phase 1b capture can be scored at all.
+
+| | beta72 |
+| --- | --- |
+| tag / HEAD | `v0.6.4-beta72` |
+| quartet | manifest / pyproject / `CARD_VERSION` `0.6.4-beta72`, uv.lock `0.6.4b72` |
+| archive SHA-256 | `385f9c080a08bdfc9b746dfb64670a58e012ce195ffa01cbb9eb4084cc417f3e`, identical local and host |
+| file verification | **47 of 47 byte-identical**, zero AppleDouble files |
+| card md5 | `0be6d2ab164db8e053086f33be8f7ef9` at both paths and locally |
+| Lovelace resource | `?v=0.6.4-beta72&build=0be6d2ab`, verified by re-read |
+| host backup | `/config/mammotion-backup-20260823-1313-pre-beta72.tgz` |
+| restart | API up after **45 s**, 132 entities at 158 s |
+| gate after | `enabled: false`, no session, `MODE_READY` |
+
+🔑 **The guard change is verified live and the difference is measurable.** The
+same dry run (`angular 180`, 8000 ms, `max_travel_m 1.5`) reports:
+
+| | beta71 | **beta72** |
+| --- | ---: | ---: |
+| `expected_overshoot_m` | 0.35 | **0.50** |
+| `corridor_must_cover_m` | 1.85 | **2.24** |
+| `clock_bound_m` | *(absent)* | **2.24** |
+
+**39 cm more corridor is now required** for the identical command, because the
+number finally accounts for the guard doing nothing.
+
+⚠️ **No mower command sent**, `would_send: false`, no blockers, gate disarmed
+throughout. The mower is on the dock (`position_not_valid_for_motion`).
+
+🚨 **Not browser-verified.** Ask the operator to confirm the card footer and
+console banner read `0.6.4-beta72`.
+
 ### beta70 → beta71 — 2026-08-22 19:26-19:35 EDT, motion-disabled
 
 Ships **one** change: the bounded raw motion probe's window is now bounded by
