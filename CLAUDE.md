@@ -49,6 +49,21 @@ alpha = -0.149 ± 0.043 pairing residual (`docs/codex-adjudication-20260823.md`,
 ~7 mm/step cost, unmodelled). ⚠️ The prediction-error criterion is still NOT
 implemented; this `go` rests on the repaired mirror criterion alone.
 
+✅ **PHASE 2 GAPS CLOSED, 2026-08-23 — offline only, no dispatch, no mower run.**
+All four reconciliation gaps closed in `continuous_controller.py` and validated
+by replaying against both banked continuous captures.
+🔑 **Gap 2 was not a constant swap.** `max_refresh_age_s` is a point sample of
+"time since the most recent completion" and is structurally blind to a stall
+that resolves before the next ~1 Hz decision — the real 810 ms stall that
+produced the corpus's largest prediction error (0.1418 m) read `refresh_age_s
+~= 0` at the very next decision. Fixed with a new field,
+`refresh_max_gap_since_last_decision_s`, a running max the caller must track
+between decisions, bound at **0.60 s** matching the registered `3R` rule.
+Replayed before/after against both captures: catches both real stalls in the
+8 s capture, no false positive on the clean guard-run capture. Read
+`docs/phase2-gap-reconciliation-20260823.md`. 827 pytest, ten hooks, profile
+ACCEPTED.
+
 🎯 **PHASE 2 DESIGN DECIDED, 2026-08-23 — design only, no implementation, no
 mower run.** Straight-line segments only (no turns in v1); extend the
 bounded-window pattern rather than build a new dispatch loop; correct every

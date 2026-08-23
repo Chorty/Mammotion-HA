@@ -94,12 +94,25 @@ earlier). Continuous motion is a new control law and needs the same treatment
 not derived from whatever the first run happens to produce. That gate is not
 designed yet and is explicitly out of scope for this document.
 
-## Recommended next step
+## ✅ DONE 2026-08-23 — closed, with a fifth gap the four did not anticipate
 
-Implement the four gaps above **offline first**, in the same no-dispatch
-discipline as Phase 0: extend `continuous_controller.py`, then validate it by
-**replaying it against the captures already banked** —
-`docs/evidence-8s-continuous-window-20260822T233000Z.json` and
-`docs/evidence-travel-guard-fired-20260822T234500Z.json` — before proposing any
-new physical run. Both already contain real telemetry at the cadence and
-duration Phase 2 would consume; replay is free.
+All four gaps closed offline and validated by replaying against both banked
+captures, exactly as recommended. Read
+`docs/phase2-gap-reconciliation-20260823.md` for the full account.
+
+🔑 **Gap 2 was not a constant swap.** Replaying the tightened `max_refresh_age_s`
+against `docs/evidence-8s-continuous-window-20260822T233000Z.json` showed the
+check has the wrong shape: it is a point sample of "time since the most recent
+completion", which is structurally blind to a stall that resolves before the
+next ~1 Hz decision. The capture's real 810 ms stall -- the source of the
+largest prediction error in the whole corpus, 0.1418 m -- read `refresh_age_s
+~= 0` at the very next decision, because a fast recovery write happened to land
+simultaneously with it. Fixed by adding
+`refresh_max_gap_since_last_decision_s`, a running max the caller must track
+between decisions, with its own `max_refresh_gap_s = 0.60` bound matching the
+registered `3R` rule exactly. Both banked captures were replayed before and
+after: the fix catches both real stalls in the 8 s capture and produces no
+false stop on the clean guard-run capture.
+
+827 pytest (up from 824), ten hooks, profile ACCEPTED. No dispatch, no mower
+run, no `LUBA_ACCEPTANCE_PROFILE` change.

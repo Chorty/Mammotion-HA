@@ -47,6 +47,16 @@ protocol: all 18 arc criteria passed, mirror error 4.264° against a 10° limit,
 🔒 **Scope is explicit: telemetry feasibility only, does NOT authorize Phase 2
 implementation or another physical run.**
 
+✅ **PHASE 2 GAPS CLOSED, 2026-08-23** — offline, no dispatch, no mower run.
+Constants reconciled; the containment gap confirmed (no live keep-out check
+exists, caller-supplied `contained` bool, documented). 🔑 The refresh-staleness
+gap needed a real fix, not a number: point-sampled `refresh_age_s` missed a real
+810 ms stall (the corpus's worst prediction error, 0.1418 m) because a fast
+recovery write landed simultaneously with the next decision. New field
+`refresh_max_gap_since_last_decision_s` (running max, caller-tracked) + 0.60 s
+bound catches it; replayed against both banked captures before/after. Read
+`docs/phase2-gap-reconciliation-20260823.md`. 827 pytest, profile ACCEPTED.
+
 🎯 **PHASE 2 DESIGN DECIDED, 2026-08-23.** Straight-line only v1, extend the
 bounded-window pattern, correct every ~1 Hz step on measured heading, stop safely
 on a BLE stall. `continuous_controller.py` (Phase 0) already matches 3 of 4 —

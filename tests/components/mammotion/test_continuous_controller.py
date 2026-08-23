@@ -76,6 +76,10 @@ def test_heading_error_steers_in_the_correct_direction_and_clamps() -> None:
         ({"ble_live": False}, "ble_link_not_live"),
         ({"refresh_healthy": False}, "refresh_cadence_unhealthy"),
         ({"refresh_age_s": 1.21}, "refresh_age_exceeded"),
+        (
+            {"refresh_max_gap_since_last_decision_s": 0.61},
+            "refresh_cadence_stalled",
+        ),
         ({"telemetry_age_s": 2.01}, "telemetry_stale"),
         ({"position_valid": False}, "position_invalid"),
         ({"inside_area": False}, "position_outside_area"),
@@ -148,7 +152,9 @@ def test_prediction_cannot_hide_an_observed_corridor_breach() -> None:
     assert decision.action == "stop"
     assert decision.reason == "cross_track_limit_reached"
     assert decision.observed_cross_track_m == pytest.approx(0.31)
-    assert decision.cross_track_m == pytest.approx(0.03)
+    # 0.31 - nominal_speed_mps * 1.0 s, reconciled 2026-08-23 to the measured
+    # k_lin-derived speed (0.2482 m/s at linear 400), was 0.03 at the old 0.28.
+    assert decision.cross_track_m == pytest.approx(0.0618)
 
 
 def test_target_tolerance_stops_without_issuing_a_final_drive() -> None:
@@ -187,7 +193,8 @@ def test_bounded_prediction_projects_a_stale_fix_along_course() -> None:
     )
 
     assert decision.prediction_horizon_s == 1.0
-    assert decision.predicted_position == Point(1.28, 0.0)
+    # 1.0 + nominal_speed_mps * 1.0 s, reconciled 2026-08-23 (was 1.28 at 0.28).
+    assert decision.predicted_position == Point(1.2482, 0.0)
 
 
 def test_prediction_horizon_never_extends_past_its_bound() -> None:
@@ -206,7 +213,8 @@ def test_prediction_horizon_never_extends_past_its_bound() -> None:
 
     assert decision.action == "drive"
     assert decision.prediction_horizon_s == 1.25
-    assert decision.predicted_position.x == pytest.approx(0.35)
+    # nominal_speed_mps * 1.25 s, reconciled 2026-08-23 (was 0.35 at 0.28).
+    assert decision.predicted_position.x == pytest.approx(0.31025)
 
 
 def test_lookahead_corrects_cross_track_before_the_endpoint() -> None:
@@ -292,3 +300,44 @@ def test_heading_normalization(raw: float, expected: float) -> None:
     """Heading differences always take the signed shortest rotation."""
 
     assert normalize_degrees(raw) == expected
+
+
+def test_refresh_age_alone_misses_a_stall_that_resolves_before_the_next_arrival() -> (
+    None
+):
+    """The bug this field exists to fix, reproduced directly.
+
+    Found 2026-08-23 replaying this module against a REAL capture
+    (`docs/evidence-8s-continuous-window-20260822T233000Z.json`,
+    `scripts/replay_continuous_controller_against_capture.py`): an 810 ms
+    refresh stall -- the source of the largest prediction error in the whole
+    corpus, 0.1418 m -- produced `refresh_age_s ~= 0` at the very next decision,
+    because a fast recovery write happened to complete essentially
+    simultaneously with that decision. A point sample of "time since the most
+    recent completion" cannot see a stall that already resolved.
+    """
+    # refresh_age_s reads healthy: the most recent write completed moments ago.
+    # But a stall happened WITHIN this window and has already recovered.
+    decision = continuous_control_decision(
+        _route(),
+        _observation(
+            refresh_age_s=0.0,
+            refresh_max_gap_since_last_decision_s=0.81,
+        ),
+    )
+
+    assert decision.action == "stop"
+    assert decision.reason == "refresh_cadence_stalled"
+
+
+def test_a_recovered_stall_inside_the_registered_tolerance_does_not_stop() -> None:
+    """A gap under the registered 3R = 600 ms rule is not a stall."""
+    decision = continuous_control_decision(
+        _route(),
+        _observation(
+            refresh_age_s=0.0,
+            refresh_max_gap_since_last_decision_s=0.59,
+        ),
+    )
+
+    assert decision.action == "drive"
