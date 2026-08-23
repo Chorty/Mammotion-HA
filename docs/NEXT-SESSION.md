@@ -40,6 +40,15 @@ is untouched and still says `no_go`.
 only show a rate fits itself. Re-fitting after the run would prove nothing — the
 same failure as moving a threshold.
 
+🏁🏁 **PHASE 1b PASSED, `go`, 2026-08-23.** One supervised 8000 ms arc at the
+ORIGINAL plan's command (`linear 400, angular 180`) against the pre-registered
+protocol: all 18 arc criteria passed, mirror error 4.264° against a 10° limit,
+7 informative steps against 3 required. Read `docs/phase1b-go-20260823.md`.
+🔒 **Scope is explicit: telemetry feasibility only, does NOT authorize Phase 2
+implementation or another physical run.** What's next is Phase 2 DESIGN
+DISCUSSION. The ~1 Hz ceiling and the unexplained ~7 mm pairing residual still
+bound that design.
+
 🆕 **BETA72 IS DEPLOYED MOTION-DISABLED (2026-08-23) — both Phase 1b blockers
 are cleared.** The travel guard's three fail-open paths are closed, its overshoot
 constant is 0.50 m, and `corridor_must_cover_m` is the worst case (live proof:

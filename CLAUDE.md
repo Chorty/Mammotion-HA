@@ -28,6 +28,27 @@ this file every time.
 
 ## Current build: `0.6.4-beta72` released and installed motion-disabled
 
+🏁🏁 **PHASE 1b PASSED — VERDICT `go`, 2026-08-23.** One supervised, authorized
+8000 ms arc (`linear 400, angular 180` — the ORIGINAL plan's command, only the
+duration changed) run against the protocol registered the same day before any
+capture existed. **All 18 arc criteria passed**: 7 informative moving steps
+(need >= 3), max mirror error **4.264°** (limit 10° — more than half the budget
+unused), 39/39 refresh writes, distance guard fired correctly at 1.5568 m,
+containment held. The paired straight capture is the unchanged 2026-08-22 file
+and still passes all 17. Read `docs/phase1b-go-20260823.md`.
+
+🔒 **Scope, verbatim from the analyzer's own output:** `"Phase 1 telemetry
+feasibility only; never authorizes Phase 2 or motion."` This means the
+telemetry can support a closed-loop attempt — it does NOT mean such a
+controller is safe, accurate, or worth building. **What starts now is Phase 2
+DESIGN DISCUSSION, not implementation and not another physical run.**
+🔑 Two things measured this week still bound that design regardless of this
+`go`: the ~1 Hz position/heading bundle
+(`docs/the-1hz-bundle-is-the-ceiling-20260822.md`), and the unexplained
+alpha = -0.149 ± 0.043 pairing residual (`docs/codex-adjudication-20260823.md`,
+~7 mm/step cost, unmodelled). ⚠️ The prediction-error criterion is still NOT
+implemented; this `go` rests on the repaired mirror criterion alone.
+
 🆕 **beta72 CLOSES THE GUARD'S FAIL-OPEN PATHS AND MAKES THE ARC SCOREABLE,
 2026-08-23.** Both are prerequisites for the Phase 1b arc.
 **(1)** A frozen feed, a missing position, or a dead sampler each now **trip**
