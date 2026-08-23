@@ -43,9 +43,13 @@ same failure as moving a threshold.
 🔧 **THE CRITERION IS REPAIRED (2026-08-23) AND THE VERDICT IS STILL `no_go`.**
 START pairing + a real 0.15 m minimum chord, threshold untouched. The arc's error
 is now 2.521° but it has only **2 informative steps against 3 required** — the
-4 s arc spec cannot test its own criterion at ~1 Hz. ⚠️ Do NOT lower the step
-count. The 8 s `angular 120` arc would pass (6 steps, 2.385°) but is not
-admissible without a **plan change the operator must decide**. Prediction error
+4 s arc spec cannot test its own criterion at ~1 Hz. ⚠️ Do NOT lower the step count.
+🗑️ My claim that a 4 s arc "cannot" yield 3 informative steps is **FALSE** — 4 of
+5 captures managed it; the arc180 just missed a fourth arrival. Fragile, not
+impossible.
+🔑 **DECIDED: the 8 s `angular 120` arc is NOT admitted** (Codex adjudication).
+**Next physical step is `docs/phase1b-arc-protocol-20260823.md`** — same
+`angular 180` at 8000 ms, every criterion unchanged, registered before the run. Prediction error
 is deliberately still NOT added. Read `docs/mirror-criterion-repaired-20260823.md`.
 
 🚨 **READ THIS FIRST: an independent review REJECTED the criterion proposal and

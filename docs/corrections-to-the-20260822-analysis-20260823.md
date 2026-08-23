@@ -88,7 +88,13 @@ with zero, so using 90.0 was sound. I had not checked that either.)
 
 Re-derived on all 8 informative arc steps with the empirical sigma:
 
-**alpha = -0.165 +- 0.043** (weighted) / **-0.165 +- 0.054** (unweighted)
+**alpha = -0.149 +- 0.043**
+
+⚠️ *(Corrected again the same day. My first re-derivation gave -0.165 because
+`scripts/reanalyze_mirror_pairing.py` used mirror constant **90.00** where the
+project uses **90.13**; `dalpha/dK = 0.1214 per degree`. The script is fixed.
+🔑 **VIO independently gives -0.175 +- 0.043**, which rules out every
+`toward`-only mechanism. See `docs/codex-adjudication-20260823.md`.)*
 
 | convention | distance |
 | --- | ---: |

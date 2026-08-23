@@ -37,14 +37,24 @@ whose noise bound exceeds the threshold cannot test anything. **The 10° thresho
 is untouched.**
 🚨 **The repair does NOT flip the verdict, and the reason is the finding.** The
 arc's error is now **2.521°** — comfortable — but the minimum chord leaves it
-**2 informative steps against the 3 required**. That is a defect in the **capture
-design**: a 4 s window at ~1 Hz yields ~3 arrivals, one routinely too short, so
-the plan's `angular 180` 4 s arc **cannot test its own criterion**. ⚠️ **Do NOT
-fix it by lowering the step count to 2** —
+**2 informative steps against the 3 required**. ⚠️ **Do NOT fix it by lowering
+the step count to 2** —
 `test_the_banked_arc_now_fails_on_STEP_COUNT_not_on_error` pins that.
-🔑 The `angular 120` 8 s arc has **6 informative steps at 2.385°** and would
-pass, but `EXPECTED_CONTROLS` hardcodes angular 180 / 4000 ms so it is not
-admissible. **Admitting it is a plan change needing the operator's decision.**
+🗑️ **CORRECTED 2026-08-23: I wrote that a 4 s arc "cannot test its own
+criterion". FALSE.** Four of five banked captures produced 3 informative chords
+inside their first 4 seconds; the arc180 alone missed, its fourth arrival never
+landing before the cutoff. **Fragile, not impossible** — and that refutation
+removed the main argument for substituting the 8 s arc.
+🔑 **DECIDED 2026-08-23 by independent Codex adjudication: the `angular 120` 8 s
+arc is NOT admitted**, though it would pass at 2.385°. Both pre-registered
+dimensions would have moved at once with the outcome already known. It stays
+exploratory evidence. Registered instead:
+`docs/phase1b-arc-protocol-20260823.md` — the **same `angular 180` at 8000 ms**,
+every criterion unchanged, written before any capture exists. Also registered
+there: a `3R = 600 ms` BLE-stall eligibility rule and, if prediction error is
+ever adopted, a **0.085 m** threshold (0.150 tolerance − 0.065 sensing floor),
+derived before scoring and **failing the banked 8 s run at 0.1418 m** without
+being relaxed.
 ⚠️ **Prediction error was deliberately NOT added yet** — its threshold is
 unresolved (0.10 m is breached at 0.1418 m by the banked 8 s run) and choosing
 one now, knowing which passes, is the failure this repair avoids. Read
@@ -164,12 +174,18 @@ steps whose position-noise bearing bound is **±12.2°** and **±7.4°**, at or 
 the 10° threshold — those rows cannot test anything. ⚠️ Which pairing is
 physically right is now **MEASURED, not chosen**: writing
 `err(alpha) = err_at_start + alpha × rotation` (exact to 0.001° on every row) and
-solving gives **alpha = −0.253 ± 0.174**, putting START at 1.45σ (consistent),
-MIDPOINT at 4.32σ and the shipped END at **7.19σ** (excluded). ⚠️ Two steps from
-one arc, and **only a turning capture can measure it** — rotation is the
-denominator, so all four straight-run steps are ill-conditioned. ⚠️ The negative
-sign is **unexplained**; averaging alone predicts +0.5. Do not write a mechanism
-down as established. The fix must still not be "pick whichever passes". Read
+solving gives, over all 8 informative arc steps at the corrected mirror constant
+90.13, **alpha = −0.149 ± 0.043** — START 3.50σ, MIDPOINT 15.26σ, END 27.02σ, so
+**no simple pairing is right** and END is merely worst.
+🐛 The earlier −0.253 and −0.165 came from `scripts/reanalyze_mirror_pairing.py` using
+mirror constant **90.00**; `dalpha/dK = 0.1214/°`. Fixed.
+🔑 **VIO gives the same sign independently (−0.175 ± 0.043)**, which rules out
+every `toward`-only mechanism. Survivors: position lag relative to heading
+(~0.65 s), or `toward` being a **body heading** (item 15). ⚠️ No offline test
+separates them — no per-field timestamps, and both arcs turn the same way.
+⚠️ Practical cost is **~7 mm per 1 Hz step**, so this is interesting and
+operationally minor. Do not write a mechanism down as established. Read
+`docs/codex-adjudication-20260823.md`. The fix must still not be "pick whichever passes". Read
 `docs/phase1-mirror-criterion-is-ill-posed-20260822.md`;
 `scripts/reanalyze_mirror_pairing.py` re-derives it with no mower.
 

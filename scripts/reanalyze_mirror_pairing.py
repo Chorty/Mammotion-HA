@@ -29,7 +29,13 @@ import math
 from pathlib import Path
 from typing import Any
 
-MIRROR_SUM_DEGREES = 90.0
+# 🐛 **WAS 90.0 until 2026-08-23.** `replay_arc_predictability.py` and the
+# project's own mirror finding both use 90.13; this file disagreed. A review
+# called the mismatch immaterial because it is worth 0.0006 m of position -- but
+# for the PAIRING OFFSET it is not: dalpha/dK = 0.1214 per degree, so 0.13 deg
+# moved alpha by 0.016, from -0.165 to -0.149. Both the review and the author
+# were wrong about it mattering.
+MIRROR_SUM_DEGREES = 90.13
 THRESHOLD_DEGREES = 10.0
 
 # During continuous motion the position feed measured 0.70 cm cross-track RMS,

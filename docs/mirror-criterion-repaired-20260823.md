@@ -22,7 +22,9 @@ know. Certifying a reference the controller cannot obtain certifies the wrong
 thing.
 
 ⚠️ **The start is not exactly right either.** Solving all 8 informative arc steps
-for the pairing that would zero the error gives **alpha = -0.165 +- 0.043**,
+for the pairing that would zero the error gives **alpha = -0.149 +- 0.043**
+*(corrected 2026-08-23 from -0.165, which used mirror constant 90.00 instead of
+90.13; dalpha/dK = 0.1214 per degree)*,
 which excludes the start (alpha = 0) at ~3 sigma as well. END is merely far
 worse, at ~22 sigma. The residual is unexplained, is not modelled, and the
 unchanged 10 deg threshold absorbs it.
@@ -50,10 +52,17 @@ error is now **2.521 deg against a 10 deg threshold** — comfortable. It fails
 because a correctly sized minimum chord leaves it **2 informative steps against
 the 3 required**.
 
-🔑 **That is a defect in the CAPTURE DESIGN, not in the mower and not in the
-criterion.** A 4 s window at ~1 Hz yields ~3 position arrivals, one of which is
-routinely too short to carry a bearing. The plan's `angular 180`, 4 s arc
-**cannot** produce 3 informative steps reliably. This is the ~1 Hz ceiling
+🗑️ **CORRECTED 2026-08-23 — I first wrote that the 4 s arc "cannot" produce 3
+informative steps. That is false.** Four of the five banked captures produced
+exactly 3 informative chords inside their first 4 seconds; only the arc180 did
+not, because its fourth fresh arrival never came before the 4000 ms cutoff
+(arrivals at 882.7 / 1896.8 / 2919.2 ms). The design is **fragile, not
+impossible** — three arrivals can never be enough once the short spin-up chord is
+excluded, so it depends on a fourth landing inside a hard boundary. See
+`docs/phase1b-arc-protocol-20260823.md`.
+
+🔑 **It is still a defect in the CAPTURE DESIGN, not in the mower and not in the
+criterion** — just a fragility rather than an impossibility. This is the ~1 Hz ceiling
 (`docs/the-1hz-bundle-is-the-ceiling-20260822.md`) arriving where it was always
 going to.
 
@@ -73,12 +82,14 @@ It cannot be scored today: `EXPECTED_CONTROLS` hardcodes `angular_speed: 180`
 and `EXPECTED_DURATION_MS = 4000`, so that capture is not admissible as a Phase 1
 arc.
 
-**Admitting it is a plan change and needs the operator's decision**, because it
-means Phase 1's arc specification becomes "long enough to yield 3 informative
-steps" rather than "4 s at angular 180". The argument for it is that the 4 s spec
-is now known to be unable to test its own criterion. The argument against is that
-the capture already exists and passes, so choosing to admit it is choosing a
-capture that passes — which deserves to be said out loud rather than slipped in.
+🗑️ **DECIDED 2026-08-23: it is NOT admitted.** An independent Codex adjudication
+rejected it, and refuted the argument I had made for it (see the correction
+above). Both pre-registered dimensions would have had to move at once
+(angular 180 -> 120 and 4000 -> 8000 ms) with the outcome already known.
+`docs/evidence-arc120-outofsample-20260823T001500Z.json` stays **exploratory and
+corroborating evidence only**. What was registered instead:
+`docs/phase1b-arc-protocol-20260823.md` — the SAME `angular 180` at 8000 ms, with
+every criterion unchanged, written before any capture exists.
 
 ## What was NOT done, deliberately
 
