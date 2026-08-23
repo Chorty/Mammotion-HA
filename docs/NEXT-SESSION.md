@@ -40,7 +40,17 @@ is untouched and still says `no_go`.
 only show a rate fits itself. Re-fitting after the run would prove nothing — the
 same failure as moving a threshold.
 
-🏁 **TWO SUPERVISED beta71 RUNS DONE 2026-08-22 — sustain PROVEN, guard PROVEN.**
+🏁 **THE OUT-OF-SAMPLE PREDICTION TEST PASSED, 2026-08-22.** An `angular 120`
+arc scored against constants committed *before* it ran: excluding spin-up,
+**6 steps, median 0.0175 m, max 0.0628 m** against a proposed 0.10 m.
+🗑️ But `w = k_ang × angular_speed` is **refuted** — 33% less commanded angular
+changed the yaw rate by 3%. Position prediction survived because it re-anchors on
+measured heading each interval, so **Phase 2 needs heading feedback, not a yaw
+model**. Guard fired a 2nd time (1.8074 m actual vs 1.85 published). Read
+`docs/prediction-model-holds-out-of-sample-20260823.md`. The analyzer verdict is
+still `no_go` and the criterion revision is still a PROPOSAL.
+
+🏁 **THREE SUPERVISED beta71 RUNS DONE 2026-08-22 — sustain PROVEN, guard PROVEN.**
 Speed does not decay over 8 s (7 steady steps, mean 0.2479 m/s, trend +0.0073 per
 step), BLE held 39/39 refreshes, and open-loop cross-track was ~5 cm over 1.9 m.
 The distance guard fired on hardware at 1.5731 m sampled and stopped the mower at

@@ -28,6 +28,25 @@ this file every time.
 
 ## Current build: `0.6.4-beta71` released and installed motion-disabled
 
+🏁 **THE PREDICTION MODEL HOLDS OUT OF SAMPLE, AND ITS YAW TERM DOES NOT,
+2026-08-22.** An `angular 120` arc scored against constants **committed before it
+ran** (`docs/frozen-prediction-constants-20260822.json`, `c6f16f07`). Excluding
+spin-up: **6 steps, median 0.0175 m, max 0.0628 m** against a proposed 0.10 m —
+passes with 37% margin. 🔑 The multi-run frozen `k_lin` (0.2482 m/s, 16 steps over
+three runs) beat a single-run refit (0.2148) **3x on data neither saw**.
+🗑️ **`w = k_ang × angular_speed` is REFUTED**: predicted 4.787 °/s at angular 120,
+observed **6.94 °/s**. A 33% cut in commanded angular moved the yaw rate 3%
+(7.181 → 6.94 °/s) — rotation is very nearly **independent** of `angular_speed`
+across 120–180. ⚠️ Two points in a narrow band; `angular 500` in an arc is still
+unmeasured. 🔑 **Position prediction passed anyway because it re-anchors on
+MEASURED heading each interval**, so a 2 °/s rate error buys only ~0.009 m — a
+continuous controller needs accurate heading **feedback**, not an accurate yaw
+**model**, which takes yaw calibration off the Phase 2 critical path.
+🔑 **The guard fired a second time** (1.6093 m sampled → **1.8074 m** actual
+against the published 1.85), so overshoot is 0.276 / 0.307 m on two runs — still
+**do not** tighten the 0.35 m constant. Read
+`docs/prediction-model-holds-out-of-sample-20260823.md`.
+
 🏁 **THE 8 s WINDOW SUSTAINS AND THE DISTANCE GUARD FIRES, 2026-08-22.** Two
 separately authorized supervised runs on beta71. **(1) Speed does not decay:**
 8000.7 ms, 1.8952 m, 8 position arrivals → **7 steady steps** (against 3 in a 4 s

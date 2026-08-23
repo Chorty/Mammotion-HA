@@ -1,0 +1,96 @@
+{
+  "straight": {
+    "prevalidated": true,
+    "area_margin_m": 1.2,
+    "keepout_margin_m": 1.5,
+    "frozen_start": {
+      "x": 6.8185,
+      "y": -6.7561
+    },
+    "frozen_endpoint": {
+      "x": 8.416762010070215,
+      "y": -4.833716441194339
+    },
+    "polygon": [
+      {
+        "x": 7.2419,
+        "y": -7.4982
+      },
+      {
+        "x": 9.0319,
+        "y": -5.3452
+      },
+      {
+        "x": 7.8016,
+        "y": -4.3223
+      },
+      {
+        "x": 6.0115,
+        "y": -6.4753
+      }
+    ],
+    "verification": {
+      "grid_step_m": 0.05,
+      "points_sampled": 1795,
+      "points_outside_area": 0,
+      "points_inside_keep_out": 0,
+      "min_area_edge_clearance_m": 3.7561,
+      "min_keep_out_clearance_m": 3.9262
+    },
+    "heading_degrees": 50.26,
+    "corridor_length_m": 2.5,
+    "area_hash": "1343645155037768237",
+    "area_name": "Backyard Right",
+    "keep_out_zones": [
+      "obstacle:1529607395159402290",
+      "obstacle:3985039798069143977"
+    ]
+  },
+  "shallow_arc": {
+    "prevalidated": true,
+    "area_margin_m": 1.2,
+    "keepout_margin_m": 1.5,
+    "frozen_start": {
+      "x": 6.8185,
+      "y": -6.7561
+    },
+    "frozen_endpoint": {
+      "x": 8.416762010070215,
+      "y": -4.833716441194339
+    },
+    "polygon": [
+      {
+        "x": 8.2698,
+        "y": -8.3529
+      },
+      {
+        "x": 10.0599,
+        "y": -6.1998
+      },
+      {
+        "x": 6.7737,
+        "y": -3.4676
+      },
+      {
+        "x": 4.9836,
+        "y": -5.6207
+      }
+    ],
+    "verification": {
+      "grid_step_m": 0.05,
+      "points_sampled": 4785,
+      "points_outside_area": 0,
+      "points_inside_keep_out": 0,
+      "min_area_edge_clearance_m": 2.9232,
+      "min_keep_out_clearance_m": 3.9288
+    },
+    "heading_degrees": 50.26,
+    "corridor_length_m": 2.5,
+    "area_hash": "1343645155037768237",
+    "area_name": "Backyard Right",
+    "keep_out_zones": [
+      "obstacle:1529607395159402290",
+      "obstacle:3985039798069143977"
+    ]
+  }
+}
