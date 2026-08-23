@@ -10,7 +10,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from scripts.analyze_phase1_capture import analyze_phase1_pair
+from scripts.analyze_phase1_capture import (
+    MAX_COMPASS_MIRROR_ERROR_DEGREES,
+    MIN_MOVING_STEP_M,
+    _position_diagnostics,
+    _valid_samples,
+    analyze_phase1_pair,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "analyze_phase1_capture.py"
@@ -325,3 +331,95 @@ def test_script_imports_only_standard_library_modules() -> None:
         "pathlib",
         "typing",
     }
+
+
+# --- the 2026-08-23 repair to bearing_toward_compass_mirror -------------------
+
+
+def test_the_mirror_check_pairs_toward_at_the_START_of_the_interval() -> None:
+    """The pairing decides the verdict, so it must be pinned.
+
+    `bearing` is a chord between fixes ~1 s apart, an interval AVERAGE; `toward`
+    is one instant. On a body rotating ~10 deg per interval the two ends differ
+    by the whole rotation -- the 2026-08-22 arc scored 2.5 deg paired at the
+    start and 12.6 deg paired at the end, and the end pairing is what produced
+    that day's `no_go`.
+
+    The start is the only heading a controller HAS when predicting the chord it
+    is about to travel.
+    """
+    # A body rotating 20 deg per interval whose every chord follows the heading
+    # it held at the START of that interval. Under START pairing each step reads
+    # 0 deg; under END pairing each reads the full 20 deg of rotation.
+    samples = [
+        _sample(0, 0.0, 0.0, 0.0, 90.0),
+        _sample(1, 1000.0, 1.0, 0.0, 110.0),
+        _sample(2, 2000.0, 1.939693, -0.34202, 130.0),
+        _sample(3, 3000.0, 2.705737, -0.984808, 150.0),
+    ]
+    diagnostics = _position_diagnostics(_valid_samples(samples)[0], duration_ms=4000)
+    steps = diagnostics["moving_steps"]
+    assert len(steps) == 3
+
+    for step in steps:
+        assert abs(step["bearing_plus_toward_error_degrees"]) < 0.001
+    assert diagnostics["max_bearing_plus_toward_error_degrees"] < 0.001
+
+
+def test_steps_too_short_to_carry_a_bearing_are_not_scored() -> None:
+    """A step whose noise bound exceeds the threshold cannot test anything.
+
+    The floor was 0.01 m, three orders below the position noise floor, so it
+    excluded only exactly-zero steps. At the measured sigma = 0.0031 m a 0.076 m
+    chord carries +-7.4 deg of bearing uncertainty against a 10 deg threshold.
+    """
+    assert MIN_MOVING_STEP_M >= 0.15
+
+    samples = [
+        _sample(0, 0.0, 0.0, 0.0, 90.0),
+        # 5 cm: noise-dominated, must be ignored however badly it scores.
+        _sample(1, 1000.0, 0.05, 0.0, 90.0),
+        _sample(2, 2000.0, 1.05, 0.0, 90.0),
+        _sample(3, 3000.0, 2.05, 0.0, 90.0),
+    ]
+    diagnostics = _position_diagnostics(_valid_samples(samples)[0], duration_ms=4000)
+    distances = [step["distance_m"] for step in diagnostics["moving_steps"]]
+    assert all(d >= MIN_MOVING_STEP_M for d in distances)
+    assert len(distances) == 2
+
+
+def test_the_banked_arc_now_fails_on_STEP_COUNT_not_on_error() -> None:
+    """The repair changes the failure mode, and does NOT manufacture a pass.
+
+    Paired at the interval start the 2026-08-22 arc's mirror error is 2.52 deg
+    against a 10 deg threshold -- fine. But a correctly sized minimum chord
+    leaves it only 2 informative steps against the 3 required, because a 4 s
+    window at ~1 Hz yields 3 arrivals and one of them is too short.
+
+    That is a defect in the CAPTURE DESIGN, not in the mower, and it must not be
+    fixed by lowering the required step count.
+    """
+    arc = json.loads(
+        (
+            ROOT / "docs" / "evidence-phase1-shallow-arc-20260822T203400Z.json"
+        ).read_text()
+    )
+    straight = json.loads(
+        (ROOT / "docs" / "evidence-phase1-straight-20260822T202600Z.json").read_text()
+    )
+    corridors = json.loads(
+        (ROOT / "docs" / "evidence-phase1-corridors-20260822T203400Z.json").read_text()
+    )
+    result = analyze_phase1_pair(straight, arc, corridors)
+
+    assert result["verdict"] == "no_go"
+    mirror = next(
+        c
+        for c in result["captures"]["shallow_arc"]["criteria"]
+        if c["name"] == "bearing_toward_compass_mirror"
+    )
+    assert mirror["passed"] is False
+    # The ERROR is now comfortably inside the threshold...
+    assert mirror["observed"]["max_error_degrees"] <= MAX_COMPASS_MIRROR_ERROR_DEGREES
+    # ...and only the step count is short.
+    assert mirror["observed"]["moving_step_count"] == 2

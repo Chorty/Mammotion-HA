@@ -28,6 +28,28 @@ this file every time.
 
 ## Current build: `0.6.4-beta71` released and installed motion-disabled
 
+🔧 **THE MIRROR CRITERION IS REPAIRED AND STILL SAYS `no_go`, 2026-08-23.** Per
+the review: **repaired, not replaced.** `toward` now pairs with the **START** of
+the interval (the only heading a controller has when predicting the chord it is
+about to travel), and `MIN_MOVING_STEP_M` went **0.01 → 0.15 m** because at the
+measured σ = 0.0031 m a 0.076 m chord carries ±7.4° of bearing noise — a step
+whose noise bound exceeds the threshold cannot test anything. **The 10° threshold
+is untouched.**
+🚨 **The repair does NOT flip the verdict, and the reason is the finding.** The
+arc's error is now **2.521°** — comfortable — but the minimum chord leaves it
+**2 informative steps against the 3 required**. That is a defect in the **capture
+design**: a 4 s window at ~1 Hz yields ~3 arrivals, one routinely too short, so
+the plan's `angular 180` 4 s arc **cannot test its own criterion**. ⚠️ **Do NOT
+fix it by lowering the step count to 2** —
+`test_the_banked_arc_now_fails_on_STEP_COUNT_not_on_error` pins that.
+🔑 The `angular 120` 8 s arc has **6 informative steps at 2.385°** and would
+pass, but `EXPECTED_CONTROLS` hardcodes angular 180 / 4000 ms so it is not
+admissible. **Admitting it is a plan change needing the operator's decision.**
+⚠️ **Prediction error was deliberately NOT added yet** — its threshold is
+unresolved (0.10 m is breached at 0.1418 m by the banked 8 s run) and choosing
+one now, knowing which passes, is the failure this repair avoids. Read
+`docs/mirror-criterion-repaired-20260823.md`.
+
 🚨 **AN INDEPENDENT REVIEW REJECTED THE CRITERION PROPOSAL AND FOUND FOUR FALSE
 CLAIMS OF MINE, 2026-08-23.** All re-derived from the banked evidence and all
 confirmed. Read `docs/corrections-to-the-20260822-analysis-20260823.md` before quoting anything from 2026-08-22.

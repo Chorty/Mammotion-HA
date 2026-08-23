@@ -40,6 +40,14 @@ is untouched and still says `no_go`.
 only show a rate fits itself. Re-fitting after the run would prove nothing — the
 same failure as moving a threshold.
 
+🔧 **THE CRITERION IS REPAIRED (2026-08-23) AND THE VERDICT IS STILL `no_go`.**
+START pairing + a real 0.15 m minimum chord, threshold untouched. The arc's error
+is now 2.521° but it has only **2 informative steps against 3 required** — the
+4 s arc spec cannot test its own criterion at ~1 Hz. ⚠️ Do NOT lower the step
+count. The 8 s `angular 120` arc would pass (6 steps, 2.385°) but is not
+admissible without a **plan change the operator must decide**. Prediction error
+is deliberately still NOT added. Read `docs/mirror-criterion-repaired-20260823.md`.
+
 🚨 **READ THIS FIRST: an independent review REJECTED the criterion proposal and
 found four false claims in the 2026-08-22 analysis, 2026-08-23.** All confirmed
 by re-derivation. `docs/corrections-to-the-20260822-analysis-20260823.md` lists them: the yaw "REFUTED" is withdrawn, the

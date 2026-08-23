@@ -26,7 +26,14 @@ COMPASS_MIRROR_SUM_DEGREES = 90.0
 MIN_AREA_MARGIN_M = 1.2
 MIN_KEEPOUT_MARGIN_M = 1.5
 MAX_START_DRIFT_M = 0.30
-MIN_MOVING_STEP_M = 0.01
+# 🔑 **RAISED 0.01 -> 0.15 on 2026-08-23.** A chord this short cannot carry a
+# bearing: position noise alone buys `atan(sigma*sqrt(2)/chord)` of bearing
+# uncertainty, and at the sigma = 0.0031 m measured across 16 steady in-window
+# steps that is +-12.2 deg on the straight capture's 0.0456 m step and +-7.4 deg
+# on the arc's 0.0760 m step -- at or above the 10 deg threshold itself. **A step
+# whose noise bound exceeds the threshold cannot test anything**, and the old
+# 0.01 m floor excluded only exactly-zero steps. At 0.15 m the bound is 1.7 deg.
+MIN_MOVING_STEP_M = 0.15
 _POSITION_EPSILON_M = 1e-9
 
 EXPECTED_CONTROLS: dict[str, dict[str, Any]] = {
@@ -203,7 +210,28 @@ def _position_diagnostics(
         if distance_m < MIN_MOVING_STEP_M:
             continue
         bearing = (math.degrees(math.atan2(dy, dx)) + 360.0) % 360.0
-        toward = current["toward"]
+        # 🔑 **PAIR WITH THE START OF THE INTERVAL, not its end. Changed
+        # 2026-08-23; the original `current["toward"]` is what produced the
+        # 2026-08-22 `no_go`.**
+        #
+        # `bearing` is a CHORD between two fixes about a second apart -- an
+        # interval average. `toward` is a single instant. On a body rotating
+        # ~10 deg per interval those differ by the whole rotation, so which end
+        # supplies `toward` decides the verdict: the same arc scores 2.5 deg at
+        # the start and 12.6 deg at the end.
+        #
+        # The start is the physically meaningful pairing because it is the only
+        # one a controller HAS. Predicting the chord it is about to travel, it
+        # knows the heading it holds now; the heading it will hold when the fix
+        # arrives is precisely what it does not know yet. Certifying a reference
+        # the controller cannot obtain would certify the wrong thing.
+        #
+        # ⚠️ It is not exactly right either. Solving all 8 informative arc steps
+        # for the pairing that zeroes the error gives alpha = -0.165 +- 0.043,
+        # which excludes the start (alpha = 0) at ~3 sigma as well -- END is
+        # merely far worse, at ~22 sigma. The residual is unexplained and is not
+        # modelled here; the 10 deg threshold is unchanged and absorbs it.
+        toward = previous["toward"]
         mirror_error = (
             abs(
                 _heading_error_degrees(
