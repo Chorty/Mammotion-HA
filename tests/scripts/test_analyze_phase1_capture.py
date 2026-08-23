@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from scripts.analyze_phase1_capture import (
+    EXPECTED_CONTROLS,
     MAX_COMPASS_MIRROR_ERROR_DEGREES,
     MIN_MOVING_STEP_M,
     _position_diagnostics,
@@ -51,14 +52,26 @@ def _sample(
 
 
 def _capture(*, arc: bool) -> dict[str, Any]:
+    """Build a passing capture at the duration its control actually requires.
+
+    ⚠️ The arc runs **8000 ms** (`docs/phase1b-arc-protocol-20260823.md`). At 4 s
+    it cannot reliably clear the repaired criterion's 3-informative-chord bar
+    once the short spin-up chord is dropped, which is exactly how the
+    2026-08-22 arc failed. Only the duration differs; the command is unchanged.
+    """
     if arc:
-        # Each course bearing plus the later sample's `toward` is 90 degrees.
+        # Each chord's bearing plus the `toward` at the START of that interval
+        # is 90 degrees -- the repaired START pairing, not the end.
         positions = (
             (0.0, 0.0, 90.0),
-            (0.20, 0.02, 84.289407),
-            (0.40, 0.06, 78.690068),
-            (0.58, 0.13, 68.749494),
+            (0.2, 0.0, 84.0),
+            (0.3989, 0.0209, 78.0),
+            (0.5945, 0.0625, 72.0),
+            (0.7847, 0.1243, 66.0),
+            (0.9675, 0.2056, 60.0),
+            (1.1407, 0.3056, 54.0),
         )
+        elapsed_ms = (0.0, 900.0, 1900.0, 3000.0, 4100.0, 5200.0, 6300.0)
     else:
         positions = (
             (0.0, 0.0, 90.0),
@@ -66,16 +79,19 @@ def _capture(*, arc: bool) -> dict[str, Any]:
             (0.40, 0.0, 90.0),
             (0.60, 0.0, 90.0),
         )
+        elapsed_ms = (0.0, 900.0, 1900.0, 3000.0)
+    duration_ms = 8000 if arc else 4000
+    refresh_count = duration_ms // 200 - 1
     samples = [
         _sample(index, elapsed, x, y, toward)
         for index, (elapsed, (x, y, toward)) in enumerate(
-            zip((0.0, 900.0, 1900.0, 3000.0), positions, strict=True)
+            zip(elapsed_ms, positions, strict=True)
         )
     ]
     angular_speed = 180 if arc else 0
     for sample in samples:
         sample["active_command"]["kwargs"]["angular_speed"] = angular_speed
-    completions = [float(index * 200) for index in range(1, 20)]
+    completions = [float(index * 200) for index in range(1, refresh_count + 1)]
     return {
         "service": "raw_pymammotion_motion_probe",
         "mode": "real_raw_pymammotion_probe",
@@ -89,7 +105,7 @@ def _capture(*, arc: bool) -> dict[str, Any]:
         },
         "motion_axes": "arc" if arc else "linear",
         "motion_refresh_interval_ms": 200,
-        "duration_ms": 4000,
+        "duration_ms": duration_ms,
         "command_result": {
             "attempted": True,
             "ok": True,
@@ -113,10 +129,10 @@ def _capture(*, arc: bool) -> dict[str, Any]:
         "motion_refresh": {
             "refresh_enabled": True,
             "refresh_interval_ms": 200,
-            "refresh_commands_sent": 19,
+            "refresh_commands_sent": refresh_count,
             "refresh_write_completions_elapsed_ms": completions,
-            "refresh_write_durations_ms": [10.0] * 19,
-            "elapsed_ms": 4000.0,
+            "refresh_write_durations_ms": [10.0] * refresh_count,
+            "elapsed_ms": float(duration_ms),
         },
         "stop_result": {"attempted": True, "ok": True, "error": None},
     }
@@ -131,9 +147,9 @@ def _corridor() -> dict[str, Any]:
         "frozen_endpoint": {"x": 1.0, "y": 0.0},
         "polygon": [
             {"x": -0.2, "y": -0.2},
-            {"x": 1.2, "y": -0.2},
-            {"x": 1.2, "y": 0.5},
-            {"x": -0.2, "y": 0.5},
+            {"x": 1.4, "y": -0.2},
+            {"x": 1.4, "y": 0.6},
+            {"x": -0.2, "y": 0.6},
         ],
     }
 
@@ -423,3 +439,39 @@ def test_the_banked_arc_now_fails_on_STEP_COUNT_not_on_error() -> None:
     assert mirror["observed"]["max_error_degrees"] <= MAX_COMPASS_MIRROR_ERROR_DEGREES
     # ...and only the step count is short.
     assert mirror["observed"]["moving_step_count"] == 2
+
+
+def test_duration_is_fixed_PER_CONTROL_and_is_not_a_menu() -> None:
+    """The arc runs longer than the straight run, and each is a single value.
+
+    🚨 The anti-gaming rule from `docs/phase1b-arc-protocol-20260823.md`: a
+    capture must match ONE duration for its control. If this ever became a list
+    or range of accepted durations, a capture that failed at one length could be
+    re-scored at another, which is the whole failure mode the Phase 1b
+    registration exists to prevent.
+    """
+    assert EXPECTED_CONTROLS["straight"]["duration_ms"] == 4000
+    assert EXPECTED_CONTROLS["shallow_arc"]["duration_ms"] == 8000
+    for spec in EXPECTED_CONTROLS.values():
+        assert isinstance(spec["duration_ms"], int), "one value, never a menu"
+
+    # The command itself is unchanged from the original plan -- only duration.
+    assert EXPECTED_CONTROLS["shallow_arc"]["command_args"] == {
+        "linear_speed": 400,
+        "angular_speed": 180,
+    }
+
+
+def test_a_capture_at_the_wrong_duration_is_refused() -> None:
+    """An 8 s arc is required; a 4 s one fails the control profile."""
+    straight, arc, corridors = _pair()
+    arc["duration_ms"] = 4000
+    result = analyze_phase1_pair(straight, arc, corridors)
+
+    assert result["verdict"] == "no_go"
+    profile = next(
+        c
+        for c in result["captures"]["shallow_arc"]["criteria"]
+        if c["name"] == "control_profile"
+    )
+    assert profile["passed"] is False

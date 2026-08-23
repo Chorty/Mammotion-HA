@@ -71,6 +71,32 @@ The straight capture **keeps its 4000 ms duration** and is not re-run. Any
 analyzer change must express duration **per control**, never as a menu of
 accepted durations — a menu is how an after-the-fact choice hides.
 
+## Consequence: the 2026-08-22 arc is now INADMISSIBLE, not merely failing
+
+With duration expressed per control, re-running the analyzer over the banked
+Phase 1 pair now reports:
+
+```
+verdict: no_go
+failed : shallow_arc.control_profile
+         shallow_arc.maximum_position_arrival_gap
+         shallow_arc.bearing_toward_compass_mirror
+durations required: {'straight': 4000, 'shallow_arc': 8000}
+```
+
+`control_profile` fails because the capture is 4000 ms where 8000 is now
+required, and the arrival-gap check fails as a direct consequence — the window
+is measured to 8000 ms, so the trailing boundary gap from its last arrival at
+2919 ms is 5081 ms against a 2000 ms limit.
+
+🔑 **That is the honest outcome and it is not a regression.** The old arc is not
+a Phase 1b capture; it is a Phase 1 capture, and Phase 1's verdict stands at
+`no_go` on its own terms. The straight capture is unaffected and still passes at
+4000 ms.
+
+⚠️ **A Phase 1b `go` therefore requires a NEW arc.** No banked capture can supply
+it, which is the point.
+
 ## Safety envelope
 
 Unchanged from the runs of 2026-08-22, plus the beta72 guard fixes:

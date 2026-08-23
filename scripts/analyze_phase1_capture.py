@@ -16,7 +16,17 @@ import math
 from pathlib import Path
 from typing import Any
 
-EXPECTED_DURATION_MS = 4000
+# ⚠️ **PER CONTROL, not global — changed 2026-08-23.** The arc needs a longer
+# window than the straight run: at ~1 Hz a 4 s window yields ~4 arrivals, and
+# once the short spin-up chord is dropped that leaves only ~3 informative chords
+# with **no margin**. The 2026-08-22 arc got 2 and failed the repaired criterion
+# on step count. 8000 ms makes a fourth arrival reliable rather than lucky.
+#
+# 🚨 **This must stay a fixed duration PER CONTROL, never a menu of accepted
+# durations.** A menu is how an after-the-fact choice hides: it would let a
+# capture that failed at one length be re-scored at another. Registered before
+# any Phase 1b capture exists -- `docs/phase1b-arc-protocol-20260823.md`.
+_DEFAULT_DURATION_MS = 4000
 EXPECTED_REFRESH_INTERVAL_MS = 200
 EXPECTED_SAMPLE_INTERVAL_MS = 100
 MIN_FRESH_POSITION_ARRIVALS = 3
@@ -41,11 +51,15 @@ EXPECTED_CONTROLS: dict[str, dict[str, Any]] = {
         "motion_axes": "linear",
         "command_args": {"linear_speed": 400, "angular_speed": 0},
         "require_toward_change": False,
+        # Unchanged from the original plan; it passes at this length.
+        "duration_ms": 4000,
     },
     "shallow_arc": {
         "motion_axes": "arc",
+        # Unchanged from the original plan. Only the DURATION moves.
         "command_args": {"linear_speed": 400, "angular_speed": 180},
         "require_toward_change": True,
+        "duration_ms": 8000,
     },
 }
 
@@ -392,11 +406,12 @@ def analyze_capture(control: str, raw_capture: Any, corridor: Any) -> dict[str, 
     capture = _service_response(raw_capture)
     instrumentation = capture.get("in_window_telemetry")
     instrumentation = instrumentation if isinstance(instrumentation, dict) else {}
+    duration_ms = expected.get("duration_ms", _DEFAULT_DURATION_MS)
     samples, invalid_sample_count = _valid_samples(instrumentation.get("samples"))
     window_samples = [
-        sample for sample in samples if sample["elapsed_ms"] <= EXPECTED_DURATION_MS
+        sample for sample in samples if sample["elapsed_ms"] <= duration_ms
     ]
-    position = _position_diagnostics(window_samples, duration_ms=EXPECTED_DURATION_MS)
+    position = _position_diagnostics(window_samples, duration_ms=duration_ms)
     position["samples_after_window_count"] = len(samples) - len(window_samples)
     corridor_report, corridor_criteria = _corridor_diagnostics(corridor, samples)
     command_result = capture.get("command_result")
@@ -432,7 +447,7 @@ def analyze_capture(control: str, raw_capture: Any, corridor: Any) -> dict[str, 
             "control_profile",
             capture.get("service") == "raw_pymammotion_motion_probe"
             and capture.get("dry_run") is False
-            and capture.get("duration_ms") == EXPECTED_DURATION_MS
+            and capture.get("duration_ms") == duration_ms
             and capture.get("motion_refresh_interval_ms")
             == EXPECTED_REFRESH_INTERVAL_MS
             and instrumentation.get("enabled") is True
@@ -458,7 +473,7 @@ def analyze_capture(control: str, raw_capture: Any, corridor: Any) -> dict[str, 
             required={
                 "service": "raw_pymammotion_motion_probe",
                 "dry_run": False,
-                "duration_ms": EXPECTED_DURATION_MS,
+                "duration_ms": duration_ms,
                 "motion_refresh_interval_ms": EXPECTED_REFRESH_INTERVAL_MS,
                 "instrumentation_enabled": True,
                 "sample_interval_ms": EXPECTED_SAMPLE_INTERVAL_MS,
@@ -610,7 +625,12 @@ def analyze_phase1_pair(
         "commands_sent": 0,
         "physical_run_authorized": False,
         "thresholds": {
-            "duration_ms": EXPECTED_DURATION_MS,
+            # Per control, so the banked verdict records WHICH duration each
+            # capture was required to have rather than implying one global.
+            "duration_ms_by_control": {
+                control: spec["duration_ms"]
+                for control, spec in EXPECTED_CONTROLS.items()
+            },
             "refresh_interval_ms": EXPECTED_REFRESH_INTERVAL_MS,
             "sample_interval_ms": EXPECTED_SAMPLE_INTERVAL_MS,
             "min_fresh_position_arrivals": MIN_FRESH_POSITION_ARRIVALS,
