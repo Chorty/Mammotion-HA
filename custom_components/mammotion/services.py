@@ -861,11 +861,26 @@ _PROBE_DURATION_MS_WITHOUT_TRAVEL_GUARD_MAX = 4000
 _PROBE_DURATION_MS_MAX = 12_000
 # Hard ceiling on the guard itself, so no caller can request an unbounded drive.
 _PROBE_MAX_TRAVEL_M_CEILING = 3.0
-# How far past `max_travel_m` the guard is expected to let the mower run before
-# the stop lands: the ~1 Hz position bundle is up to ~1 s stale and the refresh
-# loop then notices within one interval, at a measured 0.2757 m/s. Reported so a
-# corridor is sized against the real bound rather than the requested one.
-_PROBE_TRAVEL_GUARD_OVERSHOOT_M = 0.35
+# How far past `max_travel_m` the guard lets the mower run before the stop lands.
+#
+# ⚠️ **RAISED 0.35 -> 0.50 on 2026-08-23 after review.** Both firings overshot by
+# 0.276 m and 0.307 m, which looked comfortably inside 0.35 -- but decomposing
+# them shows why that was luck. Post-trip travel is a stable ~0.20 m; the rest is
+# where the bound-crossing happens to fall inside a ~0.26 m position chord, which
+# is roughly uniform on [0, 0.26]. Overshoot therefore exceeds 0.35 whenever that
+# phase exceeds 0.15 -- about **42% of the time**. Both samples drew from the low
+# half. 0.50 covers the whole chord.
+_PROBE_TRAVEL_GUARD_OVERSHOOT_M = 0.50
+# Trip the guard when the report stamp has not advanced for this long: a
+# bit-identical feed is a DEAD FEED, not a stopped mower, and a distance guard
+# reading a dead feed measures zero travel forever. Matches the Phase 1
+# analyzer's own 2000 ms position-arrival gap limit.
+_PROBE_FEED_STALE_ABORT_MS = 2000.0
+# Metres per second per unit of `linear_speed`, for sizing the clock-bound
+# fallback only. Measured 6.204299e-04 (0.2482 m/s at 400) over 16 steady-state
+# in-window steps across three straight captures on 2026-08-22, then rounded UP,
+# because this number exists to make a corridor big enough rather than accurate.
+_PROBE_SPEED_PER_LINEAR_UNIT_MS = 7.0e-04
 
 RAW_PYMAMMOTION_MOTION_PROBE_SCHEMA = vol.Schema(
     {
@@ -6690,6 +6705,64 @@ def _in_window_telemetry_sample(
     }
 
 
+def _apply_travel_guard(
+    sample: dict[str, Any],
+    *,
+    origin: tuple[float, float] | None,
+    max_travel_m: float,
+    last_report_stamp: Any,
+    stale_since: float | None,
+) -> tuple[tuple[float, float] | None, Any, float | None, bool]:
+    """Decide whether one sample should end the window, and annotate it.
+
+    🚨 **FAILS CLOSED ON A FEED THAT IS NOT TELLING US ANYTHING.** A guard that
+    only ever compares numbers silently no-ops when the numbers stop arriving,
+    and the window then falls back to the wall clock -- which is the bound this
+    guard exists to replace. Three trip reasons, not one:
+
+    * ``max_travel_reached`` -- the intended case;
+    * ``position_unavailable`` -- non-numeric x/y, nothing to compare;
+    * ``feed_stale`` -- the report stamp has not advanced for
+      ``_PROBE_FEED_STALE_ABORT_MS``. A bit-identical feed is a DEAD FEED, not a
+      stopped mower, and this project has a name for it already
+      (``telemetry_stream_stale``).
+
+    Returns the carried state plus whether the caller should stop.
+    """
+    position = sample.get("position") or {}
+    x, y = position.get("x"), position.get("y")
+
+    if not (isinstance(x, (int, float)) and isinstance(y, (int, float))):
+        sample["travel_guard_tripped"] = True
+        sample["travel_guard_reason"] = "position_unavailable"
+        return origin, last_report_stamp, stale_since, True
+
+    if origin is None:
+        origin = (float(x), float(y))
+    else:
+        travelled = math.hypot(x - origin[0], y - origin[1])
+        sample["travelled_from_origin_m"] = round(travelled, 4)
+        if travelled >= max_travel_m:
+            sample["travel_guard_tripped"] = True
+            sample["travel_guard_reason"] = "max_travel_reached"
+            return origin, last_report_stamp, stale_since, True
+
+    stamp = sample.get("last_report_at_monotonic")
+    elapsed = sample["elapsed_ms"]
+    if stamp is not None and stamp == last_report_stamp:
+        stale_since = elapsed if stale_since is None else stale_since
+        if elapsed - stale_since >= _PROBE_FEED_STALE_ABORT_MS:
+            sample["travel_guard_tripped"] = True
+            sample["travel_guard_reason"] = "feed_stale"
+            sample["feed_stale_ms"] = round(elapsed - stale_since, 1)
+            return origin, last_report_stamp, stale_since, True
+    else:
+        stale_since = None
+        last_report_stamp = stamp
+
+    return origin, last_report_stamp, stale_since, False
+
+
 async def _capture_in_window_telemetry(
     coordinator: MammotionReportUpdateCoordinator,
     *,
@@ -6722,6 +6795,8 @@ async def _capture_in_window_telemetry(
     max_samples = math.ceil(duration_ms / sample_interval_ms) + 1
     samples: list[dict[str, Any]] = []
     origin: tuple[float, float] | None = None
+    last_report_stamp: Any = None
+    stale_since: float | None = None
     while len(samples) < max_samples and not stop_event.is_set():
         sample = _in_window_telemetry_sample(
             coordinator,
@@ -6733,19 +6808,17 @@ async def _capture_in_window_telemetry(
         samples.append(sample)
 
         if max_travel_m > 0:
-            position = sample.get("position") or {}
-            x, y = position.get("x"), position.get("y")
-            if isinstance(x, (int, float)) and isinstance(y, (int, float)):
-                if origin is None:
-                    origin = (float(x), float(y))
-                else:
-                    travelled = math.hypot(x - origin[0], y - origin[1])
-                    sample["travelled_from_origin_m"] = round(travelled, 4)
-                    if travelled >= max_travel_m:
-                        sample["travel_guard_tripped"] = True
-                        if travel_abort is not None:
-                            travel_abort.set()
-                        break
+            origin, last_report_stamp, stale_since, tripped = _apply_travel_guard(
+                sample,
+                origin=origin,
+                max_travel_m=max_travel_m,
+                last_report_stamp=last_report_stamp,
+                stale_since=stale_since,
+            )
+            if tripped:
+                if travel_abort is not None:
+                    travel_abort.set()
+                break
 
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -6891,15 +6964,38 @@ async def _raw_pymammotion_motion_probe(  # noqa: C901
             "enabled": max_travel_m > 0,
             "max_travel_m": max_travel_m,
             # The guard reads the ~1 Hz cache and the refresh loop notices
-            # within one interval, so it trips late by a knowable amount. A
-            # corridor must cover the sum, never `max_travel_m` alone.
+            # within one interval, so it trips late by a knowable amount.
             "expected_overshoot_m": (
                 round(_PROBE_TRAVEL_GUARD_OVERSHOOT_M, 3) if max_travel_m > 0 else 0.0
             ),
+            # ⚠️ **WORST CASE, not the nominal one — corrected 2026-08-23.**
+            # This previously reported `max_travel_m + overshoot`, which assumes
+            # the guard works. If the guard no-ops the wall clock still stops the
+            # run, but at `duration_ms x speed`, which can be far further: 1.85 m
+            # published against 2.21 m real on the arc120 configuration, and
+            # 3.31 m at the schema maximum. A corridor must cover whichever bound
+            # is larger, so this now reports that. Speed uses the schema's
+            # `linear_speed`, not the tested 400, because the schema allows 1000.
             "corridor_must_cover_m": (
-                round(max_travel_m + _PROBE_TRAVEL_GUARD_OVERSHOOT_M, 3)
+                round(
+                    max(
+                        max_travel_m + _PROBE_TRAVEL_GUARD_OVERSHOOT_M,
+                        _PROBE_SPEED_PER_LINEAR_UNIT_MS
+                        * abs(linear_speed)
+                        * duration_ms
+                        / 1000.0,
+                    ),
+                    3,
+                )
                 if max_travel_m > 0
                 else 0.0
+            ),
+            "clock_bound_m": round(
+                _PROBE_SPEED_PER_LINEAR_UNIT_MS
+                * abs(linear_speed)
+                * duration_ms
+                / 1000.0,
+                3,
             ),
             "tripped": False,
         },
@@ -7025,6 +7121,19 @@ async def _raw_pymammotion_motion_probe(  # noqa: C901
                     travel_abort=travel_abort,
                 )
             )
+
+            # 🚨 A DEAD SAMPLER MUST NOT LEAVE THE MOWER DRIVING ON THE CLOCK.
+            # The sampler IS the distance guard, so if its task dies the guard
+            # silently stops existing and the window falls back to `duration_ms`
+            # -- the bound the guard was introduced to replace. Setting the abort
+            # from a done-callback turns that into an early stop instead.
+            if max_travel_m > 0:
+
+                def _abort_if_sampler_died(task: asyncio.Task[Any]) -> None:
+                    if task.cancelled() or task.exception() is not None:
+                        travel_abort.set()
+
+                sampler_task.add_done_callback(_abort_if_sampler_died)
         try:
             result["motion_refresh"] = await _motion_refresh_window(
                 coordinator,
@@ -7055,7 +7164,19 @@ async def _raw_pymammotion_motion_probe(  # noqa: C901
                     sample.get("travel_guard_tripped") for sample in in_window_samples
                 )
                 result["travel_guard"]["tripped"] = tripped
-                result["travel_guard"]["observed_travel_m"] = max(
+                result["travel_guard"]["trip_reason"] = next(
+                    (
+                        sample.get("travel_guard_reason")
+                        for sample in in_window_samples
+                        if sample.get("travel_guard_tripped")
+                    ),
+                    None,
+                )
+                # Renamed from `observed_travel_m` 2026-08-23: this is travel AT
+                # THE TRIP, not travel of the run (1.6093 against 1.8074 on the
+                # 2026-08-22 guard run), and the old name invited reading it as
+                # the latter.
+                result["travel_guard"]["travel_at_trip_m"] = max(
                     (
                         sample.get("travelled_from_origin_m", 0.0)
                         for sample in in_window_samples

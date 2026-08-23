@@ -31,6 +31,7 @@ import yaml
 from custom_components.mammotion import services
 from custom_components.mammotion.services import (
     _PROBE_DURATION_MS_WITHOUT_TRAVEL_GUARD_MAX,
+    _PROBE_FEED_STALE_ABORT_MS,
     _PROBE_MAX_TRAVEL_M_CEILING,
     _PROBE_TRAVEL_GUARD_OVERSHOOT_M,
     RAW_PYMAMMOTION_MOTION_PROBE_SCHEMA,
@@ -43,14 +44,22 @@ ENTITY = "lawn_mower.test"
 
 
 class _FakeCoordinator:
-    """Only the attributes the sampler reaches for; position comes from a patch."""
+    """Only the attributes the sampler reaches for; position comes from a patch.
+
+    `manager.mower()` must return SOMETHING, or `_in_window_telemetry_sample`
+    leaves `last_report_at_monotonic` as None and the feed-staleness guard has
+    nothing to watch.
+    """
 
     data = None
     device_name = "test"
 
-    @property
-    def manager(self) -> Any:
-        raise RuntimeError("no manager in tests")
+    class _Manager:
+        @staticmethod
+        def mower(_name: str) -> object:
+            return object()
+
+    manager = _Manager()
 
 
 def _validated(**overrides: object) -> dict:
@@ -145,8 +154,12 @@ def test_the_response_states_the_real_bound_not_the_requested_one(
     assert guard["expected_overshoot_m"] == pytest.approx(
         _PROBE_TRAVEL_GUARD_OVERSHOOT_M
     )
+    # Whichever bound is larger. At 8 s and linear 400 the clock bound (2.24 m)
+    # exceeds guard-plus-overshoot (2.00 m), and the corridor must cover the
+    # case where the guard does nothing.
+    assert guard["clock_bound_m"] == pytest.approx(2.24, abs=0.01)
     assert guard["corridor_must_cover_m"] == pytest.approx(
-        1.5 + _PROBE_TRAVEL_GUARD_OVERSHOOT_M
+        max(1.5 + _PROBE_TRAVEL_GUARD_OVERSHOOT_M, guard["clock_bound_m"])
     )
     assert guard["tripped"] is False
 
@@ -257,3 +270,167 @@ def test_services_yaml_exposes_the_guard() -> None:
     assert fields["max_travel_m"]["default"] == 0
     assert fields["max_travel_m"]["selector"]["number"]["max"] == 3.0
     assert fields["duration_ms"]["selector"]["number"]["max"] == 12000
+
+
+# --- fail-open paths found by the 2026-08-23 independent review ---------------
+#
+# The guard IS the sampler. Every path below is one where the sampler stops
+# measuring while the mower keeps driving, which silently returns the run to the
+# wall-clock bound the guard was introduced to replace. None of these were
+# tested when the guard shipped in beta71.
+
+
+def test_a_dead_feed_trips_the_guard_rather_than_reading_zero_travel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A bit-identical feed is a DEAD FEED, not a stopped mower.
+
+    Compare positions alone and a frozen feed reads `travelled == 0` forever, so
+    the guard never fires and the mower drives out the full window.
+    """
+    frozen = {
+        "position": {
+            "source": "test",
+            "x": 1.0,
+            "y": 2.0,
+            "toward": 0.0,
+            "pos_type": 1,
+            "zone_hash": "1",
+        }
+    }
+    monkeypatch.setattr(services, "_custom_path_telemetry_snapshot", lambda _c: frozen)
+    # A report stamp that never advances is what makes the feed provably dead.
+    monkeypatch.setattr(services, "_safe_attr_path", lambda *a, **k: 12345.0)
+    abort = asyncio.Event()
+
+    samples = asyncio.run(
+        _capture_in_window_telemetry(
+            _FakeCoordinator(),
+            sample_interval_ms=100,
+            duration_ms=12000,
+            window_started=time.monotonic(),
+            stop_event=asyncio.Event(),
+            command="send_movement",
+            command_args={"linear_speed": 400, "angular_speed": 0},
+            max_travel_m=1.5,
+            travel_abort=abort,
+        )
+    )
+
+    assert abort.is_set()
+    assert samples[-1]["travel_guard_reason"] == "feed_stale"
+    assert samples[-1]["feed_stale_ms"] >= _PROBE_FEED_STALE_ABORT_MS
+    # Tripped on staleness, never on distance -- the mower never appeared to move.
+    assert samples[-1].get("travelled_from_origin_m") == 0.0
+
+
+def test_a_missing_position_trips_the_guard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Non-numeric x/y used to skip the check silently, with no record."""
+    monkeypatch.setattr(
+        services,
+        "_custom_path_telemetry_snapshot",
+        lambda _c: {"position": {"source": "test", "x": None, "y": None}},
+    )
+    monkeypatch.setattr(services, "_safe_attr_path", lambda *a, **k: None)
+    abort = asyncio.Event()
+
+    samples = asyncio.run(
+        _capture_in_window_telemetry(
+            _FakeCoordinator(),
+            sample_interval_ms=100,
+            duration_ms=8000,
+            window_started=time.monotonic(),
+            stop_event=asyncio.Event(),
+            command="send_movement",
+            command_args={"linear_speed": 400, "angular_speed": 0},
+            max_travel_m=1.5,
+            travel_abort=abort,
+        )
+    )
+
+    assert abort.is_set()
+    assert samples[-1]["travel_guard_reason"] == "position_unavailable"
+    assert len(samples) == 1
+
+
+def test_a_live_feed_that_is_simply_stationary_does_not_trip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The discriminator is the report stamp, not the coordinates.
+
+    A mower genuinely parked with a healthy feed must NOT read as a dead feed,
+    or the guard would abort every run that pauses.
+    """
+    state = {"n": 0}
+
+    def _snapshot(_c: Any) -> dict[str, Any]:
+        state["n"] += 1
+        return {
+            "position": {
+                "source": "test",
+                "x": 1.0,
+                "y": 2.0,
+                "toward": 0.0,
+                "pos_type": 1,
+                "zone_hash": "1",
+            }
+        }
+
+    monkeypatch.setattr(services, "_custom_path_telemetry_snapshot", _snapshot)
+    # Stamp ADVANCES every read: the feed is alive, the mower just is not moving.
+    monkeypatch.setattr(services, "_safe_attr_path", lambda *a, **k: float(state["n"]))
+    abort = asyncio.Event()
+
+    samples = asyncio.run(
+        _capture_in_window_telemetry(
+            _FakeCoordinator(),
+            sample_interval_ms=100,
+            duration_ms=500,
+            window_started=time.monotonic(),
+            stop_event=asyncio.Event(),
+            command="send_movement",
+            command_args={"linear_speed": 400, "angular_speed": 0},
+            max_travel_m=1.5,
+            travel_abort=abort,
+        )
+    )
+
+    assert not abort.is_set()
+    assert not any(s.get("travel_guard_tripped") for s in samples)
+
+
+def test_corridor_must_cover_reports_the_clock_bound_when_it_is_larger(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """It previously assumed the guard works, understating by up to 79%.
+
+    If the guard no-ops the wall clock still stops the run -- but far further
+    out. A corridor has to cover whichever bound is larger.
+    """
+    guard = _dry_run(
+        monkeypatch,
+        duration_ms=12000,
+        motion_refresh_interval_ms=200,
+        in_window_sample_interval_ms=100,
+        max_travel_m=0.10,
+    )["travel_guard"]
+
+    # 12 s at the rounded-up speed for linear 400 dwarfs 0.10 + 0.50.
+    assert guard["clock_bound_m"] == pytest.approx(3.36, abs=0.01)
+    assert guard["corridor_must_cover_m"] == pytest.approx(3.36, abs=0.01)
+    assert (
+        guard["corridor_must_cover_m"]
+        > guard["max_travel_m"] + guard["expected_overshoot_m"]
+    )
+
+
+def test_the_overshoot_constant_covers_a_whole_position_chord() -> None:
+    """0.35 m was exceeded ~42% of the time; 0.50 covers the chord.
+
+    Post-trip travel is a stable ~0.20 m. The rest is where the bound-crossing
+    falls inside a ~0.26 m position chord, roughly uniform. The constant has to
+    cover the whole chord, not the average draw from it.
+    """
+    assert _PROBE_TRAVEL_GUARD_OVERSHOOT_M >= 0.20 + 0.26
