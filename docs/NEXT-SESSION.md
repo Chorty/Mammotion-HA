@@ -47,6 +47,17 @@ protocol: all 18 arc criteria passed, mirror error 4.264° against a 10° limit,
 🔒 **Scope is explicit: telemetry feasibility only, does NOT authorize Phase 2
 implementation or another physical run.**
 
+📋 **PHASE 2 GATE ALREADY EXISTS** — `docs/continuous-motion-feasibility-plan-20260821.md`
+has pass criteria from before this week; its "Phase 1 passes" prerequisite is
+now met and its stall-abort line is now literally `refresh_cadence_stalled`.
+⚠️ One open discrepancy flagged, not resolved: a 2026-08-12 single-pulse
+yaw-rate fit disagrees with this week's steady-state measurement in a way that
+looks like a real flatter slope near 120-180°, not noise — doesn't block v1
+(measured-heading correction, no rate model) but don't tune steering gains
+against either fit without checking `docs/phase2-gate-readiness-20260823.md`
+first. **Next: build the executor**, per the plan's own words — "one
+serialized writer that owns command refresh, feedback decisions, and stop."
+
 ✅ **PHASE 2 GAPS CLOSED, 2026-08-23** — offline, no dispatch, no mower run.
 Constants reconciled; the containment gap confirmed (no live keep-out check
 exists, caller-supplied `contained` bool, documented). 🔑 The refresh-staleness

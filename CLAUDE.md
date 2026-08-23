@@ -49,6 +49,24 @@ alpha = -0.149 ± 0.043 pairing residual (`docs/codex-adjudication-20260823.md`,
 ~7 mm/step cost, unmodelled). ⚠️ The prediction-error criterion is still NOT
 implemented; this `go` rests on the repaired mirror criterion alone.
 
+📋 **THE PHASE 2 GATE ALREADY EXISTS, 2026-08-23 — nobody needs to write one.**
+`docs/continuous-motion-feasibility-plan-20260821.md` (written before this
+week) has a full "Phase 2 pass criteria" section: no intermediate stop, cross
+& heading error trending to zero, no ±180 oscillation, cross-track <= 0.20 m,
+duty cycle >= 80%, confirmed stop. **Its own prerequisite — "only after Phase 1
+passes" — is now met** (Phase 1b `go`). Its abort-condition line, "a broken
+refresh gap derived from Phase 1", is now literally implemented as
+`refresh_cadence_stalled`. ⚠️ **One open discrepancy, flagged not resolved**: a
+2026-08-12 single-pulse yaw-rate fit (`w = 0.0659×angular − 0.638`, r²=0.9997
+on 3 points, no per-point error bars) predicts w(180)=11.22°/s and
+w(120)=7.27°/s; this week's steady-state multi-step measurement got
+**9.386 and 7.813** — the 180 reading sits *below* the old fit, the 120 reading
+*above* it, which is the pattern of a genuinely flatter local slope, not noise
+around one line. Doesn't block v1 (which corrects on measured heading, not a
+rate model) but don't let a future session tune steering gains against
+whichever fit it happens to read first. Read
+`docs/phase2-gate-readiness-20260823.md`. **Next: build the executor.**
+
 ✅ **PHASE 2 GAPS CLOSED, 2026-08-23 — offline only, no dispatch, no mower run.**
 All four reconciliation gaps closed in `continuous_controller.py` and validated
 by replaying against both banked continuous captures.

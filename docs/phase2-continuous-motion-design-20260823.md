@@ -85,14 +85,15 @@ module's default posture, not a new concept.
 - The **prediction-error criterion is still not implemented or adopted** as a
   Phase 1 gate. Phase 2 can use the prediction model internally without that.
 
-## Before any physical run: a Gate 5-style validation, not yet defined
+## Before any physical run: the gate already exists
 
-Every prior control-law change in this project passed a dedicated Gate 5
-validation before being trusted (`docs/gate5-repass-PASSED-20260812.md` and
-earlier). Continuous motion is a new control law and needs the same treatment
-— its own pass/fail criteria, written down before the first supervised run,
-not derived from whatever the first run happens to produce. That gate is not
-designed yet and is explicitly out of scope for this document.
+🗑️ **Corrected 2026-08-23: this section originally said the gate "is not
+designed yet".** It already was, since 2026-08-21 --
+`docs/continuous-motion-feasibility-plan-20260821.md` has a "Phase 2 pass
+criteria" section, written before any of this week's work. Read
+`docs/phase2-gate-readiness-20260823.md`, which confirms those criteria still
+hold given everything measured this week and records one open discrepancy in
+an old yaw-rate measurement they do not depend on.
 
 ## ✅ DONE 2026-08-23 — closed, with a fifth gap the four did not anticipate
 
