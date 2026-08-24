@@ -48,11 +48,10 @@ protocol: all 18 arc criteria passed, mirror error 4.264° against a 10° limit,
 implementation or another physical run.**
 
 🚀 **beta73 DEPLOYED (2026-08-23) — executor live, dry-run-verified against
-LIVE state, 14/14 gates.** 🚨 Gate found armed right after the restart despite
-a prior explicit disarm — sixth occurrence, root cause unresolved, disarmed
-again and confirmed via raw storage. 🌙 VIO collapsed to 0 during the same
-window. **Check the gate is still disarmed before doing anything else.** Read
-`docs/deploy-runbook-p0.md` → beta73.
+LIVE state, 14/14 gates.** Gate was found armed right after the restart — RESOLVED,
+operator-confirmed: the operator toggled it on themselves before the restart,
+not a bug. Disarmed and confirmed via raw storage. 🌙 VIO collapsed to 0 during
+the same window. Read `docs/deploy-runbook-p0.md` → beta73.
 
 🏗️ **THE PHASE 2 EXECUTOR IS IMPLEMENTED (2026-08-23), NOT DEPLOYED.** New
 service `mammotion.continuous_motion_window` — straight-line, bounded-window,

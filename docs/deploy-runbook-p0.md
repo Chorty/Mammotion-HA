@@ -40,24 +40,17 @@ immediately and confirmed against the RAW on-disk config-entry storage
 (`/config/.storage/core.config_entries`), not just the live API, which now
 correctly reads `false`.
 
-⚠️ **Root cause is NOT established and should not be asserted as either.** Two
-candidates, both consistent with the evidence and neither ruled out:
+✅ **RESOLVED, operator-confirmed: deliberate.** The operator set experimental
+motion on themselves, before the restart -- not a restart-path bug, not a
+stale-save race. The restart correctly read what was actually on disk at that
+moment; it happened to be the operator's own toggle, made after my disarm and
+before the restart picked it up. Candidate 2 (a code defect re-reading a stale
+value) is withdrawn. No motion was commanded either time.
 
-1. The operator re-armed it via the card during the multi-minute deploy
-   window (mowing/click-to-go activity is independently confirmed earlier the
-   same evening, and every prior armed-at-rest occurrence this project has
-   recorded traced back to deliberate card use).
-2. Something in the restart path re-read a stale pre-disarm value. Against
-   this: the disk-storage inspection several minutes into the SAME session
-   showed the disarm had already persisted by the time it was checked, and
-   the gap between disarm and restart (several minutes, spanning a full CI
-   release cycle) is far longer than any plausible debounced-save delay.
-
-No motion was commanded either time. The disarm automation's own
-`armed_but_blocked`/idle-and-ready triggers had already fired once earlier the
-same evening (23:54:18 UTC, well before this deploy sequence began), which is
-independent evidence the gate was being left armed repeatedly that night
-regardless of this deploy.
+The disarm automation's own `armed_but_blocked`/idle-and-ready triggers had
+already fired once earlier the same evening (23:54:18 UTC, well before this
+deploy sequence began) for a separate instance of the same pattern -- the
+operator arming it and it being left, not a fresh occurrence each time.
 
 🔎 **VIO fully collapsed during this deploy window**: `vio_tracked_features`
 read **68** at the start of this session's check and **0** four minutes later,

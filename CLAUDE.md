@@ -53,13 +53,12 @@ implemented; this `go` rests on the repaired mirror criterion alone.
 motion-disabled.** `continuous_motion_window` confirmed registered and
 dry-run-verified against LIVE coordinator state: 14/14 gates, `would_send:
 false`. Card unchanged from beta72.
-🚨 **SIXTH ARMED-AT-REST OCCURRENCE, found right after this deploy's restart**
-despite an explicit disarm immediately beforehand — root cause NOT
-established (operator card use during the multi-minute deploy window vs. a
-restart re-reading a stale value; evidence favors the former but does not
-rule out the latter). Disarmed again and confirmed against RAW on-disk
-storage, not just the live API. Record: `docs/deploy-runbook-p0.md` →
-beta73.
+✅ **The armed-gate-after-restart finding is RESOLVED, operator-confirmed:**
+the operator set experimental motion on themselves between my disarm and the
+restart. Not a bug, not a stale-save race — the restart correctly read
+whatever was on disk at that moment. Disarmed again and confirmed against
+RAW on-disk storage, not just the live API. Record:
+`docs/deploy-runbook-p0.md` → beta73.
 🌙 **VIO fully collapsed during this same window**: 68 → **0** in about four
 minutes, `camera_brightness: dark`, `signal_none`. The cliff, not a fade —
 confirms dusk arrived. Nothing VIO-dependent tonight.
