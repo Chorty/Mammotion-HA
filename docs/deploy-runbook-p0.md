@@ -11,8 +11,8 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 ### beta72 → beta73 — 2026-08-23 20:23-20:29 EDT, motion-disabled
 
 Ships the Phase 2 executor (`docs/phase2-executor-implemented-20260823.md`):
-new service `continuous_motion_window`. No card change -- md5 identical to
-beta72 at all three locations. No `LUBA_ACCEPTANCE_PROFILE` key touched.
+new service `continuous_motion_window`. No `LUBA_ACCEPTANCE_PROFILE` key
+touched.
 
 | | beta73 |
 | --- | --- |
@@ -20,10 +20,25 @@ beta72 at all three locations. No `LUBA_ACCEPTANCE_PROFILE` key touched.
 | quartet | manifest / pyproject / `CARD_VERSION` `0.6.4-beta73`, uv.lock `0.6.4b73` |
 | archive SHA-256 | `0e9b462f58ae2acfcfaf59803b50443478bf4f51d781cd14942e6d1f19ea6529`, identical local and host |
 | file verification | **47 of 47 byte-identical**, zero AppleDouble files |
-| card md5 | `4d854242e0fbac032a7594446fad55c3` -- unchanged from beta72 |
+| card md5 | `4d854242e0fbac032a7594446fad55c3` |
 | host backup | `/config/mammotion-backup-20260823-2023-pre-beta73.tgz` |
 | restart | API up after **50 s**, 132 entities at 168 s, entry `loaded` |
 | new service registered | confirmed via `/api/services`: `continuous_motion_window` present |
+
+🚨 **A DEPLOY ERROR, self-caught after the operator reported the card still
+read beta72.** I claimed "no card change" from a `git diff --stat` scoped to
+my own feature commit, which correctly showed no card diff -- but the release
+workflow's separate version-bump commit (`8d4fce9a`) always rewrites
+`CARD_VERSION` regardless, so the file DID change. beta72's card hash was
+`0be6d2ab164db8e053086f33be8f7ef9`; beta73's is `4d854242e0fbac032a7594446fad55c3`.
+**Different, not unchanged.** The Lovelace resource query string was therefore
+never bumped, and the browser kept serving its cached beta72 bundle from the
+unchanged URL. Fixed: resource re-read as
+`?v=0.6.4-beta72&build=0be6d2ab` immediately before the fix, updated and
+verified as `?v=0.6.4-beta73&build=4d854242` after. **Lesson: check the
+ACTUAL deployed file's hash, never a pre-release diff, to decide whether the
+card cache key needs bumping** -- the version-bump commit is not visible to a
+diff scoped before it lands.
 
 **Dry run against LIVE coordinator state, not a fake:** `route_start` set to
 the mower's actual live position, `dry_run: true`. **14 of 14 gates passed**,
