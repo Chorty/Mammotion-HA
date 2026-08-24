@@ -826,6 +826,124 @@ raw_pymammotion_motion_probe:
       selector:
         boolean:
 
+continuous_motion_window:
+  description: >-
+    The Phase 2 executor. Runs or simulates one continuous straight-line
+    steering window, correcting on measured heading at every ~1 Hz position
+    arrival. corridor_polygon must be pre-scanned and margin-verified offline
+    (scripts/freeze_phase1_corridors.py, scripts/scan_contained_bearings.py);
+    this service never scans or freezes one itself. dry_run defaults true and
+    sends nothing.
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+    route_start:
+      required: true
+      example:
+        x: 0.0
+        y: 0.0
+      selector:
+        object:
+    route_target:
+      required: true
+      example:
+        x: 1.0
+        y: 0.0
+      selector:
+        object:
+    corridor_polygon:
+      required: true
+      example:
+        - x: -0.2
+          y: -0.3
+        - x: 1.2
+          y: -0.3
+        - x: 1.2
+          y: 0.3
+        - x: -0.2
+          y: 0.3
+      selector:
+        object:
+    linear_speed:
+      required: false
+      default: 400
+      selector:
+        number:
+          min: 1
+          max: 1000
+    max_abs_angular_speed:
+      required: false
+      default: 180
+      selector:
+        number:
+          min: 0
+          max: 1000
+    duration_ms:
+      required: false
+      default: 4000
+      selector:
+        number:
+          min: 1000
+          max: 8000
+          step: 100
+    motion_refresh_interval_ms:
+      required: false
+      default: 200
+      selector:
+        number:
+          min: 50
+          max: 1000
+          step: 50
+    decision_sample_interval_ms:
+      required: false
+      default: 100
+      selector:
+        number:
+          min: 50
+          max: 1000
+          step: 50
+    max_distance_m:
+      required: false
+      default: 1.50
+      selector:
+        number:
+          min: 0.10
+          max: 3.0
+          step: 0.05
+          unit_of_measurement: m
+    max_cross_track_m:
+      required: false
+      default: 0.30
+      selector:
+        number:
+          min: 0.05
+          max: 1.0
+          step: 0.05
+          unit_of_measurement: m
+    prefer_ble:
+      required: false
+      default: true
+      selector:
+        boolean:
+    dry_run:
+      required: false
+      default: true
+      selector:
+        boolean:
+    confirm_blades_off:
+      required: false
+      default: false
+      selector:
+        boolean:
+    confirm_clear_area:
+      required: false
+      default: false
+      selector:
+        boolean:
+
 forward_two_pulse_latency_test:
   fields:
     entity_id:

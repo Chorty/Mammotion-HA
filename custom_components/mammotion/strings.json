@@ -897,6 +897,72 @@
       "name": "Cancel current task",
       "description": "Stops the mower and clears the current task."
     },
+    "continuous_motion_window": {
+      "name": "Continuous motion window",
+      "description": "Phase 2 executor. Runs or simulates one continuous straight-line steering window, correcting on measured heading at every ~1 Hz position arrival. corridor_polygon must be pre-scanned and margin-verified offline; this service never scans or freezes one itself. Real commands require explicit confirmations.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        },
+        "route_start": {
+          "name": "Route start",
+          "description": "Frozen map-local x/y point the window is scored against. Never re-derived from live position."
+        },
+        "route_target": {
+          "name": "Route target",
+          "description": "Frozen map-local x/y target point of the straight-line segment."
+        },
+        "corridor_polygon": {
+          "name": "Corridor polygon",
+          "description": "Pre-scanned, margin-verified map-local polygon. Any observed position outside it stops the window immediately."
+        },
+        "linear_speed": {
+          "name": "Linear speed",
+          "description": "Fixed forward speed held for the whole window."
+        },
+        "max_abs_angular_speed": {
+          "name": "Max angular speed",
+          "description": "Bound on the steering correction the controller may request. This is a straight-line executor; it does not request a turn on its own."
+        },
+        "duration_ms": {
+          "name": "Duration",
+          "description": "Bounded window in milliseconds."
+        },
+        "motion_refresh_interval_ms": {
+          "name": "Motion refresh interval",
+          "description": "Milliseconds between refresh writes holding the current command open."
+        },
+        "decision_sample_interval_ms": {
+          "name": "Decision sample interval",
+          "description": "Milliseconds between coordinator-cache polls checking for a fresh position arrival."
+        },
+        "max_distance_m": {
+          "name": "Max distance",
+          "description": "Hard travel bound; the window stops once exceeded."
+        },
+        "max_cross_track_m": {
+          "name": "Max cross-track",
+          "description": "Hard lateral deviation bound from the straight route; the window stops once exceeded."
+        },
+        "prefer_ble": {
+          "name": "Prefer BLE",
+          "description": "When true, prefer BLE over Wi-Fi/local transport when available."
+        },
+        "dry_run": {
+          "name": "Dry run",
+          "description": "When true, no movement command is sent."
+        },
+        "confirm_blades_off": {
+          "name": "Confirm blades off",
+          "description": "Required for a real window."
+        },
+        "confirm_clear_area": {
+          "name": "Confirm clear area",
+          "description": "Required for a real window after confirming safe clearance."
+        }
+      }
+    },
     "copy_task": {
       "name": "Copy task",
       "description": "Duplicate a schedule under a new id. The new task name defaults to 'Copy-N' (next free slot) when omitted.",

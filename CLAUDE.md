@@ -49,6 +49,25 @@ alpha = -0.149 ± 0.043 pairing residual (`docs/codex-adjudication-20260823.md`,
 ~7 mm/step cost, unmodelled). ⚠️ The prediction-error criterion is still NOT
 implemented; this `go` rests on the repaired mirror criterion alone.
 
+🏗️ **THE PHASE 2 EXECUTOR IS IMPLEMENTED, 2026-08-23 — offline only, still not
+deployed, no physical run.** New service `mammotion.continuous_motion_window`:
+straight-line only, extends the bounded-window pattern, corrects on measured
+heading every ~1 Hz arrival. Both gap fixes are wired end to end, not just
+documented: a **corridor-breach override** independently tests every fresh
+position against the real frozen polygon and forces a stop the pure controller
+alone would not request; the **BLE-stall detector** computes
+`refresh_max_gap_since_last_decision_s` from the REAL concurrent refresh-write
+completions list, tested against a genuine 810 ms gap — the exact stall size
+that produced the corpus's worst error. `dry_run` defaults `True`; every test
+in `tests/components/mammotion/test_continuous_motion_window.py` exercises only that path.
+🔑 A project-wide guard (the AST sweep in `test_map_task_visibility.py` that
+discovers every registered service and checks every `call.data[...]` read
+resolves) caught `route_start`/`route_target`/`corridor_polygon` missing a
+sample value before it could ship — fixed, not worked around.
+⚠️ **Not deployed, not dry-run-verified on the host, no physical run
+authorized.** Read `docs/phase2-executor-implemented-20260823.md`. 848 pytest,
+ten hooks, 91 frontend, profile ACCEPTED.
+
 📋 **THE PHASE 2 GATE ALREADY EXISTS, 2026-08-23 — nobody needs to write one.**
 `docs/continuous-motion-feasibility-plan-20260821.md` (written before this
 week) has a full "Phase 2 pass criteria" section: no intermediate stop, cross

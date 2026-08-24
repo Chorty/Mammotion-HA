@@ -47,6 +47,16 @@ protocol: all 18 arc criteria passed, mirror error 4.264° against a 10° limit,
 🔒 **Scope is explicit: telemetry feasibility only, does NOT authorize Phase 2
 implementation or another physical run.**
 
+🏗️ **THE PHASE 2 EXECUTOR IS IMPLEMENTED (2026-08-23), NOT DEPLOYED.** New
+service `mammotion.continuous_motion_window` — straight-line, bounded-window,
+corrects on measured heading every ~1 Hz. Both gap fixes wired end to end: the
+corridor-breach override and the BLE-stall detector (tested against a real
+810 ms gap, matching the corpus's worst error). `dry_run` defaults True.
+**Next: cut a release, deploy motion-disabled, dry-run-verify on the host
+against LIVE telemetry — then and only then propose a physical run with its
+own fresh scan and authorization.** Read
+`docs/phase2-executor-implemented-20260823.md`. 848 pytest, profile ACCEPTED.
+
 📋 **PHASE 2 GATE ALREADY EXISTS** — `docs/continuous-motion-feasibility-plan-20260821.md`
 has pass criteria from before this week; its "Phase 1 passes" prerequisite is
 now met and its stall-abort line is now literally `refresh_cadence_stalled`.

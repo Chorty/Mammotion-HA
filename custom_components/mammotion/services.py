@@ -37,6 +37,15 @@ from pymammotion.utility.device_type import DeviceType
 from .backend_capability import async_probe_backend_capabilities
 from .capabilities import capability_snapshot
 from .const import CONF_ENABLE_EXPERIMENTAL_MOTION, DOMAIN, LOGGER
+from .continuous_controller import (
+    ContinuousControllerConfig,
+    ContinuousObservation,
+    ContinuousRoute,
+    continuous_control_decision,
+)
+from .continuous_controller import (
+    Point as ContinuousPoint,
+)
 from .coordinator import (
     MammotionReportUpdateCoordinator,
     MammotionRTKCoordinator,
@@ -94,6 +103,7 @@ SERVICE_MANUAL_VELOCITY_HEADING_CALIBRATION_TEST = (
     "manual_velocity_heading_calibration_test"
 )
 SERVICE_RAW_PYMAMMOTION_MOTION_PROBE = "raw_pymammotion_motion_probe"
+SERVICE_CONTINUOUS_MOTION_WINDOW = "continuous_motion_window"
 SERVICE_RAW_PYMAMMOTION_EXECUTE_SEGMENT = "raw_pymammotion_execute_segment"
 SERVICE_RAW_PYMAMMOTION_ANGULAR_CALIBRATION = "raw_pymammotion_angular_calibration"
 SERVICE_RAW_PYMAMMOTION_TURN_TO_HEADING = "raw_pymammotion_turn_to_heading"
@@ -936,6 +946,59 @@ RAW_PYMAMMOTION_MOTION_PROBE_SCHEMA = vol.Schema(
             cv.ensure_list,
             [vol.All(vol.Coerce(float), vol.Range(min=0.0, max=120.0))],
         ),
+        vol.Optional("dry_run", default=True): cv.boolean,
+        vol.Optional("confirm_blades_off", default=False): cv.boolean,
+        vol.Optional("confirm_clear_area", default=False): cv.boolean,
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
+_CONTINUOUS_MOTION_POINT_SCHEMA = vol.Schema(
+    {
+        vol.Required("x"): vol.Coerce(float),
+        vol.Required("y"): vol.Coerce(float),
+    }
+)
+
+CONTINUOUS_MOTION_WINDOW_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+        # A frozen, offline-scanned route -- see scripts/freeze_phase1_corridors.py
+        # and scripts/scan_contained_bearings.py. Never re-derived server-side.
+        vol.Required("route_start"): _CONTINUOUS_MOTION_POINT_SCHEMA,
+        vol.Required("route_target"): _CONTINUOUS_MOTION_POINT_SCHEMA,
+        # A closed or open ring of >= 3 points; the last edge back to the first
+        # point is always implied (`_point_in_polygon`).
+        vol.Required("corridor_polygon"): [_CONTINUOUS_MOTION_POINT_SCHEMA],
+        vol.Optional("linear_speed", default=400): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=1000)
+        ),
+        # v1 is straight-line only (docs/phase2-continuous-motion-design-20260823.md);
+        # this bounds the STEERING correction the pure controller may request,
+        # it does not request a turn on its own.
+        vol.Optional("max_abs_angular_speed", default=180): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=1000)
+        ),
+        # The plan's own v1 cap is 4 s / 1.5 m
+        # (docs/continuous-motion-feasibility-plan-20260821.md); 8000 is the
+        # longest window ever driven on this hardware
+        # (docs/evidence-phase1b-arc-20260823T171500Z.json), kept as headroom.
+        vol.Optional("duration_ms", default=4000): vol.All(
+            vol.Coerce(int), vol.Range(min=1000, max=8000)
+        ),
+        vol.Optional("motion_refresh_interval_ms", default=200): vol.All(
+            vol.Coerce(int), vol.Range(min=50, max=1000)
+        ),
+        vol.Optional("decision_sample_interval_ms", default=100): vol.All(
+            vol.Coerce(int), vol.Range(min=50, max=1000)
+        ),
+        vol.Optional("max_distance_m", default=1.50): vol.All(
+            vol.Coerce(float), vol.Range(min=0.10, max=3.0)
+        ),
+        vol.Optional("max_cross_track_m", default=0.30): vol.All(
+            vol.Coerce(float), vol.Range(min=0.05, max=1.0)
+        ),
+        vol.Optional("prefer_ble", default=True): cv.boolean,
         vol.Optional("dry_run", default=True): cv.boolean,
         vol.Optional("confirm_blades_off", default=False): cv.boolean,
         vol.Optional("confirm_clear_area", default=False): cv.boolean,
@@ -7218,6 +7281,555 @@ async def _raw_pymammotion_motion_probe(  # noqa: C901
         final_telemetry,
     )
     result["final_telemetry"] = final_telemetry
+    result["reason"] = "completed"
+    return result
+
+
+# ============================================================================
+# Continuous motion window -- the Phase 2 executor.
+#
+# Design decisions (operator-approved, 2026-08-23,
+# docs/phase2-continuous-motion-design-20260823.md): straight-line segments
+# only, no turns in v1; extends the bounded-window pattern below rather than a
+# persistent velocity loop; corrects every ~1 Hz position arrival on MEASURED
+# heading, never an integrated yaw-rate model; stops safely on a detected BLE
+# stall. Gap reconciliation and the exact stall mechanism are documented in
+# docs/phase2-gap-reconciliation-20260823.md. Pass criteria for a real run are
+# pre-registered in docs/continuous-motion-feasibility-plan-20260821.md
+# ("Phase 2 pass criteria") and confirmed still current in
+# docs/phase2-gate-readiness-20260823.md -- this executor does not define new
+# ones.
+#
+# `_motion_refresh_window` is deliberately NOT reused for the refresh loop
+# below: the plan is explicit that its contract intentionally resends an
+# IDENTICAL command, and retrofitting a variable one into it would be the
+# wrong shape. `_continuous_refresh_window` is the "one serialized writer"
+# the plan calls for: only it ever touches BLE for movement.
+# `_continuous_decision_loop` only ever writes the shared `command_state` the
+# writer reads. Python's single-threaded event loop makes that handoff safe
+# with no lock, the same reasoning `_capture_in_window_telemetry` already
+# relies on for `travel_abort`.
+# ============================================================================
+
+# Mirrors the Phase 1 corridor discipline exactly
+# (scripts/freeze_phase1_corridors.py, scripts/scan_contained_bearings.py): the
+# frozen route start is never re-derived from live position, only checked
+# against it. On 2026-08-20 a dispatch script re-derived an endpoint "to be
+# safe" and silently drove a path the scan never covered.
+_CONTINUOUS_MAX_START_DRIFT_M = 0.30
+_CONTINUOUS_MIRROR_SUM_DEGREES = 90.13
+
+
+def _continuous_course_heading(toward: float) -> float:
+    """Return the map-local course heading from the compass mirror.
+
+    `map_bearing = 90.13 - toward`, not an additive offset -- the same
+    convention every Phase 1 capture used this week.
+    """
+    return (_CONTINUOUS_MIRROR_SUM_DEGREES - toward) % 360.0
+
+
+def _continuous_motion_gates(
+    coordinator: MammotionReportUpdateCoordinator,
+    before: dict[str, Any],
+    *,
+    route_start: dict[str, float],
+    corridor_polygon: list[dict[str, float]],
+    dry_run: bool,
+    confirm_blades_off: bool,
+    confirm_clear_area: bool,
+) -> list[dict[str, Any]]:
+    """Return the safety gates for one continuous-motion window.
+
+    Extends `_manual_velocity_pulse_gates` with the two checks specific to a
+    continuous window. `ContinuousRoute.contained` in the pure controller is
+    caller-supplied and never re-derived
+    (docs/phase2-gap-reconciliation-20260823.md) -- these gates are what earns
+    that trust before the window opens, not the pure controller itself.
+    """
+    gates = list(
+        _manual_velocity_pulse_gates(
+            coordinator,
+            before,
+            dry_run=dry_run,
+            confirm_blades_off=confirm_blades_off,
+            confirm_clear_area=confirm_clear_area,
+        )
+    )
+    corridor_valid = len(corridor_polygon) >= 3
+    position = before.get("position", {}) or {}
+    live_x, live_y = position.get("x"), position.get("y")
+    drift = (
+        math.hypot(live_x - route_start["x"], live_y - route_start["y"])
+        if isinstance(live_x, (int, float)) and isinstance(live_y, (int, float))
+        else None
+    )
+    gates.append(
+        {
+            "name": "corridor_polygon_valid",
+            "passed": corridor_valid,
+            "detail": "The frozen corridor must be a real polygon, >= 3 vertices.",
+        }
+    )
+    gates.append(
+        {
+            "name": "frozen_start_inside_corridor",
+            "passed": corridor_valid
+            and _point_in_polygon(route_start, corridor_polygon),
+            "detail": "The frozen route start itself must be inside the frozen corridor.",
+        }
+    )
+    gates.append(
+        {
+            "name": "start_drift_within_bound",
+            "passed": dry_run
+            or (drift is not None and drift <= _CONTINUOUS_MAX_START_DRIFT_M),
+            "detail": (
+                f"Live position must be within {_CONTINUOUS_MAX_START_DRIFT_M} m "
+                "of the frozen route start. The start is never re-derived from "
+                "live position -- this gate aborts instead."
+            ),
+            "diagnostics": {"drift_m": drift},
+        }
+    )
+    return gates
+
+
+async def _continuous_decision_loop(
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    route: ContinuousRoute,
+    corridor_polygon: list[dict[str, float]],
+    config: ContinuousControllerConfig,
+    window_started: float,
+    sample_interval_ms: int,
+    refresh_state: dict[str, Any],
+    command_state: dict[str, int],
+    decision_abort: asyncio.Event,
+    stop_event: asyncio.Event,
+) -> list[dict[str, Any]]:
+    """Recompute steering on every fresh position arrival; never dispatch.
+
+    Reads the coordinator cache only, the same discipline
+    `_capture_in_window_telemetry` already uses, and writes the NEXT command
+    into `command_state` for the refresh loop to pick up on its own cadence.
+
+    🔑 **The corridor check here is the fix for gap 4**
+    (docs/phase2-gap-reconciliation-20260823.md): `continuous_control_decision`
+    trusts `route.contained` unconditionally and does no live geometry check of
+    its own. Every fresh position is independently tested against the real
+    frozen polygon; a breach forces a stop regardless of what the pure
+    controller decided, exactly the way an unsafe cross-track fix already
+    cannot be hidden by projection inside the pure controller itself.
+
+    🔑 **The gap-tracking here is the fix for gap 2.** `refresh_age_s` alone is
+    a point sample and is blind to a stall that resolves before the next fresh
+    arrival -- proven against real telemetry
+    (docs/phase2-gap-reconciliation-20260823.md). This loop instead tracks the
+    WORST gap between consecutive refresh completions since the previous
+    decision, matching `scripts/replay_continuous_controller_against_capture.py`
+    exactly.
+    """
+    decisions: list[dict[str, Any]] = []
+    interval_seconds = sample_interval_ms / 1000.0
+    deadline = window_started + config.max_window_s
+    origin: tuple[float, float] | None = None
+    last_report_stamp: Any = None
+    consumed_completions = 0
+
+    while not stop_event.is_set():
+        sample = _in_window_telemetry_sample(
+            coordinator,
+            index=len(decisions),
+            window_started=window_started,
+            command="send_movement",
+            command_args={
+                "linear_speed": command_state["linear_speed"],
+                "angular_speed": command_state["angular_speed"],
+            },
+        )
+        position = sample.get("position") or {}
+        raw_x, raw_y, raw_toward = (
+            position.get("x"),
+            position.get("y"),
+            position.get("toward"),
+        )
+        stamp = sample.get("last_report_at_monotonic")
+        is_fresh = stamp is not None and stamp != last_report_stamp
+        if (
+            is_fresh
+            and isinstance(raw_x, (int, float))
+            and isinstance(raw_y, (int, float))
+            and isinstance(raw_toward, (int, float))
+        ):
+            x, y, toward = float(raw_x), float(raw_y), float(raw_toward)
+            last_report_stamp = stamp
+            if origin is None:
+                origin = (x, y)
+            elapsed_s = time.monotonic() - window_started
+            elapsed_ms = elapsed_s * 1000.0
+            distance = math.hypot(x - origin[0], y - origin[1])
+
+            completions = refresh_state["completions_elapsed_ms"]
+            new_completions = completions[consumed_completions:]
+            consumed_completions = len(completions)
+            previous_decision_ms = refresh_state.get("last_decision_elapsed_ms", 0.0)
+            gap_s = 0.0
+            if new_completions:
+                bounds = [previous_decision_ms, *new_completions, elapsed_ms]
+                gap_s = (
+                    max(b - a for a, b in zip(bounds, bounds[1:], strict=False))
+                    / 1000.0
+                )
+            refresh_state["last_decision_elapsed_ms"] = elapsed_ms
+            age_s = (
+                max(elapsed_ms - completions[-1], 0.0) / 1000.0
+                if completions
+                else elapsed_s
+            )
+
+            observation = ContinuousObservation(
+                position=ContinuousPoint(x=float(x), y=float(y)),
+                course_heading_degrees=_continuous_course_heading(float(toward)),
+                # Decisions fire AT each fresh arrival, so the fix behind this
+                # decision is fresh by construction -- matches
+                # scripts/replay_continuous_controller_against_capture.py.
+                telemetry_age_s=0.0,
+                refresh_age_s=age_s,
+                elapsed_s=elapsed_s,
+                distance_travelled_m=distance,
+                refresh_max_gap_since_last_decision_s=gap_s,
+                # ⚠️ Not independently re-checked mid-window: verified once at
+                # preflight (`_continuous_motion_gates`), and BLE health
+                # DURING the window is what refresh_max_gap_since_last_decision_s
+                # exists to police instead. `_ble_link_liveness` does I/O and is
+                # deliberately not called from this tight polling loop, the same
+                # reason `_in_window_telemetry_sample`'s own docstring gives.
+                # ⚠️ rtk_fixed similarly stays at the dataclass default: no
+                # existing gate in this project's pulsed-executor family
+                # (`_manual_velocity_pulse_gates`) checks RTK either, so this
+                # matches that established risk posture rather than inventing
+                # new telemetry plumbing beyond it.
+            )
+            decision = continuous_control_decision(route, observation, config)
+
+            inside_corridor = _point_in_polygon({"x": x, "y": y}, corridor_polygon)
+            if not inside_corridor and decision.action != "stop":
+                decision = dataclasses.replace(
+                    decision,
+                    action="stop",
+                    reason="corridor_breach",
+                    linear_speed=0,
+                    angular_speed=0,
+                )
+
+            decisions.append(
+                {
+                    "index": len(decisions),
+                    "elapsed_s": round(elapsed_s, 3),
+                    "observation": dataclasses.asdict(observation),
+                    "decision": dataclasses.asdict(decision),
+                    "inside_corridor": inside_corridor,
+                }
+            )
+
+            if decision.action == "stop":
+                decision_abort.set()
+                break
+            # linear_speed is fixed for the whole window; only angular varies.
+            command_state["angular_speed"] = decision.angular_speed
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            decision_abort.set()
+            break
+        await asyncio.sleep(min(interval_seconds, remaining))
+    return decisions
+
+
+async def _continuous_refresh_window(
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    command_state: dict[str, int],
+    prefer_ble: bool,
+    duration_seconds: float,
+    refresh_interval_ms: int,
+    window_started: float,
+    refresh_state: dict[str, Any],
+    abort_event: asyncio.Event,
+) -> dict[str, Any]:
+    """Hold a continuous command open, resending whatever `command_state` holds.
+
+    Adapted from `_motion_refresh_window`'s fixed-cadence-from-window-start
+    design (measured 2026-08-09 to correct a sleep-then-await drift), but able
+    to resend a CHANGING command -- `_motion_refresh_window` is deliberately
+    left alone because its contract promises an identical one.
+    """
+    report: dict[str, Any] = {
+        "refresh_interval_ms": refresh_interval_ms,
+        "refresh_commands_sent": 0,
+        "refresh_write_durations_ms": [],
+        "refresh_write_completions_elapsed_ms": [],
+        "commands_by_refresh": [],
+        "refresh_error": None,
+        "aborted_early": False,
+    }
+    interval_seconds = refresh_interval_ms / 1000.0
+    deadline = window_started + duration_seconds
+    max_refreshes = max(int(duration_seconds / interval_seconds), 0)
+
+    while report["refresh_commands_sent"] < max_refreshes:
+        if abort_event.is_set():
+            report["aborted_early"] = True
+            break
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        next_fire = (
+            window_started + (report["refresh_commands_sent"] + 1) * interval_seconds
+        )
+        await asyncio.sleep(min(max(0.0, next_fire - time.monotonic()), remaining))
+        if abort_event.is_set():
+            report["aborted_early"] = True
+            break
+
+        linear_speed = command_state["linear_speed"]
+        angular_speed = command_state["angular_speed"]
+        resend_started = time.monotonic()
+        try:
+            await _send_manager_command_with_args(
+                coordinator,
+                "send_movement",
+                prefer_ble=prefer_ble,
+                command_kwargs={
+                    "linear_speed": linear_speed,
+                    "angular_speed": angular_speed,
+                },
+            )
+        except asyncio.CancelledError:
+            # Same trap `_motion_open_sleep` exists for: a movement command is
+            # already open on the mower, so exiting without stopping leaves it
+            # driving until its own device-side timeout.
+            await _deliver_stop_despite_cancellation(coordinator)
+            raise
+        except ManualMotionCancelledError:
+            await _deliver_stop_despite_cancellation(coordinator)
+            raise
+        except Exception as err:  # noqa: BLE001
+            report["refresh_error"] = f"{type(err).__name__}: {err}"
+            break
+
+        completion_ms = round((time.monotonic() - window_started) * 1000, 3)
+        report["refresh_write_durations_ms"].append(
+            round((time.monotonic() - resend_started) * 1000, 3)
+        )
+        report["refresh_write_completions_elapsed_ms"].append(completion_ms)
+        report["commands_by_refresh"].append(
+            {"linear_speed": linear_speed, "angular_speed": angular_speed}
+        )
+        refresh_state["completions_elapsed_ms"].append(completion_ms)
+        report["refresh_commands_sent"] += 1
+
+    report["elapsed_ms"] = round((time.monotonic() - window_started) * 1000, 3)
+    return report
+
+
+async def _continuous_motion_window(  # noqa: C901, PLR0913
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    route_start: dict[str, float],
+    route_target: dict[str, float],
+    corridor_polygon: list[dict[str, float]],
+    linear_speed: int = 400,
+    max_abs_angular_speed: int = 180,
+    duration_ms: int = 4000,
+    motion_refresh_interval_ms: int = 200,
+    decision_sample_interval_ms: int = 100,
+    max_distance_m: float = 1.50,
+    max_cross_track_m: float = 0.30,
+    prefer_ble: bool = True,
+    dry_run: bool = True,
+    confirm_blades_off: bool = False,
+    confirm_clear_area: bool = False,
+) -> dict[str, Any]:
+    """Run or simulate one continuous straight-line steering window.
+
+    The Phase 2 executor. Straight-line only, per the operator's 2026-08-23
+    design decision -- `route_target` is a point, not a path with turns.
+    `corridor_polygon` must be pre-scanned and margin-verified OFFLINE, the
+    same discipline `scripts/freeze_phase1_corridors.py` and
+    `scripts/scan_contained_bearings.py` already use for Phase 1 captures.
+    This function never scans or freezes one itself.
+
+    With `dry_run=True` (the default) this sends nothing: it returns the full
+    plan, every safety gate, and `would_send: false`. A real run additionally
+    requires `confirm_blades_off` and `confirm_clear_area`, exactly like every
+    other real-motion probe in this project.
+    """
+    before = _custom_path_telemetry_snapshot(coordinator)
+    gates = _continuous_motion_gates(
+        coordinator,
+        before,
+        route_start=route_start,
+        corridor_polygon=corridor_polygon,
+        dry_run=dry_run,
+        confirm_blades_off=confirm_blades_off,
+        confirm_clear_area=confirm_clear_area,
+    )
+    blockers = [gate["name"] for gate in gates if not gate["passed"]]
+
+    config = ContinuousControllerConfig(
+        linear_speed=linear_speed,
+        max_abs_angular_speed=max_abs_angular_speed,
+        max_cross_track_m=max_cross_track_m,
+        max_window_s=duration_ms / 1000.0,
+        max_distance_m=max_distance_m,
+    )
+    route = ContinuousRoute(
+        start=ContinuousPoint(**route_start),
+        target=ContinuousPoint(**route_target),
+        # Earned by the gates above (frozen_start_inside_corridor,
+        # start_drift_within_bound), never trusted blindly.
+        contained=True,
+    )
+
+    result: dict[str, Any] = {
+        "service": SERVICE_CONTINUOUS_MOTION_WINDOW,
+        "mode": "dry_run" if dry_run else "real_continuous_motion_window",
+        "dry_run": dry_run,
+        "route": {"start": route_start, "target": route_target},
+        "corridor_polygon": corridor_polygon,
+        "config": dataclasses.asdict(config),
+        "duration_ms": duration_ms,
+        "motion_refresh_interval_ms": motion_refresh_interval_ms,
+        "decision_sample_interval_ms": decision_sample_interval_ms,
+        "safety_gates": gates,
+        "blockers": blockers,
+        "would_send": False,
+        "command_result": {
+            "attempted": False,
+            "ok": None,
+            "error": None,
+            "duration_ms": None,
+        },
+        "decisions": [],
+        "motion_refresh": None,
+        "stop_result": None,
+        "reason": "dry_run" if dry_run else None,
+    }
+    if dry_run or blockers:
+        if not dry_run:
+            result["reason"] = "blocked"
+        return result
+
+    stream_duration_ms = max(10_000, duration_ms + 5_000)
+    stream_result: dict[str, Any] = {
+        "attempted": True,
+        "started": False,
+        "continuous_started": False,
+        "error": None,
+    }
+    result["report_stream"] = stream_result
+    try:
+        if hasattr(coordinator, "async_start_report_stream"):
+            await coordinator.async_start_report_stream(duration_ms=stream_duration_ms)
+            stream_result["started"] = True
+        if hasattr(coordinator, "async_start_continuous_reports"):
+            await coordinator.async_start_continuous_reports(
+                duration_ms=stream_duration_ms
+            )
+            stream_result["continuous_started"] = True
+        stream_result["queue_settle"] = await _settle_ble_command_queue(coordinator)
+    except Exception as err:  # noqa: BLE001
+        stream_result["error"] = f"{type(err).__name__}: {err}"
+        result["reason"] = "report_stream_failed"
+        return result
+
+    window_started = time.monotonic()
+    # Opening command is straight -- angular_speed=0. The decision loop
+    # corrects on the first fresh arrival, same as every pulse this project
+    # has ever sent; nothing here guesses an initial turn.
+    command_state = {"linear_speed": linear_speed, "angular_speed": 0}
+    refresh_state: dict[str, Any] = {
+        "completions_elapsed_ms": [],
+        "last_decision_elapsed_ms": 0.0,
+    }
+    decision_abort = asyncio.Event()
+    decision_stop = asyncio.Event()
+
+    started = time.monotonic()
+    result["command_result"]["attempted"] = True
+    try:
+        await _send_manager_command_with_args(
+            coordinator,
+            "send_movement",
+            prefer_ble=prefer_ble,
+            command_kwargs={
+                "linear_speed": command_state["linear_speed"],
+                "angular_speed": command_state["angular_speed"],
+            },
+        )
+        result["command_result"]["ok"] = True
+    except Exception as err:  # noqa: BLE001
+        result["command_result"]["ok"] = False
+        result["command_result"]["error"] = f"{type(err).__name__}: {err}"
+        result["reason"] = "command_failed"
+        return result
+    finally:
+        result["command_result"]["duration_ms"] = round(
+            (time.monotonic() - started) * 1000, 3
+        )
+    # The opening command IS a completion: it gives the decision loop's gap
+    # tracking a real t=0 baseline instead of nothing to measure from.
+    refresh_state["completions_elapsed_ms"].append(0.0)
+
+    decision_task = asyncio.create_task(
+        _continuous_decision_loop(
+            coordinator,
+            route=route,
+            corridor_polygon=corridor_polygon,
+            config=config,
+            window_started=window_started,
+            sample_interval_ms=decision_sample_interval_ms,
+            refresh_state=refresh_state,
+            command_state=command_state,
+            decision_abort=decision_abort,
+            stop_event=decision_stop,
+        )
+    )
+
+    # 🚨 A DEAD DECISION LOOP MUST NOT LEAVE THE MOWER DRIVING ON THE CLOCK.
+    # Same reasoning as beta72's `_abort_if_sampler_died`: if the task that
+    # owns steering and stop decisions dies, the refresh loop must stop
+    # refreshing rather than silently keep resending the last command it saw.
+    def _abort_if_decision_loop_died(task: asyncio.Task[Any]) -> None:
+        if task.cancelled() or task.exception() is not None:
+            decision_abort.set()
+
+    decision_task.add_done_callback(_abort_if_decision_loop_died)
+
+    try:
+        result["motion_refresh"] = await _continuous_refresh_window(
+            coordinator,
+            command_state=command_state,
+            prefer_ble=prefer_ble,
+            duration_seconds=duration_ms / 1000.0,
+            refresh_interval_ms=motion_refresh_interval_ms,
+            window_started=window_started,
+            refresh_state=refresh_state,
+            abort_event=decision_abort,
+        )
+    except BaseException:
+        decision_stop.set()
+        with contextlib.suppress(BaseException):
+            await decision_task
+        raise
+    decision_stop.set()
+    result["stop_result"] = await _manual_velocity_stop_attempt(
+        coordinator, use_wifi=not prefer_ble
+    )
+    result["decisions"] = await decision_task
+    result["would_send"] = True
     result["reason"] = "completed"
     return result
 
@@ -16899,6 +17511,31 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             confirm_clear_area=call.data["confirm_clear_area"],
         )
 
+    async def handle_continuous_motion_window(
+        call: ServiceCall,
+    ) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        return await _continuous_motion_window(
+            mower.reporting_coordinator,
+            route_start=dict(call.data["route_start"]),
+            route_target=dict(call.data["route_target"]),
+            corridor_polygon=[dict(point) for point in call.data["corridor_polygon"]],
+            linear_speed=call.data["linear_speed"],
+            max_abs_angular_speed=call.data["max_abs_angular_speed"],
+            duration_ms=call.data["duration_ms"],
+            motion_refresh_interval_ms=call.data["motion_refresh_interval_ms"],
+            decision_sample_interval_ms=call.data["decision_sample_interval_ms"],
+            max_distance_m=call.data["max_distance_m"],
+            max_cross_track_m=call.data["max_cross_track_m"],
+            prefer_ble=call.data["prefer_ble"],
+            dry_run=call.data["dry_run"],
+            confirm_blades_off=call.data["confirm_blades_off"],
+            confirm_clear_area=call.data["confirm_clear_area"],
+        )
+
     async def handle_raw_pymammotion_execute_segment(
         call: ServiceCall,
     ) -> dict[str, Any]:
@@ -17702,6 +18339,17 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             allow_stop_nudge=True,
         ),
         schema=RAW_PYMAMMOTION_MOTION_PROBE_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_CONTINUOUS_MOTION_WINDOW,
+        _wrap_exclusive_manual_motion(
+            hass,
+            SERVICE_CONTINUOUS_MOTION_WINDOW,
+            handle_continuous_motion_window,
+        ),
+        schema=CONTINUOUS_MOTION_WINDOW_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
