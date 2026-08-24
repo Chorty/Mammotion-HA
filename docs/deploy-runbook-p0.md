@@ -8,6 +8,64 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta72 → beta73 — 2026-08-23 20:23-20:29 EDT, motion-disabled
+
+Ships the Phase 2 executor (`docs/phase2-executor-implemented-20260823.md`):
+new service `continuous_motion_window`. No card change -- md5 identical to
+beta72 at all three locations. No `LUBA_ACCEPTANCE_PROFILE` key touched.
+
+| | beta73 |
+| --- | --- |
+| tag / HEAD | `v0.6.4-beta73` |
+| quartet | manifest / pyproject / `CARD_VERSION` `0.6.4-beta73`, uv.lock `0.6.4b73` |
+| archive SHA-256 | `0e9b462f58ae2acfcfaf59803b50443478bf4f51d781cd14942e6d1f19ea6529`, identical local and host |
+| file verification | **47 of 47 byte-identical**, zero AppleDouble files |
+| card md5 | `4d854242e0fbac032a7594446fad55c3` -- unchanged from beta72 |
+| host backup | `/config/mammotion-backup-20260823-2023-pre-beta73.tgz` |
+| restart | API up after **50 s**, 132 entities at 168 s, entry `loaded` |
+| new service registered | confirmed via `/api/services`: `continuous_motion_window` present |
+
+**Dry run against LIVE coordinator state, not a fake:** `route_start` set to
+the mower's actual live position, `dry_run: true`. **14 of 14 gates passed**,
+`would_send: false`, `command_result.attempted: false`. This is the first time
+the new executor has run against real telemetry shapes rather than the test
+fixtures in `test_continuous_motion_window.py`.
+
+🚨 **The motion gate was found ARMED after the restart, despite an explicit
+disarm immediately before dispatching the release.** Sequence: gate disarmed
+and verified `False` before the release was dispatched; release, deploy, and
+restart took several minutes; the first post-restart check read
+`enabled: true, real_motion_allowed: true, blockers: []`. Disarmed again
+immediately and confirmed against the RAW on-disk config-entry storage
+(`/config/.storage/core.config_entries`), not just the live API, which now
+correctly reads `false`.
+
+⚠️ **Root cause is NOT established and should not be asserted as either.** Two
+candidates, both consistent with the evidence and neither ruled out:
+
+1. The operator re-armed it via the card during the multi-minute deploy
+   window (mowing/click-to-go activity is independently confirmed earlier the
+   same evening, and every prior armed-at-rest occurrence this project has
+   recorded traced back to deliberate card use).
+2. Something in the restart path re-read a stale pre-disarm value. Against
+   this: the disk-storage inspection several minutes into the SAME session
+   showed the disarm had already persisted by the time it was checked, and
+   the gap between disarm and restart (several minutes, spanning a full CI
+   release cycle) is far longer than any plausible debounced-save delay.
+
+No motion was commanded either time. The disarm automation's own
+`armed_but_blocked`/idle-and-ready triggers had already fired once earlier the
+same evening (23:54:18 UTC, well before this deploy sequence began), which is
+independent evidence the gate was being left armed repeatedly that night
+regardless of this deploy.
+
+🔎 **VIO fully collapsed during this deploy window**: `vio_tracked_features`
+read **68** at the start of this session's check and **0** four minutes later,
+with `camera_brightness: dark` and `visual_positioning_status: signal_none`.
+Matches the documented cliff pattern exactly -- it does not fade, it drops to
+zero. Confirms dusk had fully arrived; nothing depending on VIO should be
+attempted tonight.
+
 ### beta71 → beta72 — 2026-08-23 13:12-13:20 EDT, motion-disabled
 
 Two changes, both prerequisites for the Phase 1b arc:

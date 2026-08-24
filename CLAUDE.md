@@ -49,6 +49,21 @@ alpha = -0.149 ± 0.043 pairing residual (`docs/codex-adjudication-20260823.md`,
 ~7 mm/step cost, unmodelled). ⚠️ The prediction-error criterion is still NOT
 implemented; this `go` rests on the repaired mirror criterion alone.
 
+🚀 **beta73 DEPLOYED, 2026-08-23 — the Phase 2 executor is live on the host,
+motion-disabled.** `continuous_motion_window` confirmed registered and
+dry-run-verified against LIVE coordinator state: 14/14 gates, `would_send:
+false`. Card unchanged from beta72.
+🚨 **SIXTH ARMED-AT-REST OCCURRENCE, found right after this deploy's restart**
+despite an explicit disarm immediately beforehand — root cause NOT
+established (operator card use during the multi-minute deploy window vs. a
+restart re-reading a stale value; evidence favors the former but does not
+rule out the latter). Disarmed again and confirmed against RAW on-disk
+storage, not just the live API. Record: `docs/deploy-runbook-p0.md` →
+beta73.
+🌙 **VIO fully collapsed during this same window**: 68 → **0** in about four
+minutes, `camera_brightness: dark`, `signal_none`. The cliff, not a fade —
+confirms dusk arrived. Nothing VIO-dependent tonight.
+
 🏗️ **THE PHASE 2 EXECUTOR IS IMPLEMENTED, 2026-08-23 — offline only, still not
 deployed, no physical run.** New service `mammotion.continuous_motion_window`:
 straight-line only, extends the bounded-window pattern, corrects on measured

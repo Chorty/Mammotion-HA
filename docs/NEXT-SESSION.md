@@ -47,6 +47,13 @@ protocol: all 18 arc criteria passed, mirror error 4.264° against a 10° limit,
 🔒 **Scope is explicit: telemetry feasibility only, does NOT authorize Phase 2
 implementation or another physical run.**
 
+🚀 **beta73 DEPLOYED (2026-08-23) — executor live, dry-run-verified against
+LIVE state, 14/14 gates.** 🚨 Gate found armed right after the restart despite
+a prior explicit disarm — sixth occurrence, root cause unresolved, disarmed
+again and confirmed via raw storage. 🌙 VIO collapsed to 0 during the same
+window. **Check the gate is still disarmed before doing anything else.** Read
+`docs/deploy-runbook-p0.md` → beta73.
+
 🏗️ **THE PHASE 2 EXECUTOR IS IMPLEMENTED (2026-08-23), NOT DEPLOYED.** New
 service `mammotion.continuous_motion_window` — straight-line, bounded-window,
 corrects on measured heading every ~1 Hz. Both gap fixes wired end to end: the
