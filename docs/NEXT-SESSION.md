@@ -1,5 +1,50 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
+🔌 **BLE WENT STALE OVERNIGHT; A CONFIG-ENTRY RELOAD FIXED IT, 2026-08-24.**
+After the battery died overnight and the mower went back on the dock, its
+local BLE session never came back — HA kept reporting stale pre-restart values
+while the vendor app correctly showed charged/docked over its own cloud path.
+`mammotion.report_stream_probe` (read-only) confirmed `is_connected: false`,
+zero reports on every channel across 15 s, and `queue_depth: 37` — pymammotion's
+internal BLE command queue gains one entry per attempted send while
+disconnected and only drains once the link is live, so hours of outage backed
+it up. The card's activity log showing `Active transport: BLE` at 7:02:03 AM
+was the transport handshake completing, not proof reports had resumed. Fix: a
+`mammotion` config-entry reload (`entry_id 01KVM3JVYBWRKM25ZR8T7FKKJ3`), no HA
+restart needed. Confirmed recovered: `is_connected: true`, `queue_depth: 0`,
+~2 Hz reports, battery 100%, `device_position_type: charge_on`. No motion
+commanded, no gate state touched by this fix. **If BLE looks stale again,
+reload the config entry before assuming a code regression.** ⚠️ **The motion
+gate is `enabled: True`** — left armed from the beta73 deploy session and
+still not disarmed as of this entry.
+
+✅ **GATE DISARMED, 2026-08-24, superseding the note directly above** —
+confirmed via both the live API and RAW on-disk `core.config_entries`
+storage (`enable_experimental_motion: false`).
+
+🚨 **FIRST PHYSICAL RUN OF THE PHASE 2 EXECUTOR, 2026-08-24 — FAILED
+SAFELY.** A supervised, authorized 0.6 m straight window diverged
+(cross-track 0 → −0.389 m, heading error 46.6° → 77.4°) and correctly
+hard-aborted on the 0.30 m bound at 0.517 m travelled. Containment held
+throughout (`inside_corridor: true` every decision), BLE never stalled,
+stop confirmed. FAIL against `docs/phase2-gate-readiness-20260823.md`. Full
+run + offline replay + scoring: `docs/evidence-phase2-first-physical-run-20260824.json`.
+
+🔑 **Two defects found and fixed offline, commit `4483dd70`, NEITHER
+PHYSICALLY TESTED — see CLAUDE.md's "Current build" for the full writeup:**
+(1) the controller trusted the opening heading before any displacement was
+observed this window (now holds `angular_speed: 0` until ≥0.15 m of real
+displacement confirms it); (2) the steering law's sign was inverted —
+`course_heading_degrees = 90.13 − toward` is a reflection, positive angular
+increases `toward`, so positive angular actually decreases map-frame course,
+making the old `+K × error` law positive feedback. Confirmed against six
+banked captures both signs, zero contradictions. New preflight gate
+`opening_alignment_feasible` would have refused today's run before dispatch.
+892 pytest / ruff / mypy / 10 hooks green. **Not deployed** (host still runs
+beta73's unfixed controller); **not physically re-tested.** Next physical
+step: deploy motion-disabled, dry-run-verify against live state, fresh
+corridor scan, explicit per-run authorization.
+
 ✅ **OFFLINE PHASE 1 ANALYZER READY:**
 `scripts/analyze_phase1_capture.py` reads the straight response, shallow-arc
 response, and frozen corridor JSON files; recomputes the written telemetry and

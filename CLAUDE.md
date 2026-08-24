@@ -28,6 +28,88 @@ this file every time.
 
 ## Current build: `0.6.4-beta72` released and installed motion-disabled
 
+🔌 **BLE WENT STALE OVERNIGHT; A CONFIG-ENTRY RELOAD FIXED IT, 2026-08-24.**
+After the battery died overnight and the mower was put back on the dock, its
+local BLE session never came back — HA kept reporting whatever it last saw
+before an unrelated 00:27:02 restart (my beta73 deploy), while the vendor app
+correctly showed charged/docked over its own cloud path. The read-only
+`mammotion.report_stream_probe` confirmed it: `is_connected: false`, zero
+reports across 15 s on every channel, `queue_depth: 37`. That queue is
+pymammotion's internal BLE command queue — it gains one entry per attempted
+send while disconnected and only drains once the link is live, so a multi-hour
+outage backs it up. ⚠️ **The card's own activity log showing `Active
+transport: BLE` / `Fallback active` at 7:02:03 AM was the transport handshake
+completing, not proof reports had resumed** — they hadn't, for hours. Fix: a
+`mammotion` config-entry reload (`entry_id 01KVM3JVYBWRKM25ZR8T7FKKJ3`), no HA
+restart needed. Confirmed recovered: `is_connected: true`, `queue_depth: 0`,
+~2 Hz reports, battery 100%, `device_position_type: charge_on`. No motion
+commanded, no gate state touched by this fix. **If BLE looks stale again,
+reload the config entry before assuming a code regression or restarting HA.**
+⚠️ **The motion gate is `enabled: True`** — left armed from the beta73 deploy
+session and still not disarmed as of this entry.
+
+✅ **GATE DISARMED, 2026-08-24, superseding the note directly above.**
+Confirmed armed (`enabled: True`, `blockers: []`), then disarmed and verified
+both via the live API and RAW on-disk `core.config_entries` storage
+(`enable_experimental_motion: false`).
+
+🚨 **FIRST PHYSICAL RUN OF THE PHASE 2 EXECUTOR, 2026-08-24 — FAILED SAFELY,
+TWO DEFECTS FOUND AND FIXED OFFLINE, NEITHER YET RE-TESTED.** A supervised,
+authorized short straight window (live position as `route_start`, 0.6 m
+target, a freshly scanned and verified corridor) diverged and correctly
+hard-aborted on the 0.30 m cross-track bound at 0.517 m travelled, 3.33 s in.
+Full run, an independent offline replay against the pure controller (0
+mismatches), and scoring against `docs/phase2-gate-readiness-20260823.md`:
+`docs/evidence-phase2-first-physical-run-20260824.json`. **Verdict: FAIL** —
+cross-track diverged (0 → −0.389 m, never trending to zero), heading error
+grew (46.6° → 77.4°), the 0.30 m hard abort fired. Safety held throughout:
+`inside_corridor: true` on every decision, BLE never stalled
+(`refresh_max_gap_since_last_decision_s` topped out at 0.52 s against a
+0.60 s bound), stop confirmed OK.
+
+🔑 **Two independent defects found and fixed, commit `4483dd70` — both
+offline only, NEITHER PHYSICALLY TESTED:**
+1. The opening decision trusted `course_heading_degrees` before any
+   displacement was observed this window — a possibly-stale reading, since
+   `toward` freezes while this mower is stationary (well documented
+   elsewhere in this file). `continuous_control_decision()` now holds
+   `angular_speed: 0` until real displacement (≥ 0.15 m, this project's own
+   registered informativeness floor) confirms the heading reflects this
+   window's own motion, not a frozen prior one.
+2. 🚨 **The steering law's sign was inverted — positive feedback, not
+   correction.** `course_heading_degrees = 90.13 − toward` is a REFLECTION,
+   and positive commanded angular INCREASES `toward` (established
+   2026-08-12, `docs/toward-tracks-in-place-rotation-20260812.md`), so
+   positive angular DECREASES map-frame course — the opposite of what the
+   `angular = +K × error` law assumed. Confirmed against SIX banked
+   captures across both command signs — today's run, Phase 1b's certified
+   arc, the arc120 out-of-sample capture, both 2026-08-12 arc-sweep points,
+   and the 2026-08-12 stationary night pivot — zero contradictions.
+   Corrected at the final command, not the gain or the error, so
+   `heading_error_degrees`/`cross_track_m`/`along_track_m` reporting is
+   unchanged. New preflight gate `opening_alignment_feasible` refuses to
+   open a window whose starting heading error cannot plausibly be nulled
+   within the window's time/distance/cross-track budget at the measured
+   turn rate — modelling BOTH the turn and defect 1's 0.15 m blind-travel
+   floor, since the blind floor alone already costs 0.15 m of the 0.30 m
+   cross-track bound. It would have refused today's 46.6°-misaligned start
+   before dispatch, at every turn rate in the disputed measurement range.
+
+⚠️ **Not yet physically tested. Not yet deployed to the host** — the host
+still runs beta73 with the OLD, unfixed controller. 892 pytest, ruff, mypy,
+10/10 pre-commit hooks green offline. Before any next physical attempt: cut
+a release, deploy motion-disabled, dry-run-verify against live state, a
+fresh corridor scan, explicit per-run authorization — same discipline as
+every prior physical step in this project. Residual open items, stated
+plainly rather than glossed: `min_turn_rate_deg_per_s` is measured only
+across angular 120–180 and must NOT be scaled outside that band; the new
+preflight gate reads the same possibly-stale `toward` that defect 1
+distrusts, so a latched heading can still produce a false refusal or a
+false admit — it is not a freshness proof; and aiming the mower within
+roughly 27° of the intended route before opening a window is now a real
+prerequisite, not a nicety, given the standing decision that being wrongly
+blocked is the failure the operator cares about more.
+
 🏁🏁 **PHASE 1b PASSED — VERDICT `go`, 2026-08-23.** One supervised, authorized
 8000 ms arc (`linear 400, angular 180` — the ORIGINAL plan's command, only the
 duration changed) run against the protocol registered the same day before any
