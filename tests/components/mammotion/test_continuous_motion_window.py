@@ -200,7 +200,8 @@ def test_dry_run_sends_nothing_and_reports_the_full_plan(
     assert result["command_result"]["attempted"] is False
     assert result["reason"] == "dry_run"
     assert result["decisions"] == []
-    assert len(result["safety_gates"]) >= 11 + 3  # pulse gates + 3 continuous ones
+    # pulse gates + 4 continuous ones (opening_alignment_feasible added 2026-08-24)
+    assert len(result["safety_gates"]) >= 11 + 4
 
 
 def test_dry_run_passes_all_gates_on_a_healthy_frozen_corridor(
@@ -217,6 +218,8 @@ def test_a_degenerate_corridor_is_refused() -> None:
         _FakeCoordinator(),
         _snapshot(),
         route_start=STRAIGHT_ROUTE,
+        route_target=STRAIGHT_TARGET,
+        config=ContinuousControllerConfig(),
         corridor_polygon=[{"x": 0.0, "y": 0.0}],
         dry_run=True,
         confirm_blades_off=True,
@@ -232,6 +235,8 @@ def test_a_frozen_start_outside_the_corridor_is_refused() -> None:
         _FakeCoordinator(),
         _snapshot(),
         route_start={"x": 99.0, "y": 99.0},
+        route_target=STRAIGHT_TARGET,
+        config=ContinuousControllerConfig(),
         corridor_polygon=STRAIGHT_CORRIDOR,
         dry_run=True,
         confirm_blades_off=True,
@@ -257,6 +262,8 @@ def test_start_drift_beyond_the_bound_is_refused_for_a_real_run() -> None:
         _FakeCoordinator(),
         telemetry,
         route_start=STRAIGHT_ROUTE,
+        route_target=STRAIGHT_TARGET,
+        config=ContinuousControllerConfig(),
         corridor_polygon=STRAIGHT_CORRIDOR,
         dry_run=False,
         confirm_blades_off=True,
@@ -273,6 +280,8 @@ def test_start_drift_gate_is_dry_run_exempt() -> None:
         _FakeCoordinator(),
         _snapshot(position={"source": "test", "x": 50.0, "y": 50.0}),
         route_start=STRAIGHT_ROUTE,
+        route_target=STRAIGHT_TARGET,
+        config=ContinuousControllerConfig(),
         corridor_polygon=STRAIGHT_CORRIDOR,
         dry_run=True,
         confirm_blades_off=False,
@@ -280,6 +289,114 @@ def test_start_drift_gate_is_dry_run_exempt() -> None:
     )
     gate = next(g for g in gates if g["name"] == "start_drift_within_bound")
     assert gate["passed"] is True
+
+
+def test_a_badly_aimed_opening_is_refused_before_the_window_opens() -> None:
+    """🚨 The 2026-08-24 second defect, as a pre-dispatch refusal.
+
+    `toward: 0.0` is a course of 90.13 deg against a route running due east, so
+    the mower would have to turn ~90 deg while driving forward. Same shape as
+    `turn_budget_infeasible` in the pulsed executor: refuse before dispatch
+    rather than abort mid-run once the machine is already moving.
+    """
+    gates = _continuous_motion_gates(
+        _FakeCoordinator(),
+        _snapshot(),
+        route_start=STRAIGHT_ROUTE,
+        route_target=STRAIGHT_TARGET,
+        config=ContinuousControllerConfig(),
+        corridor_polygon=STRAIGHT_CORRIDOR,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+    )
+    gate = next(g for g in gates if g["name"] == "opening_alignment_feasible")
+
+    assert gate["passed"] is False
+    assert gate["diagnostics"]["heading_error_degrees"] == pytest.approx(-90.13)
+    assert gate["diagnostics"]["feasible"] is False
+    assert gate["diagnostics"]["limiting_factor"] == "window_s"
+
+
+def test_a_well_aimed_opening_clears_the_alignment_gate() -> None:
+    """The gate must admit the geometry the executor exists to drive.
+
+    `toward: 90.13` mirrors to a course of 0 deg -- pointed straight down a
+    route that runs due east.
+    """
+    gates = _continuous_motion_gates(
+        _FakeCoordinator(),
+        _snapshot(
+            position={
+                "source": "test",
+                "x": 0.0,
+                "y": 0.0,
+                "toward": 90.13,
+                "pos_type_label": "AREA_INSIDE",
+                "zone_hash": "1",
+            }
+        ),
+        route_start=STRAIGHT_ROUTE,
+        route_target=STRAIGHT_TARGET,
+        config=ContinuousControllerConfig(),
+        corridor_polygon=STRAIGHT_CORRIDOR,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+    )
+    gate = next(g for g in gates if g["name"] == "opening_alignment_feasible")
+
+    assert gate["passed"] is True
+    assert gate["diagnostics"]["heading_error_degrees"] == pytest.approx(0.0)
+
+
+def test_a_missing_toward_refuses_the_alignment_gate() -> None:
+    """No heading at all is not permission to open a window."""
+    gates = _continuous_motion_gates(
+        _FakeCoordinator(),
+        _snapshot(
+            position={
+                "source": "test",
+                "x": 0.0,
+                "y": 0.0,
+                "toward": None,
+                "pos_type_label": "AREA_INSIDE",
+                "zone_hash": "1",
+            }
+        ),
+        route_start=STRAIGHT_ROUTE,
+        route_target=STRAIGHT_TARGET,
+        config=ContinuousControllerConfig(),
+        corridor_polygon=STRAIGHT_CORRIDOR,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+    )
+    gate = next(g for g in gates if g["name"] == "opening_alignment_feasible")
+
+    assert gate["passed"] is False
+    assert gate["diagnostics"] is None
+
+
+def test_the_alignment_gate_is_dry_run_exempt_but_still_reports_its_numbers() -> None:
+    """A dry run is how an operator inspects the aim BEFORE arming."""
+    gates = _continuous_motion_gates(
+        _FakeCoordinator(),
+        _snapshot(),
+        route_start=STRAIGHT_ROUTE,
+        route_target=STRAIGHT_TARGET,
+        config=ContinuousControllerConfig(),
+        corridor_polygon=STRAIGHT_CORRIDOR,
+        dry_run=True,
+        confirm_blades_off=False,
+        confirm_clear_area=False,
+    )
+    gate = next(g for g in gates if g["name"] == "opening_alignment_feasible")
+
+    assert gate["passed"] is True
+    # The verdict is still computed and surfaced, so the dry run tells the
+    # operator the real run would be refused.
+    assert gate["diagnostics"]["feasible"] is False
 
 
 @pytest.mark.parametrize(
@@ -302,6 +419,8 @@ def test_real_run_fails_closed_on_every_pulse_gate(
         _FakeCoordinator(),
         telemetry,
         route_start=STRAIGHT_ROUTE,
+        route_target=STRAIGHT_TARGET,
+        config=ContinuousControllerConfig(),
         corridor_polygon=STRAIGHT_CORRIDOR,
         dry_run=False,
         confirm_blades_off=True,
@@ -430,7 +549,10 @@ def test_a_heading_error_updates_command_state_for_the_next_refresh(
     """The decision loop's ONLY job besides safety: steer via `command_state`."""
     # Off the centreline, heading due east: the lookahead aims back toward the
     # line, so SOME nonzero correction must be requested.
-    _moving_snapshot(monkeypatch, [(0.5, 0.10, 0.0)])
+    # The mower must first travel past `min_travel_for_heading_trust_m` (0.15 m)
+    # for the heading to be actable at all -- added 2026-08-24, so 0.30 -> 0.50
+    # is a real 0.20 m of confirmed displacement, not a held-still fix.
+    _moving_snapshot(monkeypatch, [(0.30, 0.10, 0.0), (0.5, 0.10, 0.0)])
     route = ContinuousRoute(
         start=ContinuousPoint(0.0, 0.0),
         target=ContinuousPoint(3.0, 0.0),
@@ -463,6 +585,58 @@ def test_a_heading_error_updates_command_state_for_the_next_refresh(
         )
     )
     assert command_state["angular_speed"] != 0
+
+
+def test_a_standing_mower_never_has_a_correction_written_into_command_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The 2026-08-24 failure, reproduced end to end through the real loop.
+
+    A held-still fix with a large heading error is exactly what decisions 0-3 of
+    `docs/evidence-phase2-first-physical-run-20260824.json` looked like: the
+    window's first fix never moves, so `distance_travelled_m` stays 0.0 while
+    `toward` reports a course 90 deg off the route. Before the fix the loop wrote
+    a saturated `angular_speed` into `command_state` on the very first arrival,
+    and the refresh writer held it for the whole window.
+    """
+    # `origin` is seeded from the first fresh fix, so a repeated position is
+    # zero displacement no matter how many arrivals occur.
+    _moving_snapshot(monkeypatch, [(0.0, 0.0, 0.0)])
+    route = ContinuousRoute(
+        start=ContinuousPoint(0.0, 0.0),
+        target=ContinuousPoint(3.0, 0.0),
+        contained=True,
+    )
+    # toward=0.0 -> course 90.13 deg against a route running due east: a ~90 deg
+    # error, which without the gate clamps straight to -max_abs_angular_speed.
+    config = ContinuousControllerConfig(max_cross_track_m=30.0)
+    command_state = {"linear_speed": 400, "angular_speed": 0}
+    decisions = asyncio.run(
+        _continuous_decision_loop(
+            _FakeCoordinator(),
+            route=route,
+            corridor_polygon=STRAIGHT_CORRIDOR,
+            config=config,
+            window_started=asyncio.get_event_loop().time(),
+            sample_interval_ms=10,
+            refresh_state={
+                "completions_elapsed_ms": [],
+                "last_decision_elapsed_ms": 0.0,
+            },
+            command_state=command_state,
+            decision_abort=asyncio.Event(),
+            stop_event=asyncio.Event(),
+        )
+    )
+
+    driving = [d["decision"] for d in decisions if d["decision"]["action"] == "drive"]
+    assert driving
+    assert command_state["angular_speed"] == 0
+    # No decision of ANY kind ever asks for a correction here.
+    assert all(d["decision"]["angular_speed"] == 0 for d in decisions)
+    assert all(d["heading_confirmed_by_motion"] is False for d in driving)
+    # The error is still measured and recorded -- withheld, not hidden.
+    assert all(abs(d["heading_error_degrees"]) > 45.0 for d in driving)
 
 
 # --- the refresh loop, isolated from the decision loop --------------------------

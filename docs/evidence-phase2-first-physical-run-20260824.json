@@ -1,0 +1,631 @@
+{
+  "run": {
+    "service": "continuous_motion_window",
+    "mode": "real_continuous_motion_window",
+    "dry_run": false,
+    "route": {
+      "start": {
+        "x": 5.0628,
+        "y": -4.2926
+      },
+      "target": {
+        "x": 5.5602,
+        "y": -4.6281
+      }
+    },
+    "corridor_polygon": [
+      {
+        "x": 4.3667,
+        "y": -4.7881
+      },
+      {
+        "x": 5.859,
+        "y": -5.7946
+      },
+      {
+        "x": 6.7537,
+        "y": -4.4682
+      },
+      {
+        "x": 5.2614,
+        "y": -3.4616
+      }
+    ],
+    "config": {
+      "linear_speed": 400,
+      "max_abs_angular_speed": 180,
+      "angular_speed_per_heading_degree": 12.0,
+      "heading_deadband_degrees": 1.5,
+      "lookahead_m": 0.8,
+      "waypoint_tolerance_m": 0.15,
+      "max_cross_track_m": 0.3,
+      "max_telemetry_age_s": 2.0,
+      "max_refresh_age_s": 1.2,
+      "max_refresh_gap_s": 0.6,
+      "max_window_s": 4.0,
+      "max_distance_m": 1.0,
+      "nominal_speed_mps": 0.2482,
+      "max_prediction_horizon_s": 1.25
+    },
+    "duration_ms": 4000,
+    "motion_refresh_interval_ms": 200,
+    "decision_sample_interval_ms": 100,
+    "safety_gates": [
+      {
+        "name": "stop_primitive_available",
+        "passed": true,
+        "detail": "Coordinator must expose async_stop_manual_motion()."
+      },
+      {
+        "name": "ble_transport_required",
+        "passed": true,
+        "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+      },
+      {
+        "name": "ble_link_live",
+        "passed": true,
+        "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+        "diagnostics": {
+          "live": true,
+          "reason": null,
+          "is_connected": true,
+          "is_usable": true,
+          "cooldown_active": false,
+          "cooldown_remaining_seconds": 0.0,
+          "last_send_age_seconds": 1.4,
+          "queue_depth": 0,
+          "queue_dispatch_paused": false,
+          "saga_active": false,
+          "stall_threshold_seconds": 15.0,
+          "queue_depth_limit": 0
+        }
+      },
+      {
+        "name": "operator_confirmed_blades_off",
+        "passed": true,
+        "detail": "Real pulse requires confirm_blades_off=true."
+      },
+      {
+        "name": "operator_confirmed_clear_area",
+        "passed": true,
+        "detail": "Real pulse requires confirm_clear_area=true."
+      },
+      {
+        "name": "mower_reports_blades_off",
+        "passed": true,
+        "detail": "Real pulse requires blade state off and cutter RPM zero/unknown."
+      },
+      {
+        "name": "mower_ready",
+        "passed": true,
+        "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+      },
+      {
+        "name": "not_docked_or_charging",
+        "passed": true,
+        "detail": "Real pulse requires the mower to be off the dock and not charging."
+      },
+      {
+        "name": "live_map_position_available",
+        "passed": true,
+        "detail": "Real pulse requires live map-local mower position."
+      },
+      {
+        "name": "position_area_inside",
+        "passed": true,
+        "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+      },
+      {
+        "name": "map_position_nonzero",
+        "passed": true,
+        "detail": "Real pulse requires nonzero map-local x/y coordinates."
+      },
+      {
+        "name": "corridor_polygon_valid",
+        "passed": true,
+        "detail": "The frozen corridor must be a real polygon, >= 3 vertices."
+      },
+      {
+        "name": "frozen_start_inside_corridor",
+        "passed": true,
+        "detail": "The frozen route start itself must be inside the frozen corridor."
+      },
+      {
+        "name": "start_drift_within_bound",
+        "passed": true,
+        "detail": "Live position must be within 0.3 m of the frozen route start. The start is never re-derived from live position -- this gate aborts instead.",
+        "diagnostics": {
+          "drift_m": 0.0
+        }
+      }
+    ],
+    "blockers": [],
+    "would_send": true,
+    "command_result": {
+      "attempted": true,
+      "ok": true,
+      "error": null,
+      "duration_ms": 457.683
+    },
+    "decisions": [
+      {
+        "index": 0,
+        "elapsed_s": 0.458,
+        "observation": {
+          "position": {
+            "x": 5.0628,
+            "y": -4.2926
+          },
+          "course_heading_degrees": 279.3608,
+          "telemetry_age_s": 0.0,
+          "refresh_age_s": 0.4581014299765229,
+          "elapsed_s": 0.4581014299765229,
+          "distance_travelled_m": 0.0,
+          "refresh_max_gap_since_last_decision_s": 0.4581014299765229,
+          "stop_available": true,
+          "ble_live": true,
+          "refresh_healthy": true,
+          "position_valid": true,
+          "inside_area": true,
+          "rtk_fixed": true,
+          "blades_off": true,
+          "work_mode_safe": true,
+          "cancelled": false
+        },
+        "decision": {
+          "action": "drive",
+          "reason": "tracking_route",
+          "linear_speed": 400,
+          "angular_speed": 180,
+          "predicted_position": {
+            "x": 5.0628,
+            "y": -4.2926
+          },
+          "aim_point": {
+            "x": 5.5602,
+            "y": -4.6281
+          },
+          "target_distance_m": 0.5999725077034778,
+          "along_track_m": 0.0,
+          "cross_track_m": 0.0,
+          "observed_cross_track_m": 0.0,
+          "desired_course_degrees": -33.999957542442196,
+          "heading_error_degrees": 46.63924245755783,
+          "prediction_horizon_s": 0.0
+        },
+        "inside_corridor": true
+      },
+      {
+        "index": 1,
+        "elapsed_s": 0.964,
+        "observation": {
+          "position": {
+            "x": 5.0628,
+            "y": -4.2926
+          },
+          "course_heading_degrees": 279.3608,
+          "telemetry_age_s": 0.0,
+          "refresh_age_s": 0.024779153801023995,
+          "elapsed_s": 0.964242153801024,
+          "distance_travelled_m": 0.0,
+          "refresh_max_gap_since_last_decision_s": 0.2093695700234771,
+          "stop_available": true,
+          "ble_live": true,
+          "refresh_healthy": true,
+          "position_valid": true,
+          "inside_area": true,
+          "rtk_fixed": true,
+          "blades_off": true,
+          "work_mode_safe": true,
+          "cancelled": false
+        },
+        "decision": {
+          "action": "drive",
+          "reason": "tracking_route",
+          "linear_speed": 400,
+          "angular_speed": 180,
+          "predicted_position": {
+            "x": 5.0628,
+            "y": -4.2926
+          },
+          "aim_point": {
+            "x": 5.5602,
+            "y": -4.6281
+          },
+          "target_distance_m": 0.5999725077034778,
+          "along_track_m": 0.0,
+          "cross_track_m": 0.0,
+          "observed_cross_track_m": 0.0,
+          "desired_course_degrees": -33.999957542442196,
+          "heading_error_degrees": 46.63924245755783,
+          "prediction_horizon_s": 0.0
+        },
+        "inside_corridor": true
+      },
+      {
+        "index": 2,
+        "elapsed_s": 1.276,
+        "observation": {
+          "position": {
+            "x": 5.0702,
+            "y": -4.3173
+          },
+          "course_heading_degrees": 279.3608,
+          "telemetry_age_s": 0.0,
+          "refresh_age_s": 0.13015482046753163,
+          "elapsed_s": 1.2763548204675317,
+          "distance_travelled_m": 0.025784685377176948,
+          "refresh_max_gap_since_last_decision_s": 0.1819578461989761,
+          "stop_available": true,
+          "ble_live": true,
+          "refresh_healthy": true,
+          "position_valid": true,
+          "inside_area": true,
+          "rtk_fixed": true,
+          "blades_off": true,
+          "work_mode_safe": true,
+          "cancelled": false
+        },
+        "decision": {
+          "action": "drive",
+          "reason": "tracking_route",
+          "linear_speed": 400,
+          "angular_speed": 180,
+          "predicted_position": {
+            "x": 5.0702,
+            "y": -4.3173
+          },
+          "aim_point": {
+            "x": 5.5602,
+            "y": -4.6281
+          },
+          "target_distance_m": 0.5802556677879156,
+          "along_track_m": 0.019946930644886434,
+          "cross_track_m": -0.016339215337588676,
+          "observed_cross_track_m": -0.016339215337588676,
+          "desired_course_degrees": -32.3863725459812,
+          "heading_error_degrees": 48.252827454018814,
+          "prediction_horizon_s": 0.0
+        },
+        "inside_corridor": true
+      },
+      {
+        "index": 3,
+        "elapsed_s": 2.187,
+        "observation": {
+          "position": {
+            "x": 5.0702,
+            "y": -4.3173
+          },
+          "course_heading_degrees": 279.3608,
+          "telemetry_age_s": 0.0,
+          "refresh_age_s": 0.10840415888547886,
+          "elapsed_s": 2.186534158885479,
+          "distance_travelled_m": 0.025784685377176948,
+          "refresh_max_gap_since_last_decision_s": 0.5204260000000002,
+          "stop_available": true,
+          "ble_live": true,
+          "refresh_healthy": true,
+          "position_valid": true,
+          "inside_area": true,
+          "rtk_fixed": true,
+          "blades_off": true,
+          "work_mode_safe": true,
+          "cancelled": false
+        },
+        "decision": {
+          "action": "drive",
+          "reason": "tracking_route",
+          "linear_speed": 400,
+          "angular_speed": 180,
+          "predicted_position": {
+            "x": 5.0702,
+            "y": -4.3173
+          },
+          "aim_point": {
+            "x": 5.5602,
+            "y": -4.6281
+          },
+          "target_distance_m": 0.5802556677879156,
+          "along_track_m": 0.019946930644886434,
+          "cross_track_m": -0.016339215337588676,
+          "observed_cross_track_m": -0.016339215337588676,
+          "desired_course_degrees": -32.3863725459812,
+          "heading_error_degrees": 48.252827454018814,
+          "prediction_horizon_s": 0.0
+        },
+        "inside_corridor": true
+      },
+      {
+        "index": 4,
+        "elapsed_s": 2.294,
+        "observation": {
+          "position": {
+            "x": 5.1138,
+            "y": -4.5522
+          },
+          "course_heading_degrees": 272.9549,
+          "telemetry_age_s": 0.0,
+          "refresh_age_s": 0.03554213931411505,
+          "elapsed_s": 2.294042139314115,
+          "distance_travelled_m": 0.26456220440569345,
+          "refresh_max_gap_since_last_decision_s": 0.07196584111452102,
+          "stop_available": true,
+          "ble_live": true,
+          "refresh_healthy": true,
+          "position_valid": true,
+          "inside_area": true,
+          "rtk_fixed": true,
+          "blades_off": true,
+          "work_mode_safe": true,
+          "cancelled": false
+        },
+        "decision": {
+          "action": "drive",
+          "reason": "tracking_route",
+          "linear_speed": 400,
+          "angular_speed": 180,
+          "predicted_position": {
+            "x": 5.1138,
+            "y": -4.5522
+          },
+          "aim_point": {
+            "x": 5.5602,
+            "y": -4.6281
+          },
+          "target_distance_m": 0.45280654809752885,
+          "along_track_m": 0.18744725559255496,
+          "cross_track_m": -0.18669945466127988,
+          "observed_cross_track_m": -0.18669945466127988,
+          "desired_course_degrees": -9.649542256797423,
+          "heading_error_degrees": 77.39555774320257,
+          "prediction_horizon_s": 0.0
+        },
+        "inside_corridor": true
+      },
+      {
+        "index": 5,
+        "elapsed_s": 3.003,
+        "observation": {
+          "position": {
+            "x": 5.1138,
+            "y": -4.5522
+          },
+          "course_heading_degrees": 272.9549,
+          "telemetry_age_s": 0.0,
+          "refresh_age_s": 0.018118870899975263,
+          "elapsed_s": 3.0028288708999753,
+          "distance_travelled_m": 0.26456220440569345,
+          "refresh_max_gap_since_last_decision_s": 0.21000786068588514,
+          "stop_available": true,
+          "ble_live": true,
+          "refresh_healthy": true,
+          "position_valid": true,
+          "inside_area": true,
+          "rtk_fixed": true,
+          "blades_off": true,
+          "work_mode_safe": true,
+          "cancelled": false
+        },
+        "decision": {
+          "action": "drive",
+          "reason": "tracking_route",
+          "linear_speed": 400,
+          "angular_speed": 180,
+          "predicted_position": {
+            "x": 5.1138,
+            "y": -4.5522
+          },
+          "aim_point": {
+            "x": 5.5602,
+            "y": -4.6281
+          },
+          "target_distance_m": 0.45280654809752885,
+          "along_track_m": 0.18744725559255496,
+          "cross_track_m": -0.18669945466127988,
+          "observed_cross_track_m": -0.18669945466127988,
+          "desired_course_degrees": -9.649542256797423,
+          "heading_error_degrees": 77.39555774320257,
+          "prediction_horizon_s": 0.0
+        },
+        "inside_corridor": true
+      },
+      {
+        "index": 6,
+        "elapsed_s": 3.326,
+        "observation": {
+          "position": {
+            "x": 5.1275,
+            "y": -4.8051
+          },
+          "course_heading_degrees": 264.93809999999996,
+          "telemetry_age_s": 0.0,
+          "refresh_age_s": 0.24126281807541863,
+          "elapsed_s": 3.3259428180754185,
+          "distance_travelled_m": 0.5165678464635601,
+          "refresh_max_gap_since_last_decision_s": 0.24126281807541863,
+          "stop_available": true,
+          "ble_live": true,
+          "refresh_healthy": true,
+          "position_valid": true,
+          "inside_area": true,
+          "rtk_fixed": true,
+          "blades_off": true,
+          "work_mode_safe": true,
+          "cancelled": false
+        },
+        "decision": {
+          "action": "stop",
+          "reason": "cross_track_limit_reached",
+          "linear_speed": 0,
+          "angular_speed": 0,
+          "predicted_position": {
+            "x": 5.1275,
+            "y": -4.8051
+          },
+          "aim_point": null,
+          "target_distance_m": 0.46750218181309044,
+          "along_track_m": 0.340224805935415,
+          "cross_track_m": -0.38870222719481473,
+          "observed_cross_track_m": -0.38870222719481473,
+          "desired_course_degrees": null,
+          "heading_error_degrees": null,
+          "prediction_horizon_s": 0.0
+        },
+        "inside_corridor": true
+      }
+    ],
+    "motion_refresh": {
+      "refresh_interval_ms": 200,
+      "refresh_commands_sent": 15,
+      "refresh_write_durations_ms": [
+        209.147,
+        167.061,
+        104.822,
+        206.712,
+        132.107,
+        179.317,
+        99.487,
+        477.207,
+        180.344,
+        245.482,
+        201.761,
+        175.943,
+        102.877,
+        99.929,
+        241.777
+      ],
+      "refresh_write_completions_elapsed_ms": [
+        667.471,
+        834.617,
+        939.463,
+        1146.2,
+        1278.54,
+        1458.192,
+        1557.704,
+        2078.13,
+        2258.5,
+        2504.05,
+        2705.843,
+        2881.809,
+        2984.71,
+        3084.68,
+        3326.477
+      ],
+      "commands_by_refresh": [
+        {
+          "linear_speed": 400,
+          "angular_speed": 180
+        },
+        {
+          "linear_speed": 400,
+          "angular_speed": 180
+        },
+        {
+          "linear_speed": 400,
+          "angular_speed": 180
+        },
+        {
+          "linear_speed": 400,
+          "angular_speed": 180
+        },
+        {
+          "linear_speed": 400,
+          "angular_speed": 180
+        },
+        {
+          "linear_speed": 400,
+          "angular_speed": 180
+        },
+        {
+          "linear_speed": 400,
+          "angular_speed": 180
+        },
+        {
+          "linear_speed": 400,
+          "angular_speed": 180
+        },
+        {
+          "linear_speed": 400,
+          "angular_speed": 180
+        },
+        {
+          "linear_speed": 400,
+          "angular_speed": 180
+        },
+        {
+          "linear_speed": 400,
+          "angular_speed": 180
+        },
+        {
+          "linear_speed": 400,
+          "angular_speed": 180
+        },
+        {
+          "linear_speed": 400,
+          "angular_speed": 180
+        },
+        {
+          "linear_speed": 400,
+          "angular_speed": 180
+        },
+        {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      ],
+      "refresh_error": null,
+      "aborted_early": true,
+      "elapsed_ms": 3326.486
+    },
+    "stop_result": {
+      "attempted": true,
+      "ok": true,
+      "error": null,
+      "coordinator_method": "async_stop_manual_motion",
+      "use_wifi": false,
+      "transport_preference": "ble_preferred",
+      "ack": {
+        "movement_ok": true
+      },
+      "duration_ms": 279.285
+    },
+    "reason": "completed",
+    "report_stream": {
+      "attempted": true,
+      "started": true,
+      "continuous_started": true,
+      "error": null,
+      "queue_settle": {
+        "live": true,
+        "reason": null,
+        "is_connected": true,
+        "is_usable": true,
+        "cooldown_active": false,
+        "cooldown_remaining_seconds": 0.0,
+        "last_send_age_seconds": 0.0,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false,
+        "stall_threshold_seconds": 15.0,
+        "queue_depth_limit": 0
+      }
+    }
+  },
+  "offline_replay": {
+    "method": "continuous_control_decision() called directly against each recorded observation, no HA/BLE/coordinator imports",
+    "decisions_checked": 7,
+    "mismatches": 0,
+    "note": "confirms the live executor computed exactly what the pure controller would compute from the same observations -- no wiring drift"
+  },
+  "scoring_against_phase2_gate_readiness_20260823": {
+    "no_intermediate_stop_before_final_abort": true,
+    "cross_track_and_heading_error_trend_to_zero": false,
+    "cross_track_never_exceeds_0_20m": false,
+    "hard_abort_0_30m_never_fires": false,
+    "no_oscillation_between_saturated_angular_commands": true,
+    "motion_duty_cycle_at_least_80pct": true,
+    "final_stop_confirmed_and_gate_disarmed": true,
+    "verdict": "FAIL -- cross-track diverged and the hard abort fired; not a Phase 2 pass"
+  }
+}

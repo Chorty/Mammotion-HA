@@ -41,6 +41,7 @@ from .continuous_controller import (
     ContinuousControllerConfig,
     ContinuousObservation,
     ContinuousRoute,
+    alignment_feasibility,
     continuous_control_decision,
 )
 from .continuous_controller import (
@@ -7334,6 +7335,8 @@ def _continuous_motion_gates(
     before: dict[str, Any],
     *,
     route_start: dict[str, float],
+    route_target: dict[str, float],
+    config: ContinuousControllerConfig,
     corridor_polygon: list[dict[str, float]],
     dry_run: bool,
     confirm_blades_off: bool,
@@ -7341,7 +7344,7 @@ def _continuous_motion_gates(
 ) -> list[dict[str, Any]]:
     """Return the safety gates for one continuous-motion window.
 
-    Extends `_manual_velocity_pulse_gates` with the two checks specific to a
+    Extends `_manual_velocity_pulse_gates` with the checks specific to a
     continuous window. `ContinuousRoute.contained` in the pure controller is
     caller-supplied and never re-derived
     (docs/phase2-gap-reconciliation-20260823.md) -- these gates are what earns
@@ -7390,6 +7393,56 @@ def _continuous_motion_gates(
                 "live position -- this gate aborts instead."
             ),
             "diagnostics": {"drift_m": drift},
+        }
+    )
+
+    # 🚨 **The 2026-08-24 alignment gate.** The first physical Phase 2 run
+    # opened 46.639 deg misaligned and was already lost: the mower drives
+    # forward for the whole time it is turning, so nulling that error sweeps it
+    # 0.55 m off the line against a 0.30 m bound. Correcting the steering sign
+    # alone does NOT rescue that geometry -- it only makes the divergence
+    # converge slowly enough to lose in a different way.
+    #
+    # This is the same shape as `turn_budget_infeasible` and
+    # `linear_budget_insufficient_for_segment` in the pulsed executor: a
+    # pre-dispatch refusal when the geometry cannot be served by the budget,
+    # rather than a mid-run abort after the machine is already moving.
+    # ⚠️ It is a PREFLIGHT gate only, and it is never re-evaluated inside the
+    # window -- the cross-track hard abort remains the runtime protection.
+    # ⚠️ Skipped on a dry run only for the same reason `start_drift_within_bound`
+    # is: a dry run is how an operator inspects the numbers BEFORE arming, and
+    # it reports the full diagnostics either way.
+    toward = position.get("toward")
+    feasibility = (
+        alignment_feasibility(
+            ContinuousRoute(
+                start=ContinuousPoint(**route_start),
+                target=ContinuousPoint(**route_target),
+            ),
+            _continuous_course_heading(float(toward)),
+            config,
+        )
+        if isinstance(toward, (int, float))
+        else None
+    )
+    gates.append(
+        {
+            "name": "opening_alignment_feasible",
+            "passed": dry_run or (feasibility is not None and feasibility.feasible),
+            "detail": (
+                "The heading error at the window's start must be nullable "
+                "inside the window's own time, distance and cross-track "
+                "budgets. The mower drives forward the whole time, so a large "
+                "opening error sweeps it off the line before it can align: "
+                f"{config.min_travel_for_heading_trust_m} m straight before "
+                "steering is trusted at all (blind*sin error), then the turn "
+                f"itself at {config.min_turn_rate_deg_per_s} deg/s and "
+                f"{config.nominal_speed_mps} m/s ((v/w)*(1-cos error)). "
+                "Aim the mower at the target first."
+            ),
+            "diagnostics": (
+                dataclasses.asdict(feasibility) if feasibility is not None else None
+            ),
         }
     )
     return gates
@@ -7667,17 +7720,9 @@ async def _continuous_motion_window(  # noqa: C901, PLR0913
     other real-motion probe in this project.
     """
     before = _custom_path_telemetry_snapshot(coordinator)
-    gates = _continuous_motion_gates(
-        coordinator,
-        before,
-        route_start=route_start,
-        corridor_polygon=corridor_polygon,
-        dry_run=dry_run,
-        confirm_blades_off=confirm_blades_off,
-        confirm_clear_area=confirm_clear_area,
-    )
-    blockers = [gate["name"] for gate in gates if not gate["passed"]]
-
+    # Built BEFORE the gates because `opening_alignment_feasible` tests the
+    # opening heading error against these very budgets. Construction is pure
+    # validation and sends nothing.
     config = ContinuousControllerConfig(
         linear_speed=linear_speed,
         max_abs_angular_speed=max_abs_angular_speed,
@@ -7685,6 +7730,19 @@ async def _continuous_motion_window(  # noqa: C901, PLR0913
         max_window_s=duration_ms / 1000.0,
         max_distance_m=max_distance_m,
     )
+    gates = _continuous_motion_gates(
+        coordinator,
+        before,
+        route_start=route_start,
+        route_target=route_target,
+        config=config,
+        corridor_polygon=corridor_polygon,
+        dry_run=dry_run,
+        confirm_blades_off=confirm_blades_off,
+        confirm_clear_area=confirm_clear_area,
+    )
+    blockers = [gate["name"] for gate in gates if not gate["passed"]]
+
     route = ContinuousRoute(
         start=ContinuousPoint(**route_start),
         target=ContinuousPoint(**route_target),
