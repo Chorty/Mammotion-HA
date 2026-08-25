@@ -2,7 +2,23 @@
 
 ## Status and scope
 
-Implemented offline only. This work does not authorize deployment, Home
+Superseded in part by the 2026-08-25 position-event remediation described in
+`position-event-polling-remediation-plan-20260825.md`. The pure geometry and
+corrected steering sign remain valid, but the first implementation's
+Home Assistant freshness plumbing was not motion-valid: it used the generic
+`DeviceHandle.last_report_at` timestamp and required coordinates to change.
+That made a stationary fresh origin impossible and allowed unrelated traffic
+to look like a fresh in-window position.
+
+The replacement is implemented offline only and remains under verification.
+PyMammotion now publishes immutable position-specific samples, and Home
+Assistant consumes their sequence, connection epoch, receipt time, and queue
+drop state. Real `continuous_motion_window` execution is blocked with
+`steering_not_motion_validated`; only its dry-run geometry remains available.
+The separate `heading_acquisition_window` never dispatches angular steering and
+is the only planned physical validation action after a future reviewed release.
+
+This work does not authorize deployment, Home
 Assistant or BLE calls, arming the experimental-motion gate, or physical
 motion. The host remains on its previously documented build and the motion
 gate remains disarmed.
@@ -35,13 +51,14 @@ does not change desired-course, along-track, or cross-track sign conventions.
    independent. Passing is a conservative admission estimate, not proof the
    controller will null the error.
 4. **Independent clocks and origin displacement understated consumed safety
-   budget.** A fresh valid origin is required after report streaming starts
+   budget.** A fresh valid position-payload origin is required after report streaming starts
    and before dispatch. The one safety clock starts immediately before the
    first movement command, so dispatch latency consumes the four-second
-   window. Distance is the sum of every consecutive fresh position segment,
+   window. Distance is the sum of every consecutive ordered position sample,
    not origin-to-current displacement. The rolling chord must refresh within
    two seconds; an acquisition timeout, stale heading, refresh stall, corridor
-   breach, or exhausted time/distance budget requests a zero-speed stop.
+   breach, position sequence/epoch fault, queue drop, or exhausted
+   time/distance budget requests a zero-speed stop.
 
 ## Public contract and diagnostics
 

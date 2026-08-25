@@ -192,6 +192,14 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
             _user_account = 0
         self.commands = MammotionCommand(device.device_name, _user_account)
         self._subscriptions: list[Subscription] = []
+        # Position payloads are intentionally separate from normal coordinator
+        # state updates.  A fresh payload may reduce to byte-for-byte identical
+        # state, but it is still new safety evidence and must remain observable.
+        self._position_sample_stream: Any | None = None
+        self._position_sample_task: asyncio.Task[None] | None = None
+        self._latest_position_sample: Any | None = None
+        self._latest_position_consumed_at: float | None = None
+        self._position_payload_intervals: deque[float] = deque(maxlen=100)
         self.map_offset_lat: float = 0.0
         self.map_offset_lon: float = 0.0
         self._bluetooth_enabled: bool = True
@@ -1663,6 +1671,10 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
             self.device_name, count=0, timeout=duration_ms
         )
 
+    async def async_stop_continuous_reports(self) -> None:
+        """Stop a transient continuous report subscription explicitly."""
+        await self.manager.request_iot_sync_continuous_stop(self.device_name)
+
     async def async_ensure_fresh_state(self) -> None:
         """Fire a one-shot snapshot if device state is older than 2 minutes."""
         await self.manager.ensure_fresh_state(self.device_name, max_age_s=120.0)
@@ -2101,6 +2113,14 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
 
     async def async_shutdown(self) -> None:
         """Cancel all RAII subscriptions and delegate to HA coordinator shutdown."""
+        if self._position_sample_stream is not None:
+            self._position_sample_stream.close()
+            self._position_sample_stream = None
+        if self._position_sample_task is not None:
+            self._position_sample_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._position_sample_task
+            self._position_sample_task = None
         for sub in self._subscriptions:
             sub.cancel()
         self._subscriptions.clear()
@@ -2455,6 +2475,15 @@ class MammotionReportUpdateCoordinator(MammotionBaseUpdateCoordinator[MowingDevi
     async def _async_setup(self) -> None:
         await super()._async_setup()
 
+        handle = self.manager.mower(self.device_name)
+        open_stream = getattr(handle, "open_position_sample_stream", None)
+        if callable(open_stream):
+            self._position_sample_stream = open_stream(maxsize=1)
+            self._position_sample_task = self.hass.async_create_task(
+                self._consume_position_samples(),
+                name=f"{DOMAIN}-{self.device_name}-position-pipeline",
+            )
+
         # Common commands for all device types
         commands = [
             ("send_todev_ble_sync", {"sync_type": 3}),
@@ -2512,6 +2541,75 @@ class MammotionReportUpdateCoordinator(MammotionBaseUpdateCoordinator[MowingDevi
                 lambda s: cast(MowerDevice, s.raw).report_data.dev.sys_status,
                 self._on_sys_status_changed_refresh,
             )
+
+    async def _consume_position_samples(self) -> None:
+        """Consume position evidence for presentation diagnostics only."""
+        stream = self._position_sample_stream
+        if stream is None:
+            return
+        previous_receipt: float | None = None
+        while True:
+            sample = await stream.queue.get()
+            consumed_at = time.monotonic()
+            if previous_receipt is not None:
+                self._position_payload_intervals.append(
+                    max(sample.received_at_monotonic - previous_receipt, 0.0)
+                )
+            previous_receipt = sample.received_at_monotonic
+            self._latest_position_sample = sample
+            self._latest_position_consumed_at = consumed_at
+
+    def open_position_sample_stream(self, *, maxsize: int = 1) -> Any | None:
+        """Open an independent safety-consumer position stream."""
+        handle = self.manager.mower(self.device_name)
+        open_stream = getattr(handle, "open_position_sample_stream", None)
+        return open_stream(maxsize=maxsize) if callable(open_stream) else None
+
+    def position_pipeline_diagnostics(self) -> dict[str, Any]:
+        """Return non-sensitive position-pipeline timing diagnostics."""
+        now = time.monotonic()
+        sample = self._latest_position_sample
+        if sample is None:
+            return {
+                "available": self._position_sample_stream is not None,
+                "latest_sequence": None,
+                "latest_epoch": None,
+                "receipt_age_s": None,
+                "pipeline_latency_s": None,
+                "coordinator_latency_s": None,
+                "payload_cadence_s": None,
+                "dropped_samples": getattr(
+                    self._position_sample_stream, "dropped_samples", 0
+                ),
+            }
+        intervals = tuple(self._position_payload_intervals)
+        return {
+            "available": True,
+            "latest_sequence": sample.sequence,
+            "latest_epoch": sample.epoch,
+            "source": sample.source,
+            "transport": sample.transport,
+            "valid_for_motion": sample.valid_for_motion,
+            "rejection_reason": sample.rejection_reason,
+            "receipt_age_s": max(now - sample.received_at_monotonic, 0.0),
+            "pipeline_latency_s": max(
+                sample.published_at_monotonic - sample.received_at_monotonic, 0.0
+            ),
+            "coordinator_latency_s": (
+                max(
+                    self._latest_position_consumed_at - sample.published_at_monotonic,
+                    0.0,
+                )
+                if self._latest_position_consumed_at is not None
+                else None
+            ),
+            "payload_cadence_s": (
+                sum(intervals) / len(intervals) if intervals else None
+            ),
+            "dropped_samples": getattr(
+                self._position_sample_stream, "dropped_samples", 0
+            ),
+        }
 
     async def _on_sys_status_changed_refresh(self, sys_status: int) -> None:
         """Trigger a one-shot count=1 poll on sys_status transitions when not streaming."""

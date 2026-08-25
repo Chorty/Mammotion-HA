@@ -828,9 +828,9 @@ raw_pymammotion_motion_probe:
 
 continuous_motion_window:
   description: >-
-    The Phase 2 executor. Runs or simulates one continuous straight-line
-    steering window. It acquires and refreshes heading only from fresh position
-    chords of at least 0.15 m; toward is diagnostic only. corridor_polygon must
+    Dry-runs Phase 2 steering geometry. Real execution is currently blocked
+    with steering_not_motion_validated. Heading uses only fresh position chords
+    of at least 0.15 m; toward is diagnostic only. corridor_polygon must
     be pre-scanned, margin-verified offline, and provide at least 1.06 m of
     boundary clearance around the live start
     (scripts/freeze_phase1_corridors.py, scripts/scan_contained_bearings.py).
@@ -927,6 +927,61 @@ continuous_motion_window:
           max: 0.30
           step: 0.05
           unit_of_measurement: m
+    prefer_ble:
+      required: false
+      default: true
+      selector:
+        boolean:
+    dry_run:
+      required: false
+      default: true
+      selector:
+        boolean:
+    confirm_blades_off:
+      required: false
+      default: false
+      selector:
+        boolean:
+    confirm_clear_area:
+      required: false
+      default: false
+      selector:
+        boolean:
+
+heading_acquisition_window:
+  description: >-
+    Runs or simulates a bounded straight-only heading acquisition. It subscribes
+    to position-specific evidence before requesting reports, drives only at the
+    measured linear 400 command with angular speed fixed at zero, and stops on
+    the first qualifying 0.15 m chord or any two-second, one-metre, corridor,
+    position-sequence, transport-epoch, telemetry-age, refresh, or BLE fault.
+    The supplied corridor must contain the complete 1.06 m blind-acquisition
+    disk around the live origin. No heading token is persisted and steering is
+    never enabled.
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+    route_start:
+      required: true
+      example:
+        x: 0.0
+        y: 0.0
+      selector:
+        object:
+    route_target:
+      required: true
+      example:
+        x: 1.0
+        y: 0.0
+      selector:
+        object:
+    corridor_polygon:
+      required: true
+      selector:
+        object:
     prefer_ble:
       required: false
       default: true
@@ -1096,6 +1151,11 @@ report_stream_probe:
           max: 120
           step: 1
           unit_of_measurement: s
+    isolated:
+      required: false
+      default: false
+      selector:
+        boolean:
 
 position_feedback_diagnostic:
   fields:

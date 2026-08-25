@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -54,12 +55,43 @@ class _FakeCoordinator:
     data = None
     device_name = "test"
 
-    class _Manager:
-        @staticmethod
-        def mower(_name: str) -> object:
-            return object()
+    def __init__(self, sample_factory: Any | None = None) -> None:
+        self._sample_factory = sample_factory
+        self._sequence = 0
+        self._stream = SimpleNamespace(
+            queue=SimpleNamespace(get_nowait=self._next_position),
+            dropped_samples=0,
+            close=lambda: None,
+        )
+        handle = SimpleNamespace(latest_position_sample=None, position_epoch=1)
+        self.manager = SimpleNamespace(mower=lambda _name: handle)
 
-    manager = _Manager()
+    def _next_position(self) -> Any:
+        if self._sample_factory is None:
+            raise asyncio.QueueEmpty
+        self._sequence += 1
+        x, y, valid = self._sample_factory(self._sequence)
+        now = time.monotonic()
+        return SimpleNamespace(
+            sequence=self._sequence,
+            epoch=1,
+            x=x,
+            y=y,
+            toward=0.0,
+            pos_type=1 if valid else None,
+            zone_hash=1 if valid else None,
+            source="test",
+            received_at_monotonic=now,
+            valid_for_motion=valid,
+        )
+
+    def open_position_sample_stream(self, *, maxsize: int = 1) -> Any:
+        del maxsize
+        return self._stream
+
+
+def _moving_coordinator(step_m: float) -> _FakeCoordinator:
+    return _FakeCoordinator(lambda sequence: (step_m * (sequence - 1), 0.0, True))
 
 
 def _validated(**overrides: object) -> dict:
@@ -194,7 +226,7 @@ def test_the_sampler_trips_the_guard_and_stops_sampling(
 
     samples = asyncio.run(
         _capture_in_window_telemetry(
-            _FakeCoordinator(),
+            _moving_coordinator(0.20),
             sample_interval_ms=100,
             duration_ms=8000,
             window_started=time.monotonic(),
@@ -208,7 +240,7 @@ def test_the_sampler_trips_the_guard_and_stops_sampling(
 
     assert abort.is_set()
     assert samples[-1]["travel_guard_tripped"] is True
-    assert samples[-1]["travelled_from_origin_m"] >= 1.0
+    assert samples[-1]["cumulative_travel_m"] >= 1.0
     # It stopped AT the breach rather than running the whole window out.
     assert len(samples) < 81
 
@@ -222,7 +254,7 @@ def test_the_guard_does_not_fire_when_travel_stays_inside_it(
 
     samples = asyncio.run(
         _capture_in_window_telemetry(
-            _FakeCoordinator(),
+            _moving_coordinator(0.001),
             sample_interval_ms=100,
             duration_ms=500,
             window_started=time.monotonic(),
@@ -321,7 +353,7 @@ def test_a_dead_feed_trips_the_guard_rather_than_reading_zero_travel(
     assert samples[-1]["travel_guard_reason"] == "feed_stale"
     assert samples[-1]["feed_stale_ms"] >= _PROBE_FEED_STALE_ABORT_MS
     # Tripped on staleness, never on distance -- the mower never appeared to move.
-    assert samples[-1].get("travelled_from_origin_m") == 0.0
+    assert samples[-1].get("cumulative_travel_m", 0.0) == 0.0
 
 
 def test_a_missing_position_trips_the_guard(
@@ -338,7 +370,7 @@ def test_a_missing_position_trips_the_guard(
 
     samples = asyncio.run(
         _capture_in_window_telemetry(
-            _FakeCoordinator(),
+            _FakeCoordinator(lambda _sequence: (None, None, False)),
             sample_interval_ms=100,
             duration_ms=8000,
             window_started=time.monotonic(),
@@ -385,7 +417,7 @@ def test_a_live_feed_that_is_simply_stationary_does_not_trip(
 
     samples = asyncio.run(
         _capture_in_window_telemetry(
-            _FakeCoordinator(),
+            _FakeCoordinator(lambda _sequence: (1.0, 2.0, True)),
             sample_interval_ms=100,
             duration_ms=500,
             window_started=time.monotonic(),

@@ -16,7 +16,9 @@ every single test in this file.
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -26,6 +28,7 @@ import yaml
 from custom_components.mammotion import services
 from custom_components.mammotion.services import (
     CONTINUOUS_MOTION_WINDOW_SCHEMA,
+    HEADING_ACQUISITION_WINDOW_SCHEMA,
     ContinuousControllerConfig,
     ContinuousPoint,
     ContinuousRoute,
@@ -34,6 +37,7 @@ from custom_components.mammotion.services import (
     _continuous_motion_gates,
     _continuous_motion_window,
     _continuous_refresh_window,
+    _heading_acquisition_window,
     _wait_for_fresh_continuous_origin,
 )
 
@@ -83,6 +87,24 @@ def test_schema_defaults_match_the_v1_design() -> None:
     assert data["max_cross_track_m"] == 0.30
     assert data["confirm_blades_off"] is False
     assert data["confirm_clear_area"] is False
+
+
+def test_heading_acquisition_schema_is_fixed_to_the_measured_envelope() -> None:
+    """The acquisition action exposes no unmeasured speed/time configuration."""
+    data = HEADING_ACQUISITION_WINDOW_SCHEMA(
+        {
+            "entity_id": ENTITY,
+            "route_start": STRAIGHT_ROUTE,
+            "route_target": STRAIGHT_TARGET,
+            "corridor_polygon": ACQUISITION_CORRIDOR,
+        }
+    )
+    assert data["linear_speed"] == 400
+    assert data["duration_ms"] == 2000
+    assert data["motion_refresh_interval_ms"] == 200
+    assert data["max_distance_m"] == 1.0
+    with pytest.raises(vol.Invalid):
+        HEADING_ACQUISITION_WINDOW_SCHEMA({**data, "duration_ms": 2001})
 
 
 @pytest.mark.parametrize(
@@ -180,11 +202,20 @@ class _FakeCoordinator:
     device_name = "test"
 
     class _Manager:
-        @staticmethod
-        def mower(_name: str) -> object:
-            return object()
+        _handle = SimpleNamespace(latest_position_sample=None, position_epoch=1)
+
+        @classmethod
+        def mower(cls, _name: str) -> object:
+            return cls._handle
 
     manager = _Manager()
+
+    def __init__(self, position_stream: Any | None = None) -> None:
+        self._position_stream = position_stream
+
+    def open_position_sample_stream(self, *, maxsize: int = 1) -> Any | None:
+        del maxsize
+        return self._position_stream
 
     async def async_stop_manual_motion(self, **_kwargs: Any) -> None:
         """Satisfy the `stop_primitive_available` gate; never actually called."""
@@ -249,6 +280,132 @@ def test_dry_run_sends_nothing_and_reports_the_full_plan(
     }
     # Pulse gates plus the continuous route/acquisition gates.
     assert len(result["safety_gates"]) >= 11 + 4
+
+
+def test_real_continuous_steering_is_blocked_before_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real steering remains unreachable while acquisition is validated."""
+    sent = False
+
+    async def _unexpected_send(*_args: Any, **_kwargs: Any) -> None:
+        """Record an unsafe dispatch attempt."""
+        nonlocal sent
+        sent = True
+
+    monkeypatch.setattr(
+        services, "_custom_path_telemetry_snapshot", lambda _c: _snapshot()
+    )
+    monkeypatch.setattr(
+        services,
+        "_continuous_motion_gates",
+        lambda *_a, **_k: [
+            {
+                "name": "blind_heading_acquisition_contained",
+                "passed": True,
+                "diagnostics": {"required_radius_m": 1.06},
+            }
+        ],
+    )
+    monkeypatch.setattr(services, "_send_manager_command_with_args", _unexpected_send)
+    result = asyncio.run(
+        _continuous_motion_window(
+            _FakeCoordinator(),
+            route_start=STRAIGHT_ROUTE,
+            route_target=STRAIGHT_TARGET,
+            corridor_polygon=ACQUISITION_CORRIDOR,
+            dry_run=False,
+            confirm_blades_off=True,
+            confirm_clear_area=True,
+        )
+    )
+    assert result["reason"] == "steering_not_motion_validated"
+    assert result["would_send"] is False
+    assert sent is False
+
+
+def test_acquisition_dispatches_no_angular_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A qualifying chord stops acquisition without opening the steering path."""
+    stream = _position_stream([(0.20, 0.0, 90.0)])
+    queued = stream.queue.get_nowait()
+    queued.sequence = 2
+    stream.queue.put_nowait(queued)
+    coordinator = _FakeCoordinator(stream)
+    sent: list[dict[str, int]] = []
+
+    async def _fresh_origin(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "reason": None,
+            "elapsed_s": 0.01,
+            "sample": {
+                "sequence": 1,
+                "epoch": 1,
+                "source": "test",
+                "transport": "ble",
+                "position": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "toward": 270.0,
+                    "pos_type": 1,
+                    "zone_hash": 1,
+                    "rtk_status": 4,
+                },
+            },
+        }
+
+    async def _send(
+        *_args: Any, command_kwargs: dict[str, int], **_kwargs: Any
+    ) -> None:
+        sent.append(dict(command_kwargs))
+
+    async def _settled(_coordinator: Any) -> dict[str, Any]:
+        return {"settled": True}
+
+    async def _stop(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        return {"attempted": True, "ok": True}
+
+    async def _no_post_stop(*_args: Any, **_kwargs: Any) -> tuple[None, str]:
+        return None, "post_stop_position_timeout"
+
+    monkeypatch.setattr(
+        services, "_custom_path_telemetry_snapshot", lambda _c: _snapshot()
+    )
+    monkeypatch.setattr(
+        services,
+        "_continuous_motion_gates",
+        lambda *_a, **_k: [
+            {
+                "name": "blind_heading_acquisition_contained",
+                "passed": True,
+                "diagnostics": {"required_radius_m": 1.06},
+            }
+        ],
+    )
+    monkeypatch.setattr(services, "_wait_for_fresh_continuous_origin", _fresh_origin)
+    monkeypatch.setattr(services, "_send_manager_command_with_args", _send)
+    monkeypatch.setattr(services, "_settle_ble_command_queue", _settled)
+    monkeypatch.setattr(services, "_manual_velocity_stop_attempt", _stop)
+    monkeypatch.setattr(services, "_wait_for_post_stop_position", _no_post_stop)
+
+    result = asyncio.run(
+        _heading_acquisition_window(
+            coordinator,
+            route_start=STRAIGHT_ROUTE,
+            route_target=STRAIGHT_TARGET,
+            corridor_polygon=ACQUISITION_CORRIDOR,
+            dry_run=False,
+            confirm_blades_off=True,
+            confirm_clear_area=True,
+        )
+    )
+
+    assert result["reason"] == "heading_acquired"
+    assert sent
+    assert all(command["angular_speed"] == 0 for command in sent)
+    assert result["heading_state"]["phase"] == "acquired"
 
 
 def test_dry_run_passes_all_gates_on_a_healthy_frozen_corridor(
@@ -500,29 +657,32 @@ def test_real_run_reuses_proven_latched_rpm_verdict() -> None:
 # --- the decision loop, isolated from BLE entirely -----------------------------
 
 
-def _moving_snapshot(
-    monkeypatch: pytest.MonkeyPatch, positions: list[tuple[float, float, float]]
-) -> None:
-    """Feed one (x, y, toward) triple per fresh arrival, then hold the last."""
-    state = {"n": 0}
-
-    def _snap(_c: Any) -> dict[str, Any]:
-        index = min(state["n"], len(positions) - 1)
-        state["n"] += 1
-        x, y, toward = positions[index]
-        return {
-            "position": {
-                "source": "test",
-                "x": x,
-                "y": y,
-                "toward": toward,
-                "pos_type": 1,
-                "zone_hash": "1",
-            }
-        }
-
-    monkeypatch.setattr(services, "_custom_path_telemetry_snapshot", _snap)
-    monkeypatch.setattr(services, "_safe_attr_path", lambda *a, **k: float(state["n"]))
+def _position_stream(
+    positions: list[tuple[float, float, float]], *, epoch: int = 1
+) -> Any:
+    """Return an ordered test stream of immutable-shaped position evidence."""
+    queue: asyncio.Queue[Any] = asyncio.Queue()
+    received_at = time.monotonic()
+    for sequence, (x, y, toward) in enumerate(positions, start=1):
+        queue.put_nowait(
+            SimpleNamespace(
+                sequence=sequence,
+                epoch=epoch,
+                x=x,
+                y=y,
+                toward=toward,
+                pos_type=1,
+                zone_hash=1,
+                rtk_status=4,
+                source="test",
+                transport="ble",
+                received_at_monotonic=received_at,
+                published_at_monotonic=received_at,
+                valid_for_motion=True,
+                rejection_reason=None,
+            )
+        )
+    return SimpleNamespace(queue=queue, dropped_samples=0, close=lambda: None)
 
 
 def test_a_corridor_breach_forces_a_stop_the_pure_controller_did_not_request(
@@ -535,7 +695,7 @@ def test_a_corridor_breach_forces_a_stop_the_pure_controller_did_not_request(
     within `max_cross_track_m` (so the pure controller alone would say
     "drive"), but outside the frozen polygon itself.
     """
-    _moving_snapshot(monkeypatch, [(0.5, 5.0, 0.0)])
+    stream = _position_stream([(0.5, 5.0, 0.0)])
     route = ContinuousRoute(
         start=ContinuousPoint(0.0, 0.0),
         target=ContinuousPoint(3.0, 0.0),
@@ -544,13 +704,14 @@ def test_a_corridor_breach_forces_a_stop_the_pure_controller_did_not_request(
     config = ContinuousControllerConfig(max_cross_track_m=30.0, max_distance_m=30.0)
     decisions = asyncio.run(
         _continuous_decision_loop(
-            _FakeCoordinator(),
+            stream,
             route=route,
             corridor_polygon=STRAIGHT_CORRIDOR,
             config=config,
             window_started=asyncio.get_event_loop().time(),
             opening_position=ContinuousPoint(0.0, 0.0),
-            opening_report_stamp=0.0,
+            opening_sequence=0,
+            opening_epoch=1,
             sample_interval_ms=10,
             refresh_state={
                 "completions_elapsed_ms": [],
@@ -567,6 +728,96 @@ def test_a_corridor_breach_forces_a_stop_the_pure_controller_did_not_request(
     assert decisions[-1]["inside_corridor"] is False
 
 
+@pytest.mark.parametrize(
+    ("fault", "expected_reason"),
+    [
+        ("sequence", "position_sequence_gap"),
+        ("epoch", "position_epoch_changed"),
+        ("stale", "telemetry_stale"),
+    ],
+)
+def test_position_evidence_faults_stop_the_decision_loop(
+    fault: str, expected_reason: str
+) -> None:
+    """Ordered receipt evidence is mandatory throughout a moving window."""
+    stream = _position_stream([(0.20, 0.0, 0.0)])
+    sample = stream.queue.get_nowait()
+    if fault == "sequence":
+        sample.sequence = 2
+    elif fault == "epoch":
+        sample.epoch = 2
+    else:
+        sample.received_at_monotonic -= 3.0
+    stream.queue.put_nowait(sample)
+    decisions = asyncio.run(
+        _continuous_decision_loop(
+            stream,
+            route=ContinuousRoute(
+                start=ContinuousPoint(0.0, 0.0),
+                target=ContinuousPoint(3.0, 0.0),
+                contained=True,
+            ),
+            corridor_polygon=ACQUISITION_CORRIDOR,
+            config=ContinuousControllerConfig(),
+            opening_position=ContinuousPoint(0.0, 0.0),
+            opening_sequence=0,
+            opening_epoch=1,
+            window_started=time.monotonic(),
+            sample_interval_ms=10,
+            refresh_state={
+                "completions_elapsed_ms": [],
+                "last_decision_elapsed_ms": 0.0,
+            },
+            command_state={"linear_speed": 400, "angular_speed": 0},
+            decision_abort=asyncio.Event(),
+            stop_event=asyncio.Event(),
+        )
+    )
+    assert decisions[-1]["decision"]["reason"] == expected_reason
+    assert decisions[-1]["decision"]["linear_speed"] == 0
+    assert decisions[-1]["decision"]["angular_speed"] == 0
+
+
+def test_position_queue_drop_stops_the_decision_loop() -> None:
+    """Latest-wins replacement is a measurable path gap, never silent loss."""
+    base = _position_stream([(0.20, 0.0, 0.0)])
+
+    class _DroppedStream:
+        queue = base.queue
+        reads = 0
+
+        @property
+        def dropped_samples(self) -> int:
+            self.reads += 1
+            return 0 if self.reads == 1 else 1
+
+    decisions = asyncio.run(
+        _continuous_decision_loop(
+            _DroppedStream(),
+            route=ContinuousRoute(
+                start=ContinuousPoint(0.0, 0.0),
+                target=ContinuousPoint(3.0, 0.0),
+                contained=True,
+            ),
+            corridor_polygon=ACQUISITION_CORRIDOR,
+            config=ContinuousControllerConfig(),
+            opening_position=ContinuousPoint(0.0, 0.0),
+            opening_sequence=0,
+            opening_epoch=1,
+            window_started=time.monotonic(),
+            sample_interval_ms=10,
+            refresh_state={
+                "completions_elapsed_ms": [],
+                "last_decision_elapsed_ms": 0.0,
+            },
+            command_state={"linear_speed": 400, "angular_speed": 0},
+            decision_abort=asyncio.Event(),
+            stop_event=asyncio.Event(),
+        )
+    )
+    assert decisions[-1]["decision"]["reason"] == "position_sequence_gap"
+
+
 def test_a_stalled_refresh_gap_stops_the_window(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -577,7 +828,7 @@ def test_a_stalled_refresh_gap_stops_the_window(
     produced the corpus's largest prediction error
     (docs/phase2-gap-reconciliation-20260823.md), not an injected field.
     """
-    _moving_snapshot(monkeypatch, [(0.2, 0.0, 0.0), (0.4, 0.0, 0.0)])
+    stream = _position_stream([(0.2, 0.0, 0.0), (0.4, 0.0, 0.0)])
     route = ContinuousRoute(
         start=ContinuousPoint(0.0, 0.0),
         target=ContinuousPoint(3.0, 0.0),
@@ -593,13 +844,14 @@ def test_a_stalled_refresh_gap_stops_the_window(
     }
     decisions = asyncio.run(
         _continuous_decision_loop(
-            _FakeCoordinator(),
+            stream,
             route=route,
             corridor_polygon=STRAIGHT_CORRIDOR,
             config=config,
             window_started=window_started,
             opening_position=ContinuousPoint(0.0, 0.0),
-            opening_report_stamp=0.0,
+            opening_sequence=0,
+            opening_epoch=1,
             sample_interval_ms=10,
             refresh_state=refresh_state,
             command_state={"linear_speed": 400, "angular_speed": 0},
@@ -621,7 +873,12 @@ def test_fresh_origin_timeout_refuses_before_dispatch(
     sent = 0
 
     async def _no_origin(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
-        return {"ok": False, "sample": None, "elapsed_s": 2.0}
+        return {
+            "ok": False,
+            "reason": "fresh_origin_timeout",
+            "sample": None,
+            "elapsed_s": 2.0,
+        }
 
     async def _settled(_coordinator: Any) -> dict[str, Any]:
         return {"settled": True}
@@ -639,8 +896,8 @@ def test_fresh_origin_timeout_refuses_before_dispatch(
     monkeypatch.setattr(services, "_send_manager_command_with_args", _unexpected_send)
 
     result = asyncio.run(
-        _continuous_motion_window(
-            _FakeCoordinator(),
+        _heading_acquisition_window(
+            _FakeCoordinator(_position_stream([])),
             route_start=STRAIGHT_ROUTE,
             route_target=STRAIGHT_TARGET,
             corridor_polygon=ACQUISITION_CORRIDOR,
@@ -656,24 +913,14 @@ def test_fresh_origin_timeout_refuses_before_dispatch(
     assert sent == 0
 
 
-def test_fresh_origin_wait_rejects_a_latched_report_stamp(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A cached report cannot become a fresh heading origin with age alone."""
-    monkeypatch.setattr(
-        services,
-        "_in_window_telemetry_sample",
-        lambda *_args, **_kwargs: {
-            "last_report_at_monotonic": 7.0,
-            "position": {"x": 0.0, "y": 0.0},
-        },
-    )
-
+def test_fresh_origin_wait_times_out_without_a_position_payload() -> None:
+    """Aggregate traffic cannot satisfy an empty position-evidence stream."""
     result = asyncio.run(
         _wait_for_fresh_continuous_origin(
-            _FakeCoordinator(),
-            previous_report_stamp=7.0,
-            previous_position=(0.0, 0.0),
+            _position_stream([]),
+            request_started_at=time.monotonic(),
+            baseline_sequence=0,
+            baseline_epoch=1,
             timeout_s=0.02,
         )
     )
@@ -682,29 +929,20 @@ def test_fresh_origin_wait_rejects_a_latched_report_stamp(
     assert result["sample"] is None
 
 
-def test_fresh_origin_wait_rejects_an_unrelated_report_over_latched_position(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A new non-position message cannot bless unchanged cached coordinates."""
-    monkeypatch.setattr(
-        services,
-        "_in_window_telemetry_sample",
-        lambda *_args, **_kwargs: {
-            "last_report_at_monotonic": 8.0,
-            "position": {"x": 0.0, "y": 0.0},
-        },
-    )
-
+def test_fresh_origin_accepts_a_fresh_unchanged_coordinate() -> None:
+    """Payload identity, not coordinate change, proves a fresh origin."""
     result = asyncio.run(
         _wait_for_fresh_continuous_origin(
-            _FakeCoordinator(),
-            previous_report_stamp=7.0,
-            previous_position=(0.0, 0.0),
+            _position_stream([(0.0, 0.0, 180.0)]),
+            request_started_at=time.monotonic() - 0.01,
+            baseline_sequence=0,
+            baseline_epoch=1,
             timeout_s=0.02,
         )
     )
 
-    assert result["ok"] is False
+    assert result["ok"] is True
+    assert result["sample"]["position"]["x"] == 0.0
 
 
 def test_a_heading_error_updates_command_state_for_the_next_refresh(
@@ -716,7 +954,7 @@ def test_a_heading_error_updates_command_state_for_the_next_refresh(
     # The mower must first travel past `min_travel_for_heading_trust_m` (0.15 m)
     # for the heading to be actable at all -- added 2026-08-24, so 0.30 -> 0.50
     # is a real 0.20 m of confirmed displacement, not a held-still fix.
-    _moving_snapshot(monkeypatch, [(0.30, 0.10, 0.0), (0.5, 0.10, 0.0)])
+    stream = _position_stream([(0.30, 0.10, 0.0), (0.5, 0.10, 0.0)])
     route = ContinuousRoute(
         start=ContinuousPoint(0.0, 0.0),
         target=ContinuousPoint(3.0, 0.0),
@@ -728,7 +966,7 @@ def test_a_heading_error_updates_command_state_for_the_next_refresh(
     command_state = {"linear_speed": 400, "angular_speed": 0}
     decisions = asyncio.run(
         _continuous_decision_loop(
-            _FakeCoordinator(),
+            stream,
             route=route,
             corridor_polygon=[
                 {"x": -1.0, "y": -1.0},
@@ -739,7 +977,8 @@ def test_a_heading_error_updates_command_state_for_the_next_refresh(
             config=config,
             window_started=asyncio.get_event_loop().time(),
             opening_position=ContinuousPoint(0.30, 0.10),
-            opening_report_stamp=0.0,
+            opening_sequence=0,
+            opening_epoch=1,
             sample_interval_ms=10,
             refresh_state={
                 "completions_elapsed_ms": [],
@@ -759,8 +998,7 @@ def test_cumulative_arc_length_not_origin_chord_consumes_distance_budget(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Every consecutive segment consumes distance, including a bent path."""
-    _moving_snapshot(
-        monkeypatch,
+    stream = _position_stream(
         [(0.20, 0.0, 0.0), (0.20, 0.20, 0.0), (0.40, 0.20, 0.0)],
     )
     route = ContinuousRoute(
@@ -770,7 +1008,7 @@ def test_cumulative_arc_length_not_origin_chord_consumes_distance_budget(
     )
     decisions = asyncio.run(
         _continuous_decision_loop(
-            _FakeCoordinator(),
+            stream,
             route=route,
             corridor_polygon=ACQUISITION_CORRIDOR,
             config=ContinuousControllerConfig(
@@ -778,7 +1016,8 @@ def test_cumulative_arc_length_not_origin_chord_consumes_distance_budget(
             ),
             window_started=asyncio.get_event_loop().time(),
             opening_position=ContinuousPoint(0.0, 0.0),
-            opening_report_stamp=0.0,
+            opening_sequence=0,
+            opening_epoch=1,
             sample_interval_ms=10,
             refresh_state={
                 "completions_elapsed_ms": [],
@@ -799,7 +1038,7 @@ def test_heading_evidence_age_stops_when_position_refresh_stalls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Repeated coordinates cannot refresh the last qualifying course chord."""
-    _moving_snapshot(monkeypatch, [(0.20, 0.0, 0.0)])
+    stream = _position_stream([(0.20, 0.0, 0.0)])
     route = ContinuousRoute(
         start=ContinuousPoint(0.0, 0.0),
         target=ContinuousPoint(3.0, 0.0),
@@ -807,13 +1046,14 @@ def test_heading_evidence_age_stops_when_position_refresh_stalls(
     )
     decisions = asyncio.run(
         _continuous_decision_loop(
-            _FakeCoordinator(),
+            stream,
             route=route,
             corridor_polygon=ACQUISITION_CORRIDOR,
             config=ContinuousControllerConfig(max_heading_age_s=0.05),
             window_started=asyncio.get_event_loop().time(),
             opening_position=ContinuousPoint(0.0, 0.0),
-            opening_report_stamp=0.0,
+            opening_sequence=0,
+            opening_epoch=1,
             sample_interval_ms=10,
             refresh_state={
                 "completions_elapsed_ms": [],
@@ -844,7 +1084,7 @@ def test_a_standing_mower_never_has_a_correction_written_into_command_state(
     """
     # `origin` is seeded from the first fresh fix, so a repeated position is
     # zero displacement no matter how many arrivals occur.
-    _moving_snapshot(monkeypatch, [(0.0, 0.0, 0.0)])
+    stream = _position_stream([(0.0, 0.0, 0.0)])
     route = ContinuousRoute(
         start=ContinuousPoint(0.0, 0.0),
         target=ContinuousPoint(3.0, 0.0),
@@ -858,13 +1098,14 @@ def test_a_standing_mower_never_has_a_correction_written_into_command_state(
     command_state = {"linear_speed": 400, "angular_speed": 0}
     decisions = asyncio.run(
         _continuous_decision_loop(
-            _FakeCoordinator(),
+            stream,
             route=route,
             corridor_polygon=STRAIGHT_CORRIDOR,
             config=config,
             window_started=asyncio.get_event_loop().time(),
             opening_position=ContinuousPoint(0.0, 0.0),
-            opening_report_stamp=0.0,
+            opening_sequence=0,
+            opening_epoch=1,
             sample_interval_ms=10,
             refresh_state={
                 "completions_elapsed_ms": [],

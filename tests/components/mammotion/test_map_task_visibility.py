@@ -7458,7 +7458,9 @@ async def test_report_stream_probe_measures_arrival_intervals(
     assert result["reason"] == "completed"
     assert result["reports_observed"] == 5
     assert result["summary"]["median_ms"] == pytest.approx(200.0, abs=1.0)
-    assert result["honoured_requested_period"] is True
+    assert result["aggregate_period_heuristic"] is True
+    assert result["honoured_requested_period"] is None
+    assert result["period_classification_reason"] == "isolated_subscription_required"
     # The requested period must reach the device as a protocol field.
     coordinator.manager.request_iot_sync_continuous.assert_awaited_once()
     kwargs = coordinator.manager.request_iot_sync_continuous.await_args.kwargs
@@ -7482,7 +7484,67 @@ async def test_report_stream_probe_detects_a_device_ignoring_the_period(
     )
 
     assert result["summary"]["median_ms"] == pytest.approx(1000.0, abs=1.0)
-    assert result["honoured_requested_period"] is False
+    assert result["aggregate_period_heuristic"] is False
+    assert result["honoured_requested_period"] is None
+
+
+@pytest.mark.asyncio
+async def test_isolated_probe_classifies_only_position_payload_p95(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Firmware-period classification requires 100 ordered position payloads."""
+    coordinator = _pulse_coordinator()
+    queue: asyncio.Queue[SimpleNamespace] = asyncio.Queue()
+    baseline = time.monotonic()
+    for sequence in range(1, 101):
+        received_at = baseline + sequence * 0.2
+        queue.put_nowait(
+            SimpleNamespace(
+                sequence=sequence,
+                epoch=1,
+                received_at_monotonic=received_at,
+                published_at_monotonic=received_at + 0.001,
+                valid_for_motion=True,
+            )
+        )
+    stream = SimpleNamespace(queue=queue, dropped_samples=0, close=lambda: None)
+    coordinator.open_position_sample_stream = lambda **_kwargs: stream
+    handle = coordinator.manager.mower(coordinator.device_name)
+
+    class _ExclusiveContext:
+        async def __aenter__(self) -> None:
+            return None
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+    handle.exclusive_report_subscription = _ExclusiveContext
+
+    async def _observed(*_args: object) -> tuple[list[float], dict[str, list[float]]]:
+        return [], {"position": [], "rtk": [], "vio": []}
+
+    monkeypatch.setattr(mammotion_services, "_observe_report_arrivals", _observed)
+    monkeypatch.setattr(
+        mammotion_services,
+        "_settle_ble_command_queue",
+        AsyncMock(return_value={"settled": True}),
+    )
+
+    result = await _report_stream_probe(
+        coordinator,
+        period_ms=200,
+        no_change_period_ms=200,
+        duration_seconds=20.0,
+        isolated=True,
+    )
+
+    assert result["position_payloads"]["observed"] == 100
+    assert result["position_payloads"]["p95_interval_ms"] == pytest.approx(200.0)
+    assert result["position_payload_cell_meets_period_criterion"] is True
+    assert result["honoured_requested_period"] is None
+    assert result["period_classification_reason"] == (
+        "three_randomized_repeats_required"
+    )
 
 
 @pytest.mark.asyncio
@@ -7511,7 +7573,8 @@ async def test_report_stream_probe_sees_through_unrelated_traffic(
 
     assert result["summary"]["median_ms"] < 200
     assert result["summary"]["max_ms"] > 500
-    assert result["honoured_requested_period"] is False
+    assert result["aggregate_period_heuristic"] is False
+    assert result["honoured_requested_period"] is None
 
 
 @pytest.mark.asyncio

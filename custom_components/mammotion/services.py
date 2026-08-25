@@ -109,6 +109,7 @@ SERVICE_MANUAL_VELOCITY_HEADING_CALIBRATION_TEST = (
 )
 SERVICE_RAW_PYMAMMOTION_MOTION_PROBE = "raw_pymammotion_motion_probe"
 SERVICE_CONTINUOUS_MOTION_WINDOW = "continuous_motion_window"
+SERVICE_HEADING_ACQUISITION_WINDOW = "heading_acquisition_window"
 SERVICE_RAW_PYMAMMOTION_EXECUTE_SEGMENT = "raw_pymammotion_execute_segment"
 SERVICE_RAW_PYMAMMOTION_ANGULAR_CALIBRATION = "raw_pymammotion_angular_calibration"
 SERVICE_RAW_PYMAMMOTION_TURN_TO_HEADING = "raw_pymammotion_turn_to_heading"
@@ -1012,6 +1013,32 @@ CONTINUOUS_MOTION_WINDOW_SCHEMA = vol.Schema(
     extra=vol.ALLOW_EXTRA,
 )
 
+HEADING_ACQUISITION_WINDOW_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+        vol.Required("route_start"): _CONTINUOUS_MOTION_POINT_SCHEMA,
+        vol.Required("route_target"): _CONTINUOUS_MOTION_POINT_SCHEMA,
+        vol.Required("corridor_polygon"): [_CONTINUOUS_MOTION_POINT_SCHEMA],
+        vol.Optional("linear_speed", default=400): vol.All(
+            vol.Coerce(int), vol.In([400])
+        ),
+        vol.Optional("duration_ms", default=2000): vol.All(
+            vol.Coerce(int), vol.In([2000])
+        ),
+        vol.Optional("motion_refresh_interval_ms", default=200): vol.All(
+            vol.Coerce(int), vol.In([200])
+        ),
+        vol.Optional("max_distance_m", default=1.0): vol.All(
+            vol.Coerce(float), vol.In([1.0])
+        ),
+        vol.Optional("prefer_ble", default=True): cv.boolean,
+        vol.Optional("dry_run", default=True): cv.boolean,
+        vol.Optional("confirm_blades_off", default=False): cv.boolean,
+        vol.Optional("confirm_clear_area", default=False): cv.boolean,
+    },
+    extra=vol.PREVENT_EXTRA,
+)
+
 FORWARD_TWO_PULSE_LATENCY_TEST_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_ENTITY_ID): cv.entity_id,
@@ -1088,6 +1115,7 @@ REPORT_STREAM_PROBE_SCHEMA = vol.Schema(
         vol.Optional("duration_seconds", default=20.0): vol.All(
             vol.Coerce(float), vol.Range(min=2.0, max=120.0)
         ),
+        vol.Optional("isolated", default=False): cv.boolean,
     },
     extra=vol.ALLOW_EXTRA,
 )
@@ -2968,6 +2996,7 @@ def _export_runtime_state(
     ble_liveness = _ble_link_liveness(coordinator)
     capabilities = capability_snapshot(coordinator)
     route_status = safety["active_route_status"]
+    pipeline_diagnostics = getattr(coordinator, "position_pipeline_diagnostics", None)
     return {
         "ha_state": ha_state,
         "online": telemetry.get("online"),
@@ -2977,6 +3006,11 @@ def _export_runtime_state(
         "charge_state_label": telemetry.get("charge_state_label"),
         "position": telemetry.get("position"),
         "position_candidates": telemetry.get("position_candidates"),
+        "position_pipeline": (
+            pipeline_diagnostics()
+            if callable(pipeline_diagnostics)
+            else {"available": False, "reason": "position_stream_unavailable"}
+        ),
         "rapid_state_fusion": _rapid_state_fusion_snapshot(coordinator),
         "blade": blade,
         "transport": telemetry.get("transport"),
@@ -5363,12 +5397,13 @@ def _report_channel_fingerprints(
     }
 
 
-async def _report_stream_probe(
+async def _report_stream_probe(  # noqa: C901
     coordinator: MammotionReportUpdateCoordinator,
     *,
     period_ms: int,
     no_change_period_ms: int,
     duration_seconds: float,
+    isolated: bool = False,
 ) -> dict[str, Any]:
     """Measure how often the device actually reports at a requested period.
 
@@ -5380,12 +5415,13 @@ async def _report_stream_probe(
     ``period`` and ``no_change_period`` are *device-side* protocol fields
     (``ReportInfoCfg``), not client polling knobs, and both default to 1000 ms
     in pymammotion. Nothing in this integration has ever lowered them, so
-    whether the device honours a shorter period is unmeasured -- that is what
-    this answers. For a stationary mower the reported data is unchanging, so
+    whether the device honours a shorter period is unmeasured. Aggregate report
+    counts alone do not answer that question; the additive ``position_payloads``
+    channel measures the relevant payloads. For a stationary mower the reported data is unchanging, so
     ``no_change_period`` (not ``period``) is what governs the cadence at rest;
     both are exposed so the caller can hold them equal.
 
-    Arrivals are counted from ``DeviceHandle.last_report_at``, a monotonic
+    Aggregate arrivals are counted from ``DeviceHandle.last_report_at``, a monotonic
     timestamp stamped on every received ``LubaMsg``. It advances even when the
     mower is stationary and its coordinates never change, which is exactly why
     position-derived sampling could not measure this.
@@ -5394,6 +5430,7 @@ async def _report_stream_probe(
         "period_ms": period_ms,
         "no_change_period_ms": no_change_period_ms,
         "duration_seconds": duration_seconds,
+        "isolated": isolated,
         "poll_interval_ms": int(_REPORT_PROBE_POLL_SECONDS * 1000),
         "sampling_method": (
             "polled DeviceHandle.last_report_at every "
@@ -5406,6 +5443,12 @@ async def _report_stream_probe(
         "subscription_stopped": False,
         "reports_observed": 0,
         "intervals_ms": [],
+        "position_payloads": {
+            "available": False,
+            "observed": 0,
+            "intervals_ms": [],
+            "dropped_samples": 0,
+        },
         "reason": None,
     }
     handle = coordinator.manager.mower(coordinator.device_name)
@@ -5418,6 +5461,26 @@ async def _report_stream_probe(
         result["reason"] = "manual_motion_session_active"
         return result
 
+    exclusive_context = None
+    if isolated:
+        exclusive_factory = getattr(handle, "exclusive_report_subscription", None)
+        if not callable(exclusive_factory):
+            result["reason"] = "exclusive_report_subscription_unavailable"
+            return result
+        exclusive_context = exclusive_factory()
+        try:
+            await exclusive_context.__aenter__()
+        except Exception as err:  # noqa: BLE001
+            result["reason"] = (
+                f"exclusive_subscription_failed: {type(err).__name__}: {err}"
+            )
+            return result
+
+    open_position_stream = getattr(coordinator, "open_position_sample_stream", None)
+    position_stream = (
+        open_position_stream(maxsize=2048) if callable(open_position_stream) else None
+    )
+    request_started_at = time.monotonic()
     try:
         await coordinator.manager.request_iot_sync_continuous(
             coordinator.device_name,
@@ -5439,10 +5502,67 @@ async def _report_stream_probe(
             round((later - earlier) * 1000, 1)
             for earlier, later in zip(arrivals, arrivals[1:], strict=False)
         ]
+        if position_stream is not None:
+            position_samples = []
+            while True:
+                try:
+                    position_sample = position_stream.queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+                if position_sample.received_at_monotonic >= request_started_at:
+                    position_samples.append(position_sample)
+            position_arrivals = [
+                position_sample.received_at_monotonic
+                for position_sample in position_samples
+            ]
+            position_intervals = [
+                round((later - earlier) * 1000, 1)
+                for earlier, later in zip(
+                    position_arrivals, position_arrivals[1:], strict=False
+                )
+            ]
+            pipeline_latencies = [
+                round(
+                    (
+                        position_sample.published_at_monotonic
+                        - position_sample.received_at_monotonic
+                    )
+                    * 1000,
+                    3,
+                )
+                for position_sample in position_samples
+            ]
+            result["position_payloads"] = {
+                "available": True,
+                "observed": len(position_samples),
+                "valid_for_motion": sum(
+                    position_sample.valid_for_motion
+                    for position_sample in position_samples
+                ),
+                "intervals_ms": position_intervals,
+                "pipeline_latencies_ms": pipeline_latencies,
+                "dropped_samples": position_stream.dropped_samples,
+                "sequence_gaps": sum(
+                    later.sequence != earlier.sequence + 1
+                    or later.epoch != earlier.epoch
+                    for earlier, later in zip(
+                        position_samples, position_samples[1:], strict=False
+                    )
+                ),
+                "p95_interval_ms": (
+                    sorted(position_intervals)[
+                        max(math.ceil(0.95 * len(position_intervals)) - 1, 0)
+                    ]
+                    if position_intervals
+                    else None
+                ),
+            }
         result["reason"] = "completed"
     except Exception as err:  # noqa: BLE001
         result["reason"] = f"{type(err).__name__}: {err}"
     finally:
+        if position_stream is not None:
+            position_stream.close()
         # Always tear the subscription down, including on the error path: a
         # short-period stream left running is a standing BLE load.
         if result["subscription_started"]:
@@ -5453,6 +5573,8 @@ async def _report_stream_probe(
                 result["subscription_stopped"] = True
             except Exception as err:  # noqa: BLE001
                 result["stop_error"] = f"{type(err).__name__}: {err}"
+        if exclusive_context is not None:
+            await exclusive_context.__aexit__(None, None, None)
 
     intervals = result["intervals_ms"]
     if intervals:
@@ -5471,10 +5593,25 @@ async def _report_stream_probe(
         # a ceiling on the interval rather than merely a typical value.
         # Measured 2026-08-07: at every requested period from 100 to 1000 ms the
         # max gap stayed near 1.0-1.1 s, which is what a clamp looks like.
-        result["honoured_requested_period"] = (
+        result["aggregate_period_heuristic"] = (
             result["summary"]["median_ms"] <= no_change_period_ms * 1.5
             and result["summary"]["max_ms"] <= no_change_period_ms * 2.5
         )
+    position_payloads = result["position_payloads"]
+    result["honoured_requested_period"] = None
+    if not isolated:
+        result["period_classification_reason"] = "isolated_subscription_required"
+    elif period_ms != no_change_period_ms:
+        result["period_classification_reason"] = "periods_must_match"
+    elif position_payloads["observed"] < 100:
+        result["period_classification_reason"] = "fewer_than_100_position_payloads"
+    elif position_payloads["dropped_samples"] or position_payloads["sequence_gaps"]:
+        result["period_classification_reason"] = "position_evidence_gap"
+    else:
+        result["position_payload_cell_meets_period_criterion"] = (
+            position_payloads["p95_interval_ms"] <= period_ms * 1.5
+        )
+        result["period_classification_reason"] = "three_randomized_repeats_required"
     return result
 
 
@@ -6787,65 +6924,66 @@ def _in_window_telemetry_sample(
     }
 
 
-def _apply_travel_guard(
+def _apply_travel_guard(  # noqa: C901
     sample: dict[str, Any],
     *,
-    origin: tuple[float, float] | None,
+    position_sample: Any | None,
+    guard_state: dict[str, Any],
     max_travel_m: float,
-    last_report_stamp: Any,
-    stale_since: float | None,
-) -> tuple[tuple[float, float] | None, Any, float | None, bool]:
-    """Decide whether one sample should end the window, and annotate it.
+) -> bool:
+    """Apply a cumulative-distance guard using only position evidence."""
 
-    🚨 **FAILS CLOSED ON A FEED THAT IS NOT TELLING US ANYTHING.** A guard that
-    only ever compares numbers silently no-ops when the numbers stop arriving,
-    and the window then falls back to the wall clock -- which is the bound this
-    guard exists to replace. Three trip reasons, not one:
-
-    * ``max_travel_reached`` -- the intended case;
-    * ``position_unavailable`` -- non-numeric x/y, nothing to compare;
-    * ``feed_stale`` -- the report stamp has not advanced for
-      ``_PROBE_FEED_STALE_ABORT_MS``. A bit-identical feed is a DEAD FEED, not a
-      stopped mower, and this project has a name for it already
-      (``telemetry_stream_stale``).
-
-    Returns the carried state plus whether the caller should stop.
-    """
-    position = sample.get("position") or {}
-    x, y = position.get("x"), position.get("y")
-
-    if not (isinstance(x, (int, float)) and isinstance(y, (int, float))):
+    def _trip(reason: str) -> bool:
         sample["travel_guard_tripped"] = True
-        sample["travel_guard_reason"] = "position_unavailable"
-        return origin, last_report_stamp, stale_since, True
+        sample["travel_guard_reason"] = reason
+        return True
 
-    if origin is None:
-        origin = (float(x), float(y))
-    else:
-        travelled = math.hypot(x - origin[0], y - origin[1])
-        sample["travelled_from_origin_m"] = round(travelled, 4)
-        if travelled >= max_travel_m:
-            sample["travel_guard_tripped"] = True
-            sample["travel_guard_reason"] = "max_travel_reached"
-            return origin, last_report_stamp, stale_since, True
+    stream = guard_state["stream"]
+    if stream.dropped_samples != guard_state["dropped_samples"]:
+        return _trip("position_sequence_gap")
+    if position_sample is None:
+        stale_ms = (time.monotonic() - guard_state["last_receipt_at"]) * 1000.0
+        if stale_ms >= _PROBE_FEED_STALE_ABORT_MS:
+            sample["feed_stale_ms"] = round(stale_ms, 1)
+            return _trip("feed_stale")
+        return False
+    if position_sample.epoch != guard_state["epoch"]:
+        return _trip("position_epoch_changed")
+    if position_sample.sequence != guard_state["sequence"] + 1:
+        return _trip("position_sequence_gap")
+    guard_state["sequence"] = position_sample.sequence
+    guard_state["last_receipt_at"] = position_sample.received_at_monotonic
+    age_ms = (time.monotonic() - position_sample.received_at_monotonic) * 1000.0
+    if age_ms >= _PROBE_FEED_STALE_ABORT_MS:
+        sample["position_age_ms"] = round(age_ms, 1)
+        return _trip("feed_stale")
+    if not position_sample.valid_for_motion:
+        return _trip("position_unavailable")
 
-    stamp = sample.get("last_report_at_monotonic")
-    elapsed = sample["elapsed_ms"]
-    if stamp is not None and stamp == last_report_stamp:
-        stale_since = elapsed if stale_since is None else stale_since
-        if elapsed - stale_since >= _PROBE_FEED_STALE_ABORT_MS:
-            sample["travel_guard_tripped"] = True
-            sample["travel_guard_reason"] = "feed_stale"
-            sample["feed_stale_ms"] = round(elapsed - stale_since, 1)
-            return origin, last_report_stamp, stale_since, True
-    else:
-        stale_since = None
-        last_report_stamp = stamp
+    current = (float(position_sample.x), float(position_sample.y))
+    previous = guard_state["last_position"]
+    if previous is not None:
+        guard_state["cumulative_distance_m"] += math.hypot(
+            current[0] - previous[0], current[1] - previous[1]
+        )
+    guard_state["last_position"] = current
+    sample["position"] = {
+        "source": position_sample.source,
+        "x": current[0],
+        "y": current[1],
+        "toward": position_sample.toward,
+        "pos_type": position_sample.pos_type,
+        "zone_hash": position_sample.zone_hash,
+    }
+    sample["position_sequence"] = position_sample.sequence
+    sample["position_epoch"] = position_sample.epoch
+    sample["cumulative_travel_m"] = round(guard_state["cumulative_distance_m"], 4)
+    if guard_state["cumulative_distance_m"] >= max_travel_m:
+        return _trip("max_travel_reached")
+    return False
 
-    return origin, last_report_stamp, stale_since, False
 
-
-async def _capture_in_window_telemetry(
+async def _capture_in_window_telemetry(  # noqa: C901
     coordinator: MammotionReportUpdateCoordinator,
     *,
     sample_interval_ms: int,
@@ -6856,56 +6994,87 @@ async def _capture_in_window_telemetry(
     command_args: Mapping[str, Any],
     max_travel_m: float = 0.0,
     travel_abort: asyncio.Event | None = None,
+    position_stream: Any | None = None,
 ) -> list[dict[str, Any]]:
     """Poll cached telemetry concurrently for one strictly bounded window.
 
     With ``max_travel_m`` positive this also acts as the window's **distance**
-    guard: as soon as a sampled position has moved that far from the first
-    sampled position, ``travel_abort`` is set and the refresh loop stops
+    guard: as soon as cumulative consecutive position samples reach the bound,
+    ``travel_abort`` is set and the refresh loop stops
     refreshing, which brings the caller's mandatory stop forward.
 
-    ⚠️ **The guard trips late, and by a knowable amount.** It reads the same
-    ~1 Hz coordinator cache everything else does, so the position it compares
-    is up to ~1 s stale, and the refresh loop then notices within one refresh
-    interval. At the measured 0.28 m/s that is roughly **0.3 m of overshoot**
-    past ``max_travel_m``. A corridor must cover ``max_travel_m`` plus that
-    overshoot, never ``max_travel_m`` alone.
+    Position receipt age and queue continuity are checked directly. The
+    conservative historic stop/guard overshoot remains part of corridor sizing.
     """
     interval_seconds = sample_interval_ms / 1000
     deadline = window_started + duration_ms / 1000
     # This count is a second bound when test clocks or sleeps are patched.
     max_samples = math.ceil(duration_ms / sample_interval_ms) + 1
     samples: list[dict[str, Any]] = []
-    origin: tuple[float, float] | None = None
-    last_report_stamp: Any = None
-    stale_since: float | None = None
-    while len(samples) < max_samples and not stop_event.is_set():
+    owns_position_stream = False
+    if max_travel_m > 0 and position_stream is None:
+        open_position_stream = getattr(coordinator, "open_position_sample_stream", None)
+        if callable(open_position_stream):
+            position_stream = open_position_stream(maxsize=1)
+            owns_position_stream = True
+    if max_travel_m > 0 and position_stream is None:
         sample = _in_window_telemetry_sample(
             coordinator,
-            index=len(samples),
+            index=0,
             window_started=window_started,
             command=command,
             command_args=command_args,
         )
-        samples.append(sample)
-
-        if max_travel_m > 0:
-            origin, last_report_stamp, stale_since, tripped = _apply_travel_guard(
-                sample,
-                origin=origin,
-                max_travel_m=max_travel_m,
-                last_report_stamp=last_report_stamp,
-                stale_since=stale_since,
+        sample["travel_guard_tripped"] = True
+        sample["travel_guard_reason"] = "position_stream_unavailable"
+        if travel_abort is not None:
+            travel_abort.set()
+        return [sample]
+    handle = coordinator.manager.mower(coordinator.device_name)
+    latest = getattr(handle, "latest_position_sample", None)
+    guard_state = {
+        "stream": position_stream,
+        "epoch": getattr(handle, "position_epoch", 0),
+        "sequence": getattr(latest, "sequence", 0),
+        "dropped_samples": getattr(position_stream, "dropped_samples", 0),
+        "last_receipt_at": time.monotonic(),
+        "last_position": None,
+        "cumulative_distance_m": 0.0,
+    }
+    try:
+        while len(samples) < max_samples and not stop_event.is_set():
+            sample = _in_window_telemetry_sample(
+                coordinator,
+                index=len(samples),
+                window_started=window_started,
+                command=command,
+                command_args=command_args,
             )
-            if tripped:
-                if travel_abort is not None:
-                    travel_abort.set()
-                break
+            samples.append(sample)
 
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            break
-        await asyncio.sleep(min(interval_seconds, remaining))
+            if max_travel_m > 0:
+                assert position_stream is not None
+                position_sample = None
+                with contextlib.suppress(asyncio.QueueEmpty):
+                    position_sample = position_stream.queue.get_nowait()
+                tripped = _apply_travel_guard(
+                    sample,
+                    position_sample=position_sample,
+                    guard_state=guard_state,
+                    max_travel_m=max_travel_m,
+                )
+                if tripped:
+                    if travel_abort is not None:
+                        travel_abort.set()
+                    break
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            await asyncio.sleep(min(interval_seconds, remaining))
+    finally:
+        if owns_position_stream and position_stream is not None:
+            position_stream.close()
     return samples
 
 
@@ -6957,9 +7126,10 @@ def _summarize_in_window_telemetry(
     }
 
 
-async def _raw_pymammotion_motion_probe(  # noqa: C901
+async def _raw_pymammotion_motion_probe_impl(  # noqa: C901
     coordinator: MammotionReportUpdateCoordinator,
     *,
+    position_stream: Any | None,
     command: str = "send_movement",
     linear_speed: int = 400,
     angular_speed: int = 0,
@@ -7123,6 +7293,13 @@ async def _raw_pymammotion_motion_probe(  # noqa: C901
         }
         return result
 
+    if max_travel_m > 0 and position_stream is None:
+        result["reason"] = "position_stream_unavailable"
+        result["blockers"] = ["position_stream_unavailable"]
+        result["would_send"] = False
+        result["real_probe_allowed"] = False
+        return result
+
     if in_window_sample_interval_ms > 0:
         stream_duration_ms = max(10_000, duration_ms + 5_000)
         stream_result: dict[str, Any] = {
@@ -7201,6 +7378,7 @@ async def _raw_pymammotion_motion_probe(  # noqa: C901
                     command_args=command_args,
                     max_travel_m=max_travel_m,
                     travel_abort=travel_abort,
+                    position_stream=position_stream,
                 )
             )
 
@@ -7260,7 +7438,7 @@ async def _raw_pymammotion_motion_probe(  # noqa: C901
                 # the latter.
                 result["travel_guard"]["travel_at_trip_m"] = max(
                     (
-                        sample.get("travelled_from_origin_m", 0.0)
+                        sample.get("cumulative_travel_m", 0.0)
                         for sample in in_window_samples
                     ),
                     default=0.0,
@@ -7302,6 +7480,53 @@ async def _raw_pymammotion_motion_probe(  # noqa: C901
     result["final_telemetry"] = final_telemetry
     result["reason"] = "completed"
     return result
+
+
+async def _raw_pymammotion_motion_probe(  # noqa: PLR0913
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    command: str = "send_movement",
+    linear_speed: int = 400,
+    angular_speed: int = 0,
+    speed: float = 0.4,
+    prefer_ble: bool = True,
+    motion_refresh_interval_ms: int = 0,
+    in_window_sample_interval_ms: int = 0,
+    duration_ms: int = 1300,
+    max_travel_m: float = 0.0,
+    sample_delays: list[float] | tuple[float, ...] = (0, 5, 10, 20, 30, 45, 60),
+    dry_run: bool = True,
+    confirm_blades_off: bool = False,
+    confirm_clear_area: bool = False,
+) -> dict[str, Any]:
+    """Own position evidence before dispatch for a distance-guarded probe."""
+    open_position_stream = getattr(coordinator, "open_position_sample_stream", None)
+    position_stream = (
+        open_position_stream(maxsize=1)
+        if max_travel_m > 0 and not dry_run and callable(open_position_stream)
+        else None
+    )
+    try:
+        return await _raw_pymammotion_motion_probe_impl(
+            coordinator,
+            position_stream=position_stream,
+            command=command,
+            linear_speed=linear_speed,
+            angular_speed=angular_speed,
+            speed=speed,
+            prefer_ble=prefer_ble,
+            motion_refresh_interval_ms=motion_refresh_interval_ms,
+            in_window_sample_interval_ms=in_window_sample_interval_ms,
+            duration_ms=duration_ms,
+            max_travel_m=max_travel_m,
+            sample_delays=sample_delays,
+            dry_run=dry_run,
+            confirm_blades_off=confirm_blades_off,
+            confirm_clear_area=confirm_clear_area,
+        )
+    finally:
+        if position_stream is not None:
+            position_stream.close()
 
 
 # ============================================================================
@@ -7451,134 +7676,198 @@ def _continuous_motion_gates(
 
 
 async def _wait_for_fresh_continuous_origin(
-    coordinator: MammotionReportUpdateCoordinator,
+    position_stream: Any,
     *,
-    previous_report_stamp: Any,
-    previous_position: tuple[float, float] | None,
+    request_started_at: float,
+    baseline_sequence: int,
+    baseline_epoch: int,
     timeout_s: float,
 ) -> dict[str, Any]:
-    """Wait for demonstrably new valid position data without causing I/O.
-
-    ``last_report_at`` advances for every inbound message, not specifically a
-    location report. Requiring the cached position tuple to change as well is
-    intentionally fail-closed: an unrelated fresh device report cannot bless
-    a latched pre-stream position as the heading origin.
-    """
-
+    """Wait for new position evidence, including an unchanged coordinate."""
     started = time.monotonic()
-    while time.monotonic() - started < timeout_s:
-        sample = _in_window_telemetry_sample(
-            coordinator,
-            index=0,
-            window_started=started,
-            command="send_movement",
-            command_args={"linear_speed": 0, "angular_speed": 0},
-        )
-        position = sample.get("position") or {}
-        stamp = sample.get("last_report_at_monotonic")
-        x, y = position.get("x"), position.get("y")
-        if (
-            stamp is not None
-            and stamp != previous_report_stamp
-            and isinstance(x, (int, float))
-            and isinstance(y, (int, float))
-            and math.isfinite(float(x))
-            and math.isfinite(float(y))
-            and (previous_position is None or (float(x), float(y)) != previous_position)
-        ):
+    expected_sequence = baseline_sequence + 1
+    dropped_at_start = position_stream.dropped_samples
+    while (remaining := timeout_s - (time.monotonic() - started)) > 0:
+        try:
+            sample = await asyncio.wait_for(position_stream.queue.get(), remaining)
+        except TimeoutError:
+            break
+        if position_stream.dropped_samples != dropped_at_start:
             return {
-                "ok": True,
-                "sample": sample,
+                "ok": False,
+                "reason": "position_sequence_gap",
+                "sample": None,
                 "elapsed_s": time.monotonic() - started,
             }
-        await asyncio.sleep(_REPORT_PROBE_POLL_SECONDS)
-    return {"ok": False, "sample": None, "elapsed_s": time.monotonic() - started}
+        if sample.epoch != baseline_epoch:
+            return {
+                "ok": False,
+                "reason": "position_epoch_changed",
+                "sample": None,
+                "elapsed_s": time.monotonic() - started,
+            }
+        if sample.sequence != expected_sequence:
+            return {
+                "ok": False,
+                "reason": "position_sequence_gap",
+                "sample": None,
+                "elapsed_s": time.monotonic() - started,
+            }
+        expected_sequence += 1
+        if sample.received_at_monotonic < request_started_at:
+            continue
+        consumed_at = time.monotonic()
+        sample_diagnostics = {
+            "sequence": sample.sequence,
+            "epoch": sample.epoch,
+            "source": sample.source,
+            "transport": sample.transport,
+            "position": {
+                "x": sample.x,
+                "y": sample.y,
+                "toward": sample.toward,
+                "pos_type": sample.pos_type,
+                "zone_hash": sample.zone_hash,
+                "rtk_status": sample.rtk_status,
+            },
+            "valid_for_motion": sample.valid_for_motion,
+            "rejection_reason": sample.rejection_reason,
+            "receipt_to_consumption_s": max(
+                consumed_at - sample.received_at_monotonic, 0.0
+            ),
+            "pipeline_latency_s": max(
+                sample.published_at_monotonic - sample.received_at_monotonic, 0.0
+            ),
+        }
+        if not sample.valid_for_motion:
+            return {
+                "ok": False,
+                "reason": "position_invalid_for_motion",
+                "sample": sample_diagnostics,
+                "elapsed_s": consumed_at - started,
+            }
+        return {
+            "ok": True,
+            "reason": None,
+            "sample": sample_diagnostics,
+            "elapsed_s": consumed_at - started,
+        }
+    return {
+        "ok": False,
+        "reason": "fresh_origin_timeout",
+        "sample": None,
+        "elapsed_s": time.monotonic() - started,
+    }
+
+
+async def _wait_for_post_stop_position(
+    position_stream: Any,
+    *,
+    after_sequence: int,
+    epoch: int,
+    timeout_s: float,
+) -> tuple[Any | None, str | None]:
+    """Return the newest valid post-stop sample without crossing an evidence gap."""
+    dropped_at_start = position_stream.dropped_samples
+    expected_sequence = after_sequence + 1
+    try:
+        sample = await asyncio.wait_for(position_stream.queue.get(), timeout_s)
+    except TimeoutError:
+        return None, "post_stop_position_timeout"
+    if position_stream.dropped_samples != dropped_at_start:
+        return None, "position_sequence_gap"
+    if sample.epoch != epoch:
+        return None, "position_epoch_changed"
+    if sample.sequence != expected_sequence:
+        return None, "position_sequence_gap"
+    latest = sample
+    while True:
+        try:
+            candidate = position_stream.queue.get_nowait()
+        except asyncio.QueueEmpty:
+            break
+        if candidate.epoch != epoch or candidate.sequence != latest.sequence + 1:
+            return None, "position_sequence_gap"
+        latest = candidate
+    if not latest.valid_for_motion:
+        return None, "position_invalid_for_motion"
+    return latest, None
 
 
 async def _continuous_decision_loop(  # noqa: C901
-    coordinator: MammotionReportUpdateCoordinator,
+    position_stream: Any,
     *,
     route: ContinuousRoute,
     corridor_polygon: list[dict[str, float]],
     config: ContinuousControllerConfig,
     opening_position: ContinuousPoint,
-    opening_report_stamp: Any,
+    opening_sequence: int,
+    opening_epoch: int,
     window_started: float,
     sample_interval_ms: int,
     refresh_state: dict[str, Any],
     command_state: dict[str, int],
     decision_abort: asyncio.Event,
     stop_event: asyncio.Event,
+    acquisition_only: bool = False,
 ) -> list[dict[str, Any]]:
-    """Recompute steering on every fresh position arrival; never dispatch.
-
-    Reads the coordinator cache only, the same discipline
-    `_capture_in_window_telemetry` already uses, and writes the NEXT command
-    into `command_state` for the refresh loop to pick up on its own cadence.
-
-    🔑 **The corridor check here is the fix for gap 4**
-    (docs/phase2-gap-reconciliation-20260823.md): `continuous_control_decision`
-    trusts `route.contained` unconditionally and does no live geometry check of
-    its own. Every fresh position is independently tested against the real
-    frozen polygon; a breach forces a stop regardless of what the pure
-    controller decided, exactly the way an unsafe cross-track fix already
-    cannot be hidden by projection inside the pure controller itself.
-
-    🔑 **The gap-tracking here is the fix for gap 2.** `refresh_age_s` alone is
-    a point sample and is blind to a stall that resolves before the next fresh
-    arrival -- proven against real telemetry
-    (docs/phase2-gap-reconciliation-20260823.md). This loop instead tracks the
-    WORST gap between consecutive refresh completions since the previous
-    decision, matching `scripts/replay_continuous_controller_against_capture.py`
-    exactly.
-    """
+    """Consume ordered position evidence and compute the next command only."""
+    del sample_interval_ms
     decisions: list[dict[str, Any]] = []
-    interval_seconds = sample_interval_ms / 1000.0
     deadline = window_started + config.max_window_s
-    last_report_stamp = opening_report_stamp
+    last_sequence = opening_sequence
     last_position = opening_position
+    last_position_receipt = window_started
     heading_anchor = opening_position
     heading_evidence: HeadingEvidence | None = None
     cumulative_distance_m = 0.0
     consumed_completions = 0
     alignment_checked = False
+    dropped_samples = position_stream.dropped_samples
 
     while not stop_event.is_set():
-        elapsed_s = time.monotonic() - window_started
-        sample = _in_window_telemetry_sample(
-            coordinator,
-            index=len(decisions),
-            window_started=window_started,
-            command="send_movement",
-            command_args={
-                "linear_speed": command_state["linear_speed"],
-                "angular_speed": command_state["angular_speed"],
-            },
-        )
-        position = sample.get("position") or {}
-        raw_x, raw_y = position.get("x"), position.get("y")
-        stamp = sample.get("last_report_at_monotonic")
-        is_fresh = stamp is not None and stamp != last_report_stamp
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            decision_abort.set()
+            break
+        sample = None
+        with contextlib.suppress(TimeoutError):
+            sample = await asyncio.wait_for(
+                position_stream.queue.get(), min(0.1, remaining)
+            )
 
+        now = time.monotonic()
+        elapsed_s = now - window_started
         timed_out = heading_evidence is None and (
             elapsed_s >= config.max_heading_acquisition_s
         )
         heading_stale = heading_evidence is not None and (
-            elapsed_s - heading_evidence.measured_at_s > config.max_heading_age_s
+            now - last_position_receipt > config.max_heading_age_s
         )
-        valid_position = isinstance(raw_x, (int, float)) and isinstance(
-            raw_y, (int, float)
-        )
-        if (is_fresh and valid_position) or timed_out or heading_stale:
-            if is_fresh and valid_position:
-                assert isinstance(raw_x, (int, float))
-                assert isinstance(raw_y, (int, float))
-                current = ContinuousPoint(float(raw_x), float(raw_y))
+        fault_reason: str | None = None
+        telemetry_age_s = max(now - last_position_receipt, 0.0)
+        if position_stream.dropped_samples != dropped_samples:
+            fault_reason = "position_sequence_gap"
+
+        current = last_position
+        if sample is not None:
+            telemetry_age_s = max(now - sample.received_at_monotonic, 0.0)
+            if sample.epoch != opening_epoch:
+                fault_reason = "position_epoch_changed"
+            elif sample.sequence != last_sequence + 1:
+                fault_reason = "position_sequence_gap"
+            elif not sample.valid_for_motion:
+                fault_reason = "position_invalid_for_motion"
+            elif telemetry_age_s > config.max_heading_age_s:
+                fault_reason = "telemetry_stale"
+            if fault_reason is None:
+                current = ContinuousPoint(float(sample.x), float(sample.y))
                 cumulative_distance_m += math.hypot(
                     current.x - last_position.x, current.y - last_position.y
                 )
                 last_position = current
-                last_report_stamp = stamp
+                last_sequence = sample.sequence
+                last_position_receipt = sample.received_at_monotonic
                 candidate = course_from_position_chord(
                     heading_anchor,
                     current,
@@ -7588,108 +7877,120 @@ async def _continuous_decision_loop(  # noqa: C901
                 if candidate is not None:
                     heading_evidence = candidate
                     heading_anchor = current
-            else:
-                current = last_position
 
-            elapsed_ms = elapsed_s * 1000.0
-            completions = refresh_state["completions_elapsed_ms"]
-            new_completions = completions[consumed_completions:]
-            consumed_completions = len(completions)
-            previous_decision_ms = refresh_state.get("last_decision_elapsed_ms", 0.0)
-            gap_s = 0.0
-            if new_completions:
-                bounds = [previous_decision_ms, *new_completions, elapsed_ms]
-                gap_s = (
-                    max(b - a for a, b in zip(bounds, bounds[1:], strict=False))
-                    / 1000.0
-                )
-            refresh_state["last_decision_elapsed_ms"] = elapsed_ms
-            refresh_age_s = (
-                max(elapsed_ms - completions[-1], 0.0) / 1000.0
-                if completions
-                else elapsed_s
+        if sample is None and not (timed_out or heading_stale or fault_reason):
+            continue
+
+        elapsed_ms = elapsed_s * 1000.0
+        completions = refresh_state["completions_elapsed_ms"]
+        new_completions = completions[consumed_completions:]
+        consumed_completions = len(completions)
+        previous_decision_ms = refresh_state.get("last_decision_elapsed_ms", 0.0)
+        gap_s = 0.0
+        if new_completions:
+            bounds = [previous_decision_ms, *new_completions, elapsed_ms]
+            gap_s = (
+                max(b - a for a, b in zip(bounds, bounds[1:], strict=False)) / 1000.0
             )
-            observation = ContinuousObservation(
+        refresh_state["last_decision_elapsed_ms"] = elapsed_ms
+        refresh_age_s = (
+            max(elapsed_ms - completions[-1], 0.0) / 1000.0
+            if completions
+            else elapsed_s
+        )
+        observation = ContinuousObservation(
+            position=current,
+            course_heading_degrees=(
+                heading_evidence.course_heading_degrees
+                if heading_evidence is not None
+                else None
+            ),
+            telemetry_age_s=telemetry_age_s,
+            refresh_age_s=refresh_age_s,
+            elapsed_s=elapsed_s,
+            distance_travelled_m=cumulative_distance_m,
+            heading_evidence=heading_evidence,
+            refresh_max_gap_since_last_decision_s=gap_s,
+        )
+        decision = continuous_control_decision(route, observation, config)
+        if acquisition_only and heading_evidence is not None:
+            decision = dataclasses.replace(
+                decision,
+                action="stop",
+                reason="heading_acquired",
+                linear_speed=0,
+                angular_speed=0,
+            )
+        if fault_reason is not None:
+            decision = dataclasses.replace(
+                decision,
+                action="stop",
+                reason=fault_reason,
+                linear_speed=0,
+                angular_speed=0,
+            )
+        inside_corridor = _point_in_polygon(
+            {"x": current.x, "y": current.y}, corridor_polygon
+        )
+        feasibility = None
+        if (
+            heading_evidence is not None
+            and not alignment_checked
+            and decision.action != "stop"
+        ):
+            feasibility = alignment_feasibility(
+                route,
+                opening_position=opening_position,
                 position=current,
-                course_heading_degrees=(
-                    heading_evidence.course_heading_degrees
-                    if heading_evidence is not None
-                    else None
-                ),
-                telemetry_age_s=0.0,
-                refresh_age_s=refresh_age_s,
-                elapsed_s=elapsed_s,
-                distance_travelled_m=cumulative_distance_m,
                 heading_evidence=heading_evidence,
-                refresh_max_gap_since_last_decision_s=gap_s,
+                elapsed_s=elapsed_s,
+                cumulative_distance_m=cumulative_distance_m,
+                config=config,
             )
-            decision = continuous_control_decision(route, observation, config)
-            inside_corridor = _point_in_polygon(
-                {"x": current.x, "y": current.y}, corridor_polygon
-            )
-            feasibility = None
-            if (
-                heading_evidence is not None
-                and not alignment_checked
-                and decision.action != "stop"
-            ):
-                feasibility = alignment_feasibility(
-                    route,
-                    opening_position=opening_position,
-                    position=current,
-                    heading_evidence=heading_evidence,
-                    elapsed_s=elapsed_s,
-                    cumulative_distance_m=cumulative_distance_m,
-                    config=config,
-                )
-                alignment_checked = True
-                if not feasibility.feasible:
-                    decision = dataclasses.replace(
-                        decision,
-                        action="stop",
-                        reason="opening_alignment_infeasible",
-                        linear_speed=0,
-                        angular_speed=0,
-                    )
-            if not inside_corridor:
+            alignment_checked = True
+            if not feasibility.feasible:
                 decision = dataclasses.replace(
                     decision,
                     action="stop",
-                    reason="corridor_breach",
+                    reason="opening_alignment_infeasible",
                     linear_speed=0,
                     angular_speed=0,
                 )
-
-            decisions.append(
-                {
-                    "index": len(decisions),
-                    "phase": (
-                        "stopping"
-                        if decision.action == "stop"
-                        else "steering"
-                        if heading_evidence is not None and alignment_checked
-                        else "acquiring_heading"
-                    ),
-                    "elapsed_s": round(elapsed_s, 3),
-                    "cumulative_distance_m": cumulative_distance_m,
-                    "observation": dataclasses.asdict(observation),
-                    "decision": dataclasses.asdict(decision),
-                    "alignment_feasibility": (
-                        dataclasses.asdict(feasibility) if feasibility else None
-                    ),
-                    "inside_corridor": inside_corridor,
-                }
+        if not inside_corridor:
+            decision = dataclasses.replace(
+                decision,
+                action="stop",
+                reason="corridor_breach",
+                linear_speed=0,
+                angular_speed=0,
             )
-            if decision.action == "stop":
-                decision_abort.set()
-                break
-            command_state["angular_speed"] = decision.angular_speed
 
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
+        decisions.append(
+            {
+                "index": len(decisions),
+                "phase": (
+                    "stopping"
+                    if decision.action == "stop"
+                    else "steering"
+                    if heading_evidence is not None and alignment_checked
+                    else "acquiring_heading"
+                ),
+                "elapsed_s": round(elapsed_s, 3),
+                "position_sequence": last_sequence,
+                "position_epoch": opening_epoch,
+                "cumulative_distance_m": cumulative_distance_m,
+                "observation": dataclasses.asdict(observation),
+                "decision": dataclasses.asdict(decision),
+                "alignment_feasibility": (
+                    dataclasses.asdict(feasibility) if feasibility else None
+                ),
+                "inside_corridor": inside_corridor,
+            }
+        )
+        if decision.action == "stop":
             decision_abort.set()
             break
-        await asyncio.sleep(min(interval_seconds, remaining))
+        command_state["angular_speed"] = decision.angular_speed
     return decisions
 
 
@@ -7780,9 +8081,11 @@ async def _continuous_refresh_window(
     return report
 
 
-async def _continuous_motion_window(  # noqa: C901, PLR0913
+async def _continuous_motion_window_impl(  # noqa: C901, PLR0913
     coordinator: MammotionReportUpdateCoordinator,
     *,
+    position_stream: Any | None,
+    acquisition_only: bool,
     route_start: dict[str, float],
     route_target: dict[str, float],
     corridor_polygon: list[dict[str, float]],
@@ -7813,24 +8116,6 @@ async def _continuous_motion_window(  # noqa: C901, PLR0913
     other real-motion probe in this project.
     """
     before = _custom_path_telemetry_snapshot(coordinator)
-    sample_before_stream = _in_window_telemetry_sample(
-        coordinator,
-        index=0,
-        window_started=time.monotonic(),
-        command="send_movement",
-        command_args={"linear_speed": 0, "angular_speed": 0},
-    )
-    report_stamp_before_stream = sample_before_stream.get("last_report_at_monotonic")
-    position_before_stream = sample_before_stream.get("position") or {}
-    pre_x, pre_y = position_before_stream.get("x"), position_before_stream.get("y")
-    previous_position = (
-        (float(pre_x), float(pre_y))
-        if isinstance(pre_x, (int, float))
-        and isinstance(pre_y, (int, float))
-        and math.isfinite(float(pre_x))
-        and math.isfinite(float(pre_y))
-        else None
-    )
     config = ContinuousControllerConfig(
         linear_speed=linear_speed,
         max_abs_angular_speed=max_abs_angular_speed,
@@ -7868,8 +8153,18 @@ async def _continuous_motion_window(  # noqa: C901, PLR0913
     )
 
     result: dict[str, Any] = {
-        "service": SERVICE_CONTINUOUS_MOTION_WINDOW,
-        "mode": "dry_run" if dry_run else "real_continuous_motion_window",
+        "service": (
+            SERVICE_HEADING_ACQUISITION_WINDOW
+            if acquisition_only
+            else SERVICE_CONTINUOUS_MOTION_WINDOW
+        ),
+        "mode": (
+            "dry_run"
+            if dry_run
+            else "real_heading_acquisition_window"
+            if acquisition_only
+            else "real_continuous_motion_window"
+        ),
         "dry_run": dry_run,
         "route": {"start": route_start, "target": route_target},
         "corridor_polygon": corridor_polygon,
@@ -7910,6 +8205,24 @@ async def _continuous_motion_window(  # noqa: C901, PLR0913
             result["reason"] = "blocked"
         return result
 
+    # Position-event acquisition must be validated independently before any
+    # correction command is motion-authorized.  Keep the geometry dry run, but
+    # make real steering impossible through this service.
+    if not acquisition_only:
+        result["reason"] = "steering_not_motion_validated"
+        result["blockers"] = ["steering_not_motion_validated"]
+        return result
+
+    if position_stream is None:
+        result["reason"] = "position_stream_unavailable"
+        result["blockers"] = ["position_stream_unavailable"]
+        return result
+
+    handle = coordinator.manager.mower(coordinator.device_name)
+    latest_position_sample = getattr(handle, "latest_position_sample", None)
+    baseline_sequence = getattr(latest_position_sample, "sequence", 0)
+    baseline_epoch = getattr(handle, "position_epoch", 0)
+
     stream_duration_ms = max(10_000, duration_ms + 5_000)
     stream_result: dict[str, Any] = {
         "attempted": True,
@@ -7919,6 +8232,7 @@ async def _continuous_motion_window(  # noqa: C901, PLR0913
     }
     result["report_stream"] = stream_result
     try:
+        report_request_started_at = time.monotonic()
         if hasattr(coordinator, "async_start_report_stream"):
             await coordinator.async_start_report_stream(duration_ms=stream_duration_ms)
             stream_result["started"] = True
@@ -7934,15 +8248,16 @@ async def _continuous_motion_window(  # noqa: C901, PLR0913
         return result
 
     fresh_origin = await _wait_for_fresh_continuous_origin(
-        coordinator,
-        previous_report_stamp=report_stamp_before_stream,
-        previous_position=previous_position,
+        position_stream,
+        request_started_at=report_request_started_at,
+        baseline_sequence=baseline_sequence,
+        baseline_epoch=baseline_epoch,
         timeout_s=config.max_heading_acquisition_s,
     )
     result["fresh_origin"] = fresh_origin
     if not fresh_origin["ok"]:
-        result["reason"] = "fresh_origin_timeout"
-        result["blockers"] = ["fresh_origin_unavailable"]
+        result["reason"] = fresh_origin["reason"]
+        result["blockers"] = [fresh_origin["reason"]]
         return result
 
     origin_sample = fresh_origin["sample"]
@@ -8022,18 +8337,20 @@ async def _continuous_motion_window(  # noqa: C901, PLR0913
 
     decision_task = asyncio.create_task(
         _continuous_decision_loop(
-            coordinator,
+            position_stream,
             route=route,
             corridor_polygon=corridor_polygon,
             config=config,
             opening_position=opening_position,
-            opening_report_stamp=origin_sample["last_report_at_monotonic"],
+            opening_sequence=origin_sample["sequence"],
+            opening_epoch=origin_sample["epoch"],
             window_started=window_started,
             sample_interval_ms=decision_sample_interval_ms,
             refresh_state=refresh_state,
             command_state=command_state,
             decision_abort=decision_abort,
             stop_event=decision_stop,
+            acquisition_only=acquisition_only,
         )
     )
 
@@ -8070,8 +8387,147 @@ async def _continuous_motion_window(  # noqa: C901, PLR0913
     result["decisions"] = await decision_task
     result["phase"] = "stopping"
     result["would_send"] = True
-    result["reason"] = "completed"
+    if acquisition_only:
+        final_position = opening_position
+        final_sequence = origin_sample["sequence"]
+        if result["decisions"]:
+            final_observation = result["decisions"][-1]["observation"]
+            final_position = ContinuousPoint(**final_observation["position"])
+            final_sequence = result["decisions"][-1]["position_sequence"]
+        post_stop_sample, post_stop_reason = await _wait_for_post_stop_position(
+            position_stream,
+            after_sequence=final_sequence,
+            epoch=origin_sample["epoch"],
+            timeout_s=config.max_heading_age_s,
+        )
+        if post_stop_sample is not None:
+            final_position = ContinuousPoint(
+                float(post_stop_sample.x), float(post_stop_sample.y)
+            )
+            final_sequence = post_stop_sample.sequence
+        final_heading = course_from_position_chord(
+            opening_position,
+            final_position,
+            measured_at_s=time.monotonic() - window_started,
+            min_chord_m=config.min_travel_for_heading_trust_m,
+        )
+        result["post_stop_position"] = {
+            "sequence": final_sequence,
+            "epoch": origin_sample["epoch"],
+            "x": final_position.x,
+            "y": final_position.y,
+            "wait_reason": post_stop_reason,
+        }
+        result["heading_state"] = {
+            "phase": "acquired" if final_heading is not None else "unconfirmed",
+            "source": (final_heading.source if final_heading is not None else None),
+            "minimum_chord_m": config.min_travel_for_heading_trust_m,
+            "maximum_age_s": config.max_heading_age_s,
+            "evidence": (
+                dataclasses.asdict(final_heading) if final_heading is not None else None
+            ),
+        }
+    result["reason"] = (
+        result["decisions"][-1]["decision"]["reason"]
+        if result["decisions"]
+        else "completed"
+    )
     return result
+
+
+async def _continuous_motion_window(  # noqa: PLR0913
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    route_start: dict[str, float],
+    route_target: dict[str, float],
+    corridor_polygon: list[dict[str, float]],
+    linear_speed: int = 400,
+    max_abs_angular_speed: int = 180,
+    duration_ms: int = 4000,
+    motion_refresh_interval_ms: int = 200,
+    decision_sample_interval_ms: int = 100,
+    max_distance_m: float = 1.50,
+    max_cross_track_m: float = 0.30,
+    prefer_ble: bool = True,
+    dry_run: bool = True,
+    confirm_blades_off: bool = False,
+    confirm_clear_area: bool = False,
+) -> dict[str, Any]:
+    """Own and close the safety-consumer position stream for one window."""
+    return await _continuous_motion_window_impl(
+        coordinator,
+        position_stream=None,
+        acquisition_only=False,
+        route_start=route_start,
+        route_target=route_target,
+        corridor_polygon=corridor_polygon,
+        linear_speed=linear_speed,
+        max_abs_angular_speed=max_abs_angular_speed,
+        duration_ms=duration_ms,
+        motion_refresh_interval_ms=motion_refresh_interval_ms,
+        decision_sample_interval_ms=decision_sample_interval_ms,
+        max_distance_m=max_distance_m,
+        max_cross_track_m=max_cross_track_m,
+        prefer_ble=prefer_ble,
+        dry_run=dry_run,
+        confirm_blades_off=confirm_blades_off,
+        confirm_clear_area=confirm_clear_area,
+    )
+
+
+async def _heading_acquisition_window(
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    route_start: dict[str, float],
+    route_target: dict[str, float],
+    corridor_polygon: list[dict[str, float]],
+    prefer_ble: bool = True,
+    dry_run: bool = True,
+    confirm_blades_off: bool = False,
+    confirm_clear_area: bool = False,
+) -> dict[str, Any]:
+    """Acquire one position-chord heading without ever dispatching steering."""
+    open_position_stream = getattr(coordinator, "open_position_sample_stream", None)
+    position_stream = (
+        open_position_stream(maxsize=1)
+        if not dry_run and callable(open_position_stream)
+        else None
+    )
+    result: dict[str, Any] | None = None
+    try:
+        result = await _continuous_motion_window_impl(
+            coordinator,
+            position_stream=position_stream,
+            acquisition_only=True,
+            route_start=route_start,
+            route_target=route_target,
+            corridor_polygon=corridor_polygon,
+            linear_speed=400,
+            max_abs_angular_speed=180,
+            duration_ms=2000,
+            motion_refresh_interval_ms=200,
+            decision_sample_interval_ms=100,
+            max_distance_m=1.0,
+            max_cross_track_m=0.30,
+            prefer_ble=prefer_ble,
+            dry_run=dry_run,
+            confirm_blades_off=confirm_blades_off,
+            confirm_clear_area=confirm_clear_area,
+        )
+        return result  # noqa: RET504 - finally annotates report-stream teardown
+    finally:
+        if result is not None and result.get("report_stream", {}).get("attempted"):
+            stop_reports = getattr(coordinator, "async_stop_continuous_reports", None)
+            if callable(stop_reports):
+                try:
+                    await stop_reports()
+                    result["report_stream"]["stopped"] = True
+                except Exception as err:  # noqa: BLE001
+                    result["report_stream"]["stop_error"] = (
+                        f"{type(err).__name__}: {err}"
+                    )
+        if position_stream is not None:
+            position_stream.close()
 
 
 def _utc_timestamp() -> str:
@@ -17776,6 +18232,24 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             confirm_clear_area=call.data["confirm_clear_area"],
         )
 
+    async def handle_heading_acquisition_window(
+        call: ServiceCall,
+    ) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        return await _heading_acquisition_window(
+            mower.reporting_coordinator,
+            route_start=dict(call.data["route_start"]),
+            route_target=dict(call.data["route_target"]),
+            corridor_polygon=[dict(point) for point in call.data["corridor_polygon"]],
+            prefer_ble=call.data["prefer_ble"],
+            dry_run=call.data["dry_run"],
+            confirm_blades_off=call.data["confirm_blades_off"],
+            confirm_clear_area=call.data["confirm_clear_area"],
+        )
+
     async def handle_raw_pymammotion_execute_segment(
         call: ServiceCall,
     ) -> dict[str, Any]:
@@ -18076,6 +18550,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             period_ms=call.data["period_ms"],
             no_change_period_ms=call.data["no_change_period_ms"],
             duration_seconds=call.data["duration_seconds"],
+            isolated=call.data["isolated"],
         )
 
     async def handle_position_feedback_diagnostic(
@@ -18590,6 +19065,17 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             handle_continuous_motion_window,
         ),
         schema=CONTINUOUS_MOTION_WINDOW_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_HEADING_ACQUISITION_WINDOW,
+        _wrap_exclusive_manual_motion(
+            hass,
+            SERVICE_HEADING_ACQUISITION_WINDOW,
+            handle_heading_acquisition_window,
+        ),
+        schema=HEADING_ACQUISITION_WINDOW_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(

@@ -963,6 +963,20 @@
         }
       }
     },
+    "heading_acquisition_window": {
+      "name": "Heading acquisition window",
+      "description": "Bounded straight-only position-chord acquisition. Angular speed stays zero, movement stops on the first qualifying 0.15 m chord or any safety fault, and no heading token or steering command is retained.",
+      "fields": {
+        "entity_id": {"name": "Entity", "description": "Any Mammotion mower entity belonging to the device."},
+        "route_start": {"name": "Route start", "description": "Frozen map-local x/y point used for containment and heading measurement."},
+        "route_target": {"name": "Route target", "description": "Frozen map-local target defining the desired straight course."},
+        "corridor_polygon": {"name": "Corridor polygon", "description": "Pre-scanned polygon that must contain the complete 1.06 m acquisition disk."},
+        "prefer_ble": {"name": "Prefer BLE", "description": "Prefer the existing BLE transport for the bounded command."},
+        "dry_run": {"name": "Dry run", "description": "When true, report gates and geometry without commanding motion."},
+        "confirm_blades_off": {"name": "Confirm blades off", "description": "Required for a real acquisition."},
+        "confirm_clear_area": {"name": "Confirm clear area", "description": "Required for a real acquisition after confirming safe clearance."}
+      }
+    },
     "copy_task": {
       "name": "Copy task",
       "description": "Duplicate a schedule under a new id. The new task name defaults to 'Copy-N' (next free slot) when omitted.",
@@ -2103,7 +2117,7 @@
     },
     "report_stream_probe": {
       "name": "Report stream probe",
-      "description": "Read-only telemetry-rate diagnostic. Subscribes to the device report stream at a requested period, counts how often reports actually arrive, then stops the subscription. Commands no motion.",
+      "description": "Read-only telemetry-rate diagnostic. Reports aggregate traffic separately from position-payload arrivals and can suppress background report reconfiguration while it owns the test subscription. Commands no motion.",
       "fields": {
         "entity_id": {
           "name": "Entity",
@@ -2120,6 +2134,10 @@
         "duration_seconds": {
           "name": "Duration",
           "description": "How long to observe report arrivals before stopping."
+        },
+        "isolated": {
+          "name": "Isolated subscription",
+          "description": "Temporarily suppress background report-stream configuration while this diagnostic owns the requested period."
         }
       }
     },
