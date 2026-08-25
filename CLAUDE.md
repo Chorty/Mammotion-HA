@@ -28,6 +28,29 @@ this file every time.
 
 ## Current build: `0.6.4-beta72` released and installed motion-disabled
 
+🛡️ **PHASE 2 HEADING-SAFETY REMEDIATION IMPLEMENTED OFFLINE,
+2026-08-24 — supersedes the stale-heading/opening-alignment description
+below.** The corrected steering sign is retained, but `toward` is now
+diagnostic only and is never an opening control or admission input. The
+executor now uses an explicit `acquiring_heading -> steering -> stopping`
+state machine: require a fresh post-stream origin before dispatch, open with
+`angular_speed: 0`, derive course only from a fresh >=0.15 m position chord,
+and stop if acquisition or rolling heading evidence exceeds two seconds.
+One clock begins immediately before the first movement command, including
+dispatch latency, and distance is cumulative consecutive-fix path length.
+Post-acquisition alignment uses live signed geometry and remaining budgets;
+admission is capped at 0.20 m while the independent 0.30 m runtime abort stays
+in force. Experimental v1 is pinned to measured `linear_speed=400` and
+`max_abs_angular_speed=180`.
+
+🚫 **The 2026-08-24 frozen corridor cannot support blind acquisition.**
+Its live-start clearance is approximately 0.30 m; the complete required disk
+is **1.06 m** (0.28 m/s x 2.0 s + 0.50 m stop/guard overshoot), so it now
+refuses before movement. Read
+`docs/phase2-heading-safety-remediation-20260824.md`. Implementation and
+verification are offline only: no deployment, HA/BLE call, gate change, or
+physical test was performed or authorized. The gate remains disarmed.
+
 🔌 **BLE WENT STALE OVERNIGHT; A CONFIG-ENTRY RELOAD FIXED IT, 2026-08-24.**
 After the battery died overnight and the mower was put back on the dock, its
 local BLE session never came back — HA kept reporting whatever it last saw
@@ -87,8 +110,8 @@ offline only, NEITHER PHYSICALLY TESTED:**
    and the 2026-08-12 stationary night pivot — zero contradictions.
    Corrected at the final command, not the gain or the error, so
    `heading_error_degrees`/`cross_track_m`/`along_track_m` reporting is
-   unchanged. New preflight gate `opening_alignment_feasible` refuses to
-   open a window whose starting heading error cannot plausibly be nulled
+   unchanged. That commit's now-superseded opening-alignment preflight gate
+   refused to open a window whose starting heading error could not plausibly be nulled
    within the window's time/distance/cross-track budget at the measured
    turn rate — modelling BOTH the turn and defect 1's 0.15 m blind-travel
    floor, since the blind floor alone already costs 0.15 m of the 0.30 m

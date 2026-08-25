@@ -34,6 +34,7 @@ from custom_components.mammotion.services import (
     _continuous_motion_gates,
     _continuous_motion_window,
     _continuous_refresh_window,
+    _wait_for_fresh_continuous_origin,
 )
 
 ENTITY = "lawn_mower.test"
@@ -45,6 +46,12 @@ STRAIGHT_CORRIDOR = [
     {"x": 3.3, "y": -0.3},
     {"x": 3.3, "y": 0.3},
     {"x": -0.3, "y": 0.3},
+]
+ACQUISITION_CORRIDOR = [
+    {"x": -1.2, "y": -1.2},
+    {"x": 4.2, "y": -1.2},
+    {"x": 4.2, "y": 1.2},
+    {"x": -1.2, "y": 1.2},
 ]
 
 
@@ -76,6 +83,22 @@ def test_schema_defaults_match_the_v1_design() -> None:
     assert data["max_cross_track_m"] == 0.30
     assert data["confirm_blades_off"] is False
     assert data["confirm_clear_area"] is False
+
+
+@pytest.mark.parametrize(
+    ("field", "value"), [("linear_speed", 399), ("max_abs_angular_speed", 179)]
+)
+def test_v1_schema_rejects_unmeasured_command_envelopes(field: str, value: int) -> None:
+    """The public experimental schema accepts only the measured command pair."""
+    with pytest.raises(vol.Invalid):
+        _validated(**{field: value})
+
+
+def test_schema_never_allows_the_runtime_hard_abort_above_030_m() -> None:
+    """Callers may tighten the hard bound but cannot relax it above 0.30 m."""
+    assert _validated(max_cross_track_m=0.20)["max_cross_track_m"] == 0.20
+    with pytest.raises(vol.Invalid):
+        _validated(max_cross_track_m=0.31)
 
 
 def test_route_points_are_strict_xy_only() -> None:
@@ -120,6 +143,17 @@ def test_services_yaml_and_translations_agree_with_the_schema() -> None:
         "confirm_blades_off",
         "confirm_clear_area",
     }
+    assert fields_yaml["linear_speed"]["selector"]["number"] == {
+        "min": 400,
+        "max": 400,
+        "step": 1,
+    }
+    assert fields_yaml["max_abs_angular_speed"]["selector"]["number"] == {
+        "min": 180,
+        "max": 180,
+        "step": 1,
+    }
+    assert fields_yaml["max_cross_track_m"]["selector"]["number"]["max"] == 0.30
 
 
 # --- heading convention -------------------------------------------------------
@@ -183,7 +217,7 @@ def _dry_run(monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> dict[str, Any]:
             _FakeCoordinator(),
             route_start=STRAIGHT_ROUTE,
             route_target=STRAIGHT_TARGET,
-            corridor_polygon=STRAIGHT_CORRIDOR,
+            corridor_polygon=ACQUISITION_CORRIDOR,
             dry_run=True,
             **kwargs,
         )
@@ -200,7 +234,20 @@ def test_dry_run_sends_nothing_and_reports_the_full_plan(
     assert result["command_result"]["attempted"] is False
     assert result["reason"] == "dry_run"
     assert result["decisions"] == []
-    # pulse gates + 4 continuous ones (opening_alignment_feasible added 2026-08-24)
+    assert result["heading_state"] == {
+        "phase": "pending_position_chord",
+        "source": None,
+        "minimum_chord_m": 0.15,
+        "maximum_age_s": 2.0,
+    }
+    assert result["acquisition"]["required_radius_m"] == pytest.approx(1.06)
+    assert result["acquisition"]["boundary_clearance_m"] == pytest.approx(1.2)
+    assert result["remaining_budgets"] == {
+        "acquisition_s": 2.0,
+        "window_s": 4.0,
+        "distance_m": 1.5,
+    }
+    # Pulse gates plus the continuous route/acquisition gates.
     assert len(result["safety_gates"]) >= 11 + 4
 
 
@@ -291,14 +338,8 @@ def test_start_drift_gate_is_dry_run_exempt() -> None:
     assert gate["passed"] is True
 
 
-def test_a_badly_aimed_opening_is_refused_before_the_window_opens() -> None:
-    """🚨 The 2026-08-24 second defect, as a pre-dispatch refusal.
-
-    `toward: 0.0` is a course of 90.13 deg against a route running due east, so
-    the mower would have to turn ~90 deg while driving forward. Same shape as
-    `turn_budget_infeasible` in the pulsed executor: refuse before dispatch
-    rather than abort mid-run once the machine is already moving.
-    """
+def test_narrow_corridor_refuses_blind_heading_acquisition() -> None:
+    """The frozen 0.30 m corridor cannot contain the required 1.06 m disk."""
     gates = _continuous_motion_gates(
         _FakeCoordinator(),
         _snapshot(),
@@ -310,20 +351,17 @@ def test_a_badly_aimed_opening_is_refused_before_the_window_opens() -> None:
         confirm_blades_off=True,
         confirm_clear_area=True,
     )
-    gate = next(g for g in gates if g["name"] == "opening_alignment_feasible")
+    gate = next(g for g in gates if g["name"] == "blind_heading_acquisition_contained")
 
     assert gate["passed"] is False
-    assert gate["diagnostics"]["heading_error_degrees"] == pytest.approx(-90.13)
+    assert gate["diagnostics"]["required_radius_m"] == pytest.approx(1.06)
+    assert gate["diagnostics"]["boundary_clearance_m"] == pytest.approx(0.30)
     assert gate["diagnostics"]["feasible"] is False
-    assert gate["diagnostics"]["limiting_factor"] == "window_s"
 
 
-def test_a_well_aimed_opening_clears_the_alignment_gate() -> None:
-    """The gate must admit the geometry the executor exists to drive.
-
-    `toward: 90.13` mirrors to a course of 0 deg -- pointed straight down a
-    route that runs due east.
-    """
+@pytest.mark.parametrize("toward", [None, 0.0, 90.13, 270.0])
+def test_toward_never_controls_blind_acquisition(toward: float | None) -> None:
+    """A wide corridor is admitted regardless of missing or misleading toward."""
     gates = _continuous_motion_gates(
         _FakeCoordinator(),
         _snapshot(
@@ -331,7 +369,7 @@ def test_a_well_aimed_opening_clears_the_alignment_gate() -> None:
                 "source": "test",
                 "x": 0.0,
                 "y": 0.0,
-                "toward": 90.13,
+                "toward": toward,
                 "pos_type_label": "AREA_INSIDE",
                 "zone_hash": "1",
             }
@@ -339,47 +377,19 @@ def test_a_well_aimed_opening_clears_the_alignment_gate() -> None:
         route_start=STRAIGHT_ROUTE,
         route_target=STRAIGHT_TARGET,
         config=ContinuousControllerConfig(),
-        corridor_polygon=STRAIGHT_CORRIDOR,
+        corridor_polygon=ACQUISITION_CORRIDOR,
         dry_run=False,
         confirm_blades_off=True,
         confirm_clear_area=True,
     )
-    gate = next(g for g in gates if g["name"] == "opening_alignment_feasible")
+    gate = next(g for g in gates if g["name"] == "blind_heading_acquisition_contained")
 
     assert gate["passed"] is True
-    assert gate["diagnostics"]["heading_error_degrees"] == pytest.approx(0.0)
+    assert gate["diagnostics"]["boundary_clearance_m"] == pytest.approx(1.2)
 
 
-def test_a_missing_toward_refuses_the_alignment_gate() -> None:
-    """No heading at all is not permission to open a window."""
-    gates = _continuous_motion_gates(
-        _FakeCoordinator(),
-        _snapshot(
-            position={
-                "source": "test",
-                "x": 0.0,
-                "y": 0.0,
-                "toward": None,
-                "pos_type_label": "AREA_INSIDE",
-                "zone_hash": "1",
-            }
-        ),
-        route_start=STRAIGHT_ROUTE,
-        route_target=STRAIGHT_TARGET,
-        config=ContinuousControllerConfig(),
-        corridor_polygon=STRAIGHT_CORRIDOR,
-        dry_run=False,
-        confirm_blades_off=True,
-        confirm_clear_area=True,
-    )
-    gate = next(g for g in gates if g["name"] == "opening_alignment_feasible")
-
-    assert gate["passed"] is False
-    assert gate["diagnostics"] is None
-
-
-def test_the_alignment_gate_is_dry_run_exempt_but_still_reports_its_numbers() -> None:
-    """A dry run is how an operator inspects the aim BEFORE arming."""
+def test_blind_acquisition_gate_is_not_dry_run_exempt() -> None:
+    """Dry-run diagnostics show the exact blocker a real run would encounter."""
     gates = _continuous_motion_gates(
         _FakeCoordinator(),
         _snapshot(),
@@ -391,12 +401,10 @@ def test_the_alignment_gate_is_dry_run_exempt_but_still_reports_its_numbers() ->
         confirm_blades_off=False,
         confirm_clear_area=False,
     )
-    gate = next(g for g in gates if g["name"] == "opening_alignment_feasible")
+    gate = next(g for g in gates if g["name"] == "blind_heading_acquisition_contained")
 
-    assert gate["passed"] is True
-    # The verdict is still computed and surfaced, so the dry run tells the
-    # operator the real run would be refused.
-    assert gate["diagnostics"]["feasible"] is False
+    assert gate["passed"] is False
+    assert gate["diagnostics"]["required_radius_m"] == pytest.approx(1.06)
 
 
 @pytest.mark.parametrize(
@@ -474,7 +482,7 @@ def test_a_corridor_breach_forces_a_stop_the_pure_controller_did_not_request(
         target=ContinuousPoint(3.0, 0.0),
         contained=True,
     )
-    config = ContinuousControllerConfig(max_cross_track_m=30.0)
+    config = ContinuousControllerConfig(max_cross_track_m=30.0, max_distance_m=30.0)
     decisions = asyncio.run(
         _continuous_decision_loop(
             _FakeCoordinator(),
@@ -482,6 +490,8 @@ def test_a_corridor_breach_forces_a_stop_the_pure_controller_did_not_request(
             corridor_polygon=STRAIGHT_CORRIDOR,
             config=config,
             window_started=asyncio.get_event_loop().time(),
+            opening_position=ContinuousPoint(0.0, 0.0),
+            opening_report_stamp=0.0,
             sample_interval_ms=10,
             refresh_state={
                 "completions_elapsed_ms": [],
@@ -529,6 +539,8 @@ def test_a_stalled_refresh_gap_stops_the_window(
             corridor_polygon=STRAIGHT_CORRIDOR,
             config=config,
             window_started=window_started,
+            opening_position=ContinuousPoint(0.0, 0.0),
+            opening_report_stamp=0.0,
             sample_interval_ms=10,
             refresh_state=refresh_state,
             command_state={"linear_speed": 400, "angular_speed": 0},
@@ -541,6 +553,99 @@ def test_a_stalled_refresh_gap_stops_the_window(
         d for d in decisions if d["decision"]["reason"] == "refresh_cadence_stalled"
     ]
     assert stalled, [d["decision"]["reason"] for d in decisions]
+
+
+def test_fresh_origin_timeout_refuses_before_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No movement command is attempted without a post-stream origin."""
+    sent = 0
+
+    async def _no_origin(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        return {"ok": False, "sample": None, "elapsed_s": 2.0}
+
+    async def _settled(_coordinator: Any) -> dict[str, Any]:
+        return {"settled": True}
+
+    async def _unexpected_send(*_args: Any, **_kwargs: Any) -> None:
+        nonlocal sent
+        sent += 1
+
+    monkeypatch.setattr(
+        services, "_custom_path_telemetry_snapshot", lambda _c: _snapshot()
+    )
+    monkeypatch.setattr(services, "_continuous_motion_gates", lambda *_a, **_k: [])
+    monkeypatch.setattr(services, "_wait_for_fresh_continuous_origin", _no_origin)
+    monkeypatch.setattr(services, "_settle_ble_command_queue", _settled)
+    monkeypatch.setattr(services, "_send_manager_command_with_args", _unexpected_send)
+
+    result = asyncio.run(
+        _continuous_motion_window(
+            _FakeCoordinator(),
+            route_start=STRAIGHT_ROUTE,
+            route_target=STRAIGHT_TARGET,
+            corridor_polygon=ACQUISITION_CORRIDOR,
+            dry_run=False,
+            confirm_blades_off=True,
+            confirm_clear_area=True,
+        )
+    )
+
+    assert result["reason"] == "fresh_origin_timeout"
+    assert result["would_send"] is False
+    assert result["command_result"]["attempted"] is False
+    assert sent == 0
+
+
+def test_fresh_origin_wait_rejects_a_latched_report_stamp(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A cached report cannot become a fresh heading origin with age alone."""
+    monkeypatch.setattr(
+        services,
+        "_in_window_telemetry_sample",
+        lambda *_args, **_kwargs: {
+            "last_report_at_monotonic": 7.0,
+            "position": {"x": 0.0, "y": 0.0},
+        },
+    )
+
+    result = asyncio.run(
+        _wait_for_fresh_continuous_origin(
+            _FakeCoordinator(),
+            previous_report_stamp=7.0,
+            previous_position=(0.0, 0.0),
+            timeout_s=0.02,
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["sample"] is None
+
+
+def test_fresh_origin_wait_rejects_an_unrelated_report_over_latched_position(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A new non-position message cannot bless unchanged cached coordinates."""
+    monkeypatch.setattr(
+        services,
+        "_in_window_telemetry_sample",
+        lambda *_args, **_kwargs: {
+            "last_report_at_monotonic": 8.0,
+            "position": {"x": 0.0, "y": 0.0},
+        },
+    )
+
+    result = asyncio.run(
+        _wait_for_fresh_continuous_origin(
+            _FakeCoordinator(),
+            previous_report_stamp=7.0,
+            previous_position=(0.0, 0.0),
+            timeout_s=0.02,
+        )
+    )
+
+    assert result["ok"] is False
 
 
 def test_a_heading_error_updates_command_state_for_the_next_refresh(
@@ -562,7 +667,7 @@ def test_a_heading_error_updates_command_state_for_the_next_refresh(
         max_cross_track_m=30.0, heading_deadband_degrees=0.0
     )
     command_state = {"linear_speed": 400, "angular_speed": 0}
-    asyncio.run(
+    decisions = asyncio.run(
         _continuous_decision_loop(
             _FakeCoordinator(),
             route=route,
@@ -574,6 +679,8 @@ def test_a_heading_error_updates_command_state_for_the_next_refresh(
             ],
             config=config,
             window_started=asyncio.get_event_loop().time(),
+            opening_position=ContinuousPoint(0.30, 0.10),
+            opening_report_stamp=0.0,
             sample_interval_ms=10,
             refresh_state={
                 "completions_elapsed_ms": [],
@@ -584,7 +691,84 @@ def test_a_heading_error_updates_command_state_for_the_next_refresh(
             stop_event=asyncio.Event(),
         )
     )
+    assert decisions[0]["phase"] == "acquiring_heading"
+    assert any(decision["phase"] == "steering" for decision in decisions)
     assert command_state["angular_speed"] != 0
+
+
+def test_cumulative_arc_length_not_origin_chord_consumes_distance_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every consecutive segment consumes distance, including a bent path."""
+    _moving_snapshot(
+        monkeypatch,
+        [(0.20, 0.0, 0.0), (0.20, 0.20, 0.0), (0.40, 0.20, 0.0)],
+    )
+    route = ContinuousRoute(
+        start=ContinuousPoint(0.0, 0.0),
+        target=ContinuousPoint(3.0, 0.0),
+        contained=True,
+    )
+    decisions = asyncio.run(
+        _continuous_decision_loop(
+            _FakeCoordinator(),
+            route=route,
+            corridor_polygon=ACQUISITION_CORRIDOR,
+            config=ContinuousControllerConfig(
+                max_distance_m=0.50, max_admission_cross_track_m=0.30
+            ),
+            window_started=asyncio.get_event_loop().time(),
+            opening_position=ContinuousPoint(0.0, 0.0),
+            opening_report_stamp=0.0,
+            sample_interval_ms=10,
+            refresh_state={
+                "completions_elapsed_ms": [],
+                "last_decision_elapsed_ms": 0.0,
+            },
+            command_state={"linear_speed": 400, "angular_speed": 0},
+            decision_abort=asyncio.Event(),
+            stop_event=asyncio.Event(),
+        )
+    )
+
+    assert decisions[-1]["decision"]["reason"] == "distance_limit_reached"
+    assert decisions[-1]["cumulative_distance_m"] == pytest.approx(0.60)
+    assert decisions[-1]["cumulative_distance_m"] > (0.40**2 + 0.20**2) ** 0.5
+
+
+def test_heading_evidence_age_stops_when_position_refresh_stalls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Repeated coordinates cannot refresh the last qualifying course chord."""
+    _moving_snapshot(monkeypatch, [(0.20, 0.0, 0.0)])
+    route = ContinuousRoute(
+        start=ContinuousPoint(0.0, 0.0),
+        target=ContinuousPoint(3.0, 0.0),
+        contained=True,
+    )
+    decisions = asyncio.run(
+        _continuous_decision_loop(
+            _FakeCoordinator(),
+            route=route,
+            corridor_polygon=ACQUISITION_CORRIDOR,
+            config=ContinuousControllerConfig(max_heading_age_s=0.05),
+            window_started=asyncio.get_event_loop().time(),
+            opening_position=ContinuousPoint(0.0, 0.0),
+            opening_report_stamp=0.0,
+            sample_interval_ms=10,
+            refresh_state={
+                "completions_elapsed_ms": [],
+                "last_decision_elapsed_ms": 0.0,
+            },
+            command_state={"linear_speed": 400, "angular_speed": 0},
+            decision_abort=asyncio.Event(),
+            stop_event=asyncio.Event(),
+        )
+    )
+
+    assert decisions[-1]["decision"]["reason"] == "heading_evidence_stale"
+    assert decisions[-1]["decision"]["linear_speed"] == 0
+    assert decisions[-1]["decision"]["angular_speed"] == 0
 
 
 def test_a_standing_mower_never_has_a_correction_written_into_command_state(
@@ -609,7 +793,9 @@ def test_a_standing_mower_never_has_a_correction_written_into_command_state(
     )
     # toward=0.0 -> course 90.13 deg against a route running due east: a ~90 deg
     # error, which without the gate clamps straight to -max_abs_angular_speed.
-    config = ContinuousControllerConfig(max_cross_track_m=30.0)
+    config = ContinuousControllerConfig(
+        max_cross_track_m=30.0, max_heading_acquisition_s=0.05
+    )
     command_state = {"linear_speed": 400, "angular_speed": 0}
     decisions = asyncio.run(
         _continuous_decision_loop(
@@ -618,6 +804,8 @@ def test_a_standing_mower_never_has_a_correction_written_into_command_state(
             corridor_polygon=STRAIGHT_CORRIDOR,
             config=config,
             window_started=asyncio.get_event_loop().time(),
+            opening_position=ContinuousPoint(0.0, 0.0),
+            opening_report_stamp=0.0,
             sample_interval_ms=10,
             refresh_state={
                 "completions_elapsed_ms": [],
@@ -635,8 +823,8 @@ def test_a_standing_mower_never_has_a_correction_written_into_command_state(
     # No decision of ANY kind ever asks for a correction here.
     assert all(d["decision"]["angular_speed"] == 0 for d in decisions)
     assert all(d["heading_confirmed_by_motion"] is False for d in driving)
-    # The error is still measured and recorded -- withheld, not hidden.
-    assert all(abs(d["heading_error_degrees"]) > 45.0 for d in driving)
+    assert all(d["heading_error_degrees"] is None for d in driving)
+    assert decisions[-1]["decision"]["reason"] == "heading_acquisition_timeout"
 
 
 # --- the refresh loop, isolated from the decision loop --------------------------

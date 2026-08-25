@@ -829,11 +829,13 @@ raw_pymammotion_motion_probe:
 continuous_motion_window:
   description: >-
     The Phase 2 executor. Runs or simulates one continuous straight-line
-    steering window, correcting on measured heading at every ~1 Hz position
-    arrival. corridor_polygon must be pre-scanned and margin-verified offline
-    (scripts/freeze_phase1_corridors.py, scripts/scan_contained_bearings.py);
-    this service never scans or freezes one itself. dry_run defaults true and
-    sends nothing.
+    steering window. It acquires and refreshes heading only from fresh position
+    chords of at least 0.15 m; toward is diagnostic only. corridor_polygon must
+    be pre-scanned, margin-verified offline, and provide at least 1.06 m of
+    boundary clearance around the live start
+    (scripts/freeze_phase1_corridors.py, scripts/scan_contained_bearings.py).
+    This service never scans or freezes one itself. dry_run defaults true and
+    sends nothing. Experimental v1 is fixed at linear 400 / angular bound 180.
   fields:
     entity_id:
       required: true
@@ -857,14 +859,14 @@ continuous_motion_window:
     corridor_polygon:
       required: true
       example:
-        - x: -0.2
-          y: -0.3
-        - x: 1.2
-          y: -0.3
-        - x: 1.2
-          y: 0.3
-        - x: -0.2
-          y: 0.3
+        - x: -1.1
+          y: -1.1
+        - x: 2.1
+          y: -1.1
+        - x: 2.1
+          y: 1.1
+        - x: -1.1
+          y: 1.1
       selector:
         object:
     linear_speed:
@@ -872,15 +874,17 @@ continuous_motion_window:
       default: 400
       selector:
         number:
-          min: 1
-          max: 1000
+          min: 400
+          max: 400
+          step: 1
     max_abs_angular_speed:
       required: false
       default: 180
       selector:
         number:
-          min: 0
-          max: 1000
+          min: 180
+          max: 180
+          step: 1
     duration_ms:
       required: false
       default: 4000
@@ -920,7 +924,7 @@ continuous_motion_window:
       selector:
         number:
           min: 0.05
-          max: 1.0
+          max: 0.30
           step: 0.05
           unit_of_measurement: m
     prefer_ble:

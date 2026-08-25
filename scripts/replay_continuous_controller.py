@@ -29,6 +29,7 @@ _SPEC.loader.exec_module(_CONTROLLER)
 ContinuousControllerConfig = _CONTROLLER.ContinuousControllerConfig
 ContinuousObservation = _CONTROLLER.ContinuousObservation
 ContinuousRoute = _CONTROLLER.ContinuousRoute
+HeadingEvidence = _CONTROLLER.HeadingEvidence
 Point = _CONTROLLER.Point
 continuous_control_decision = _CONTROLLER.continuous_control_decision
 
@@ -45,35 +46,54 @@ def _default_scenario() -> dict[str, Any]:
         "observations": [
             {
                 "position": {"x": 0.0, "y": 0.0},
-                "course_heading_degrees": 10.0,
+                "course_heading_degrees": None,
                 "telemetry_age_s": 0.0,
                 "refresh_age_s": 0.0,
                 "elapsed_s": 0.0,
                 "distance_travelled_m": 0.0,
+                "heading_evidence": None,
             },
             {
                 "position": {"x": 0.27, "y": 0.04},
-                "course_heading_degrees": 7.0,
+                "course_heading_degrees": 8.426969,
                 "telemetry_age_s": 0.1,
                 "refresh_age_s": 0.2,
                 "elapsed_s": 1.0,
                 "distance_travelled_m": 0.27,
+                "heading_evidence": {
+                    "course_heading_degrees": 8.426969,
+                    "measured_at_s": 1.0,
+                    "chord_m": 0.273,
+                    "uncertainty_degrees": 0.92,
+                },
             },
             {
                 "position": {"x": 0.55, "y": 0.05},
-                "course_heading_degrees": 3.0,
+                "course_heading_degrees": 2.045408,
                 "telemetry_age_s": 0.1,
                 "refresh_age_s": 0.2,
                 "elapsed_s": 2.0,
                 "distance_travelled_m": 0.55,
+                "heading_evidence": {
+                    "course_heading_degrees": 2.045408,
+                    "measured_at_s": 2.0,
+                    "chord_m": 0.280,
+                    "uncertainty_degrees": 0.90,
+                },
             },
             {
                 "position": {"x": 0.82, "y": 0.03},
-                "course_heading_degrees": 1.0,
+                "course_heading_degrees": -4.236395,
                 "telemetry_age_s": 2.1,
                 "refresh_age_s": 0.2,
                 "elapsed_s": 3.0,
                 "distance_travelled_m": 0.82,
+                "heading_evidence": {
+                    "course_heading_degrees": -4.236395,
+                    "measured_at_s": 3.0,
+                    "chord_m": 0.271,
+                    "uncertainty_degrees": 0.93,
+                },
             },
         ],
     }
@@ -97,6 +117,10 @@ def replay_scenario(raw: dict[str, Any]) -> dict[str, Any]:
     for index, observation_raw in enumerate(raw["observations"], start=1):
         observation_data = dict(observation_raw)
         observation_data["position"] = _point(observation_data["position"])
+        if observation_data.get("heading_evidence") is not None:
+            observation_data["heading_evidence"] = HeadingEvidence(
+                **observation_data["heading_evidence"]
+            )
         observation = ContinuousObservation(**observation_data)
         decision = continuous_control_decision(route, observation, config)
         steps.append(

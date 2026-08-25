@@ -20,8 +20,8 @@ refresh/telemetry stop. A distant target keeps every stop in the replay
 attributable to the constant being tested.
 
 Convention: `course_heading_degrees` is map-local, `atan2(dy, dx)` CCW from
-+x -- the same frame as `Point.x/y` -- derived from the compass mirror
-`90.13 - toward`, not the raw `toward` field.
++x -- the same frame as `Point.x/y` -- derived only from fresh >=0.15 m
+position chords. The capture's `toward` field is deliberately ignored.
 """
 
 from __future__ import annotations
@@ -49,34 +49,40 @@ _SPEC.loader.exec_module(_CONTROLLER)
 ContinuousControllerConfig = _CONTROLLER.ContinuousControllerConfig
 ContinuousObservation = _CONTROLLER.ContinuousObservation
 ContinuousRoute = _CONTROLLER.ContinuousRoute
+HeadingEvidence = _CONTROLLER.HeadingEvidence
 Point = _CONTROLLER.Point
+course_from_position_chord = _CONTROLLER.course_from_position_chord
 continuous_control_decision = _CONTROLLER.continuous_control_decision
 
-MIRROR_SUM_DEGREES = 90.13
 # How far beyond the observed path to place the target, so target-completion
 # logic never fires during the replay window.
 TARGET_OVERSHOOT_M = 10.0
 
 
 def _arrivals(capture_path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Load a capture and keep one sample per distinct position/toward arrival."""
+    """Load a capture and keep one sample per distinct position arrival."""
     raw = json.loads(capture_path.read_text())
     body = raw.get("service_response", raw)
-    samples = body["in_window_telemetry"]["samples"]
+    body = body.get("run", body)
+    if "in_window_telemetry" in body:
+        samples = body["in_window_telemetry"]["samples"]
+    else:
+        samples = [
+            {
+                "elapsed_ms": float(decision["elapsed_s"]) * 1000.0,
+                "position": decision["observation"]["position"],
+            }
+            for decision in body.get("decisions", [])
+        ]
     out: list[dict[str, Any]] = []
     seen = None
     for sample in samples:
         position = sample["position"]
-        key = (position["x"], position["y"], position["toward"])
+        key = (position["x"], position["y"])
         if key != seen:
             out.append(sample)
             seen = key
     return out, body
-
-
-def _course_heading(toward: float) -> float:
-    """Map-local course heading from the compass mirror."""
-    return (MIRROR_SUM_DEGREES - toward) % 360.0
 
 
 def _refresh_age_s(elapsed_ms: float, completions_ms: list[float]) -> float:
@@ -114,8 +120,19 @@ def build_scenario(capture_path: Path) -> dict[str, Any]:
         raise ValueError(f"{capture_path}: no refresh_write_completions_elapsed_ms")
 
     origin = arrivals[0]["position"]
-    heading0 = _course_heading(origin["toward"])
-    radians0 = math.radians(heading0)
+    origin_point = Point(float(origin["x"]), float(origin["y"]))
+    first_evidence = None
+    for sample in arrivals[1:]:
+        first_evidence = course_from_position_chord(
+            origin_point,
+            Point(float(sample["position"]["x"]), float(sample["position"]["y"])),
+            measured_at_s=float(sample["elapsed_ms"]) / 1000.0,
+        )
+        if first_evidence is not None:
+            break
+    if first_evidence is None:
+        raise ValueError(f"{capture_path}: no informative >=0.15 m position chord")
+    radians0 = math.radians(first_evidence.course_heading_degrees)
     target = {
         "x": origin["x"] + math.cos(radians0) * TARGET_OVERSHOOT_M,
         "y": origin["y"] + math.sin(radians0) * TARGET_OVERSHOOT_M,
@@ -123,13 +140,33 @@ def build_scenario(capture_path: Path) -> dict[str, Any]:
 
     observations = []
     previous_elapsed_ms = arrivals[0]["elapsed_ms"]
+    previous_position = origin_point
+    heading_anchor = origin_point
+    heading_evidence = None
+    cumulative_distance_m = 0.0
     for arrival in arrivals[1:]:
         position = arrival["position"]
-        distance = math.hypot(position["x"] - origin["x"], position["y"] - origin["y"])
+        current = Point(float(position["x"]), float(position["y"]))
+        cumulative_distance_m += math.hypot(
+            current.x - previous_position.x, current.y - previous_position.y
+        )
+        previous_position = current
+        candidate = course_from_position_chord(
+            heading_anchor,
+            current,
+            measured_at_s=float(arrival["elapsed_ms"]) / 1000.0,
+        )
+        if candidate is not None:
+            heading_evidence = candidate
+            heading_anchor = current
         observations.append(
             {
                 "position": {"x": position["x"], "y": position["y"]},
-                "course_heading_degrees": _course_heading(position["toward"]),
+                "course_heading_degrees": (
+                    heading_evidence.course_heading_degrees
+                    if heading_evidence is not None
+                    else None
+                ),
                 # Decisions are made AT each fresh arrival, so the position fix
                 # backing this decision is fresh by construction.
                 "telemetry_age_s": 0.0,
@@ -138,7 +175,10 @@ def build_scenario(capture_path: Path) -> dict[str, Any]:
                     previous_elapsed_ms, arrival["elapsed_ms"], completions_ms
                 ),
                 "elapsed_s": arrival["elapsed_ms"] / 1000.0,
-                "distance_travelled_m": distance,
+                "distance_travelled_m": cumulative_distance_m,
+                "heading_evidence": (
+                    asdict(heading_evidence) if heading_evidence is not None else None
+                ),
             }
         )
         previous_elapsed_ms = arrival["elapsed_ms"]
@@ -165,6 +205,10 @@ def replay(scenario: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
     for index, raw_observation in enumerate(scenario["observations"], start=1):
         observation_data = dict(raw_observation)
         observation_data["position"] = Point(**observation_data["position"])
+        if observation_data.get("heading_evidence") is not None:
+            observation_data["heading_evidence"] = HeadingEvidence(
+                **observation_data["heading_evidence"]
+            )
         observation = ContinuousObservation(**observation_data)
         decision = continuous_control_decision(route, observation, settings)
         steps.append(

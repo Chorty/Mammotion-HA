@@ -41,8 +41,12 @@ from .continuous_controller import (
     ContinuousControllerConfig,
     ContinuousObservation,
     ContinuousRoute,
+    HeadingEvidence,
     alignment_feasibility,
+    blind_acquisition_feasibility,
     continuous_control_decision,
+    course_from_position_chord,
+    polygon_is_valid,
 )
 from .continuous_controller import (
     Point as ContinuousPoint,
@@ -971,14 +975,15 @@ CONTINUOUS_MOTION_WINDOW_SCHEMA = vol.Schema(
         # A closed or open ring of >= 3 points; the last edge back to the first
         # point is always implied (`_point_in_polygon`).
         vol.Required("corridor_polygon"): [_CONTINUOUS_MOTION_POINT_SCHEMA],
+        # Phase 2 v1 is validated only at this exact command.
         vol.Optional("linear_speed", default=400): vol.All(
-            vol.Coerce(int), vol.Range(min=1, max=1000)
+            vol.Coerce(int), vol.In([400])
         ),
         # v1 is straight-line only (docs/phase2-continuous-motion-design-20260823.md);
         # this bounds the STEERING correction the pure controller may request,
         # it does not request a turn on its own.
         vol.Optional("max_abs_angular_speed", default=180): vol.All(
-            vol.Coerce(int), vol.Range(min=0, max=1000)
+            vol.Coerce(int), vol.In([180])
         ),
         # The plan's own v1 cap is 4 s / 1.5 m
         # (docs/continuous-motion-feasibility-plan-20260821.md); 8000 is the
@@ -997,7 +1002,7 @@ CONTINUOUS_MOTION_WINDOW_SCHEMA = vol.Schema(
             vol.Coerce(float), vol.Range(min=0.10, max=3.0)
         ),
         vol.Optional("max_cross_track_m", default=0.30): vol.All(
-            vol.Coerce(float), vol.Range(min=0.05, max=1.0)
+            vol.Coerce(float), vol.Range(min=0.05, max=0.30)
         ),
         vol.Optional("prefer_ble", default=True): cv.boolean,
         vol.Optional("dry_run", default=True): cv.boolean,
@@ -7359,7 +7364,8 @@ def _continuous_motion_gates(
             confirm_clear_area=confirm_clear_area,
         )
     )
-    corridor_valid = len(corridor_polygon) >= 3
+    corridor_points = [ContinuousPoint(**point) for point in corridor_polygon]
+    corridor_valid = polygon_is_valid(corridor_points)
     position = before.get("position", {}) or {}
     live_x, live_y = position.get("x"), position.get("y")
     drift = (
@@ -7396,49 +7402,32 @@ def _continuous_motion_gates(
         }
     )
 
-    # 🚨 **The 2026-08-24 alignment gate.** The first physical Phase 2 run
-    # opened 46.639 deg misaligned and was already lost: the mower drives
-    # forward for the whole time it is turning, so nulling that error sweeps it
-    # 0.55 m off the line against a 0.30 m bound. Correcting the steering sign
-    # alone does NOT rescue that geometry -- it only makes the divergence
-    # converge slowly enough to lose in a different way.
-    #
-    # This is the same shape as `turn_budget_infeasible` and
-    # `linear_budget_insufficient_for_segment` in the pulsed executor: a
-    # pre-dispatch refusal when the geometry cannot be served by the budget,
-    # rather than a mid-run abort after the machine is already moving.
-    # ⚠️ It is a PREFLIGHT gate only, and it is never re-evaluated inside the
-    # window -- the cross-track hard abort remains the runtime protection.
-    # ⚠️ Skipped on a dry run only for the same reason `start_drift_within_bound`
-    # is: a dry run is how an operator inspects the numbers BEFORE arming, and
-    # it reports the full diagnostics either way.
-    toward = position.get("toward")
+    # No stationary telemetry value is accepted as an opening course. Before a
+    # real window may move straight to acquire a position-chord bearing, EVERY
+    # possible ray must fit inside the frozen corridor through the 2 s timeout
+    # plus the banked 0.50 m stopping/guard overshoot.
     feasibility = (
-        alignment_feasibility(
-            ContinuousRoute(
-                start=ContinuousPoint(**route_start),
-                target=ContinuousPoint(**route_target),
-            ),
-            _continuous_course_heading(float(toward)),
+        blind_acquisition_feasibility(
+            ContinuousPoint(float(live_x), float(live_y)),
+            corridor_points,
             config,
         )
-        if isinstance(toward, (int, float))
+        if isinstance(live_x, (int, float))
+        and isinstance(live_y, (int, float))
+        and corridor_valid
         else None
     )
     gates.append(
         {
-            "name": "opening_alignment_feasible",
-            "passed": dry_run or (feasibility is not None and feasibility.feasible),
+            "name": "blind_heading_acquisition_contained",
+            "passed": feasibility is not None and feasibility.feasible,
             "detail": (
-                "The heading error at the window's start must be nullable "
-                "inside the window's own time, distance and cross-track "
-                "budgets. The mower drives forward the whole time, so a large "
-                "opening error sweeps it off the line before it can align: "
-                f"{config.min_travel_for_heading_trust_m} m straight before "
-                "steering is trusted at all (blind*sin error), then the turn "
-                f"itself at {config.min_turn_rate_deg_per_s} deg/s and "
-                f"{config.nominal_speed_mps} m/s ((v/w)*(1-cos error)). "
-                "Aim the mower at the target first."
+                "No opening toward value is trusted. A complete disk around "
+                "the live start must fit the frozen corridor before the mower "
+                "may drive straight to derive a fresh position-chord course: "
+                f"{config.max_safety_speed_mps} m/s for "
+                f"{config.max_heading_acquisition_s} s plus "
+                f"{config.stop_overshoot_m} m stopping/guard overshoot."
             ),
             "diagnostics": (
                 dataclasses.asdict(feasibility) if feasibility is not None else None
@@ -7448,12 +7437,59 @@ def _continuous_motion_gates(
     return gates
 
 
-async def _continuous_decision_loop(
+async def _wait_for_fresh_continuous_origin(
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    previous_report_stamp: Any,
+    previous_position: tuple[float, float] | None,
+    timeout_s: float,
+) -> dict[str, Any]:
+    """Wait for demonstrably new valid position data without causing I/O.
+
+    ``last_report_at`` advances for every inbound message, not specifically a
+    location report. Requiring the cached position tuple to change as well is
+    intentionally fail-closed: an unrelated fresh device report cannot bless
+    a latched pre-stream position as the heading origin.
+    """
+
+    started = time.monotonic()
+    while time.monotonic() - started < timeout_s:
+        sample = _in_window_telemetry_sample(
+            coordinator,
+            index=0,
+            window_started=started,
+            command="send_movement",
+            command_args={"linear_speed": 0, "angular_speed": 0},
+        )
+        position = sample.get("position") or {}
+        stamp = sample.get("last_report_at_monotonic")
+        x, y = position.get("x"), position.get("y")
+        if (
+            stamp is not None
+            and stamp != previous_report_stamp
+            and isinstance(x, (int, float))
+            and isinstance(y, (int, float))
+            and math.isfinite(float(x))
+            and math.isfinite(float(y))
+            and (previous_position is None or (float(x), float(y)) != previous_position)
+        ):
+            return {
+                "ok": True,
+                "sample": sample,
+                "elapsed_s": time.monotonic() - started,
+            }
+        await asyncio.sleep(_REPORT_PROBE_POLL_SECONDS)
+    return {"ok": False, "sample": None, "elapsed_s": time.monotonic() - started}
+
+
+async def _continuous_decision_loop(  # noqa: C901
     coordinator: MammotionReportUpdateCoordinator,
     *,
     route: ContinuousRoute,
     corridor_polygon: list[dict[str, float]],
     config: ContinuousControllerConfig,
+    opening_position: ContinuousPoint,
+    opening_report_stamp: Any,
     window_started: float,
     sample_interval_ms: int,
     refresh_state: dict[str, Any],
@@ -7486,11 +7522,16 @@ async def _continuous_decision_loop(
     decisions: list[dict[str, Any]] = []
     interval_seconds = sample_interval_ms / 1000.0
     deadline = window_started + config.max_window_s
-    origin: tuple[float, float] | None = None
-    last_report_stamp: Any = None
+    last_report_stamp = opening_report_stamp
+    last_position = opening_position
+    heading_anchor = opening_position
+    heading_evidence: HeadingEvidence | None = None
+    cumulative_distance_m = 0.0
     consumed_completions = 0
+    alignment_checked = False
 
     while not stop_event.is_set():
+        elapsed_s = time.monotonic() - window_started
         sample = _in_window_telemetry_sample(
             coordinator,
             index=len(decisions),
@@ -7502,27 +7543,42 @@ async def _continuous_decision_loop(
             },
         )
         position = sample.get("position") or {}
-        raw_x, raw_y, raw_toward = (
-            position.get("x"),
-            position.get("y"),
-            position.get("toward"),
-        )
+        raw_x, raw_y = position.get("x"), position.get("y")
         stamp = sample.get("last_report_at_monotonic")
         is_fresh = stamp is not None and stamp != last_report_stamp
-        if (
-            is_fresh
-            and isinstance(raw_x, (int, float))
-            and isinstance(raw_y, (int, float))
-            and isinstance(raw_toward, (int, float))
-        ):
-            x, y, toward = float(raw_x), float(raw_y), float(raw_toward)
-            last_report_stamp = stamp
-            if origin is None:
-                origin = (x, y)
-            elapsed_s = time.monotonic() - window_started
-            elapsed_ms = elapsed_s * 1000.0
-            distance = math.hypot(x - origin[0], y - origin[1])
 
+        timed_out = heading_evidence is None and (
+            elapsed_s >= config.max_heading_acquisition_s
+        )
+        heading_stale = heading_evidence is not None and (
+            elapsed_s - heading_evidence.measured_at_s > config.max_heading_age_s
+        )
+        valid_position = isinstance(raw_x, (int, float)) and isinstance(
+            raw_y, (int, float)
+        )
+        if (is_fresh and valid_position) or timed_out or heading_stale:
+            if is_fresh and valid_position:
+                assert isinstance(raw_x, (int, float))
+                assert isinstance(raw_y, (int, float))
+                current = ContinuousPoint(float(raw_x), float(raw_y))
+                cumulative_distance_m += math.hypot(
+                    current.x - last_position.x, current.y - last_position.y
+                )
+                last_position = current
+                last_report_stamp = stamp
+                candidate = course_from_position_chord(
+                    heading_anchor,
+                    current,
+                    measured_at_s=elapsed_s,
+                    min_chord_m=config.min_travel_for_heading_trust_m,
+                )
+                if candidate is not None:
+                    heading_evidence = candidate
+                    heading_anchor = current
+            else:
+                current = last_position
+
+            elapsed_ms = elapsed_s * 1000.0
             completions = refresh_state["completions_elapsed_ms"]
             new_completions = completions[consumed_completions:]
             consumed_completions = len(completions)
@@ -7535,39 +7591,54 @@ async def _continuous_decision_loop(
                     / 1000.0
                 )
             refresh_state["last_decision_elapsed_ms"] = elapsed_ms
-            age_s = (
+            refresh_age_s = (
                 max(elapsed_ms - completions[-1], 0.0) / 1000.0
                 if completions
                 else elapsed_s
             )
-
             observation = ContinuousObservation(
-                position=ContinuousPoint(x=float(x), y=float(y)),
-                course_heading_degrees=_continuous_course_heading(float(toward)),
-                # Decisions fire AT each fresh arrival, so the fix behind this
-                # decision is fresh by construction -- matches
-                # scripts/replay_continuous_controller_against_capture.py.
+                position=current,
+                course_heading_degrees=(
+                    heading_evidence.course_heading_degrees
+                    if heading_evidence is not None
+                    else None
+                ),
                 telemetry_age_s=0.0,
-                refresh_age_s=age_s,
+                refresh_age_s=refresh_age_s,
                 elapsed_s=elapsed_s,
-                distance_travelled_m=distance,
+                distance_travelled_m=cumulative_distance_m,
+                heading_evidence=heading_evidence,
                 refresh_max_gap_since_last_decision_s=gap_s,
-                # ⚠️ Not independently re-checked mid-window: verified once at
-                # preflight (`_continuous_motion_gates`), and BLE health
-                # DURING the window is what refresh_max_gap_since_last_decision_s
-                # exists to police instead. `_ble_link_liveness` does I/O and is
-                # deliberately not called from this tight polling loop, the same
-                # reason `_in_window_telemetry_sample`'s own docstring gives.
-                # ⚠️ rtk_fixed similarly stays at the dataclass default: no
-                # existing gate in this project's pulsed-executor family
-                # (`_manual_velocity_pulse_gates`) checks RTK either, so this
-                # matches that established risk posture rather than inventing
-                # new telemetry plumbing beyond it.
             )
             decision = continuous_control_decision(route, observation, config)
-
-            inside_corridor = _point_in_polygon({"x": x, "y": y}, corridor_polygon)
-            if not inside_corridor and decision.action != "stop":
+            inside_corridor = _point_in_polygon(
+                {"x": current.x, "y": current.y}, corridor_polygon
+            )
+            feasibility = None
+            if (
+                heading_evidence is not None
+                and not alignment_checked
+                and decision.action != "stop"
+            ):
+                feasibility = alignment_feasibility(
+                    route,
+                    opening_position=opening_position,
+                    position=current,
+                    heading_evidence=heading_evidence,
+                    elapsed_s=elapsed_s,
+                    cumulative_distance_m=cumulative_distance_m,
+                    config=config,
+                )
+                alignment_checked = True
+                if not feasibility.feasible:
+                    decision = dataclasses.replace(
+                        decision,
+                        action="stop",
+                        reason="opening_alignment_infeasible",
+                        linear_speed=0,
+                        angular_speed=0,
+                    )
+            if not inside_corridor:
                 decision = dataclasses.replace(
                     decision,
                     action="stop",
@@ -7579,17 +7650,26 @@ async def _continuous_decision_loop(
             decisions.append(
                 {
                     "index": len(decisions),
+                    "phase": (
+                        "stopping"
+                        if decision.action == "stop"
+                        else "steering"
+                        if heading_evidence is not None and alignment_checked
+                        else "acquiring_heading"
+                    ),
                     "elapsed_s": round(elapsed_s, 3),
+                    "cumulative_distance_m": cumulative_distance_m,
                     "observation": dataclasses.asdict(observation),
                     "decision": dataclasses.asdict(decision),
+                    "alignment_feasibility": (
+                        dataclasses.asdict(feasibility) if feasibility else None
+                    ),
                     "inside_corridor": inside_corridor,
                 }
             )
-
             if decision.action == "stop":
                 decision_abort.set()
                 break
-            # linear_speed is fixed for the whole window; only angular varies.
             command_state["angular_speed"] = decision.angular_speed
 
         remaining = deadline - time.monotonic()
@@ -7720,9 +7800,24 @@ async def _continuous_motion_window(  # noqa: C901, PLR0913
     other real-motion probe in this project.
     """
     before = _custom_path_telemetry_snapshot(coordinator)
-    # Built BEFORE the gates because `opening_alignment_feasible` tests the
-    # opening heading error against these very budgets. Construction is pure
-    # validation and sends nothing.
+    sample_before_stream = _in_window_telemetry_sample(
+        coordinator,
+        index=0,
+        window_started=time.monotonic(),
+        command="send_movement",
+        command_args={"linear_speed": 0, "angular_speed": 0},
+    )
+    report_stamp_before_stream = sample_before_stream.get("last_report_at_monotonic")
+    position_before_stream = sample_before_stream.get("position") or {}
+    pre_x, pre_y = position_before_stream.get("x"), position_before_stream.get("y")
+    previous_position = (
+        (float(pre_x), float(pre_y))
+        if isinstance(pre_x, (int, float))
+        and isinstance(pre_y, (int, float))
+        and math.isfinite(float(pre_x))
+        and math.isfinite(float(pre_y))
+        else None
+    )
     config = ContinuousControllerConfig(
         linear_speed=linear_speed,
         max_abs_angular_speed=max_abs_angular_speed,
@@ -7742,6 +7837,14 @@ async def _continuous_motion_window(  # noqa: C901, PLR0913
         confirm_clear_area=confirm_clear_area,
     )
     blockers = [gate["name"] for gate in gates if not gate["passed"]]
+    acquisition_diagnostics = next(
+        (
+            gate.get("diagnostics")
+            for gate in gates
+            if gate["name"] == "blind_heading_acquisition_contained"
+        ),
+        None,
+    )
 
     route = ContinuousRoute(
         start=ContinuousPoint(**route_start),
@@ -7761,6 +7864,19 @@ async def _continuous_motion_window(  # noqa: C901, PLR0913
         "duration_ms": duration_ms,
         "motion_refresh_interval_ms": motion_refresh_interval_ms,
         "decision_sample_interval_ms": decision_sample_interval_ms,
+        "phase": "preflight",
+        "heading_state": {
+            "phase": "pending_position_chord",
+            "source": None,
+            "minimum_chord_m": config.min_travel_for_heading_trust_m,
+            "maximum_age_s": config.max_heading_age_s,
+        },
+        "acquisition": acquisition_diagnostics,
+        "remaining_budgets": {
+            "acquisition_s": config.max_heading_acquisition_s,
+            "window_s": config.max_window_s,
+            "distance_m": config.max_distance_m,
+        },
         "safety_gates": gates,
         "blockers": blockers,
         "would_send": False,
@@ -7771,6 +7887,7 @@ async def _continuous_motion_window(  # noqa: C901, PLR0913
             "duration_ms": None,
         },
         "decisions": [],
+        "fresh_origin": None,
         "motion_refresh": None,
         "stop_result": None,
         "reason": "dry_run" if dry_run else None,
@@ -7803,10 +7920,57 @@ async def _continuous_motion_window(  # noqa: C901, PLR0913
         result["reason"] = "report_stream_failed"
         return result
 
+    fresh_origin = await _wait_for_fresh_continuous_origin(
+        coordinator,
+        previous_report_stamp=report_stamp_before_stream,
+        previous_position=previous_position,
+        timeout_s=config.max_heading_acquisition_s,
+    )
+    result["fresh_origin"] = fresh_origin
+    if not fresh_origin["ok"]:
+        result["reason"] = "fresh_origin_timeout"
+        result["blockers"] = ["fresh_origin_unavailable"]
+        return result
+
+    origin_sample = fresh_origin["sample"]
+    origin_position = origin_sample["position"]
+    opening_position = ContinuousPoint(
+        float(origin_position["x"]), float(origin_position["y"])
+    )
+    # Re-run every position-dependent gate against the post-stream origin that
+    # will actually seed heading acquisition. Nothing has moved yet.
+    refreshed_before = _custom_path_telemetry_snapshot(coordinator)
+    refreshed_before["position"] = {
+        **(refreshed_before.get("position") or {}),
+        **origin_position,
+    }
+    gates = _continuous_motion_gates(
+        coordinator,
+        refreshed_before,
+        route_start=route_start,
+        route_target=route_target,
+        config=config,
+        corridor_polygon=corridor_polygon,
+        dry_run=False,
+        confirm_blades_off=confirm_blades_off,
+        confirm_clear_area=confirm_clear_area,
+    )
+    blockers = [gate["name"] for gate in gates if not gate["passed"]]
+    result["safety_gates"] = gates
+    result["blockers"] = blockers
+    result["acquisition"] = next(
+        gate["diagnostics"]
+        for gate in gates
+        if gate["name"] == "blind_heading_acquisition_contained"
+    )
+    if blockers:
+        result["reason"] = "blocked_after_fresh_origin"
+        return result
+
     window_started = time.monotonic()
-    # Opening command is straight -- angular_speed=0. The decision loop
-    # corrects on the first fresh arrival, same as every pulse this project
-    # has ever sent; nothing here guesses an initial turn.
+    result["phase"] = "acquiring_heading"
+    # Opening command is straight. Steering remains locked at zero until a
+    # fresh >=0.15 m position chord supplies HeadingEvidence.
     command_state = {"linear_speed": linear_speed, "angular_speed": 0}
     refresh_state: dict[str, Any] = {
         "completions_elapsed_ms": [],
@@ -7837,9 +8001,11 @@ async def _continuous_motion_window(  # noqa: C901, PLR0913
         result["command_result"]["duration_ms"] = round(
             (time.monotonic() - started) * 1000, 3
         )
-    # The opening command IS a completion: it gives the decision loop's gap
-    # tracking a real t=0 baseline instead of nothing to measure from.
-    refresh_state["completions_elapsed_ms"].append(0.0)
+    # Charge dispatch latency to the same clock as motion and record the actual
+    # completion instant for refresh-gap accounting.
+    refresh_state["completions_elapsed_ms"].append(
+        float(result["command_result"]["duration_ms"])
+    )
 
     decision_task = asyncio.create_task(
         _continuous_decision_loop(
@@ -7847,6 +8013,8 @@ async def _continuous_motion_window(  # noqa: C901, PLR0913
             route=route,
             corridor_polygon=corridor_polygon,
             config=config,
+            opening_position=opening_position,
+            opening_report_stamp=origin_sample["last_report_at_monotonic"],
             window_started=window_started,
             sample_interval_ms=decision_sample_interval_ms,
             refresh_state=refresh_state,
@@ -7887,6 +8055,7 @@ async def _continuous_motion_window(  # noqa: C901, PLR0913
         coordinator, use_wifi=not prefer_ble
     )
     result["decisions"] = await decision_task
+    result["phase"] = "stopping"
     result["would_send"] = True
     result["reason"] = "completed"
     return result

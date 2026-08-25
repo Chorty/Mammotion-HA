@@ -12,9 +12,12 @@ from custom_components.mammotion.continuous_controller import (
     ContinuousControllerConfig,
     ContinuousObservation,
     ContinuousRoute,
+    HeadingEvidence,
     Point,
     alignment_feasibility,
+    blind_acquisition_feasibility,
     continuous_control_decision,
+    course_from_position_chord,
     normalize_degrees,
 )
 
@@ -36,7 +39,17 @@ def _observation(**overrides: object) -> ContinuousObservation:
         "elapsed_s": 0.0,
         "distance_travelled_m": 0.0,
     }
-    return ContinuousObservation(**(defaults | overrides))  # type: ignore[arg-type]
+    data = defaults | overrides
+    if "heading_evidence" not in overrides:
+        course = data["course_heading_degrees"]
+        elapsed = float(data["elapsed_s"])
+        data["heading_evidence"] = HeadingEvidence(
+            course_heading_degrees=float(course),
+            measured_at_s=elapsed,
+            chord_m=0.20,
+            uncertainty_degrees=1.0,
+        )
+    return ContinuousObservation(**data)  # type: ignore[arg-type]
 
 
 def test_healthy_aligned_observation_requests_continuous_drive() -> None:
@@ -322,7 +335,7 @@ def test_controller_module_imports_only_standard_library_calculation_tools() -> 
         elif isinstance(node, ast.ImportFrom) and node.module:
             imports.add(node.module.split(".")[0])
 
-    assert imports <= {"__future__", "dataclasses", "math", "typing"}
+    assert imports <= {"__future__", "collections", "dataclasses", "math", "typing"}
 
 
 @pytest.mark.parametrize(
@@ -409,17 +422,18 @@ def test_the_20260824_opening_decision_no_longer_saturates_a_standing_mower() ->
             position=Point(5.0628, -4.2926),
             course_heading_degrees=_RUN_20260824_OPENING_COURSE,
             distance_travelled_m=0.0,
+            heading_evidence=None,
         ),
     )
 
     assert decision.action == "drive"
-    assert decision.reason == "tracking_route"
+    assert decision.reason == "acquiring_heading"
     assert decision.linear_speed == 400
     # The whole fix: straight, not the saturated 180 that actually went out.
     assert decision.angular_speed == 0
     assert decision.heading_confirmed_by_motion is False
-    # The error is still COMPUTED and reported -- it is only not acted on.
-    assert decision.heading_error_degrees == pytest.approx(46.639242, abs=1e-5)
+    # The stale scalar is diagnostic only and cannot become a control error.
+    assert decision.heading_error_degrees is None
 
 
 def test_correction_resumes_once_real_displacement_is_observed() -> None:
@@ -442,32 +456,59 @@ def test_correction_resumes_once_real_displacement_is_observed() -> None:
     assert decision.heading_error_degrees == pytest.approx(46.639242, abs=1e-5)
 
 
-@pytest.mark.parametrize(
-    ("travelled", "expected_angular", "confirmed"),
-    [
-        (0.0, 0, False),
-        (0.0258, 0, False),  # the real displacement at that run's decision 2
-        (0.1499, 0, False),
-        (0.15, -180, True),
-        (0.2646, -180, True),  # the real displacement at that run's decision 4
-    ],
-)
-def test_the_heading_trust_floor_is_a_closed_lower_bound(
-    travelled: float, expected_angular: int, confirmed: bool
-) -> None:
-    """0.15 m releases the gate; anything short of it drives straight."""
+def test_distance_alone_never_confirms_a_heading() -> None:
+    """Even kilometres of travel cannot launder a stale scalar course."""
 
     decision = continuous_control_decision(
         _RUN_20260824_ROUTE,
         _observation(
             position=Point(5.0628, -4.2926),
             course_heading_degrees=_RUN_20260824_OPENING_COURSE,
-            distance_travelled_m=travelled,
+            distance_travelled_m=10.0,
+            heading_evidence=None,
+        ),
+        ContinuousControllerConfig(max_distance_m=20.0),
+    )
+
+    assert decision.reason == "acquiring_heading"
+    assert decision.angular_speed == 0
+    assert decision.heading_confirmed_by_motion is False
+
+
+def test_missing_heading_evidence_times_out_after_two_seconds() -> None:
+    """Acquisition cannot continue past its shared two-second bound."""
+    decision = continuous_control_decision(
+        _route(),
+        _observation(
+            course_heading_degrees=123.0,
+            elapsed_s=2.0,
+            heading_evidence=None,
         ),
     )
 
-    assert decision.angular_speed == expected_angular
-    assert decision.heading_confirmed_by_motion is confirmed
+    assert decision.action == "stop"
+    assert decision.reason == "heading_acquisition_timeout"
+    assert decision.angular_speed == 0
+
+
+def test_stale_heading_evidence_is_never_reused() -> None:
+    """A rolling course older than two seconds requests a stop."""
+    decision = continuous_control_decision(
+        _route(),
+        _observation(
+            elapsed_s=3.0,
+            heading_evidence=HeadingEvidence(
+                course_heading_degrees=0.0,
+                measured_at_s=0.9,
+                chord_m=0.15,
+                uncertainty_degrees=1.7,
+            ),
+        ),
+    )
+
+    assert decision.action == "stop"
+    assert decision.reason == "heading_evidence_stale"
+    assert decision.heading_age_s == pytest.approx(2.1)
 
 
 def test_an_unconfirmed_heading_never_suppresses_a_stop() -> None:
@@ -484,6 +525,7 @@ def test_an_unconfirmed_heading_never_suppresses_a_stop() -> None:
             position=Point(5.1275, -4.8051),
             course_heading_degrees=_RUN_20260824_OPENING_COURSE,
             distance_travelled_m=0.0,
+            heading_evidence=None,
         ),
     )
 
@@ -704,14 +746,41 @@ def test_the_20260824_run_converges_instead_of_diverging_over_its_whole_window()
 # whole time, overruns the window's own budgets before the mower is aligned.
 
 
+def _alignment(
+    course_degrees: float,
+    *,
+    route: ContinuousRoute | None = None,
+    opening: Point = Point(0.0, 0.0),
+    position: Point = Point(0.15, 0.0),
+    elapsed_s: float = 0.6044,
+    cumulative_distance_m: float = 0.15,
+    config: ContinuousControllerConfig | None = None,
+):
+    return alignment_feasibility(
+        route or _route(),
+        opening_position=opening,
+        position=position,
+        heading_evidence=HeadingEvidence(
+            course_heading_degrees=course_degrees,
+            measured_at_s=elapsed_s,
+            chord_m=0.15,
+            uncertainty_degrees=1.7,
+        ),
+        elapsed_s=elapsed_s,
+        cumulative_distance_m=cumulative_distance_m,
+        config=config,
+    )
+
+
 def test_the_20260824_opening_error_is_refused_as_geometrically_infeasible() -> None:
     """46.639 deg cannot be nulled in that run's 4 s / 1.0 m / 0.30 m budget."""
 
-    verdict = alignment_feasibility(
-        _RUN_20260824_ROUTE,
+    verdict = _alignment(
         _RUN_20260824_OPENING_COURSE,
-        # The run's own recorded config.
-        ContinuousControllerConfig(max_window_s=4.0, max_distance_m=1.0),
+        route=_RUN_20260824_ROUTE,
+        opening=_RUN_20260824_ROUTE.start,
+        position=_RUN_20260824_ROUTE.start,
+        config=ContinuousControllerConfig(max_window_s=4.0, max_distance_m=1.0),
     )
 
     assert verdict.feasible is False
@@ -722,11 +791,12 @@ def test_the_20260824_opening_error_is_refused_as_geometrically_infeasible() -> 
     assert verdict.turn_time_s == pytest.approx(5.8299, abs=1e-3)
     assert verdict.total_time_s == pytest.approx(6.4343, abs=1e-3)
     assert verdict.limiting_factor == "window_s"
-    # And the excursion alone would have breached too, in BOTH phases:
-    # 0.15 * sin 46.639 = 0.109, plus 1.7776 * (1 - cos 46.639) = 0.557.
-    assert verdict.blind_cross_track_m == pytest.approx(0.1091, abs=1e-3)
-    assert verdict.turn_cross_track_m == pytest.approx(0.5571, abs=1e-3)
-    assert verdict.total_cross_track_m == pytest.approx(0.6662, abs=1e-3)
+    # Blind excursion is now measured from live positions, not guessed from a
+    # stale heading. This constructed replay starts on-line, while the turn
+    # alone still exceeds the stricter 0.20 m admission bound.
+    assert verdict.blind_cross_track_m == pytest.approx(0.0)
+    assert abs(verdict.turn_cross_track_m) == pytest.approx(0.5571, abs=1e-3)
+    assert verdict.total_cross_track_m == pytest.approx(0.5571, abs=1e-3)
     assert verdict.total_cross_track_m > verdict.cross_track_budget_m
 
 
@@ -741,16 +811,20 @@ def test_the_20260824_excursion_breaches_at_every_disputed_turn_rate() -> None:
     """
 
     for rate in (8.0, 8.091, 8.964, 9.386, 11.224):
-        verdict = alignment_feasibility(
-            _RUN_20260824_ROUTE,
+        verdict = _alignment(
             _RUN_20260824_OPENING_COURSE,
-            ContinuousControllerConfig(
+            route=_RUN_20260824_ROUTE,
+            opening=_RUN_20260824_ROUTE.start,
+            position=_RUN_20260824_ROUTE.start,
+            config=ContinuousControllerConfig(
                 max_window_s=4.0, max_distance_m=1.0, min_turn_rate_deg_per_s=rate
             ),
         )
-        assert verdict.total_cross_track_m > 0.30, (rate, verdict.total_cross_track_m)
-        # True even of the TURN term alone, before the blind phase is added.
-        assert verdict.turn_cross_track_m > 0.30, (rate, verdict.turn_cross_track_m)
+        assert verdict.total_cross_track_m > 0.20, (rate, verdict.total_cross_track_m)
+        assert abs(verdict.turn_cross_track_m) > 0.20, (
+            rate,
+            verdict.turn_cross_track_m,
+        )
         assert verdict.feasible is False, rate
 
 
@@ -758,7 +832,7 @@ def test_a_well_aimed_opening_is_admitted() -> None:
     """The gate must not refuse the geometry the executor is FOR."""
 
     # Route runs due east from the origin; the mower is already on that course.
-    verdict = alignment_feasibility(_route(), 0.0)
+    verdict = _alignment(0.0)
 
     assert verdict.feasible is True
     assert verdict.limiting_factor is None
@@ -774,49 +848,80 @@ def test_a_well_aimed_opening_is_admitted() -> None:
 def test_a_modest_opening_error_still_fits_the_default_budget() -> None:
     """20 deg costs 3.10 s, 0.77 m and 0.159 m of excursion -- all inside."""
 
-    verdict = alignment_feasibility(_route(), -20.0)
+    verdict = _alignment(-20.0)
 
     assert verdict.heading_error_degrees == pytest.approx(20.0)
     assert verdict.turn_time_s == pytest.approx(2.5)
     assert verdict.turn_distance_m == pytest.approx(0.6205, abs=1e-3)
-    assert verdict.turn_cross_track_m == pytest.approx(0.1072, abs=1e-3)
+    assert verdict.turn_cross_track_m == pytest.approx(-0.1072, abs=1e-3)
     assert verdict.total_time_s == pytest.approx(3.1044, abs=1e-3)
     assert verdict.total_distance_m == pytest.approx(0.7705, abs=1e-3)
-    assert verdict.total_cross_track_m == pytest.approx(0.1585, abs=1e-3)
+    assert verdict.total_cross_track_m == pytest.approx(0.1072, abs=1e-3)
     assert verdict.feasible is True
 
 
-def test_the_blind_run_tightens_the_limit_and_is_not_optional() -> None:
-    """🚨 Modelling only the TURN would admit a window that really breaches.
+def test_live_signed_cross_track_distinguishes_inward_and_outward_turns() -> None:
+    """Admission uses the live signed path, not an unsigned opening estimate."""
 
-    The turn term alone reaches 0.30 m at ~34 deg. Add the 0.15 m blind run the
-    controller is required to drive before it may steer at all, and a 32 deg
-    opening really costs 0.3496 m. A gate built on the turn term alone would
-    have passed exactly that case.
-    """
-
-    verdict = alignment_feasibility(
-        _route(), -32.0, ContinuousControllerConfig(max_window_s=8.0)
+    inward = _alignment(
+        -20.0,
+        opening=Point(0.0, 0.19),
+        position=Point(0.15, 0.19),
+        config=ContinuousControllerConfig(max_window_s=8.0),
+    )
+    outward = _alignment(
+        20.0,
+        opening=Point(0.0, 0.19),
+        position=Point(0.15, 0.19),
+        config=ContinuousControllerConfig(max_window_s=8.0),
     )
 
-    # The turn term on its own looks fine against the 0.30 m bound...
-    assert verdict.turn_cross_track_m == pytest.approx(0.2701, abs=1e-3)
-    assert verdict.turn_cross_track_m < verdict.cross_track_budget_m
-    # ...but the blind run adds 0.0795 m and the total does not fit.
-    assert verdict.blind_cross_track_m == pytest.approx(0.0795, abs=1e-3)
-    assert verdict.total_cross_track_m == pytest.approx(0.3496, abs=1e-3)
+    assert inward.opening_cross_track_m == pytest.approx(0.19)
+    assert inward.current_cross_track_m == pytest.approx(0.19)
+    assert inward.predicted_end_cross_track_m < inward.current_cross_track_m
+    assert inward.feasible is True
+    assert outward.predicted_end_cross_track_m > outward.current_cross_track_m
+    assert outward.feasible is False
+    assert outward.limiting_factor == "cross_track_m"
+
+
+@pytest.mark.parametrize("signed_cross_track", [0.19, -0.19])
+def test_signed_019_m_live_starts_fit_the_admission_bound(
+    signed_cross_track: float,
+) -> None:
+    """Both sides of the route fit immediately inside the 0.20 m bound."""
+    verdict = _alignment(
+        0.0,
+        opening=Point(0.0, signed_cross_track),
+        position=Point(0.15, signed_cross_track),
+        config=ContinuousControllerConfig(max_window_s=8.0),
+    )
+
+    assert verdict.feasible is True
+    assert verdict.max_abs_cross_track_m == pytest.approx(0.19)
+
+
+@pytest.mark.parametrize("signed_cross_track", [0.29, -0.29])
+def test_signed_029_m_live_starts_are_refused_before_steering(
+    signed_cross_track: float,
+) -> None:
+    """Both signs outside the admission limit are rejected symmetrically."""
+    verdict = _alignment(
+        0.0,
+        opening=Point(0.0, signed_cross_track),
+        position=Point(0.15, signed_cross_track),
+        config=ContinuousControllerConfig(max_window_s=8.0),
+    )
+
     assert verdict.feasible is False
     assert verdict.limiting_factor == "cross_track_m"
+    assert verdict.cross_track_budget_m == pytest.approx(0.20)
 
 
 @pytest.mark.parametrize(
     ("course_degrees", "config", "expected"),
     [
-        # Time binds first on the DEFAULT 4 s window: the blind run spends
-        # 0.604 s before the turn can start, leaving 3.396 s * 8.0 deg/s =
-        # 27.17 deg, tighter than the 29.25 deg the excursion allows.
         (-28.0, ContinuousControllerConfig(), "window_s"),
-        # Give the turn time and the excursion becomes the binding limb.
         (-30.0, ContinuousControllerConfig(max_window_s=8.0), "cross_track_m"),
         # Squeeze the distance guard and it binds before either.
         (
@@ -831,7 +936,7 @@ def test_each_budget_limb_can_be_the_binding_one(
 ) -> None:
     """All three limbs do real work; none is decorative."""
 
-    verdict = alignment_feasibility(_route(), course_degrees, config)
+    verdict = _alignment(course_degrees, config=config)
 
     assert verdict.feasible is False
     assert verdict.limiting_factor == expected
@@ -853,7 +958,39 @@ def test_an_unusable_route_or_heading_fails_closed(
 ) -> None:
     """A degenerate input is never reported as feasible."""
 
-    verdict = alignment_feasibility(route, course_degrees)
+    verdict = alignment_feasibility(
+        route,
+        opening_position=route.start,
+        position=Point(route.start.x + 0.15, route.start.y),
+        heading_evidence=HeadingEvidence(
+            course_heading_degrees=course_degrees,
+            measured_at_s=0.5,
+            chord_m=0.15,
+            uncertainty_degrees=1.7,
+        ),
+        elapsed_s=0.5,
+        cumulative_distance_m=0.15,
+    )
+
+    assert verdict.feasible is False
+    assert verdict.limiting_factor == "route_or_heading_unusable"
+
+
+def test_alignment_refuses_heading_evidence_below_the_chord_floor() -> None:
+    """The admission helper cannot launder an uninformative chord."""
+    verdict = alignment_feasibility(
+        _route(),
+        opening_position=Point(0.0, 0.0),
+        position=Point(0.14, 0.0),
+        heading_evidence=HeadingEvidence(
+            course_heading_degrees=0.0,
+            measured_at_s=0.5,
+            chord_m=0.14,
+            uncertainty_degrees=1.8,
+        ),
+        elapsed_s=0.5,
+        cumulative_distance_m=0.14,
+    )
 
     assert verdict.feasible is False
     assert verdict.limiting_factor == "route_or_heading_unusable"
@@ -870,25 +1007,113 @@ def test_the_turn_rate_bound_cannot_be_configured_away() -> None:
 def test_the_feasibility_verdict_is_serialisable_for_an_evidence_file() -> None:
     """It is reported as gate diagnostics, so it must survive `asdict`."""
 
-    verdict = alignment_feasibility(_RUN_20260824_ROUTE, _RUN_20260824_OPENING_COURSE)
+    verdict = _alignment(
+        _RUN_20260824_OPENING_COURSE,
+        route=_RUN_20260824_ROUTE,
+        opening=_RUN_20260824_ROUTE.start,
+        position=_RUN_20260824_ROUTE.start,
+    )
     payload = asdict(verdict)
 
     assert payload["feasible"] is False
     assert payload["limiting_factor"] == "window_s"
     assert set(payload) == {
+        "desired_course_degrees",
         "heading_error_degrees",
+        "opening_cross_track_m",
+        "current_cross_track_m",
         "blind_travel_m",
         "blind_time_s",
         "blind_cross_track_m",
         "turn_time_s",
         "turn_distance_m",
         "turn_cross_track_m",
+        "predicted_end_cross_track_m",
+        "max_abs_cross_track_m",
         "total_time_s",
         "total_distance_m",
         "total_cross_track_m",
         "window_budget_s",
         "distance_budget_m",
         "cross_track_budget_m",
+        "remaining_window_s",
+        "remaining_distance_m",
+        "model_turn_rate_deg_per_s",
+        "model_abs_angular_command",
+        "model_assumption",
         "feasible",
         "limiting_factor",
     }
+
+
+def test_position_chord_threshold_and_course_signs() -> None:
+    """Exactly 0.15 m qualifies and atan2 preserves both course signs."""
+    assert (
+        course_from_position_chord(
+            Point(0.0, 0.0), Point(0.149, 0.0), measured_at_s=0.5
+        )
+        is None
+    )
+    east = course_from_position_chord(
+        Point(0.0, 0.0), Point(0.15, 0.0), measured_at_s=0.5
+    )
+    north = course_from_position_chord(
+        Point(0.0, 0.0), Point(0.0, 0.15), measured_at_s=0.5
+    )
+    south = course_from_position_chord(
+        Point(0.0, 0.0), Point(0.0, -0.15), measured_at_s=0.5
+    )
+
+    assert east is not None and east.course_heading_degrees == pytest.approx(0.0)
+    assert north is not None and north.course_heading_degrees == pytest.approx(90.0)
+    assert south is not None and south.course_heading_degrees == pytest.approx(-90.0)
+
+
+def test_blind_acquisition_requires_the_complete_106_m_disk() -> None:
+    """Clearance must cover acquisition travel plus stopping overshoot."""
+    narrow = [
+        Point(-0.30, -0.30),
+        Point(0.30, -0.30),
+        Point(0.30, 0.30),
+        Point(-0.30, 0.30),
+    ]
+    wide = [
+        Point(-1.06, -1.06),
+        Point(1.06, -1.06),
+        Point(1.06, 1.06),
+        Point(-1.06, 1.06),
+    ]
+
+    refused = blind_acquisition_feasibility(Point(0.0, 0.0), narrow)
+    admitted = blind_acquisition_feasibility(Point(0.0, 0.0), wide)
+
+    assert refused.required_radius_m == pytest.approx(1.06)
+    assert refused.boundary_clearance_m == pytest.approx(0.30)
+    assert refused.feasible is False
+    assert admitted.boundary_clearance_m == pytest.approx(1.06)
+    assert admitted.feasible is True
+
+
+def test_invalid_polygon_refuses_blind_acquisition() -> None:
+    """Malformed and non-finite corridor geometry fails closed."""
+    invalid = blind_acquisition_feasibility(
+        Point(0.0, 0.0), [Point(0.0, 0.0), Point(float("nan"), 1.0)]
+    )
+
+    assert invalid.feasible is False
+    assert invalid.boundary_clearance_m is None
+
+
+def test_self_intersecting_polygon_refuses_blind_acquisition() -> None:
+    """A bow-tie corridor cannot be treated as a contained safety envelope."""
+    bow_tie = [
+        Point(-2.0, -2.0),
+        Point(2.0, 2.0),
+        Point(-2.0, 2.0),
+        Point(2.0, -2.0),
+    ]
+
+    invalid = blind_acquisition_feasibility(Point(0.0, 0.0), bow_tie)
+
+    assert invalid.feasible is False
+    assert invalid.boundary_clearance_m is None

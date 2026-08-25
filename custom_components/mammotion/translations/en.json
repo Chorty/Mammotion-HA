@@ -899,7 +899,7 @@
     },
     "continuous_motion_window": {
       "name": "Continuous motion window",
-      "description": "Phase 2 executor. Runs or simulates one continuous straight-line steering window, correcting on measured heading at every ~1 Hz position arrival. corridor_polygon must be pre-scanned and margin-verified offline; this service never scans or freezes one itself. Real commands require explicit confirmations.",
+      "description": "Phase 2 executor. Runs or simulates one continuous straight-line steering window. Heading comes only from fresh position chords of at least 0.15 m; toward is diagnostic only. The corridor must provide at least 1.06 m of boundary clearance around the live start. Experimental v1 is fixed at linear 400 / angular bound 180. Real commands require explicit confirmations.",
       "fields": {
         "entity_id": {
           "name": "Entity",
@@ -919,11 +919,11 @@
         },
         "linear_speed": {
           "name": "Linear speed",
-          "description": "Fixed forward speed held for the whole window."
+          "description": "Fixed forward speed held for the whole window. Experimental v1 accepts only 400."
         },
         "max_abs_angular_speed": {
           "name": "Max angular speed",
-          "description": "Bound on the steering correction the controller may request. This is a straight-line executor; it does not request a turn on its own."
+          "description": "Bound on the steering correction the controller may request. Experimental v1 accepts only 180. This is a straight-line executor; it does not request a turn on its own."
         },
         "duration_ms": {
           "name": "Duration",
@@ -943,7 +943,7 @@
         },
         "max_cross_track_m": {
           "name": "Max cross-track",
-          "description": "Hard lateral deviation bound from the straight route; the window stops once exceeded."
+          "description": "Hard lateral deviation bound from the straight route. It may be stricter than 0.30 m, but never higher."
         },
         "prefer_ble": {
           "name": "Prefer BLE",

@@ -13,10 +13,12 @@ before any physical-motion service is designed.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
 ControllerAction = Literal["drive", "stop"]
+HeadingSource = Literal["position_chord"]
 
 # 🚨 **THE SIGN THAT LOST THE FIRST PHYSICAL PHASE 2 RUN, 2026-08-24.**
 #
@@ -112,46 +114,26 @@ class ContinuousControllerConfig:
     # tuning knob is how the 2026-08-24 inversion stayed invisible.
     angular_speed_per_heading_degree: float = 12.0
     heading_deadband_degrees: float = 1.5
-    # 🚨 **Added 2026-08-24 after the FIRST physical Phase 2 run**
-    # (`docs/evidence-phase2-first-physical-run-20260824.json`). That run's very
-    # first decision fired at `elapsed_s: 0.458` with `distance_travelled_m:
-    # 0.0` -- the mower had not yet moved a millimetre inside this window -- and
-    # immediately commanded `angular_speed: 180`, the saturated maximum, off a
-    # 46.6 deg heading error.
-    #
-    # `course_heading_degrees` is derived from `toward`, which is
-    # COURSE-OVER-GROUND, not a body heading a stationary machine can report.
-    # Two separately measured properties make an opening sample untrustworthy:
-    # `toward` is bit-identical through a bounded pulse and arrives as one
-    # post-hoc step (`docs/night-toward-latency-20260813.md`), and it LATCHES on
-    # straight motion, updating once in 8 s
-    # (`docs/corrections-to-the-20260822-analysis-20260823.md`). So the value
-    # present when a window opens describes whatever the mower last did -- which
-    # may be a previous session -- and the controller cannot tell that apart
-    # from a live measurement. It saturated on it anyway.
-    #
-    # Below this much confirmed displacement THIS window the controller drives
-    # straight instead of steering, which is exactly the convention the executor
-    # already uses for its opening command ("Opening command is straight --
-    # angular_speed=0", `services.py`). It is a gate on the CORRECTION only; it
-    # never suppresses a stop, and every fail-closed check still runs first.
-    #
-    # 0.15 m is this project's own registered "a chord this short cannot test a
-    # bearing" floor -- `MIN_MOVING_STEP_M` in
-    # `scripts/analyze_phase1_capture.py`, raised 0.01 -> 0.15 on 2026-08-23
-    # because at the measured sigma = 0.0031 m the bearing noise bound
-    # `atan(sigma*sqrt(2)/chord)` is +-12.2 deg at 0.046 m and +-7.4 deg at
-    # 0.076 m, at or above the criterion it was being tested against, while at
-    # 0.15 m it falls to 1.7 deg (`docs/mirror-criterion-repaired-20260823.md`).
-    # The same arithmetic governs here: steering on a bearing whose own noise
-    # bound is larger than the error being corrected is not feedback.
-    # ⚠️ It is a FLOOR ON INFORMATIVENESS, not a proof of freshness. Nothing in
-    # a single observation can prove `toward` was recomputed this window; see
-    # the replay note in the 2026-08-24 report.
+    # A position chord this short cannot support a useful map bearing. Unlike
+    # the superseded 2026-08-24 gate, reaching this distance does not itself
+    # confirm a separate `toward` value: the executor must derive the heading
+    # from the chord and provide explicit `HeadingEvidence`.
     min_travel_for_heading_trust_m: float = 0.15
+    # A missing opening chord or an old rolling chord stops the window. Both
+    # match the existing 2 s stale-position bound.
+    max_heading_acquisition_s: float = 2.0
+    max_heading_age_s: float = 2.0
+    # Blind acquisition is admitted only when a complete worst-case disk fits
+    # inside the frozen corridor. At the validated v1 command this is
+    # 0.28 m/s * 2.0 s + the banked 0.50 m guard/stop overshoot = 1.06 m.
+    max_safety_speed_mps: float = 0.28
+    stop_overshoot_m: float = 0.50
     lookahead_m: float = 0.80
     waypoint_tolerance_m: float = 0.15
     max_cross_track_m: float = 0.30
+    # The pre-registered Phase 2 criterion is 0.20 m; 0.30 m remains the hard
+    # runtime abort. Admission uses whichever is smaller.
+    max_admission_cross_track_m: float = 0.20
     max_telemetry_age_s: float = 2.0
     # How long since the most recent refresh write completed, sampled at THIS
     # decision instant. This is a basic "is the refresh loop still alive at
@@ -223,9 +205,14 @@ class ContinuousControllerConfig:
             # Rejected at zero on purpose: a 0.0 here silently restores the
             # steer-before-you-have-moved behaviour of the 2026-08-24 run.
             "min_travel_for_heading_trust_m": self.min_travel_for_heading_trust_m,
+            "max_heading_acquisition_s": self.max_heading_acquisition_s,
+            "max_heading_age_s": self.max_heading_age_s,
+            "max_safety_speed_mps": self.max_safety_speed_mps,
+            "stop_overshoot_m": self.stop_overshoot_m,
             "lookahead_m": self.lookahead_m,
             "waypoint_tolerance_m": self.waypoint_tolerance_m,
             "max_cross_track_m": self.max_cross_track_m,
+            "max_admission_cross_track_m": self.max_admission_cross_track_m,
             "max_telemetry_age_s": self.max_telemetry_age_s,
             "max_refresh_age_s": self.max_refresh_age_s,
             "max_refresh_gap_s": self.max_refresh_gap_s,
@@ -256,15 +243,31 @@ class ContinuousControllerConfig:
 
 
 @dataclass(frozen=True)
+class HeadingEvidence:
+    """A map-local course derived from fresh displacement in this window."""
+
+    course_heading_degrees: float
+    measured_at_s: float
+    chord_m: float
+    uncertainty_degrees: float
+    source: HeadingSource = "position_chord"
+
+
+@dataclass(frozen=True)
 class ContinuousObservation:
     """One executor-independent snapshot presented to the pure controller."""
 
     position: Point
-    course_heading_degrees: float
+    # Retained as an additive evidence/report compatibility field only. The
+    # controller never steers from this scalar; `heading_evidence` is the sole
+    # control input. The service sets this from the same position chord and
+    # never from `toward`.
+    course_heading_degrees: float | None
     telemetry_age_s: float
     refresh_age_s: float
     elapsed_s: float
     distance_travelled_m: float
+    heading_evidence: HeadingEvidence | None = None
     # The worst gap between any two CONSECUTIVE refresh completions since the
     # previous decision -- a running max the caller must track, not a
     # point-sample. See `ContinuousControllerConfig.max_refresh_gap_s` for why
@@ -304,46 +307,238 @@ class ContinuousDecision:
     heading_error_degrees: float | None = None
     # None on every stop path (nothing was steered), matching the convention the
     # optional fields above already use. On a drive decision, False means the
-    # heading error WAS computed and deliberately not acted on because this
-    # window has not yet observed
-    # `ContinuousControllerConfig.min_travel_for_heading_trust_m` of travel.
+    # controller is still acquiring an explicit position-chord heading, so no
+    # heading error exists yet and angular speed must remain zero.
     # ⚠️ A future reader will otherwise see `angular_speed: 0` next to a large
     # `heading_error_degrees` in an evidence file and read it as a bug.
     heading_confirmed_by_motion: bool | None = None
+    heading_source: HeadingSource | None = None
+    heading_age_s: float | None = None
+    heading_chord_m: float | None = None
+    heading_uncertainty_degrees: float | None = None
     prediction_horizon_s: float = 0.0
 
 
 @dataclass(frozen=True)
 class AlignmentFeasibility:
-    """Whether the OPENING heading error can be nulled inside the window budget.
+    """Conservative post-acquisition admission against remaining budgets."""
 
-    A preflight verdict, computed once before a window opens. It is NOT a
-    runtime check and deliberately never runs inside the decision loop: the
-    controller's job mid-window is to steer and to hard-abort on cross-track,
-    not to re-litigate whether the window should have started.
-    """
-
+    desired_course_degrees: float
     heading_error_degrees: float
-    # PHASE 1 -- the blind run. The controller withholds every correction until
-    # `min_travel_for_heading_trust_m` of travel is confirmed, so the window
-    # opens by driving STRAIGHT at the full opening error for that distance.
+    opening_cross_track_m: float
+    current_cross_track_m: float
     blind_travel_m: float
     blind_time_s: float
     blind_cross_track_m: float
-    # PHASE 2 -- the turn that actually nulls the error.
     turn_time_s: float
     turn_distance_m: float
     turn_cross_track_m: float
-    # Both phases together: what nulling the error is PREDICTED to cost.
+    predicted_end_cross_track_m: float
+    max_abs_cross_track_m: float
     total_time_s: float
     total_distance_m: float
     total_cross_track_m: float
     window_budget_s: float
     distance_budget_m: float
     cross_track_budget_m: float
+    remaining_window_s: float
+    remaining_distance_m: float
+    model_turn_rate_deg_per_s: float
+    model_abs_angular_command: int
+    model_assumption: str
     feasible: bool
-    # Which budget the correction breaks first, or None when it fits.
     limiting_factor: str | None
+
+
+@dataclass(frozen=True)
+class BlindAcquisitionFeasibility:
+    """Whether every possible straight acquisition ray fits the corridor."""
+
+    required_radius_m: float
+    boundary_clearance_m: float | None
+    live_position_inside: bool
+    feasible: bool
+
+
+def course_from_position_chord(
+    start: Point,
+    end: Point,
+    *,
+    measured_at_s: float,
+    min_chord_m: float = 0.15,
+    position_sigma_m: float = 0.0031,
+) -> HeadingEvidence | None:
+    """Return fresh map-course evidence only when the chord is informative."""
+
+    numeric = (
+        *vars(start).values(),
+        *vars(end).values(),
+        measured_at_s,
+        min_chord_m,
+        position_sigma_m,
+    )
+    if (
+        not all(math.isfinite(float(value)) for value in numeric)
+        or measured_at_s < 0
+        or min_chord_m <= 0
+        or position_sigma_m < 0
+    ):
+        return None
+    chord_m = math.hypot(end.x - start.x, end.y - start.y)
+    if chord_m < min_chord_m:
+        return None
+    course = math.degrees(math.atan2(end.y - start.y, end.x - start.x))
+    uncertainty = math.degrees(math.atan(position_sigma_m * math.sqrt(2.0) / chord_m))
+    return HeadingEvidence(
+        course_heading_degrees=course,
+        measured_at_s=measured_at_s,
+        chord_m=chord_m,
+        uncertainty_degrees=uncertainty,
+    )
+
+
+def _point_on_segment(point: Point, start: Point, end: Point) -> bool:
+    squared_length = (end.x - start.x) ** 2 + (end.y - start.y) ** 2
+    if squared_length <= 1e-18:
+        return math.hypot(point.x - start.x, point.y - start.y) <= 1e-9
+    cross = (point.y - start.y) * (end.x - start.x) - (point.x - start.x) * (
+        end.y - start.y
+    )
+    if abs(cross) > 1e-9:
+        return False
+    dot = (point.x - start.x) * (end.x - start.x) + (point.y - start.y) * (
+        end.y - start.y
+    )
+    return -1e-9 <= dot <= squared_length + 1e-9
+
+
+def _segments_intersect(a: Point, b: Point, c: Point, d: Point) -> bool:
+    """Return whether two closed line segments intersect."""
+
+    def _orientation(p: Point, q: Point, r: Point) -> float:
+        return (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x)
+
+    orientations = (
+        _orientation(a, b, c),
+        _orientation(a, b, d),
+        _orientation(c, d, a),
+        _orientation(c, d, b),
+    )
+    if orientations[0] * orientations[1] < 0 and orientations[2] * orientations[3] < 0:
+        return True
+    return any(
+        abs(orientation) <= 1e-9 and _point_on_segment(point, start, end)
+        for orientation, point, start, end in (
+            (orientations[0], c, a, b),
+            (orientations[1], d, a, b),
+            (orientations[2], a, c, d),
+            (orientations[3], b, c, d),
+        )
+    )
+
+
+def polygon_is_valid(polygon: Sequence[Point]) -> bool:
+    """Return whether vertices form one finite, non-self-intersecting polygon."""
+
+    if len(polygon) < 3 or not all(
+        math.isfinite(value) for vertex in polygon for value in (vertex.x, vertex.y)
+    ):
+        return False
+    edges = [
+        (polygon[index], polygon[(index + 1) % len(polygon)])
+        for index in range(len(polygon))
+    ]
+    if any(math.hypot(b.x - a.x, b.y - a.y) <= 1e-9 for a, b in edges):
+        return False
+    signed_double_area = sum(a.x * b.y - b.x * a.y for a, b in edges)
+    if abs(signed_double_area) <= 1e-12:
+        return False
+    for first_index, (a, b) in enumerate(edges):
+        for second_index in range(first_index + 1, len(edges)):
+            if second_index in {
+                first_index,
+                first_index + 1,
+            } or (first_index == 0 and second_index == len(edges) - 1):
+                continue
+            c, d = edges[second_index]
+            if _segments_intersect(a, b, c, d):
+                return False
+    return True
+
+
+def point_in_polygon(point: Point, polygon: Sequence[Point]) -> bool:
+    """Return whether a point is inside or on a simple polygon boundary."""
+
+    if not polygon_is_valid(polygon) or not all(
+        math.isfinite(value) for value in (point.x, point.y)
+    ):
+        return False
+    inside = False
+    previous = polygon[-1]
+    for current in polygon:
+        if _point_on_segment(point, previous, current):
+            return True
+        crosses = (current.y > point.y) != (previous.y > point.y)
+        if crosses:
+            x_at_y = (previous.x - current.x) * (point.y - current.y) / (
+                previous.y - current.y
+            ) + current.x
+            if point.x <= x_at_y:
+                inside = not inside
+        previous = current
+    return inside
+
+
+def polygon_boundary_clearance(point: Point, polygon: Sequence[Point]) -> float | None:
+    """Return the shortest Euclidean distance from a point to polygon edges."""
+
+    if not polygon_is_valid(polygon) or not all(
+        math.isfinite(value) for value in (point.x, point.y)
+    ):
+        return None
+    best = float("inf")
+    previous = polygon[-1]
+    for current in polygon:
+        dx, dy = current.x - previous.x, current.y - previous.y
+        length_squared = dx * dx + dy * dy
+        projection = (
+            0.0
+            if length_squared <= 1e-18
+            else max(
+                0.0,
+                min(
+                    1.0,
+                    ((point.x - previous.x) * dx + (point.y - previous.y) * dy)
+                    / length_squared,
+                ),
+            )
+        )
+        closest = Point(previous.x + projection * dx, previous.y + projection * dy)
+        best = min(best, math.hypot(point.x - closest.x, point.y - closest.y))
+        previous = current
+    return best
+
+
+def blind_acquisition_feasibility(
+    position: Point,
+    corridor_polygon: Sequence[Point],
+    config: ContinuousControllerConfig | None = None,
+) -> BlindAcquisitionFeasibility:
+    """Require the complete unknown-heading acquisition disk to be contained."""
+
+    settings = config or ContinuousControllerConfig()
+    required = (
+        settings.max_safety_speed_mps * settings.max_heading_acquisition_s
+        + settings.stop_overshoot_m
+    )
+    inside = point_in_polygon(position, corridor_polygon)
+    clearance = polygon_boundary_clearance(position, corridor_polygon)
+    return BlindAcquisitionFeasibility(
+        required_radius_m=required,
+        boundary_clearance_m=clearance,
+        live_position_inside=inside,
+        feasible=inside and clearance is not None and clearance >= required,
+    )
 
 
 def normalize_degrees(angle: float) -> float:
@@ -352,137 +547,201 @@ def normalize_degrees(angle: float) -> float:
     return (angle + 180.0) % 360.0 - 180.0
 
 
+def _route_geometry(route: ContinuousRoute) -> tuple[float, float, float, float]:
+    dx, dy = route.target.x - route.start.x, route.target.y - route.start.y
+    length = math.hypot(dx, dy)
+    return dx, dy, length, math.degrees(math.atan2(dy, dx))
+
+
+def _signed_cross_track(route: ContinuousRoute, position: Point) -> float:
+    dx, dy, length, _ = _route_geometry(route)
+    if length <= 1e-9:
+        return float("nan")
+    ux, uy = dx / length, dy / length
+    rel_x, rel_y = position.x - route.start.x, position.y - route.start.y
+    return ux * rel_y - uy * rel_x
+
+
+def _desired_course_from_position(
+    route: ContinuousRoute,
+    position: Point,
+    settings: ContinuousControllerConfig,
+) -> float:
+    dx, dy, length, _ = _route_geometry(route)
+    ux, uy = dx / length, dy / length
+    rel_x, rel_y = position.x - route.start.x, position.y - route.start.y
+    along = rel_x * ux + rel_y * uy
+    lookahead = min(max(along, 0.0) + settings.lookahead_m, length)
+    aim = Point(route.start.x + ux * lookahead, route.start.y + uy * lookahead)
+    return math.degrees(math.atan2(aim.y - position.y, aim.x - position.x))
+
+
 def alignment_feasibility(
     route: ContinuousRoute,
-    course_heading_degrees: float,
+    *,
+    opening_position: Point,
+    position: Point,
+    heading_evidence: HeadingEvidence,
+    elapsed_s: float,
+    cumulative_distance_m: float,
     config: ContinuousControllerConfig | None = None,
 ) -> AlignmentFeasibility:
-    """Predict whether the opening heading error fits the window's own budgets.
+    """Estimate whether alignment fits the live remaining safety budgets.
 
-    🚨 **Why this exists.** The 2026-08-24 run had TWO independent defects. The
-    steering sign was one (see `_ANGULAR_COMMAND_SIGN_PER_COURSE_DEGREE`). The
-    other is that it opened 46.639 deg misaligned, which no correctly-signed
-    controller could have rescued inside a 4 s / 0.30 m window -- the mower
-    drives forward the whole time it is turning, so the correction itself sweeps
-    the machine off the line.
-
-    The cost is modelled in the TWO phases the controller actually executes.
-
-    **Phase 1, the blind run.** `min_travel_for_heading_trust_m` (0.15 m) of
-    travel must be confirmed before any correction is issued at all, so the
-    window opens driving straight at the full opening error::
-
-        blind_cross_track = blind_travel * sin(theta0)
-
-    **Phase 2, the turn.** Driving at speed `v` while the course rotates at a
-    constant `w` toward the route, cross-track accumulates at `v * sin(theta)`
-    where `theta` is the remaining error, and `dt = dtheta / w`, so::
-
-        turn_cross_track = integral of (v/w) * sin(theta) dtheta, 0 -> theta0
-                         = (v / w) * (1 - cos(theta0))
-
-    with `w` in radians per second. At the conservative `w` = 8.0 deg/s and
-    `v` = 0.2482 m/s that second term is `1.778 m * (1 - cos theta0)`.
-
-    🔑 **Both phases are needed and modelling only the turn is not safe.** The
-    turn term alone reaches 0.30 m at theta0 ~= 34 deg, but adding the blind
-    run's own excursion brings that down to **29.25 deg** -- so a gate built on
-    the turn term alone would admit a 32 deg opening that really costs 0.3496 m
-    against a 0.30 m bound. On the default 4 s window the time limb is tighter
-    still (**27.17 deg**), because the blind run spends 0.604 s before the turn
-    can even start.
-
-    ⚠️ Today's 46.639 deg breaches 0.30 m at EVERY rate in the disputed
-    turn-rate range, the optimistic 11.224 deg/s single-pulse fit included. The
-    verdict does not depend on resolving that discrepancy.
-
-    Three budgets are tested against the PHASE TOTALS and the first breached is
-    reported: `window_s` (blind run plus turn must fit the window at all),
-    `distance_m` (their travel must fit the distance guard), and
-    `cross_track_m` (their combined excursion).
-
-    ⚠️ **Assumptions, stated rather than hidden.** `w` is a lower bound, not a
-    model -- real rate varies and spin-up is not instantaneous. The desired
-    course is the ROUTE bearing; the caller's `start_drift_within_bound` gate
-    already holds live position within 0.30 m of the frozen start, so the
-    difference is small but nonzero. Both phases are assumed to steer perfectly
-    once they begin, and the excursion is assumed to start from the centreline.
-    Passing here is NECESSARY, not sufficient -- the runtime cross-track abort
-    remains the real protection.
+    The opening blind phase is measured, not invented: its signed cross-track
+    and travel come from the fresh pre-dispatch origin and the qualifying chord.
+    The turn term retains the measured 8 deg/s model only for refusal/admission
+    estimation at the validated +/-180 envelope. Passing is necessary, never a
+    guarantee; runtime corridor and 0.30 m hard aborts remain authoritative.
     """
 
     settings = config or ContinuousControllerConfig()
-    route_dx = route.target.x - route.start.x
-    route_dy = route.target.y - route.start.y
-    finite = all(
-        math.isfinite(float(value))
-        for value in (route_dx, route_dy, course_heading_degrees)
+    model_assumption = (
+        f"{settings.min_turn_rate_deg_per_s:g} deg/s refusal/admission estimate "
+        f"only at the validated +/-{settings.max_abs_angular_speed} command "
+        "envelope; passing does not prove successful heading nulling"
     )
-    route_length = math.hypot(route_dx, route_dy) if finite else 0.0
-    if not finite or route_length <= 1e-9:
-        # Fail closed: an unusable route or heading is never "feasible".
+    numeric = (
+        route.start.x,
+        route.start.y,
+        route.target.x,
+        route.target.y,
+        opening_position.x,
+        opening_position.y,
+        position.x,
+        position.y,
+        heading_evidence.course_heading_degrees,
+        heading_evidence.measured_at_s,
+        heading_evidence.chord_m,
+        heading_evidence.uncertainty_degrees,
+        elapsed_s,
+        cumulative_distance_m,
+    )
+    _, _, route_length, route_course = _route_geometry(route)
+    unusable = (
+        not all(math.isfinite(float(value)) for value in numeric)
+        or route_length <= 1e-9
+        or elapsed_s < 0
+        or cumulative_distance_m < 0
+        or heading_evidence.source != "position_chord"
+        or heading_evidence.measured_at_s < 0
+        or heading_evidence.measured_at_s > elapsed_s
+        or heading_evidence.chord_m < settings.min_travel_for_heading_trust_m
+        or heading_evidence.uncertainty_degrees < 0
+    )
+    if unusable:
         infinite = float("inf")
         return AlignmentFeasibility(
+            desired_course_degrees=float("nan"),
             heading_error_degrees=float("nan"),
-            blind_travel_m=settings.min_travel_for_heading_trust_m,
+            opening_cross_track_m=infinite,
+            current_cross_track_m=infinite,
+            blind_travel_m=infinite,
             blind_time_s=infinite,
             blind_cross_track_m=infinite,
             turn_time_s=infinite,
             turn_distance_m=infinite,
             turn_cross_track_m=infinite,
+            predicted_end_cross_track_m=infinite,
+            max_abs_cross_track_m=infinite,
             total_time_s=infinite,
             total_distance_m=infinite,
             total_cross_track_m=infinite,
             window_budget_s=settings.max_window_s,
             distance_budget_m=settings.max_distance_m,
-            cross_track_budget_m=settings.max_cross_track_m,
+            cross_track_budget_m=min(
+                settings.max_cross_track_m, settings.max_admission_cross_track_m
+            ),
+            remaining_window_s=0.0,
+            remaining_distance_m=0.0,
+            model_turn_rate_deg_per_s=settings.min_turn_rate_deg_per_s,
+            model_abs_angular_command=settings.max_abs_angular_speed,
+            model_assumption=model_assumption,
             feasible=False,
             limiting_factor="route_or_heading_unusable",
         )
 
-    desired_course = math.degrees(math.atan2(route_dy, route_dx))
-    heading_error = normalize_degrees(desired_course - course_heading_degrees)
-    error_radians = math.radians(abs(heading_error))
+    opening_cross = _signed_cross_track(route, opening_position)
+    current_cross = _signed_cross_track(route, position)
+    desired_course = _desired_course_from_position(route, position, settings)
+    course = heading_evidence.course_heading_degrees
+    heading_error = normalize_degrees(desired_course - course)
+    blind_cross = current_cross - opening_cross
 
-    # Phase 1: driving straight at the full error until the heading is trusted.
-    blind_travel_m = settings.min_travel_for_heading_trust_m
-    blind_time_s = blind_travel_m / settings.nominal_speed_mps
-    blind_cross_track_m = blind_travel_m * math.sin(error_radians)
-
-    # Phase 2: the turn that nulls it, still driving forward throughout.
-    turn_time_s = abs(heading_error) / settings.min_turn_rate_deg_per_s
-    turn_distance_m = settings.nominal_speed_mps * turn_time_s
-    turn_radius_m = settings.nominal_speed_mps / math.radians(
-        settings.min_turn_rate_deg_per_s
+    turn_time = abs(heading_error) / settings.min_turn_rate_deg_per_s
+    turn_distance = settings.nominal_speed_mps * turn_time
+    route_relative_actual = math.radians(normalize_degrees(course - route_course))
+    route_relative_desired = math.radians(
+        normalize_degrees(desired_course - route_course)
     )
-    turn_cross_track_m = turn_radius_m * (1.0 - math.cos(error_radians))
+    direction = 0.0 if heading_error == 0 else math.copysign(1.0, heading_error)
+    radius = settings.nominal_speed_mps / math.radians(settings.min_turn_rate_deg_per_s)
+    turn_cross = (
+        direction
+        * radius
+        * (math.cos(route_relative_actual) - math.cos(route_relative_desired))
+    )
+    end_cross = current_cross + turn_cross
 
-    total_time_s = blind_time_s + turn_time_s
-    total_distance_m = blind_travel_m + turn_distance_m
-    total_cross_track_m = blind_cross_track_m + turn_cross_track_m
+    cross_candidates = [opening_cross, current_cross, end_cross]
+    # The signed arc can have an interior cross-track extremum whenever it
+    # crosses either the route direction (sin(theta)=0 at 0 deg) or its
+    # antipode (sin(theta)=0 at 180 deg). Include both, rather than checking
+    # only the end point or assuming every admitted turn is monotonic.
+    for critical_course, critical_cosine in (
+        (route_course, 1.0),
+        (route_course + 180.0, -1.0),
+    ):
+        crossing = normalize_degrees(critical_course - course)
+        lies_inside_turn = (heading_error > 0 and 0 < crossing < heading_error) or (
+            heading_error < 0 and heading_error < crossing < 0
+        )
+        if lies_inside_turn:
+            crossing_delta = (
+                direction * radius * (math.cos(route_relative_actual) - critical_cosine)
+            )
+            cross_candidates.append(current_cross + crossing_delta)
 
+    admission_cross = min(
+        settings.max_cross_track_m, settings.max_admission_cross_track_m
+    )
+    max_abs_cross = max(abs(value) for value in cross_candidates)
+    total_time = elapsed_s + turn_time
+    total_distance = cumulative_distance_m + turn_distance
+    remaining_window = max(settings.max_window_s - elapsed_s, 0.0)
+    remaining_distance = max(settings.max_distance_m - cumulative_distance_m, 0.0)
     breaches = (
-        (total_time_s > settings.max_window_s, "window_s"),
-        (total_distance_m > settings.max_distance_m, "distance_m"),
-        (total_cross_track_m > settings.max_cross_track_m, "cross_track_m"),
+        (turn_time > remaining_window, "window_s"),
+        (turn_distance > remaining_distance, "distance_m"),
+        (max_abs_cross > admission_cross, "cross_track_m"),
     )
-    limiting_factor = next((name for failed, name in breaches if failed), None)
+    limiting = next((name for failed, name in breaches if failed), None)
     return AlignmentFeasibility(
+        desired_course_degrees=desired_course,
         heading_error_degrees=heading_error,
-        blind_travel_m=blind_travel_m,
-        blind_time_s=blind_time_s,
-        blind_cross_track_m=blind_cross_track_m,
-        turn_time_s=turn_time_s,
-        turn_distance_m=turn_distance_m,
-        turn_cross_track_m=turn_cross_track_m,
-        total_time_s=total_time_s,
-        total_distance_m=total_distance_m,
-        total_cross_track_m=total_cross_track_m,
+        opening_cross_track_m=opening_cross,
+        current_cross_track_m=current_cross,
+        blind_travel_m=cumulative_distance_m,
+        blind_time_s=elapsed_s,
+        blind_cross_track_m=blind_cross,
+        turn_time_s=turn_time,
+        turn_distance_m=turn_distance,
+        turn_cross_track_m=turn_cross,
+        predicted_end_cross_track_m=end_cross,
+        max_abs_cross_track_m=max_abs_cross,
+        total_time_s=total_time,
+        total_distance_m=total_distance,
+        total_cross_track_m=max_abs_cross,
         window_budget_s=settings.max_window_s,
         distance_budget_m=settings.max_distance_m,
-        cross_track_budget_m=settings.max_cross_track_m,
-        feasible=limiting_factor is None,
-        limiting_factor=limiting_factor,
+        cross_track_budget_m=admission_cross,
+        remaining_window_s=remaining_window,
+        remaining_distance_m=remaining_distance,
+        model_turn_rate_deg_per_s=settings.min_turn_rate_deg_per_s,
+        model_abs_angular_command=settings.max_abs_angular_speed,
+        model_assumption=model_assumption,
+        feasible=limiting is None,
+        limiting_factor=limiting,
     )
 
 
@@ -490,13 +749,17 @@ def _predict_position(
     observation: ContinuousObservation,
     config: ContinuousControllerConfig,
 ) -> tuple[Point, float]:
-    """Project a stale fix along the reported course within a hard horizon."""
+    """Project a stale fix only along an explicitly evidenced course."""
+
+    evidence = observation.heading_evidence
+    if evidence is None:
+        return observation.position, 0.0
 
     horizon = min(
         max(float(observation.telemetry_age_s), 0.0),
         config.max_prediction_horizon_s,
     )
-    radians = math.radians(observation.course_heading_degrees)
+    radians = math.radians(evidence.course_heading_degrees)
     distance = config.nominal_speed_mps * horizon
     return (
         Point(
@@ -519,6 +782,8 @@ def _stop(
     observed_cross_track_m: float | None = None,
     desired_course_degrees: float | None = None,
     heading_error_degrees: float | None = None,
+    heading_evidence: HeadingEvidence | None = None,
+    heading_age_s: float | None = None,
 ) -> ContinuousDecision:
     return ContinuousDecision(
         action="stop",
@@ -533,6 +798,12 @@ def _stop(
         observed_cross_track_m=observed_cross_track_m,
         desired_course_degrees=desired_course_degrees,
         heading_error_degrees=heading_error_degrees,
+        heading_source=(heading_evidence.source if heading_evidence else None),
+        heading_age_s=heading_age_s,
+        heading_chord_m=(heading_evidence.chord_m if heading_evidence else None),
+        heading_uncertainty_degrees=(
+            heading_evidence.uncertainty_degrees if heading_evidence else None
+        ),
         prediction_horizon_s=prediction_horizon_s,
     )
 
@@ -544,20 +815,28 @@ def _input_failure_reason(
 ) -> str | None:
     """Return the first fail-closed input reason, or None when inputs are safe."""
 
-    numeric_inputs = (
+    numeric_inputs: tuple[float | int, ...] = (
         route.start.x,
         route.start.y,
         route.target.x,
         route.target.y,
         observation.position.x,
         observation.position.y,
-        observation.course_heading_degrees,
         observation.telemetry_age_s,
         observation.refresh_age_s,
         observation.refresh_max_gap_since_last_decision_s,
         observation.elapsed_s,
         observation.distance_travelled_m,
     )
+    if observation.course_heading_degrees is not None:
+        numeric_inputs += (observation.course_heading_degrees,)
+    if observation.heading_evidence is not None:
+        numeric_inputs += (
+            observation.heading_evidence.course_heading_degrees,
+            observation.heading_evidence.measured_at_s,
+            observation.heading_evidence.chord_m,
+            observation.heading_evidence.uncertainty_degrees,
+        )
     if not all(math.isfinite(float(value)) for value in numeric_inputs):
         return "inputs_not_finite"
     if any(
@@ -571,6 +850,15 @@ def _input_failure_reason(
         )
     ):
         return "observation_values_invalid"
+    evidence = observation.heading_evidence
+    if evidence is not None and (
+        evidence.source != "position_chord"
+        or evidence.measured_at_s < 0
+        or evidence.chord_m < settings.min_travel_for_heading_trust_m
+        or evidence.uncertainty_degrees < 0
+        or evidence.measured_at_s > observation.elapsed_s
+    ):
+        return "heading_evidence_invalid"
     fail_closed_checks = (
         (observation.cancelled, "operator_cancelled"),
         (not observation.stop_available, "stop_primitive_unavailable"),
@@ -604,7 +892,7 @@ def _input_failure_reason(
     return next((reason for failed, reason in fail_closed_checks if failed), None)
 
 
-def continuous_control_decision(
+def continuous_control_decision(  # noqa: C901
     route: ContinuousRoute,
     observation: ContinuousObservation,
     config: ContinuousControllerConfig | None = None,
@@ -613,7 +901,11 @@ def continuous_control_decision(
 
     settings = config or ContinuousControllerConfig()
     input_failure = _input_failure_reason(route, observation, settings)
-    if input_failure in {"inputs_not_finite", "observation_values_invalid"}:
+    if input_failure in {
+        "inputs_not_finite",
+        "observation_values_invalid",
+        "heading_evidence_invalid",
+    }:
         return _stop(
             input_failure,
             observation.position,
@@ -623,6 +915,25 @@ def continuous_control_decision(
     predicted, horizon = _predict_position(observation, settings)
     if input_failure is not None:
         return _stop(input_failure, predicted, prediction_horizon_s=horizon)
+
+    evidence = observation.heading_evidence
+    heading_age_s = (
+        observation.elapsed_s - evidence.measured_at_s if evidence is not None else None
+    )
+    if evidence is None and observation.elapsed_s >= settings.max_heading_acquisition_s:
+        return _stop(
+            "heading_acquisition_timeout",
+            predicted,
+            prediction_horizon_s=horizon,
+        )
+    if heading_age_s is not None and heading_age_s > settings.max_heading_age_s:
+        return _stop(
+            "heading_evidence_stale",
+            predicted,
+            prediction_horizon_s=horizon,
+            heading_evidence=evidence,
+            heading_age_s=heading_age_s,
+        )
 
     route_dx = route.target.x - route.start.x
     route_dy = route.target.y - route.start.y
@@ -688,20 +999,26 @@ def continuous_control_decision(
         aim_dx = route.target.x - predicted.x
         aim_dy = route.target.y - predicted.y
     desired_course = math.degrees(math.atan2(aim_dy, aim_dx))
-    heading_error = normalize_degrees(
-        desired_course - observation.course_heading_degrees
-    )
-    # 🚨 **The 2026-08-24 gate: never steer on a heading no motion has
-    # confirmed inside THIS window.** Compared against the caller's displacement
-    # from the window's own first fix (`services.py` seeds `origin` there, not
-    # from `route.start`), so a stale heading carried in from a previous session
-    # cannot be laundered by a route that happens to start where the mower sits.
-    # This deliberately does NOT gate any fail-closed check above -- a stop is
-    # still a stop when the heading is unconfirmed.
-    heading_confirmed = (
-        observation.distance_travelled_m >= settings.min_travel_for_heading_trust_m
-    )
-    if not heading_confirmed or abs(heading_error) <= settings.heading_deadband_degrees:
+    if evidence is None:
+        return ContinuousDecision(
+            action="drive",
+            reason="acquiring_heading",
+            linear_speed=settings.linear_speed,
+            angular_speed=0,
+            predicted_position=predicted,
+            aim_point=aim_point,
+            target_distance_m=target_distance,
+            along_track_m=along_track,
+            cross_track_m=cross_track,
+            observed_cross_track_m=observed_cross_track,
+            desired_course_degrees=desired_course,
+            heading_error_degrees=None,
+            heading_confirmed_by_motion=False,
+            prediction_horizon_s=horizon,
+        )
+
+    heading_error = normalize_degrees(desired_course - evidence.course_heading_degrees)
+    if abs(heading_error) <= settings.heading_deadband_degrees:
         angular_speed = 0
     else:
         # `heading_error > 0` means the desired course sits COUNTER-CLOCKWISE of
@@ -731,6 +1048,10 @@ def continuous_control_decision(
         observed_cross_track_m=observed_cross_track,
         desired_course_degrees=desired_course,
         heading_error_degrees=heading_error,
-        heading_confirmed_by_motion=heading_confirmed,
+        heading_confirmed_by_motion=True,
+        heading_source=evidence.source,
+        heading_age_s=heading_age_s,
+        heading_chord_m=evidence.chord_m,
+        heading_uncertainty_degrees=evidence.uncertainty_degrees,
         prediction_horizon_s=horizon,
     )

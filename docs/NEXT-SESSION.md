@@ -1,5 +1,22 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
+🛡️ **PHASE 2 HEADING-SAFETY REMEDIATION IMPLEMENTED OFFLINE,
+2026-08-24 — supersedes the old `toward`-based opening gate described later in
+this history.** `toward` is diagnostic only. A fresh post-stream position is
+required before dispatch; angular speed remains zero until a fresh >=0.15 m
+position chord supplies the course; acquisition and maximum heading age are
+both two seconds. The safety clock includes first-command latency, travelled
+distance is accumulated from consecutive fixes, and post-acquisition admission
+uses live signed cross-track geometry plus remaining time/distance budgets.
+Experimental v1 is restricted to the measured 400/180 command pair.
+
+🚫 The 2026-08-24 corridor has only about 0.30 m of live-start clearance
+and now refuses the required **1.06 m** blind-acquisition disk. This was code
+and offline verification only: no deployment, HA/BLE call, gate change, or
+physical test. The motion gate remains disarmed. Read
+`docs/phase2-heading-safety-remediation-20260824.md` before considering any
+future Phase 2 step.
+
 🔌 **BLE WENT STALE OVERNIGHT; A CONFIG-ENTRY RELOAD FIXED IT, 2026-08-24.**
 After the battery died overnight and the mower went back on the dock, its
 local BLE session never came back — HA kept reporting stale pre-restart values
@@ -38,8 +55,8 @@ displacement confirms it); (2) the steering law's sign was inverted —
 `course_heading_degrees = 90.13 − toward` is a reflection, positive angular
 increases `toward`, so positive angular actually decreases map-frame course,
 making the old `+K × error` law positive feedback. Confirmed against six
-banked captures both signs, zero contradictions. New preflight gate
-`opening_alignment_feasible` would have refused today's run before dispatch.
+banked captures both signs, zero contradictions. Its now-superseded
+opening-alignment preflight gate would have refused today's run before dispatch.
 892 pytest / ruff / mypy / 10 hooks green. **Not deployed** (host still runs
 beta73's unfixed controller); **not physically re-tested.** Next physical
 step: deploy motion-disabled, dry-run-verify against live state, fresh
