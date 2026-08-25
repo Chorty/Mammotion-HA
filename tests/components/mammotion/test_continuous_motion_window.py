@@ -438,6 +438,65 @@ def test_real_run_fails_closed_on_every_pulse_gate(
     assert gate["passed"] is False
 
 
+def test_real_run_reuses_proven_latched_rpm_verdict() -> None:
+    """The inner pulse gate must agree with the common authorization boundary."""
+    coordinator = _FakeCoordinator()
+    setattr(
+        coordinator,
+        "_mammotion_blade_rpm_history",
+        [
+            {
+                "blade": {
+                    "reported_state": 0,
+                    "current_cutter_mode": 0,
+                    "current_cutter_rpm": 3004,
+                },
+                "position": {"x": 4.8524, "y": -1.5203},
+            },
+            {
+                "blade": {
+                    "reported_state": 0,
+                    "current_cutter_mode": 0,
+                    "current_cutter_rpm": 3004,
+                },
+                "position": {"x": 4.8527, "y": -1.5233},
+            },
+            {
+                "blade": {
+                    "reported_state": 0,
+                    "current_cutter_mode": 0,
+                    "current_cutter_rpm": 3004,
+                },
+                "position": {"x": 4.8525, "y": -1.5237},
+            },
+        ],
+    )
+    telemetry = _snapshot(
+        blade={
+            "reported_state": 0,
+            "current_cutter_mode": 0,
+            "current_cutter_rpm": 3004,
+        }
+    )
+
+    gates = _continuous_motion_gates(
+        coordinator,
+        telemetry,
+        route_start=STRAIGHT_ROUTE,
+        route_target=STRAIGHT_TARGET,
+        config=ContinuousControllerConfig(),
+        corridor_polygon=ACQUISITION_CORRIDOR,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+    )
+
+    gate = next(g for g in gates if g["name"] == "mower_reports_blades_off")
+    assert gate["passed"] is True
+    assert gate["diagnostics"]["blade"]["blade_rpm_stale_register"] is True
+    assert gate["diagnostics"]["rpm_stale_verdict"]["feed_proven_live"] is True
+
+
 # --- the decision loop, isolated from BLE entirely -----------------------------
 
 

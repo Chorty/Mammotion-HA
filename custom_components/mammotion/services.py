@@ -5593,6 +5593,11 @@ def _manual_velocity_pulse_gates(
     """Return safety gates for a manual velocity pulse probe."""
     work_mode_label = before.get("work_mode_label")
     ble_link = _ble_link_liveness(coordinator) if not dry_run else None
+    rpm_verdict = blade_rpm_stale_register(coordinator)
+    blade = _runtime_blade_diagnostics(
+        before,
+        rpm_stale_register=rpm_verdict.get("stale_register") is True,
+    )
     return [
         {
             "name": "stop_primitive_available",
@@ -5636,8 +5641,16 @@ def _manual_velocity_pulse_gates(
         },
         {
             "name": "mower_reports_blades_off",
-            "passed": dry_run or _blade_reported_safe(before),
-            "detail": "Real pulse requires blade state off and cutter RPM zero/unknown.",
+            "passed": dry_run or blade["blade_safe_for_motion"],
+            "detail": (
+                "Real pulse requires blade state and cutter mode off. A nonzero "
+                "latched RPM register is discounted only after three samples "
+                "prove the position feed live and the RPM constant."
+            ),
+            "diagnostics": {
+                "blade": blade,
+                "rpm_stale_verdict": rpm_verdict,
+            },
         },
         {
             "name": "mower_ready",
