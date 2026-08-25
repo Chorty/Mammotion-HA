@@ -88,26 +88,26 @@ body:
         version than what you actually have installed.
       # BEGIN AUTO-GENERATED VERSION LIST (refreshed by .github/workflows/update-issue-template.yml — do not hand-edit)
       options:
-        - v0.6.3
-        - v0.6.3-beta2
-        - v0.6.3-beta1
-        - v0.6.2
-        - v0.6.2-beta1
-        - v0.6.1
-        - v0.6.0
-        - v0.5.48-beta15
-        - v0.5.48-beta14
-        - v0.5.48-beta13
-        - v0.5.48-beta12
-        - v0.5.48-beta11
-        - v0.5.48-beta10
-        - v0.5.48-beta9
-        - v0.5.48-beta8
-        - v0.5.48-beta7
-        - v0.5.48-beta6
-        - v0.5.48-beta5
-        - v0.5.48-beta4
-        - v0.5.48-beta3
+        - v0.6.4-beta76
+        - v0.6.4-beta75
+        - v0.6.4-beta74
+        - v0.6.4-beta73
+        - v0.6.4-beta72
+        - v0.6.4-beta71
+        - v0.6.4-beta70
+        - v0.6.4-beta69
+        - v0.6.4-beta68
+        - v0.6.4-beta67
+        - v0.6.4-beta66
+        - v0.6.4-beta65
+        - v0.6.4-beta64
+        - v0.6.4-beta63
+        - v0.6.4-beta62
+        - v0.6.4-beta61
+        - v0.6.4-beta60
+        - v0.6.4-beta59
+        - v0.6.4-beta58
+        - v0.6.4-beta57
         - Older / not listed (specify in description)
       # END AUTO-GENERATED VERSION LIST
   - type: input
