@@ -120,6 +120,7 @@ SERVICE_RAW_PYMAMMOTION_EXECUTE_MULTI_SEGMENT = "raw_pymammotion_execute_multi_s
 SERVICE_FORWARD_TWO_PULSE_LATENCY_TEST = "forward_two_pulse_latency_test"
 SERVICE_POSITION_FEEDBACK_DIAGNOSTIC = "position_feedback_diagnostic"
 SERVICE_REPORT_STREAM_PROBE = "report_stream_probe"
+SERVICE_REPORT_STREAM_SEQUENCE_PROBE = "report_stream_sequence_probe"
 SERVICE_BASESTATION_INFO_PROBE = "basestation_info_probe"
 SERVICE_OTA_INFO_PROBE = "ota_info_probe"
 SERVICE_VIO_MOTION_PROBE = "vio_motion_probe"
@@ -1116,6 +1117,23 @@ REPORT_STREAM_PROBE_SCHEMA = vol.Schema(
             vol.Coerce(float), vol.Range(min=2.0, max=120.0)
         ),
         vol.Optional("isolated", default=False): cv.boolean,
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
+REPORT_STREAM_SEQUENCE_PROBE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+        vol.Required("periods_ms"): vol.All(
+            [vol.All(vol.Coerce(int), vol.Range(min=100, max=10000))],
+            vol.Length(min=1, max=64),
+        ),
+        vol.Optional("observation_seconds", default=0.0): vol.All(
+            vol.Coerce(float), vol.Range(min=0.0, max=120.0)
+        ),
+        vol.Optional("readiness_timeout_seconds", default=3.5): vol.All(
+            vol.Coerce(float), vol.Range(min=1.0, max=10.0)
+        ),
     },
     extra=vol.ALLOW_EXTRA,
 )
@@ -5397,6 +5415,151 @@ def _report_channel_fingerprints(
     }
 
 
+def _latency_distribution_ms(values: Sequence[float]) -> dict[str, Any]:
+    """Return compact percentile diagnostics for monotonic stage durations."""
+    ordered = sorted(max(float(value) * 1000.0, 0.0) for value in values)
+    if not ordered:
+        return {"count": 0, "p50": None, "p95": None, "p99": None, "max": None}
+
+    def percentile(fraction: float) -> float:
+        index = max(math.ceil(fraction * len(ordered)) - 1, 0)
+        return round(ordered[index], 3)
+
+    return {
+        "count": len(ordered),
+        "p50": percentile(0.50),
+        "p95": percentile(0.95),
+        "p99": percentile(0.99),
+        "max": round(ordered[-1], 3),
+    }
+
+
+def _position_stage_latency_summary(
+    records: Sequence[tuple[Any, float]],
+) -> dict[str, dict[str, Any]]:
+    """Summarise every measured position pipeline stage."""
+    stages: dict[str, list[float]] = {
+        "receipt_to_decode": [],
+        "decode_to_broker": [],
+        "broker_to_reducer": [],
+        "reducer_to_state_apply": [],
+        "state_apply_to_publication": [],
+        "receipt_to_publication": [],
+        "publication_to_consumption": [],
+        "receipt_to_consumption": [],
+    }
+    for sample, consumed_at in records:
+        stages["receipt_to_decode"].append(
+            sample.decoded_at_monotonic - sample.received_at_monotonic
+        )
+        stages["decode_to_broker"].append(
+            sample.broker_completed_at_monotonic - sample.decoded_at_monotonic
+        )
+        stages["broker_to_reducer"].append(
+            sample.reducer_completed_at_monotonic - sample.broker_completed_at_monotonic
+        )
+        stages["reducer_to_state_apply"].append(
+            sample.state_applied_at_monotonic - sample.reducer_completed_at_monotonic
+        )
+        stages["state_apply_to_publication"].append(
+            sample.published_at_monotonic - sample.state_applied_at_monotonic
+        )
+        stages["receipt_to_publication"].append(
+            sample.published_at_monotonic - sample.received_at_monotonic
+        )
+        stages["publication_to_consumption"].append(
+            consumed_at - sample.published_at_monotonic
+        )
+        stages["receipt_to_consumption"].append(
+            consumed_at - sample.received_at_monotonic
+        )
+    return {name: _latency_distribution_ms(values) for name, values in stages.items()}
+
+
+async def _wait_for_position_subscription_ready(  # noqa: C901
+    handle: Any,
+    position_stream: Any,
+    generation: Any,
+    *,
+    lease: Any,
+    timeout_seconds: float,
+    not_before_monotonic: float | None = None,
+    baseline_dropped_samples: int | None = None,
+) -> tuple[Any | None, float | None, str | None]:
+    """Require the first valid position in the current report generation."""
+    deadline = time.monotonic() + timeout_seconds
+    expected_sequence = generation.baseline_position_sequence + 1
+    dropped_at_start = (
+        position_stream.dropped_samples
+        if baseline_dropped_samples is None
+        else baseline_dropped_samples
+    )
+    while (remaining := deadline - time.monotonic()) > 0:
+        if position_stream.dropped_samples != dropped_at_start:
+            return None, None, "position_evidence_gap"
+        if not handle.report_subscription_lease_is_current(lease):
+            return None, None, "report_subscription_lease_lost"
+        if handle.report_subscription_generation != generation.generation:
+            return None, None, "report_subscription_generation_changed"
+        if handle.position_epoch != generation.baseline_position_epoch:
+            return None, None, "position_epoch_changed"
+        try:
+            sample = await asyncio.wait_for(position_stream.queue.get(), remaining)
+        except TimeoutError:
+            break
+        consumed_at = time.monotonic()
+        if position_stream.dropped_samples != dropped_at_start:
+            return None, None, "position_evidence_gap"
+        if sample.epoch != generation.baseline_position_epoch:
+            return None, None, "position_epoch_changed"
+        # A sample may have been queued between opening the stream and taking
+        # the generation baseline. It is explicitly pre-generation evidence.
+        if sample.sequence <= generation.baseline_position_sequence:
+            continue
+        if sample.sequence != expected_sequence:
+            return None, None, "position_evidence_gap"
+        expected_sequence += 1
+        evidence_boundary = (
+            generation.requested_at_monotonic
+            if not_before_monotonic is None
+            else max(generation.requested_at_monotonic, not_before_monotonic)
+        )
+        if sample.received_at_monotonic < evidence_boundary:
+            continue
+        if not sample.valid_for_motion:
+            return None, None, "position_invalid_for_motion"
+        return sample, consumed_at, None
+    if not handle.report_subscription_lease_is_current(lease):
+        return None, None, "report_subscription_lease_lost"
+    if handle.report_subscription_generation != generation.generation:
+        return None, None, "report_subscription_generation_changed"
+    if handle.position_epoch != generation.baseline_position_epoch:
+        return None, None, "position_epoch_changed"
+    generic_advanced = handle.last_report_at > generation.baseline_last_report_at
+    return (
+        None,
+        None,
+        "position_channel_stalled" if generic_advanced else "position_channel_timeout",
+    )
+
+
+async def _collect_position_records(
+    position_stream: Any,
+    *,
+    duration_seconds: float,
+) -> list[tuple[Any, float]]:
+    """Consume position samples live so controller latency remains measurable."""
+    records: list[tuple[Any, float]] = []
+    deadline = time.monotonic() + duration_seconds
+    while (remaining := deadline - time.monotonic()) > 0:
+        try:
+            sample = await asyncio.wait_for(position_stream.queue.get(), remaining)
+        except TimeoutError:
+            break
+        records.append((sample, time.monotonic()))
+    return records
+
+
 async def _report_stream_probe(  # noqa: C901
     coordinator: MammotionReportUpdateCoordinator,
     *,
@@ -5404,6 +5567,9 @@ async def _report_stream_probe(  # noqa: C901
     no_change_period_ms: int,
     duration_seconds: float,
     isolated: bool = False,
+    report_lease: Any | None = None,
+    readiness_timeout_seconds: float = 3.5,
+    include_raw_samples: bool = True,
 ) -> dict[str, Any]:
     """Measure how often the device actually reports at a requested period.
 
@@ -5439,6 +5605,7 @@ async def _report_stream_probe(  # noqa: C901
             "not between polls"
         ),
         "motion_commanded": False,
+        "subscription_attempted": False,
         "subscription_started": False,
         "subscription_stopped": False,
         "reports_observed": 0,
@@ -5462,37 +5629,152 @@ async def _report_stream_probe(  # noqa: C901
         return result
 
     exclusive_context = None
-    if isolated:
+    lease = report_lease
+    if isolated and lease is None:
         exclusive_factory = getattr(handle, "exclusive_report_subscription", None)
         if not callable(exclusive_factory):
             result["reason"] = "exclusive_report_subscription_unavailable"
             return result
-        exclusive_context = exclusive_factory()
+        exclusive_context = exclusive_factory("report_stream_probe")
         try:
-            await exclusive_context.__aenter__()
+            lease = await exclusive_context.__aenter__()
         except Exception as err:  # noqa: BLE001
             result["reason"] = (
                 f"exclusive_subscription_failed: {type(err).__name__}: {err}"
             )
             return result
 
+    if isolated and lease is None:
+        result["reason"] = "report_subscription_lease_unavailable"
+        if exclusive_context is not None:
+            await exclusive_context.__aexit__(None, None, None)
+        return result
+
     open_position_stream = getattr(coordinator, "open_position_sample_stream", None)
     position_stream = (
         open_position_stream(maxsize=2048) if callable(open_position_stream) else None
     )
-    request_started_at = time.monotonic()
+    if isolated and position_stream is None:
+        result["reason"] = "position_stream_unavailable"
+        if exclusive_context is not None:
+            await exclusive_context.__aexit__(None, None, None)
+        return result
+    begin_generation = getattr(handle, "begin_report_subscription_generation", None)
+    lease_is_current = getattr(handle, "report_subscription_lease_is_current", None)
+    if isolated and (
+        not callable(begin_generation)
+        or not callable(lease_is_current)
+        or not isinstance(getattr(handle, "report_subscription_generation", None), int)
+    ):
+        result["reason"] = "report_subscription_generation_unavailable"
+        if position_stream is not None:
+            position_stream.close()
+        if exclusive_context is not None:
+            await exclusive_context.__aexit__(None, None, None)
+        return result
+
+    generation = (
+        cast(Callable[[Any], Any], begin_generation)(lease) if isolated else None
+    )
+    position_drops_at_generation = (
+        position_stream.dropped_samples if position_stream is not None else None
+    )
+    request_started_at = (
+        generation.requested_at_monotonic
+        if generation is not None
+        else time.monotonic()
+    )
+    position_records: list[tuple[Any, float]] = []
+    collector_task: asyncio.Task[list[tuple[Any, float]]] | None = None
     try:
+        result["subscription_attempted"] = True
         await coordinator.manager.request_iot_sync_continuous(
             coordinator.device_name,
             period=period_ms,
             no_change_period=no_change_period_ms,
         )
         result["subscription_started"] = True
+        if generation is not None:
+            result["subscription_generation"] = {
+                "owner": generation.owner,
+                "lease_id": generation.lease_id,
+                "generation": generation.generation,
+                "requested_at_monotonic": generation.requested_at_monotonic,
+                "baseline_position_sequence": generation.baseline_position_sequence,
+                "baseline_position_epoch": generation.baseline_position_epoch,
+                "baseline_last_report_at": generation.baseline_last_report_at,
+            }
         result["queue_settle"] = await _settle_ble_command_queue(coordinator)
+        # `request_iot_sync_continuous` returns when the command is QUEUED, not
+        # when the device acknowledges it: pymammotion's client hands the send to
+        # `DeviceCommandQueue.enqueue` and returns immediately. Draining that
+        # queue is the first instant at which this generation's RPT_START is
+        # known to have been written to the transport, so the flush -- not the
+        # call's return -- is the evidence boundary. Stamping it at the return
+        # instead would let a payload still arriving from the PREVIOUS
+        # configuration satisfy this generation's readiness, which is exactly the
+        # cross-generation acceptance this probe exists to rule out.
+        subscription_command_flushed_at = time.monotonic()
+        result["subscription_command_flushed_at_monotonic"] = (
+            subscription_command_flushed_at
+        )
 
+        if isolated and position_stream is not None and generation is not None:
+            (
+                ready_sample,
+                ready_consumed_at,
+                readiness_reason,
+            ) = await _wait_for_position_subscription_ready(
+                handle,
+                position_stream,
+                generation,
+                lease=lease,
+                timeout_seconds=readiness_timeout_seconds,
+                not_before_monotonic=subscription_command_flushed_at,
+                baseline_dropped_samples=position_drops_at_generation,
+            )
+            result["position_readiness"] = {
+                "ready": ready_sample is not None,
+                "reason": readiness_reason,
+                "timeout_seconds": readiness_timeout_seconds,
+                "first_position_sequence": (
+                    ready_sample.sequence if ready_sample is not None else None
+                ),
+                "first_position_after_request_ms": (
+                    round(
+                        (
+                            ready_sample.received_at_monotonic
+                            - generation.requested_at_monotonic
+                        )
+                        * 1000,
+                        3,
+                    )
+                    if ready_sample is not None
+                    else None
+                ),
+                "generic_report_advanced": (
+                    handle.last_report_at > generation.baseline_last_report_at
+                ),
+            }
+            if ready_sample is None or ready_consumed_at is None:
+                result["reason"] = readiness_reason
+                return result
+            position_records.append((ready_sample, ready_consumed_at))
+
+        collector_task = (
+            asyncio.create_task(
+                _collect_position_records(
+                    position_stream, duration_seconds=duration_seconds
+                )
+            )
+            if position_stream is not None
+            else None
+        )
         arrivals, channel_arrivals = await _observe_report_arrivals(
             coordinator, handle, duration_seconds
         )
+        if collector_task is not None:
+            position_records.extend(await collector_task)
         result["reports_observed"] = len(arrivals)
         result["channels"] = {
             name: _summarise_channel_arrivals(name, stamps, duration_seconds)
@@ -5503,14 +5785,12 @@ async def _report_stream_probe(  # noqa: C901
             for earlier, later in zip(arrivals, arrivals[1:], strict=False)
         ]
         if position_stream is not None:
-            position_samples = []
-            while True:
-                try:
-                    position_sample = position_stream.queue.get_nowait()
-                except asyncio.QueueEmpty:
-                    break
-                if position_sample.received_at_monotonic >= request_started_at:
-                    position_samples.append(position_sample)
+            position_records = [
+                record
+                for record in position_records
+                if record[0].received_at_monotonic >= request_started_at
+            ]
+            position_samples = [record[0] for record in position_records]
             position_arrivals = [
                 position_sample.received_at_monotonic
                 for position_sample in position_samples
@@ -5556,21 +5836,39 @@ async def _report_stream_probe(  # noqa: C901
                     if position_intervals
                     else None
                 ),
+                "stage_latency_summary_ms": _position_stage_latency_summary(
+                    position_records
+                ),
             }
+            if not include_raw_samples:
+                result["position_payloads"].pop("intervals_ms", None)
+                result["position_payloads"].pop("pipeline_latencies_ms", None)
+        if generation is not None and (
+            not cast(Callable[[Any], bool], lease_is_current)(lease)
+            or getattr(handle, "report_subscription_generation", None)
+            != generation.generation
+        ):
+            result["reason"] = "report_subscription_generation_changed"
+            return result
         result["reason"] = "completed"
     except Exception as err:  # noqa: BLE001
         result["reason"] = f"{type(err).__name__}: {err}"
     finally:
+        if collector_task is not None and not collector_task.done():
+            collector_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await collector_task
         if position_stream is not None:
             position_stream.close()
         # Always tear the subscription down, including on the error path: a
         # short-period stream left running is a standing BLE load.
-        if result["subscription_started"]:
+        if result["subscription_attempted"]:
             try:
                 await coordinator.manager.request_iot_sync_continuous_stop(
                     coordinator.device_name
                 )
                 result["subscription_stopped"] = True
+                result["subscription_stop_ack_at_monotonic"] = time.monotonic()
             except Exception as err:  # noqa: BLE001
                 result["stop_error"] = f"{type(err).__name__}: {err}"
         if exclusive_context is not None:
@@ -5612,6 +5910,90 @@ async def _report_stream_probe(  # noqa: C901
             position_payloads["p95_interval_ms"] <= period_ms * 1.5
         )
         result["period_classification_reason"] = "three_randomized_repeats_required"
+    return result
+
+
+async def _report_stream_sequence_probe(
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    periods_ms: Sequence[int],
+    observation_seconds: float,
+    readiness_timeout_seconds: float,
+) -> dict[str, Any]:
+    """Run multiple report transitions under one serialized ownership lease."""
+    result: dict[str, Any] = {
+        "periods_ms": list(periods_ms),
+        "observation_seconds": observation_seconds,
+        "readiness_timeout_seconds": readiness_timeout_seconds,
+        "isolated": True,
+        "motion_commanded": False,
+        "cells": [],
+        "complete": False,
+        "failed_cells": [],
+        "reason": None,
+    }
+    handle = coordinator.manager.mower(coordinator.device_name)
+    if handle is None:
+        result["reason"] = "device_handle_unavailable"
+        return result
+    if getattr(coordinator, "manual_motion_owner", None) is not None:
+        result["reason"] = "manual_motion_session_active"
+        return result
+    exclusive_factory = getattr(handle, "exclusive_report_subscription", None)
+    if not callable(exclusive_factory):
+        result["reason"] = "exclusive_report_subscription_unavailable"
+        return result
+
+    try:
+        async with exclusive_factory("report_stream_sequence_probe") as lease:
+            if lease is None:
+                result["reason"] = "report_subscription_lease_unavailable"
+                return result
+            result["lease"] = {
+                "owner": lease.owner,
+                "lease_id": lease.lease_id,
+                "acquired_at_monotonic": lease.acquired_at_monotonic,
+                # Enqueue-time only. The library cannot confirm the device acted
+                # on the quiescing STOP, so this is not evidence of quiescence --
+                # per-generation position readiness below is.
+                "background_stop_enqueued": lease.background_stop_enqueued,
+                "background_stop_enqueued_at_monotonic": (
+                    lease.background_stop_enqueued_at_monotonic
+                ),
+            }
+            for index, period_ms in enumerate(periods_ms, start=1):
+                cell = await _report_stream_probe(
+                    coordinator,
+                    period_ms=int(period_ms),
+                    no_change_period_ms=int(period_ms),
+                    duration_seconds=observation_seconds,
+                    isolated=True,
+                    report_lease=lease,
+                    readiness_timeout_seconds=readiness_timeout_seconds,
+                    include_raw_samples=False,
+                )
+                cell["cell_index"] = index
+                result["cells"].append(cell)
+    except asyncio.CancelledError:
+        raise
+    except Exception as err:  # noqa: BLE001
+        result["reason"] = f"{type(err).__name__}: {err}"
+        return result
+
+    result["failed_cells"] = [
+        cell["cell_index"]
+        for cell in result["cells"]
+        if cell.get("reason") != "completed"
+        or cell.get("subscription_started") is not True
+        or cell.get("subscription_stopped") is not True
+        or cell.get("position_readiness", {}).get("ready") is not True
+        or cell.get("position_payloads", {}).get("dropped_samples", 0)
+        or cell.get("position_payloads", {}).get("sequence_gaps", 0)
+    ]
+    result["complete"] = (
+        len(result["cells"]) == len(periods_ms) and not result["failed_cells"]
+    )
+    result["reason"] = "completed" if result["complete"] else "transition_failed"
     return result
 
 
@@ -6340,6 +6722,23 @@ def _exclusive_saga_active(coordinator: MammotionReportUpdateCoordinator) -> boo
         return bool(handle.queue.is_saga_active)
     except Exception:  # noqa: BLE001 - never let a probe failure block motion
         return False
+
+
+def _saga_active_for_diagnostics(handle: Any) -> bool | None:
+    """Return saga state as a tri-state, where unreadable is ``None``.
+
+    Deliberately NOT ``_exclusive_saga_active``: that one degrades to ``False``
+    so pymammotion API drift can never block motion, which is right for a gate
+    and wrong for a diagnostic. A record that says "no saga" when it actually
+    means "could not tell" is exactly the mis-attribution this field exists to
+    prevent, so unreadable stays unreadable here.
+    """
+    try:
+        if handle is None:
+            return None
+        return bool(handle.queue.is_saga_active)
+    except Exception:  # noqa: BLE001 - a diagnostic must never raise
+        return None
 
 
 def _is_zero_motion_stop_nudge(
@@ -7562,6 +7961,10 @@ async def _raw_pymammotion_motion_probe(  # noqa: PLR0913
 # safe" and silently drove a path the scan never covered.
 _CONTINUOUS_MAX_START_DRIFT_M = 0.30
 _CONTINUOUS_MIRROR_SUM_DEGREES = 90.13
+# The mower is already stopped during this wait, so it consumes no blind-motion
+# budget and does not enlarge the 1.06 m acquisition disk. The 3.5 s bound covers
+# the stationary matrix's 2.909 s maximum position gap with measured margin.
+_CONTINUOUS_POST_STOP_OBSERVATION_S = 3.5
 
 
 def _continuous_course_heading(toward: float) -> float:
@@ -7675,19 +8078,63 @@ def _continuous_motion_gates(
     return gates
 
 
-async def _wait_for_fresh_continuous_origin(
+async def _wait_for_fresh_continuous_origin(  # noqa: C901
     position_stream: Any,
     *,
     request_started_at: float,
     baseline_sequence: int,
     baseline_epoch: int,
     timeout_s: float,
+    handle: Any | None = None,
+    report_lease: Any | None = None,
+    report_generation: Any | None = None,
+    baseline_dropped_samples: int | None = None,
 ) -> dict[str, Any]:
     """Wait for new position evidence, including an unchanged coordinate."""
     started = time.monotonic()
     expected_sequence = baseline_sequence + 1
-    dropped_at_start = position_stream.dropped_samples
+    dropped_at_start = (
+        position_stream.dropped_samples
+        if baseline_dropped_samples is None
+        else baseline_dropped_samples
+    )
     while (remaining := timeout_s - (time.monotonic() - started)) > 0:
+        if position_stream.dropped_samples != dropped_at_start:
+            return {
+                "ok": False,
+                "reason": "position_sequence_gap",
+                "sample": None,
+                "elapsed_s": time.monotonic() - started,
+            }
+        if (
+            handle is not None
+            and report_lease is not None
+            and not handle.report_subscription_lease_is_current(report_lease)
+        ):
+            return {
+                "ok": False,
+                "reason": "report_subscription_lease_lost",
+                "sample": None,
+                "elapsed_s": time.monotonic() - started,
+            }
+        if (
+            handle is not None
+            and report_generation is not None
+            and handle.report_subscription_generation != report_generation.generation
+        ):
+            return {
+                "ok": False,
+                "reason": "report_subscription_generation_changed",
+                "sample": None,
+                "elapsed_s": time.monotonic() - started,
+            }
+        if handle is not None and handle.position_epoch != baseline_epoch:
+            return {
+                "ok": False,
+                "reason": "position_epoch_changed",
+                "sample": None,
+                "elapsed_s": time.monotonic() - started,
+            }
         try:
             sample = await asyncio.wait_for(position_stream.queue.get(), remaining)
         except TimeoutError:
@@ -7752,9 +8199,31 @@ async def _wait_for_fresh_continuous_origin(
             "sample": sample_diagnostics,
             "elapsed_s": consumed_at - started,
         }
+    if handle is not None and handle.position_epoch != baseline_epoch:
+        return {
+            "ok": False,
+            "reason": "position_epoch_changed",
+            "sample": None,
+            "elapsed_s": time.monotonic() - started,
+        }
+    # `generic_report_advanced` is reported as EVIDENCE, never promoted into the
+    # reason. This wait is bounded by `max_heading_acquisition_s` (2.0 s), and the
+    # beta76 stationary matrix shows 28 of 1434 healthy position intervals -- 1.95%
+    # -- already exceed 2.0 s, while generic frames arrive at roughly 2 Hz. Calling
+    # that `position_channel_stalled` would give a routine tail-of-distribution gap
+    # the same name as cell 12's real outage (3 payloads, then ~119 s of silence
+    # against 118 normal generic reports). The readiness probe's 3.5 s budget is a
+    # different case: nothing in 1434 intervals exceeded it, so `stalled` is well
+    # founded there and is kept.
+    generic_advanced = (
+        handle is not None
+        and report_generation is not None
+        and handle.last_report_at > report_generation.baseline_last_report_at
+    )
     return {
         "ok": False,
         "reason": "fresh_origin_timeout",
+        "generic_report_advanced": generic_advanced,
         "sample": None,
         "elapsed_s": time.monotonic() - started,
     }
@@ -7767,31 +8236,29 @@ async def _wait_for_post_stop_position(
     epoch: int,
     timeout_s: float,
 ) -> tuple[Any | None, str | None]:
-    """Return the newest valid post-stop sample without crossing an evidence gap."""
+    """Observe the full stopped window and return its newest valid position."""
     dropped_at_start = position_stream.dropped_samples
     expected_sequence = after_sequence + 1
-    try:
-        sample = await asyncio.wait_for(position_stream.queue.get(), timeout_s)
-    except TimeoutError:
-        return None, "post_stop_position_timeout"
-    if position_stream.dropped_samples != dropped_at_start:
-        return None, "position_sequence_gap"
-    if sample.epoch != epoch:
-        return None, "position_epoch_changed"
-    if sample.sequence != expected_sequence:
-        return None, "position_sequence_gap"
-    latest = sample
-    while True:
+    deadline = time.monotonic() + timeout_s
+    latest = None
+    while (remaining := deadline - time.monotonic()) > 0:
         try:
-            candidate = position_stream.queue.get_nowait()
-        except asyncio.QueueEmpty:
+            sample = await asyncio.wait_for(position_stream.queue.get(), remaining)
+        except TimeoutError:
             break
-        if candidate.epoch != epoch or candidate.sequence != latest.sequence + 1:
+        if position_stream.dropped_samples != dropped_at_start:
             return None, "position_sequence_gap"
-        latest = candidate
-    if not latest.valid_for_motion:
-        return None, "position_invalid_for_motion"
-    return latest, None
+        if sample.epoch != epoch:
+            return None, "position_epoch_changed"
+        if sample.sequence != expected_sequence:
+            return None, "position_sequence_gap"
+        if not sample.valid_for_motion:
+            return None, "position_invalid_for_motion"
+        expected_sequence += 1
+        latest = sample
+    return (
+        (latest, None) if latest is not None else (None, "post_stop_position_timeout")
+    )
 
 
 async def _continuous_decision_loop(  # noqa: C901
@@ -8085,6 +8552,7 @@ async def _continuous_motion_window_impl(  # noqa: C901, PLR0913
     coordinator: MammotionReportUpdateCoordinator,
     *,
     position_stream: Any | None,
+    report_lease: Any | None = None,
     acquisition_only: bool,
     route_start: dict[str, float],
     route_target: dict[str, float],
@@ -8185,6 +8653,7 @@ async def _continuous_motion_window_impl(  # noqa: C901, PLR0913
             "window_s": config.max_window_s,
             "distance_m": config.max_distance_m,
         },
+        "post_stop_observation_timeout_s": _CONTINUOUS_POST_STOP_OBSERVATION_S,
         "safety_gates": gates,
         "blockers": blockers,
         "would_send": False,
@@ -8219,9 +8688,15 @@ async def _continuous_motion_window_impl(  # noqa: C901, PLR0913
         return result
 
     handle = coordinator.manager.mower(coordinator.device_name)
-    latest_position_sample = getattr(handle, "latest_position_sample", None)
-    baseline_sequence = getattr(latest_position_sample, "sequence", 0)
-    baseline_epoch = getattr(handle, "position_epoch", 0)
+    begin_generation = getattr(handle, "begin_report_subscription_generation", None)
+    if report_lease is None or not callable(begin_generation):
+        result["reason"] = "report_subscription_generation_unavailable"
+        result["blockers"] = ["report_subscription_generation_unavailable"]
+        return result
+    report_generation = begin_generation(report_lease)
+    baseline_sequence = report_generation.baseline_position_sequence
+    baseline_epoch = report_generation.baseline_position_epoch
+    baseline_dropped_samples = position_stream.dropped_samples
 
     stream_duration_ms = max(10_000, duration_ms + 5_000)
     stream_result: dict[str, Any] = {
@@ -8229,10 +8704,23 @@ async def _continuous_motion_window_impl(  # noqa: C901, PLR0913
         "started": False,
         "continuous_started": False,
         "error": None,
+        # Both start calls below reach the queue at Priority.BACKGROUND with
+        # skip_if_saga_active=True, so a running saga DROPS them silently while
+        # `started`/`continuous_started` still record True. Without this capture a
+        # dispatch failure is indistinguishable from a telemetry stall, and the
+        # subsequent timeout gets scored as evidence about the position channel.
+        "saga_active_before_request": _saga_active_for_diagnostics(handle),
     }
     result["report_stream"] = stream_result
+    stream_result["subscription_generation"] = {
+        "owner": report_generation.owner,
+        "lease_id": report_generation.lease_id,
+        "generation": report_generation.generation,
+        "requested_at_monotonic": report_generation.requested_at_monotonic,
+        "baseline_position_sequence": baseline_sequence,
+        "baseline_position_epoch": baseline_epoch,
+    }
     try:
-        report_request_started_at = time.monotonic()
         if hasattr(coordinator, "async_start_report_stream"):
             await coordinator.async_start_report_stream(duration_ms=stream_duration_ms)
             stream_result["started"] = True
@@ -8242,6 +8730,15 @@ async def _continuous_motion_window_impl(  # noqa: C901, PLR0913
             )
             stream_result["continuous_started"] = True
         stream_result["queue_settle"] = await _settle_ble_command_queue(coordinator)
+        # Same reasoning as `_report_stream_probe`: both start calls return on
+        # ENQUEUE, so only the post-settle instant proves the report START
+        # reached the transport. Opening a blind-motion window on an origin fix
+        # that predates it would reintroduce exactly the stale-origin class the
+        # 2026-08-24 remediation closed.
+        report_request_started_at = time.monotonic()
+        stream_result["subscription_command_flushed_at_monotonic"] = (
+            report_request_started_at
+        )
     except Exception as err:  # noqa: BLE001
         stream_result["error"] = f"{type(err).__name__}: {err}"
         result["reason"] = "report_stream_failed"
@@ -8253,6 +8750,10 @@ async def _continuous_motion_window_impl(  # noqa: C901, PLR0913
         baseline_sequence=baseline_sequence,
         baseline_epoch=baseline_epoch,
         timeout_s=config.max_heading_acquisition_s,
+        handle=handle,
+        report_lease=report_lease,
+        report_generation=report_generation,
+        baseline_dropped_samples=baseline_dropped_samples,
     )
     result["fresh_origin"] = fresh_origin
     if not fresh_origin["ok"]:
@@ -8398,7 +8899,7 @@ async def _continuous_motion_window_impl(  # noqa: C901, PLR0913
             position_stream,
             after_sequence=final_sequence,
             epoch=origin_sample["epoch"],
-            timeout_s=config.max_heading_age_s,
+            timeout_s=_CONTINUOUS_POST_STOP_OBSERVATION_S,
         )
         if post_stop_sample is not None:
             final_position = ContinuousPoint(
@@ -8423,6 +8924,16 @@ async def _continuous_motion_window_impl(  # noqa: C901, PLR0913
             "source": (final_heading.source if final_heading is not None else None),
             "minimum_chord_m": config.min_travel_for_heading_trust_m,
             "maximum_age_s": config.max_heading_age_s,
+            # `maximum_age_s` is the steering freshness bound and is NOT applied
+            # here: `course_from_position_chord` records `measured_at_s` without
+            # enforcing it, and the stopped observation can add up to
+            # `_CONTINUOUS_POST_STOP_OBSERVATION_S` on top of the motion window.
+            # This evidence is diagnostic only and must never be read as a
+            # freshness-validated heading -- it cannot steer anything, because
+            # the invocation stops before it is computed.
+            "age_bounded_by_maximum_age_s": False,
+            "includes_post_stop_observation": post_stop_sample is not None,
+            "post_stop_observation_timeout_s": _CONTINUOUS_POST_STOP_OBSERVATION_S,
             "evidence": (
                 dataclasses.asdict(final_heading) if final_heading is not None else None
             ),
@@ -8487,17 +8998,11 @@ async def _heading_acquisition_window(
     confirm_clear_area: bool = False,
 ) -> dict[str, Any]:
     """Acquire one position-chord heading without ever dispatching steering."""
-    open_position_stream = getattr(coordinator, "open_position_sample_stream", None)
-    position_stream = (
-        open_position_stream(maxsize=1)
-        if not dry_run and callable(open_position_stream)
-        else None
-    )
-    result: dict[str, Any] | None = None
-    try:
-        result = await _continuous_motion_window_impl(
+    if dry_run:
+        return await _continuous_motion_window_impl(
             coordinator,
-            position_stream=position_stream,
+            position_stream=None,
+            report_lease=None,
             acquisition_only=True,
             route_start=route_start,
             route_target=route_target,
@@ -8510,23 +9015,64 @@ async def _heading_acquisition_window(
             max_distance_m=1.0,
             max_cross_track_m=0.30,
             prefer_ble=prefer_ble,
-            dry_run=dry_run,
+            dry_run=True,
             confirm_blades_off=confirm_blades_off,
             confirm_clear_area=confirm_clear_area,
         )
-        return result  # noqa: RET504 - finally annotates report-stream teardown
-    finally:
-        if result is not None and result.get("report_stream", {}).get("attempted"):
+
+    handle = coordinator.manager.mower(coordinator.device_name)
+    exclusive_factory = getattr(handle, "exclusive_report_subscription", None)
+    open_position_stream = getattr(coordinator, "open_position_sample_stream", None)
+    if not callable(exclusive_factory) or not callable(open_position_stream):
+        return {
+            "service": SERVICE_HEADING_ACQUISITION_WINDOW,
+            "mode": "real_heading_acquisition_window",
+            "dry_run": False,
+            "would_send": False,
+            "blockers": ["position_subscription_lease_unavailable"],
+            "reason": "position_subscription_lease_unavailable",
+        }
+
+    result: dict[str, Any] | None = None
+    async with exclusive_factory("heading_acquisition_window") as report_lease:
+        position_stream = open_position_stream(maxsize=1)
+        try:
+            result = await _continuous_motion_window_impl(
+                coordinator,
+                position_stream=position_stream,
+                report_lease=report_lease,
+                acquisition_only=True,
+                route_start=route_start,
+                route_target=route_target,
+                corridor_polygon=corridor_polygon,
+                linear_speed=400,
+                max_abs_angular_speed=180,
+                duration_ms=2000,
+                motion_refresh_interval_ms=200,
+                decision_sample_interval_ms=100,
+                max_distance_m=1.0,
+                max_cross_track_m=0.30,
+                prefer_ble=prefer_ble,
+                dry_run=False,
+                confirm_blades_off=confirm_blades_off,
+                confirm_clear_area=confirm_clear_area,
+            )
+            return result  # noqa: RET504 - finally annotates report-stream teardown
+        finally:
+            # The lease owns the report configuration. Always issue its stop,
+            # including when the executor raises before it can return a result;
+            # otherwise an exception could leave a standing subscription behind.
             stop_reports = getattr(coordinator, "async_stop_continuous_reports", None)
             if callable(stop_reports):
                 try:
                     await stop_reports()
-                    result["report_stream"]["stopped"] = True
+                    if result is not None:
+                        result.setdefault("report_stream", {})["stopped"] = True
                 except Exception as err:  # noqa: BLE001
-                    result["report_stream"]["stop_error"] = (
-                        f"{type(err).__name__}: {err}"
-                    )
-        if position_stream is not None:
+                    if result is not None:
+                        result.setdefault("report_stream", {})["stop_error"] = (
+                            f"{type(err).__name__}: {err}"
+                        )
             position_stream.close()
 
 
@@ -18553,6 +19099,20 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             isolated=call.data["isolated"],
         )
 
+    async def handle_report_stream_sequence_probe(
+        call: ServiceCall,
+    ) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        return await _report_stream_sequence_probe(
+            mower.reporting_coordinator,
+            periods_ms=cast(list[int], call.data["periods_ms"]),
+            observation_seconds=call.data["observation_seconds"],
+            readiness_timeout_seconds=call.data["readiness_timeout_seconds"],
+        )
+
     async def handle_position_feedback_diagnostic(
         call: ServiceCall,
     ) -> dict[str, Any]:
@@ -19165,6 +19725,13 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         SERVICE_REPORT_STREAM_PROBE,
         handle_report_stream_probe,
         schema=REPORT_STREAM_PROBE_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_REPORT_STREAM_SEQUENCE_PROBE,
+        handle_report_stream_sequence_probe,
+        schema=REPORT_STREAM_SEQUENCE_PROBE_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     # Not wrapped in _wrap_exclusive_manual_motion for the same reason as the

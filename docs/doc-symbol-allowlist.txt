@@ -52,3 +52,6 @@ CORRECTION_read_this_first                      # a JSON key inside docs/evidenc
 mammotion_disarm_motion_gate_when_left_armed    # the disarm automation's entity id, created from docs/automations/disarm-motion-gate.yaml in the host's /config/automations.yaml on 2026-08-22. Host config, so it can never resolve in this tree
 back_yard_clip_skywalker_real_motion_ready      # the binary_sensor entity id that automation triggers on. Built at runtime from the device name plus the `real_motion_ready` key in binary_sensor.py, so the full id exists only on the host
 armed_but_blocked                               # a trigger id inside docs/automations/disarm-motion-gate.yaml and the host's /config/automations.yaml. Automation YAML, not code, so the checker's code trees can never resolve it
+
+# --- names deliberately cited as the OLD form of a rename ---
+background_quiesced_at_monotonic                 # the pre-post3 lease field, renamed to background_stop_enqueued_at_monotonic on 2026-08-25 because it asserted a quiescence the code never established. CLAUDE.md names the old form so a reader of an older evidence artifact can find the change; by design it no longer exists in the tree

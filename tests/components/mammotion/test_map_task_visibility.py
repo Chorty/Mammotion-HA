@@ -93,6 +93,7 @@ from custom_components.mammotion.services import (
     _point_on_segment,
     _position_feedback_diagnostic,
     _position_source_comparison,
+    _position_stage_latency_summary,
     _preview_custom_path,
     _raw_motion_readiness_test,
     _raw_multi_segment_phase_passed,
@@ -107,6 +108,7 @@ from custom_components.mammotion.services import (
     _raw_vector_readiness_test,
     _realign_cannot_improve_the_landing,
     _report_stream_probe,
+    _report_stream_sequence_probe,
     _requires_reverse_recovery,
     _rtk_report_age_seconds,
     _runtime_motion_safety_summary,
@@ -123,6 +125,7 @@ from custom_components.mammotion.services import (
     _vio_turn_probe,
     _vio_turn_to_heading,
     _vio_turn_to_heading_staged,
+    _wait_for_position_subscription_ready,
     _wrap_exclusive_manual_motion,
 )
 
@@ -288,6 +291,7 @@ def _pulse_coordinator(
         getattr(commands, command_name).side_effect = build_command(command_name)
     handle = SimpleNamespace(
         last_report_at=123.0,
+        position_epoch=1,
         availability=SimpleNamespace(
             mqtt_reported_offline=False,
         ),
@@ -1866,6 +1870,7 @@ _SERVICE_REGISTRATIONS = _service_schema_registrations()
 
 _MINIMAL_REQUIRED_SAMPLES: dict[str, object] = {
     "entity_id": "lawn_mower.test",
+    "periods_ms": [1000],
     "name": "Test task",
     "enabled": True,
     "points": [{"x": 1.0, "y": 1.0}, {"x": 1.2, "y": 1.0}],
@@ -7503,6 +7508,10 @@ async def test_isolated_probe_classifies_only_position_payload_p95(
                 sequence=sequence,
                 epoch=1,
                 received_at_monotonic=received_at,
+                decoded_at_monotonic=received_at + 0.0002,
+                broker_completed_at_monotonic=received_at + 0.0004,
+                reducer_completed_at_monotonic=received_at + 0.0006,
+                state_applied_at_monotonic=received_at + 0.0008,
                 published_at_monotonic=received_at + 0.001,
                 valid_for_motion=True,
             )
@@ -7511,19 +7520,54 @@ async def test_isolated_probe_classifies_only_position_payload_p95(
     coordinator.open_position_sample_stream = lambda **_kwargs: stream
     handle = coordinator.manager.mower(coordinator.device_name)
 
+    lease = SimpleNamespace(
+        owner="report_stream_probe",
+        lease_id=1,
+        acquired_at_monotonic=baseline,
+        background_stop_enqueued=True,
+        background_stop_enqueued_at_monotonic=baseline,
+    )
+
     class _ExclusiveContext:
-        async def __aenter__(self) -> None:
-            return None
+        async def __aenter__(self) -> SimpleNamespace:
+            return lease
 
         async def __aexit__(self, *_args: object) -> None:
             return None
 
-    handle.exclusive_report_subscription = _ExclusiveContext
+    handle.exclusive_report_subscription = lambda _owner: _ExclusiveContext()
+    handle.report_subscription_generation = 0
+    handle.report_subscription_lease_is_current = lambda candidate: candidate is lease
+
+    def _begin_generation(candidate: object) -> SimpleNamespace:
+        assert candidate is lease
+        handle.report_subscription_generation = 1
+        return SimpleNamespace(
+            owner=lease.owner,
+            lease_id=lease.lease_id,
+            generation=1,
+            requested_at_monotonic=baseline,
+            baseline_position_sequence=0,
+            baseline_position_epoch=1,
+            baseline_last_report_at=handle.last_report_at,
+        )
+
+    handle.begin_report_subscription_generation = _begin_generation
 
     async def _observed(*_args: object) -> tuple[list[float], dict[str, list[float]]]:
         return [], {"position": [], "rtk": [], "vio": []}
 
+    async def _collected(
+        *_args: object, **_kwargs: object
+    ) -> list[tuple[object, float]]:
+        records: list[tuple[object, float]] = []
+        while not queue.empty():
+            sample = queue.get_nowait()
+            records.append((sample, sample.published_at_monotonic + 0.0002))
+        return records
+
     monkeypatch.setattr(mammotion_services, "_observe_report_arrivals", _observed)
+    monkeypatch.setattr(mammotion_services, "_collect_position_records", _collected)
     monkeypatch.setattr(
         mammotion_services,
         "_settle_ble_command_queue",
@@ -7545,6 +7589,373 @@ async def test_isolated_probe_classifies_only_position_payload_p95(
     assert result["period_classification_reason"] == (
         "three_randomized_repeats_required"
     )
+
+
+@pytest.mark.asyncio
+async def test_isolated_probe_readiness_starts_at_the_start_flush_not_the_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A frame still in flight from the previous configuration is not readiness.
+
+    `MammotionClient.request_iot_sync_continuous` returns when the command has
+    been ENQUEUED on `DeviceCommandQueue`, not when the device acknowledged it.
+    Anything received before that queue drains may still belong to the
+    configuration this generation replaces, so the evidence boundary is the
+    post-settle flush -- otherwise a stale payload silently certifies a
+    transition that never happened, which is the exact failure the 30-transition
+    acceptance run is meant to detect.
+    """
+    coordinator = _pulse_coordinator()
+    queue: asyncio.Queue[SimpleNamespace] = asyncio.Queue()
+    stream = SimpleNamespace(queue=queue, dropped_samples=0, close=lambda: None)
+    coordinator.open_position_sample_stream = lambda **_kwargs: stream
+    handle = coordinator.manager.mower(coordinator.device_name)
+
+    lease = SimpleNamespace(
+        owner="report_stream_probe",
+        lease_id=1,
+        acquired_at_monotonic=time.monotonic(),
+        background_stop_enqueued=True,
+        background_stop_enqueued_at_monotonic=time.monotonic(),
+    )
+
+    class _ExclusiveContext:
+        async def __aenter__(self) -> SimpleNamespace:
+            return lease
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+    handle.exclusive_report_subscription = lambda _owner: _ExclusiveContext()
+    handle.report_subscription_generation = 0
+    handle.report_subscription_lease_is_current = lambda candidate: candidate is lease
+
+    def _begin_generation(candidate: object) -> SimpleNamespace:
+        assert candidate is lease
+        handle.report_subscription_generation = 1
+        return SimpleNamespace(
+            owner=lease.owner,
+            lease_id=lease.lease_id,
+            generation=1,
+            requested_at_monotonic=time.monotonic(),
+            baseline_position_sequence=0,
+            baseline_position_epoch=1,
+            baseline_last_report_at=handle.last_report_at,
+        )
+
+    handle.begin_report_subscription_generation = _begin_generation
+
+    def _sample(sequence: int) -> SimpleNamespace:
+        received = time.monotonic()
+        return SimpleNamespace(
+            sequence=sequence,
+            epoch=1,
+            received_at_monotonic=received,
+            decoded_at_monotonic=received,
+            broker_completed_at_monotonic=received,
+            reducer_completed_at_monotonic=received,
+            state_applied_at_monotonic=received,
+            published_at_monotonic=received,
+            valid_for_motion=True,
+        )
+
+    async def _late_arrival() -> None:
+        await asyncio.sleep(0.05)
+        queue.put_nowait(_sample(2))
+
+    async def _settled(_coordinator: object) -> dict[str, object]:
+        # Ordered, valid, and in this generation's sequence -- but received while
+        # the START was still queued, so it proves nothing about the new config.
+        queue.put_nowait(_sample(1))
+        asyncio.get_running_loop().create_task(_late_arrival())
+        await asyncio.sleep(0.02)
+        return {"settled": True}
+
+    async def _observed(*_args: object) -> tuple[list[float], dict[str, list[float]]]:
+        return [], {"position": [], "rtk": [], "vio": []}
+
+    async def _collected(
+        *_args: object, **_kwargs: object
+    ) -> list[tuple[object, float]]:
+        return []
+
+    monkeypatch.setattr(mammotion_services, "_observe_report_arrivals", _observed)
+    monkeypatch.setattr(mammotion_services, "_collect_position_records", _collected)
+    monkeypatch.setattr(mammotion_services, "_settle_ble_command_queue", _settled)
+
+    result = await _report_stream_probe(
+        coordinator,
+        period_ms=1000,
+        no_change_period_ms=1000,
+        duration_seconds=0.0,
+        isolated=True,
+        readiness_timeout_seconds=1.0,
+    )
+
+    assert result["position_readiness"]["ready"] is True
+    # Sequence 1 was consumed and rejected as pre-flush; only 2 can certify.
+    assert result["position_readiness"]["first_position_sequence"] == 2
+    assert (
+        result["subscription_command_flushed_at_monotonic"]
+        > result["subscription_generation"]["requested_at_monotonic"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_position_subscription_readiness_distinguishes_generic_stall() -> None:
+    """Generic traffic cannot substitute for a current-generation position."""
+    lease = object()
+    generation = SimpleNamespace(
+        generation=4,
+        baseline_position_sequence=10,
+        baseline_position_epoch=2,
+        baseline_last_report_at=100.0,
+        requested_at_monotonic=time.monotonic(),
+    )
+    handle = SimpleNamespace(
+        report_subscription_generation=4,
+        last_report_at=101.0,
+        position_epoch=2,
+        report_subscription_lease_is_current=lambda candidate: candidate is lease,
+    )
+    stream = SimpleNamespace(queue=asyncio.Queue(), dropped_samples=0)
+
+    sample, consumed_at, reason = await _wait_for_position_subscription_ready(
+        handle,
+        stream,
+        generation,
+        lease=lease,
+        timeout_seconds=0.01,
+    )
+
+    assert sample is None
+    assert consumed_at is None
+    assert reason == "position_channel_stalled"
+
+
+@pytest.mark.asyncio
+async def test_position_subscription_readiness_refuses_generation_change() -> None:
+    """Evidence cannot cross a report-configuration generation boundary."""
+    lease = object()
+    generation = SimpleNamespace(
+        generation=4,
+        baseline_position_sequence=10,
+        baseline_position_epoch=2,
+        baseline_last_report_at=100.0,
+        requested_at_monotonic=time.monotonic(),
+    )
+    handle = SimpleNamespace(
+        report_subscription_generation=5,
+        last_report_at=100.0,
+        position_epoch=2,
+        report_subscription_lease_is_current=lambda candidate: candidate is lease,
+    )
+    stream = SimpleNamespace(queue=asyncio.Queue(), dropped_samples=0)
+
+    sample, consumed_at, reason = await _wait_for_position_subscription_ready(
+        handle,
+        stream,
+        generation,
+        lease=lease,
+        timeout_seconds=1.0,
+    )
+
+    assert sample is None
+    assert consumed_at is None
+    assert reason == "report_subscription_generation_changed"
+
+
+@pytest.mark.asyncio
+async def test_position_subscription_readiness_requires_post_ack_evidence() -> None:
+    """A late frame from the old config cannot make the new START ready."""
+    lease = object()
+    generation = SimpleNamespace(
+        generation=4,
+        baseline_position_sequence=10,
+        baseline_position_epoch=2,
+        baseline_last_report_at=100.0,
+        requested_at_monotonic=10.0,
+    )
+    handle = SimpleNamespace(
+        report_subscription_generation=4,
+        last_report_at=100.0,
+        position_epoch=2,
+        report_subscription_lease_is_current=lambda candidate: candidate is lease,
+    )
+    queue: asyncio.Queue[SimpleNamespace] = asyncio.Queue()
+    queue.put_nowait(
+        SimpleNamespace(
+            sequence=11,
+            epoch=2,
+            received_at_monotonic=10.1,
+            valid_for_motion=True,
+        )
+    )
+    expected = SimpleNamespace(
+        sequence=12,
+        epoch=2,
+        received_at_monotonic=10.3,
+        valid_for_motion=True,
+    )
+    queue.put_nowait(expected)
+    stream = SimpleNamespace(queue=queue, dropped_samples=0)
+
+    sample, consumed_at, reason = await _wait_for_position_subscription_ready(
+        handle,
+        stream,
+        generation,
+        lease=lease,
+        timeout_seconds=1.0,
+        not_before_monotonic=10.2,
+    )
+
+    assert sample is expected
+    assert consumed_at is not None
+    assert reason is None
+
+
+@pytest.mark.asyncio
+async def test_position_subscription_readiness_refuses_epoch_change() -> None:
+    """A reconnect invalidates the generation even when no sample follows it."""
+    lease = object()
+    generation = SimpleNamespace(
+        generation=4,
+        baseline_position_sequence=10,
+        baseline_position_epoch=2,
+        baseline_last_report_at=100.0,
+        requested_at_monotonic=time.monotonic(),
+    )
+    handle = SimpleNamespace(
+        report_subscription_generation=4,
+        last_report_at=100.0,
+        position_epoch=3,
+        report_subscription_lease_is_current=lambda candidate: candidate is lease,
+    )
+    stream = SimpleNamespace(queue=asyncio.Queue(), dropped_samples=0)
+
+    sample, consumed_at, reason = await _wait_for_position_subscription_ready(
+        handle,
+        stream,
+        generation,
+        lease=lease,
+        timeout_seconds=1.0,
+    )
+
+    assert sample is None
+    assert consumed_at is None
+    assert reason == "position_epoch_changed"
+
+
+@pytest.mark.asyncio
+async def test_position_subscription_readiness_refuses_pre_wait_queue_drop() -> None:
+    """A replacement during command dispatch invalidates later readiness."""
+    lease = object()
+    generation = SimpleNamespace(
+        generation=4,
+        baseline_position_sequence=10,
+        baseline_position_epoch=2,
+        baseline_last_report_at=100.0,
+        requested_at_monotonic=time.monotonic(),
+    )
+    handle = SimpleNamespace(
+        report_subscription_generation=4,
+        last_report_at=100.0,
+        position_epoch=2,
+        report_subscription_lease_is_current=lambda candidate: candidate is lease,
+    )
+    stream = SimpleNamespace(queue=asyncio.Queue(), dropped_samples=1)
+
+    sample, consumed_at, reason = await _wait_for_position_subscription_ready(
+        handle,
+        stream,
+        generation,
+        lease=lease,
+        timeout_seconds=1.0,
+        baseline_dropped_samples=0,
+    )
+
+    assert sample is None
+    assert consumed_at is None
+    assert reason == "position_evidence_gap"
+
+
+def test_position_stage_latency_summary_attributes_every_boundary() -> None:
+    """The diagnostic attributes transport, reducer, and consumer latency."""
+    sample = SimpleNamespace(
+        received_at_monotonic=10.000,
+        decoded_at_monotonic=10.001,
+        broker_completed_at_monotonic=10.003,
+        reducer_completed_at_monotonic=10.006,
+        state_applied_at_monotonic=10.010,
+        published_at_monotonic=10.015,
+    )
+
+    summary = _position_stage_latency_summary([(sample, 10.021)])
+
+    assert summary["receipt_to_decode"]["p50"] == pytest.approx(1.0)
+    assert summary["decode_to_broker"]["p50"] == pytest.approx(2.0)
+    assert summary["broker_to_reducer"]["p50"] == pytest.approx(3.0)
+    assert summary["reducer_to_state_apply"]["p50"] == pytest.approx(4.0)
+    assert summary["state_apply_to_publication"]["p50"] == pytest.approx(5.0)
+    assert summary["publication_to_consumption"]["p50"] == pytest.approx(6.0)
+    assert summary["receipt_to_consumption"]["p50"] == pytest.approx(21.0)
+
+
+@pytest.mark.asyncio
+async def test_report_stream_sequence_reuses_one_lease_for_every_cell(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Adjacent stationary transitions do not release and rearm ownership."""
+    lease = SimpleNamespace(
+        owner="report_stream_sequence_probe",
+        lease_id=9,
+        acquired_at_monotonic=1.0,
+        background_stop_enqueued=True,
+        background_stop_enqueued_at_monotonic=1.1,
+    )
+    lifecycle: list[str] = []
+
+    class _ExclusiveContext:
+        async def __aenter__(self) -> SimpleNamespace:
+            lifecycle.append("enter")
+            return lease
+
+        async def __aexit__(self, *_args: object) -> None:
+            lifecycle.append("exit")
+
+    handle = SimpleNamespace(
+        exclusive_report_subscription=lambda _owner: _ExclusiveContext()
+    )
+    coordinator = SimpleNamespace(
+        device_name="Luba-Test",
+        manager=SimpleNamespace(mower=lambda _name: handle),
+        manual_motion_owner=None,
+    )
+    used_leases: list[object] = []
+
+    async def _cell(*_args: object, **kwargs: object) -> dict[str, object]:
+        used_leases.append(kwargs["report_lease"])
+        return {
+            "reason": "completed",
+            "subscription_started": True,
+            "subscription_stopped": True,
+            "position_readiness": {"ready": True},
+            "position_payloads": {"dropped_samples": 0, "sequence_gaps": 0},
+        }
+
+    monkeypatch.setattr(mammotion_services, "_report_stream_probe", _cell)
+
+    result = await _report_stream_sequence_probe(
+        coordinator,
+        periods_ms=[1000, 500, 1000],
+        observation_seconds=0.0,
+        readiness_timeout_seconds=3.5,
+    )
+
+    assert result["complete"] is True
+    assert result["failed_cells"] == []
+    assert used_leases == [lease, lease, lease]
+    assert lifecycle == ["enter", "exit"]
 
 
 @pytest.mark.asyncio
@@ -7675,6 +8086,22 @@ async def test_report_stream_probe_always_stops_its_subscription(
     )
     assert failed["reason"].startswith("RuntimeError")
     assert failed["subscription_stopped"] is True
+    coordinator.manager.request_iot_sync_continuous_stop.assert_awaited_once()
+
+    # A send may reach the mower and still raise before the caller sees an ACK.
+    # Teardown therefore follows the attempt boundary, not only acknowledged STARTs.
+    coordinator.manager.request_iot_sync_continuous_stop.reset_mock()
+    coordinator.manager.request_iot_sync_continuous.side_effect = RuntimeError(
+        "ACK lost"
+    )
+    uncertain = await _report_stream_probe(
+        coordinator,
+        period_ms=500,
+        no_change_period_ms=500,
+        duration_seconds=1.0,
+    )
+    assert uncertain["subscription_started"] is False
+    assert uncertain["subscription_stopped"] is True
     coordinator.manager.request_iot_sync_continuous_stop.assert_awaited_once()
 
 

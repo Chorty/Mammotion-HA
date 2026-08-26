@@ -79,6 +79,7 @@ from .coordinator import (
     MammotionRTKCoordinator,
     MammotionSpinoCoordinator,
 )
+from .manual_motion import installed_pymammotion_version
 from .models import (
     MammotionDevices,
     MammotionMowerData,
@@ -358,6 +359,10 @@ async def _await_device_connection(
 async def async_setup_entry(hass: HomeAssistant, entry: MammotionConfigEntry) -> bool:
     """Set up Mammotion from a config entry."""
     apply_pymammotion_compat_patches()
+    # Entity availability reads this synchronously. Resolve distribution
+    # metadata once in the executor so no property access performs filesystem
+    # I/O on Home Assistant's event loop.
+    await hass.async_add_executor_job(installed_pymammotion_version)
 
     addresses = entry.data.get(CONF_BLE_DEVICES, {})
     integration = await async_get_integration(hass, DOMAIN)

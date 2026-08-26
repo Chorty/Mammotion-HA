@@ -2578,9 +2578,10 @@ class MammotionReportUpdateCoordinator(MammotionBaseUpdateCoordinator[MowingDevi
                 "pipeline_latency_s": None,
                 "coordinator_latency_s": None,
                 "payload_cadence_s": None,
-                "dropped_samples": getattr(
+                "presentation_stream_replacements": getattr(
                     self._position_sample_stream, "dropped_samples", 0
                 ),
+                "safety_stream_drops": None,
             }
         intervals = tuple(self._position_payload_intervals)
         return {
@@ -2595,6 +2596,30 @@ class MammotionReportUpdateCoordinator(MammotionBaseUpdateCoordinator[MowingDevi
             "pipeline_latency_s": max(
                 sample.published_at_monotonic - sample.received_at_monotonic, 0.0
             ),
+            "stage_latency_s": {
+                "receipt_to_decode": max(
+                    sample.decoded_at_monotonic - sample.received_at_monotonic,
+                    0.0,
+                ),
+                "decode_to_broker": max(
+                    sample.broker_completed_at_monotonic - sample.decoded_at_monotonic,
+                    0.0,
+                ),
+                "broker_to_reducer": max(
+                    sample.reducer_completed_at_monotonic
+                    - sample.broker_completed_at_monotonic,
+                    0.0,
+                ),
+                "reducer_to_state_apply": max(
+                    sample.state_applied_at_monotonic
+                    - sample.reducer_completed_at_monotonic,
+                    0.0,
+                ),
+                "state_apply_to_publication": max(
+                    sample.published_at_monotonic - sample.state_applied_at_monotonic,
+                    0.0,
+                ),
+            },
             "coordinator_latency_s": (
                 max(
                     self._latest_position_consumed_at - sample.published_at_monotonic,
@@ -2606,9 +2631,12 @@ class MammotionReportUpdateCoordinator(MammotionBaseUpdateCoordinator[MowingDevi
             "payload_cadence_s": (
                 sum(intervals) / len(intervals) if intervals else None
             ),
-            "dropped_samples": getattr(
+            "presentation_stream_replacements": getattr(
                 self._position_sample_stream, "dropped_samples", 0
             ),
+            # This coordinator stream is presentation-only. Safety consumers
+            # own independent streams and report their drops per invocation.
+            "safety_stream_drops": None,
         }
 
     async def _on_sys_status_changed_refresh(self, sys_status: int) -> None:

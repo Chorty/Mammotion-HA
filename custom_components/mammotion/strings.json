@@ -2141,6 +2141,28 @@
         }
       }
     },
+    "report_stream_sequence_probe": {
+      "name": "Report stream sequence probe",
+      "description": "Runs a stationary sequence of report configurations under one serialized lease. Every transition must receive a new valid position payload before observation begins. Commands no motion.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        },
+        "periods_ms": {
+          "name": "Period sequence",
+          "description": "Ordered list of report periods in milliseconds. Each transition uses the same value for report and no-change periods."
+        },
+        "observation_seconds": {
+          "name": "Observation duration",
+          "description": "Time to collect position cadence after each transition becomes position-ready. Use zero for transition-only reliability checks."
+        },
+        "readiness_timeout_seconds": {
+          "name": "Position readiness timeout",
+          "description": "Maximum stationary wait for the first valid position payload in each subscription generation."
+        }
+      }
+    },
     "reset_blade_time": {
       "name": "Reset blade time",
       "description": "Reset the blade usage time counter."

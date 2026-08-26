@@ -9,8 +9,12 @@ Read, in order, and stop at the provenance line:
 1. **"Current build"** directly below — what is released and installed.
 2. **"Standing decisions"** — the operator's scope calls. They override any
    older recommendation in this file.
-3. `docs/NEXT-SESSION.md` §0 for live mower state (its first ~197 lines; the
-   2,700 below are history under their own banner).
+3. `docs/CLAUDE-BETA77-TAKEOVER-PROMPT-20260825.md` for the current two-repo
+   review handoff and exact safety boundary.
+4. `docs/position-cadence-safety-followup-plan-20260825.md` for the evidence,
+   implementation status, and release gates.
+5. Treat `docs/NEXT-SESSION.md` as historical unless its live state is freshly
+   reverified; this handoff did not query Home Assistant or the mower.
 
 ⚠️ **Everything from "Build provenance" down is history**, including entries
 that read as open items. It is accurate as a *record* — the measurements stand,
@@ -26,7 +30,75 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: `0.6.4-beta72` released and installed motion-disabled
+## Current build: beta77 + post3, reviewed and released; steering still blocked
+
+✅ **beta77/post3 REVIEWED, CORRECTED, AND RELEASED, 2026-08-25.** The
+independent two-repo review of the beta77 candidate is complete. PyMammotion
+`0.8.12.post3` is published on the Chorty fork
+(`chorty-0.8.12.post3`, wheel SHA-256
+`cd3b0c3558d05c3ea6c7b6f2faad68c9c9eac523e70406bb930c5b01045a887a`); the
+Home Assistant side implements serialized report-subscription ownership,
+position-generation readiness, stage latency attribution, a stationary
+transition harness, and stopped-only post-acquisition observation.
+**Continuous steering remains refused and the motion gate is untouched.**
+
+🔑 **THE REVIEW FOUND A REAL FALSE-READY PATH AND IT IS FIXED.** The candidate
+took its readiness evidence boundary from the return of
+`request_iot_sync_continuous`. That call returns when the command is **queued**,
+not sent — `MammotionClient.send_command_with_args` hands off to
+`DeviceCommandQueue.enqueue` and returns. So a position payload still arriving
+from the configuration being *replaced* satisfied the new generation's
+readiness. In the 30-transition harness, cell N's STOP and cell N+1's START both
+drain inside that window, so this was the likely path, not a corner case. The
+boundary is now the **post-queue-settle flush**, the first instant the START is
+known to have reached the transport, and
+`test_isolated_probe_readiness_starts_at_the_start_flush_not_the_call` pins it
+— verified to accept the stale sample on the pre-fix code.
+
+⚠️ **THE LEASE DOES NOT PROVE THE DEVICE WENT QUIET, and the field that said
+otherwise was renamed.** `background_quiesced_at_monotonic` became
+`background_stop_enqueued_at_monotonic` + `background_stop_enqueued`. The
+quiescing `RPT_STOP` is enqueued at `Priority.BACKGROUND` with
+`skip_if_saga_active=True`, so it is **dropped outright while a saga runs**; the
+send is skipped when no BLE transport is connected; `_ble_stream_active = False`
+is set either way; and the owner flag cannot preempt a `ble_polling_loop`
+iteration already past its guard. The lease serializes **ownership**. The only
+positive evidence a configuration is live is a position payload inside its own
+generation.
+
+🔁 **`fresh_origin_timeout` no longer reports `position_channel_stalled`.**
+That wait is bounded by `max_heading_acquisition_s` (2.0 s), and **28 of 1434
+healthy stationary position intervals — 1.95% — already exceed 2.0 s** while
+generic frames arrive at ~2 Hz. Promoting that to a channel-fault verdict gave a
+routine tail gap the same name as cell 12's real outage (3 payloads, then ~119 s
+of silence against 118 normal generic reports). It is now a separate
+`generic_report_advanced` field. The readiness probe **keeps**
+`position_channel_stalled` at its 3.5 s budget, where nothing in 1434 intervals
+exceeded the bound.
+
+🔧 **Two pre-existing drifts fixed in passing:** `requirements_test.txt` still
+pinned **post1** while the manifest shipped post2, so CI had been testing a
+different backend than the one deployed since the post2 release — now
+byte-identical to `manifest.json`. And the hand-written beta77 version bumps were
+reverted: `Beta Release` computes one above the highest of the manifest
+suffix and the newest beta tag, and rewrites
+all four version sites itself, so pre-bumping would have released **beta78**.
+
+📏 **3.5 s is adequate and thin — re-derive before trusting it.** The bound
+must cover the **publication** interval, not the receipt interval
+(each interval plus the change in pipeline latency across it): max
+**2910.1 ms**, p99 2344.2 ms,
+n=1434, zero above 3.5 s — a margin of **1.20x** over roughly 24 minutes of one
+stationary session. Treat it as a conservative stationary default, never as a
+proven distribution, and never as motion validation.
+
+🛑 **NOT DONE, and each needs its own authorization:** the ≥30 stationary
+ownership transitions (this reconfigures the mower's report subscription), the
+matrix rerun that depends on them, and any physical motion whatsoever. The
+pre-existing `docs/agora_outbound_audio_probe.md` edit and untracked `.vscode/`
+directory are user-owned and were not staged. Read
+`docs/CLAUDE-BETA77-TAKEOVER-PROMPT-20260825.md` for the original boundary and
+`docs/position-cadence-safety-followup-plan-20260825.md` for the evidence.
 
 🛡️ **PHASE 2 HEADING-SAFETY REMEDIATION IMPLEMENTED OFFLINE,
 2026-08-24 — supersedes the stale-heading/opening-alignment description

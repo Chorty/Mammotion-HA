@@ -15,7 +15,7 @@ dependencies = [
     # requirement string containing a space. Real motion is authorized by the
     # behavioural probes in custom_components/mammotion/backend_capability.py,
     # never by this version number.
-    "pymammotion@https://github.com/Chorty/PyMammotion/releases/download/chorty-0.8.12.post2/pymammotion-0.8.12.post2-py3-none-any.whl",
+    "pymammotion@https://github.com/Chorty/PyMammotion/releases/download/chorty-0.8.12.post3/pymammotion-0.8.12.post3-py3-none-any.whl",
     "homeassistant>=2026.1.0",
     "autotyping>=24.3.0",
     "websockets>=15.0.1",

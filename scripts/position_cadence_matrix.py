@@ -63,28 +63,42 @@ def classify_matrix(runs: list[dict[str, Any]]) -> dict[str, Any]:  # noqa: C901
                 for cell in cells
             ],
         }
-    return {"periods": periods, "complete": all(not p["blockers"] for p in periods.values())}
+    return {
+        "periods": periods,
+        "complete": all(not p["blockers"] for p in periods.values()),
+    }
 
 
-def _call_probe(
-    *, ha_url: str, token: str, entity_id: str, period_ms: int, duration_s: float
+def call_sequence_probe(
+    *,
+    ha_url: str,
+    token: str,
+    entity_id: str,
+    periods_ms: list[int],
+    observation_s: float,
+    readiness_timeout_s: float = 3.5,
 ) -> dict[str, Any]:
+    """Run one serialized, position-ready sequence through Home Assistant."""
     body = json.dumps(
         {
             "entity_id": entity_id,
-            "period_ms": period_ms,
-            "no_change_period_ms": period_ms,
-            "duration_seconds": duration_s,
-            "isolated": True,
+            "periods_ms": periods_ms,
+            "observation_seconds": observation_s,
+            "readiness_timeout_seconds": readiness_timeout_s,
         }
     ).encode()
     request = urllib.request.Request(
-        f"{ha_url.rstrip('/')}/api/services/mammotion/report_stream_probe?return_response",
+        f"{ha_url.rstrip('/')}/api/services/mammotion/"
+        "report_stream_sequence_probe?return_response",
         data=body,
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=duration_s + 30) as response:
+    timeout = len(periods_ms) * (observation_s + readiness_timeout_s + 5.0) + 60.0
+    with urllib.request.urlopen(request, timeout=timeout) as response:
         return _service_result(json.load(response))
 
 
@@ -111,25 +125,36 @@ def main() -> int:
     token = os.environ.get("HA_TOKEN")
     if not ha_url or not token:
         parser.error("--execute requires HA_URL and HA_TOKEN environment variables")
-    runs: list[dict[str, Any]] = []
+    # One lease across every cell is the point of the redesign, but it also means
+    # ONE long HTTP call with no partial results: a client-side drop at cell 11
+    # loses all eleven completed cells, and Home Assistant keeps executing (and
+    # keeps holding the lease) until the service returns. Say so before starting
+    # rather than after losing half an hour.
+    estimated_s = len(schedule) * (args.duration_seconds + 3.5 + 5.0) + 60.0
     try:
-        for index, period in enumerate(schedule, start=1):
-            print(f"cell {index}/{len(schedule)}: {period} ms", file=sys.stderr)
-            runs.append(
-                _call_probe(
-                    ha_url=ha_url,
-                    token=token,
-                    entity_id=args.entity_id,
-                    period_ms=period,
-                    duration_s=args.duration_seconds,
-                )
-            )
+        print(
+            f"serialized sequence: {len(schedule)} cells under one lease, "
+            f"~{estimated_s / 60.0:.0f} min in a single request. "
+            "There are no partial results: if this connection drops, every "
+            "completed cell is lost and the lease stays held until the service "
+            "returns on the host.",
+            file=sys.stderr,
+        )
+        sequence = call_sequence_probe(
+            ha_url=ha_url,
+            token=token,
+            entity_id=args.entity_id,
+            periods_ms=schedule,
+            observation_s=args.duration_seconds,
+        )
     except urllib.error.URLError as err:
         print(f"probe failed: {err}", file=sys.stderr)
         return 2
+    runs = list(sequence.get("cells") or [])
     artifact = {
         "seed": args.seed,
         "schedule_ms": schedule,
+        "sequence": {key: value for key, value in sequence.items() if key != "cells"},
         "runs": runs,
         "classification": classify_matrix(runs),
     }

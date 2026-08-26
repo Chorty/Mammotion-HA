@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import importlib.metadata
 import re
 import time
@@ -45,6 +46,7 @@ class ManualMotionCancelledError(RuntimeError):
     """Raised before a cancelled session can send another nonzero command."""
 
 
+@functools.lru_cache(maxsize=1)
 def installed_pymammotion_version() -> str:
     """Return the installed PyMammotion distribution version."""
     try:

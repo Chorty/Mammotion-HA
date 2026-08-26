@@ -39,6 +39,7 @@ from custom_components.mammotion.services import (
     _continuous_refresh_window,
     _heading_acquisition_window,
     _wait_for_fresh_continuous_origin,
+    _wait_for_post_stop_position,
 )
 
 ENTITY = "lawn_mower.test"
@@ -201,8 +202,33 @@ class _FakeCoordinator:
     data = None
     device_name = "test"
 
+    class _ReportLeaseContext:
+        def __init__(self, handle: SimpleNamespace, owner: str) -> None:
+            self._handle = handle
+            self._lease = SimpleNamespace(
+                owner=owner,
+                lease_id=1,
+                acquired_at_monotonic=time.monotonic(),
+                background_stop_enqueued=True,
+                background_stop_enqueued_at_monotonic=time.monotonic(),
+            )
+
+        async def __aenter__(self) -> SimpleNamespace:
+            self._handle._active_lease = self._lease  # noqa: SLF001
+            return self._lease
+
+        async def __aexit__(self, *_args: object) -> None:
+            self._handle._active_lease = None  # noqa: SLF001
+
     class _Manager:
-        _handle = SimpleNamespace(latest_position_sample=None, position_epoch=1)
+        _handle = SimpleNamespace(
+            latest_position_sample=None,
+            position_epoch=1,
+            position_sequence=0,
+            last_report_at=0.0,
+            report_subscription_generation=0,
+            _active_lease=None,
+        )
 
         @classmethod
         def mower(cls, _name: str) -> object:
@@ -212,6 +238,31 @@ class _FakeCoordinator:
 
     def __init__(self, position_stream: Any | None = None) -> None:
         self._position_stream = position_stream
+        self.report_stop_calls = 0
+        handle = self.manager.mower(self.device_name)
+
+        def exclusive_report_subscription(owner: str) -> object:
+            return self._ReportLeaseContext(handle, owner)
+
+        def lease_is_current(lease: object) -> bool:
+            return handle._active_lease is lease  # noqa: SLF001
+
+        def begin_generation(lease: object) -> SimpleNamespace:
+            assert lease_is_current(lease)
+            handle.report_subscription_generation += 1
+            return SimpleNamespace(
+                owner=lease.owner,
+                lease_id=lease.lease_id,
+                generation=handle.report_subscription_generation,
+                requested_at_monotonic=time.monotonic(),
+                baseline_position_sequence=0,
+                baseline_position_epoch=1,
+                baseline_last_report_at=handle.last_report_at,
+            )
+
+        handle.exclusive_report_subscription = exclusive_report_subscription
+        handle.report_subscription_lease_is_current = lease_is_current
+        handle.begin_report_subscription_generation = begin_generation
 
     def open_position_sample_stream(self, *, maxsize: int = 1) -> Any | None:
         del maxsize
@@ -219,6 +270,10 @@ class _FakeCoordinator:
 
     async def async_stop_manual_motion(self, **_kwargs: Any) -> None:
         """Satisfy the `stop_primitive_available` gate; never actually called."""
+
+    async def async_stop_continuous_reports(self) -> None:
+        """Record lease-owned report teardown without contacting a device."""
+        self.report_stop_calls += 1
 
 
 def _snapshot(**overrides: object) -> dict[str, Any]:
@@ -334,6 +389,7 @@ def test_acquisition_dispatches_no_angular_command(
     stream.queue.put_nowait(queued)
     coordinator = _FakeCoordinator(stream)
     sent: list[dict[str, int]] = []
+    post_stop_timeouts: list[float] = []
 
     async def _fresh_origin(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
         return {
@@ -367,7 +423,8 @@ def test_acquisition_dispatches_no_angular_command(
     async def _stop(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
         return {"attempted": True, "ok": True}
 
-    async def _no_post_stop(*_args: Any, **_kwargs: Any) -> tuple[None, str]:
+    async def _no_post_stop(*_args: Any, **kwargs: Any) -> tuple[None, str]:
+        post_stop_timeouts.append(float(kwargs["timeout_s"]))
         return None, "post_stop_position_timeout"
 
     monkeypatch.setattr(
@@ -406,6 +463,8 @@ def test_acquisition_dispatches_no_angular_command(
     assert sent
     assert all(command["angular_speed"] == 0 for command in sent)
     assert result["heading_state"]["phase"] == "acquired"
+    assert result["post_stop_observation_timeout_s"] == pytest.approx(3.5)
+    assert post_stop_timeouts == [pytest.approx(3.5)]
 
 
 def test_dry_run_passes_all_gates_on_a_healthy_frozen_corridor(
@@ -871,8 +930,10 @@ def test_fresh_origin_timeout_refuses_before_dispatch(
 ) -> None:
     """No movement command is attempted without a post-stream origin."""
     sent = 0
+    origin_wait_kwargs: list[dict[str, Any]] = []
 
     async def _no_origin(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        origin_wait_kwargs.append(dict(_kwargs))
         return {
             "ok": False,
             "reason": "fresh_origin_timeout",
@@ -895,9 +956,10 @@ def test_fresh_origin_timeout_refuses_before_dispatch(
     monkeypatch.setattr(services, "_settle_ble_command_queue", _settled)
     monkeypatch.setattr(services, "_send_manager_command_with_args", _unexpected_send)
 
+    coordinator = _FakeCoordinator(_position_stream([]))
     result = asyncio.run(
         _heading_acquisition_window(
-            _FakeCoordinator(_position_stream([])),
+            coordinator,
             route_start=STRAIGHT_ROUTE,
             route_target=STRAIGHT_TARGET,
             corridor_polygon=ACQUISITION_CORRIDOR,
@@ -911,6 +973,12 @@ def test_fresh_origin_timeout_refuses_before_dispatch(
     assert result["would_send"] is False
     assert result["command_result"]["attempted"] is False
     assert sent == 0
+    assert coordinator.report_stop_calls == 1
+    generation = result["report_stream"]["subscription_generation"]
+    assert (
+        origin_wait_kwargs[0]["request_started_at"]
+        >= generation["requested_at_monotonic"]
+    )
 
 
 def test_fresh_origin_wait_times_out_without_a_position_payload() -> None:
@@ -929,6 +997,43 @@ def test_fresh_origin_wait_times_out_without_a_position_payload() -> None:
     assert result["sample"] is None
 
 
+def test_fresh_origin_timeout_does_not_claim_a_stalled_position_channel() -> None:
+    """A routine tail gap must not be named like cell 12's real outage.
+
+    This wait is bounded by `max_heading_acquisition_s` (2.0 s), and 28 of 1434
+    healthy stationary position intervals in the beta76 matrix -- 1.95% -- already
+    exceed 2.0 s, while generic frames arrive at roughly 2 Hz. So "generic
+    advanced but no position arrived" is the NORMAL shape of a timeout here, not
+    evidence of a channel fault. It is reported as a separate field, never
+    promoted into the reason.
+    """
+    handle = SimpleNamespace(
+        position_epoch=1,
+        last_report_at=200.0,
+        report_subscription_generation=7,
+        report_subscription_lease_is_current=lambda _lease: True,
+    )
+    lease = object()
+    generation = SimpleNamespace(generation=7, baseline_last_report_at=100.0)
+
+    result = asyncio.run(
+        _wait_for_fresh_continuous_origin(
+            _position_stream([]),
+            request_started_at=time.monotonic(),
+            baseline_sequence=0,
+            baseline_epoch=1,
+            timeout_s=0.02,
+            handle=handle,
+            report_lease=lease,
+            report_generation=generation,
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["reason"] == "fresh_origin_timeout"
+    assert result["generic_report_advanced"] is True
+
+
 def test_fresh_origin_accepts_a_fresh_unchanged_coordinate() -> None:
     """Payload identity, not coordinate change, proves a fresh origin."""
     result = asyncio.run(
@@ -943,6 +1048,29 @@ def test_fresh_origin_accepts_a_fresh_unchanged_coordinate() -> None:
 
     assert result["ok"] is True
     assert result["sample"]["position"]["x"] == 0.0
+
+
+def test_post_stop_observation_returns_latest_consecutive_sample() -> None:
+    """Stopped observation does not return the first potentially lagged fix."""
+    stream = _position_stream([(0.02, 0.0, 0.0), (0.20, 0.0, 0.0)])
+    first = stream.queue.get_nowait()
+    second = stream.queue.get_nowait()
+    first.sequence = 2
+    second.sequence = 3
+    stream.queue.put_nowait(first)
+    stream.queue.put_nowait(second)
+
+    sample, reason = asyncio.run(
+        _wait_for_post_stop_position(
+            stream,
+            after_sequence=1,
+            epoch=1,
+            timeout_s=0.01,
+        )
+    )
+
+    assert reason is None
+    assert sample is second
 
 
 def test_a_heading_error_updates_command_state_for_the_next_refresh(
