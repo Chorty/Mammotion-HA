@@ -5527,7 +5527,17 @@ async def _wait_for_position_subscription_ready(  # noqa: C901
         if sample.received_at_monotonic < evidence_boundary:
             continue
         if not sample.valid_for_motion:
-            return None, None, "position_invalid_for_motion"
+            # Name the failing predicate. The sample already carries it, and
+            # without it "position_invalid_for_motion" cannot distinguish an
+            # environmental precondition (on the dock: zone_hash_unavailable)
+            # from a telemetry fault (rtk_not_fixed, position_zero_pose) -- which
+            # matters because the first is not a finding about report ownership
+            # at all, and would otherwise fail all 30 transitions identically.
+            return (
+                None,
+                None,
+                f"position_invalid_for_motion: {sample.rejection_reason}",
+            )
         return sample, consumed_at, None
     if not handle.report_subscription_lease_is_current(lease):
         return None, None, "report_subscription_lease_lost"
@@ -5569,7 +5579,6 @@ async def _report_stream_probe(  # noqa: C901
     isolated: bool = False,
     report_lease: Any | None = None,
     readiness_timeout_seconds: float = 3.5,
-    include_raw_samples: bool = True,
 ) -> dict[str, Any]:
     """Measure how often the device actually reports at a requested period.
 
@@ -5840,9 +5849,6 @@ async def _report_stream_probe(  # noqa: C901
                     position_records
                 ),
             }
-            if not include_raw_samples:
-                result["position_payloads"].pop("intervals_ms", None)
-                result["position_payloads"].pop("pipeline_latencies_ms", None)
         if generation is not None and (
             not cast(Callable[[Any], bool], lease_is_current)(lease)
             or getattr(handle, "report_subscription_generation", None)
@@ -5920,7 +5926,16 @@ async def _report_stream_sequence_probe(
     observation_seconds: float,
     readiness_timeout_seconds: float,
 ) -> dict[str, Any]:
-    """Run multiple report transitions under one serialized ownership lease."""
+    """Run multiple report transitions under one serialized ownership lease.
+
+    Every cell keeps its per-sample position intervals and pipeline latencies.
+    An earlier revision stripped them to bound artifact size, which inverted this
+    project's own rule -- verify with per-item records, not aggregates. It left
+    228 GENERIC report intervals per cell, the channel proven here to be unable
+    to establish position freshness, while discarding the position intervals that
+    are the actual evidence, so a reviewer could not re-derive the interval
+    distribution the 3.5 s readiness bound is sized against.
+    """
     result: dict[str, Any] = {
         "periods_ms": list(periods_ms),
         "observation_seconds": observation_seconds,
@@ -5970,7 +5985,6 @@ async def _report_stream_sequence_probe(
                     isolated=True,
                     report_lease=lease,
                     readiness_timeout_seconds=readiness_timeout_seconds,
-                    include_raw_samples=False,
                 )
                 cell["cell_index"] = index
                 result["cells"].append(cell)

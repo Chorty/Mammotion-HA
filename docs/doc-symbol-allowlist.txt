@@ -55,3 +55,4 @@ armed_but_blocked                               # a trigger id inside docs/autom
 
 # --- names deliberately cited as the OLD form of a rename ---
 background_quiesced_at_monotonic                 # the pre-post3 lease field, renamed to background_stop_enqueued_at_monotonic on 2026-08-25 because it asserted a quiescence the code never established. CLAUDE.md names the old form so a reader of an older evidence artifact can find the change; by design it no longer exists in the tree
+include_raw_samples                              # the sequence-probe flag that stripped per-sample position intervals from matrix artifacts while keeping generic report intervals. Removed 2026-08-26 after it made the beta77 matrix less auditable than beta76's; CLAUDE.md names it so a reader of that artifact knows why its raw position evidence is missing

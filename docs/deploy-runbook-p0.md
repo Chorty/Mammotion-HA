@@ -56,13 +56,24 @@ seven never-fired `last_*` timestamp sensors, all expected shortly after a
 restart. No baseline was captured before the restart, so this is reported as
 measured, not as a regression.
 
-🛑 **NOT verified: a browser has not loaded the new card.** Backend bytes and
-both serving paths are confirmed; the console banner and card footer still need
-a human to confirm they read `0.6.4-beta77`.
+✅ **Browser-verified by the operator, 2026-08-26: the card loads as
+`0.6.4-beta77`.** With backend bytes, both serving paths, the Lovelace cache key
+and now the rendered card all confirmed, this deploy is verified end to end —
+the one step the deployer cannot self-check is closed.
 
-🛑 **NOT done, and each needs its own authorization:** the >=30 stationary
-ownership transitions (these reconfigure the mower's report subscription), the
-matrix rerun that depends on them, and any physical motion.
+✅ **Both stationary gates were then run and PASSED on this build, 2026-08-26**
+— 30/30 ownership transitions position-ready, and the randomized matrix passed
+untouched with no retry substitution. No motion was commanded and the gate stayed
+disarmed. See `docs/position-cadence-safety-followup-plan-20260825.md` →
+"Stationary live results".
+
+🛑 **Still NOT done and still needing its own authorization: any physical
+motion.** Continuous steering remains refused in code.
+
+⚠️ **Two fixes are committed but NOT on this host:** raw position evidence is no
+longer stripped from matrix artifacts, and `position_invalid_for_motion` now names
+its failing predicate. Cut a beta78 before the next matrix run if you want that
+artifact fully auditable.
 
 ### beta72 → beta73 — 2026-08-23 20:23-20:29 EDT, motion-disabled
 

@@ -1,0 +1,171 @@
+{
+  "plan": {
+    "motion_commanded": false,
+    "periods_ms": [
+      1000
+    ],
+    "observation_seconds": 0.0,
+    "readiness_timeout_seconds": 3.5
+  },
+  "result": {
+    "periods_ms": [
+      1000
+    ],
+    "observation_seconds": 0.0,
+    "readiness_timeout_seconds": 3.5,
+    "isolated": true,
+    "motion_commanded": false,
+    "cells": [
+      {
+        "period_ms": 1000,
+        "no_change_period_ms": 1000,
+        "duration_seconds": 0.0,
+        "isolated": true,
+        "poll_interval_ms": 20,
+        "sampling_method": "polled DeviceHandle.last_report_at every 20 ms and recorded each distinct value; intervals are between successive report arrivals, not between polls",
+        "motion_commanded": false,
+        "subscription_attempted": true,
+        "subscription_started": true,
+        "subscription_stopped": true,
+        "reports_observed": 0,
+        "intervals_ms": [],
+        "position_payloads": {
+          "available": true,
+          "observed": 1,
+          "valid_for_motion": 1,
+          "dropped_samples": 0,
+          "sequence_gaps": 0,
+          "p95_interval_ms": null,
+          "stage_latency_summary_ms": {
+            "receipt_to_decode": {
+              "count": 1,
+              "p50": 0.893,
+              "p95": 0.893,
+              "p99": 0.893,
+              "max": 0.893
+            },
+            "decode_to_broker": {
+              "count": 1,
+              "p50": 0.061,
+              "p95": 0.061,
+              "p99": 0.061,
+              "max": 0.061
+            },
+            "broker_to_reducer": {
+              "count": 1,
+              "p50": 26.756,
+              "p95": 26.756,
+              "p99": 26.756,
+              "max": 26.756
+            },
+            "reducer_to_state_apply": {
+              "count": 1,
+              "p50": 0.223,
+              "p95": 0.223,
+              "p99": 0.223,
+              "max": 0.223
+            },
+            "state_apply_to_publication": {
+              "count": 1,
+              "p50": 0.027,
+              "p95": 0.027,
+              "p99": 0.027,
+              "max": 0.027
+            },
+            "receipt_to_publication": {
+              "count": 1,
+              "p50": 27.96,
+              "p95": 27.96,
+              "p99": 27.96,
+              "max": 27.96
+            },
+            "publication_to_consumption": {
+              "count": 1,
+              "p50": 8.927,
+              "p95": 8.927,
+              "p99": 8.927,
+              "max": 8.927
+            },
+            "receipt_to_consumption": {
+              "count": 1,
+              "p50": 36.888,
+              "p95": 36.888,
+              "p99": 36.888,
+              "max": 36.888
+            }
+          }
+        },
+        "reason": "completed",
+        "subscription_generation": {
+          "owner": "report_stream_sequence_probe",
+          "lease_id": 2,
+          "generation": 2,
+          "requested_at_monotonic": 4449956.504903156,
+          "baseline_position_sequence": 182,
+          "baseline_position_epoch": 1,
+          "baseline_last_report_at": 4449956.037683434
+        },
+        "queue_settle": {
+          "live": true,
+          "reason": null,
+          "is_connected": true,
+          "is_usable": true,
+          "cooldown_active": false,
+          "cooldown_remaining_seconds": 0.0,
+          "last_send_age_seconds": 0.1,
+          "queue_depth": 0,
+          "queue_dispatch_paused": false,
+          "saga_active": false,
+          "stall_threshold_seconds": 15.0,
+          "queue_depth_limit": 0
+        },
+        "subscription_command_flushed_at_monotonic": 4449956.606111266,
+        "position_readiness": {
+          "ready": true,
+          "reason": null,
+          "timeout_seconds": 3.5,
+          "first_position_sequence": 183,
+          "first_position_after_request_ms": 254.328,
+          "generic_report_advanced": true
+        },
+        "channels": {
+          "position": {
+            "channel": "position",
+            "updates": 0,
+            "updates_per_second": 0.0,
+            "intervals_ms": [],
+            "note": "no updates observed in the window"
+          },
+          "rtk": {
+            "channel": "rtk",
+            "updates": 0,
+            "updates_per_second": 0.0,
+            "intervals_ms": [],
+            "note": "no updates observed in the window"
+          },
+          "vio": {
+            "channel": "vio",
+            "updates": 0,
+            "updates_per_second": 0.0,
+            "intervals_ms": [],
+            "note": "no updates observed in the window"
+          }
+        },
+        "subscription_stop_ack_at_monotonic": 4449956.797307845,
+        "honoured_requested_period": null,
+        "period_classification_reason": "fewer_than_100_position_payloads",
+        "cell_index": 1
+      }
+    ],
+    "complete": true,
+    "failed_cells": [],
+    "reason": "completed",
+    "lease": {
+      "owner": "report_stream_sequence_probe",
+      "lease_id": 2,
+      "acquired_at_monotonic": 4449956.5047956,
+      "background_stop_enqueued": false,
+      "background_stop_enqueued_at_monotonic": 4449956.504799378
+    }
+  }
+}

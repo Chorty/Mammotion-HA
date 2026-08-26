@@ -30,7 +30,49 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: beta77 + post3 DEPLOYED motion-disabled; steering still blocked
+## Current build: beta77 + post3 deployed; BOTH stationary gates PASSED
+
+🏁 **THE STATIONARY ACCEPTANCE GATES BOTH PASSED, 2026-08-26 — no motion was
+commanded and the gate never left disarmed.** Run at night with the mower
+stationary and off the dock inside "Backyard Right". RTK held Fix in the dark,
+which is exactly why a night run was legitimate: every predicate these tests
+evaluate is RTK/BLE-derived and none touches VIO.
+**30 of 30 ownership transitions became position-ready** under one lease
+(generations 3→32 monotonic, every `first_position == baseline+1`, zero drops,
+zero sequence gaps, epoch stable, complete stage timing).
+**The randomized matrix then passed UNTOUCHED** — all twelve cells delivered
+119-121 position payloads, so unlike beta76 it needs **no retry substitution**.
+🔑 **beta76's cell-12 anomaly did not recur** — that cell gave 3 position payloads
+against 118 generic reports; nothing like it appeared under serialized ownership.
+The cadence conclusion is unchanged and now better founded: **~1 Hz regardless of
+the requested period** (position p95 1119-1372 ms at every period; only 1000 ms
+meets its p95 criterion). Evidence:
+`docs/evidence-beta77-transitions-30-20260826.json`,
+`docs/evidence-beta77-cadence-matrix-20260826.json`,
+`docs/evidence-beta77-transition-canary-20260826.json`.
+
+⚠️ **One transition consumed 89% of the readiness budget** (cell 3, **3127.8 ms**
+against 3.5 s; next slowest 591.7 ms, so a 5.3x outlier not a tail). The 1.20x
+margin is real. **If a future run shows a single readiness failure, suspect the
+budget before suspecting ownership.**
+
+🗑️ **Do NOT claim the flush-boundary fix rescued these runs.** Zero cells saw a
+position arrive before the flush and every accepted sample was `baseline+1`, so
+nothing was skipped either — idle off-dock cadence is too slow for anything to be
+in flight during the ~200 ms request-to-flush window. The fix targets the *matrix*
+case, where a cell's live 120 s stream can still be emitting when the next cell
+takes its baseline. It cost nothing and remains correct; it just did not bite here.
+
+⚠️ **The matrix artifact is less auditable than beta76's, and the cause is fixed.**
+`include_raw_samples=False` stripped per-sample position `intervals_ms` and
+`pipeline_latencies_ms` while **keeping 228 generic report intervals per cell** —
+retaining the channel proven unable to establish position freshness and discarding
+the one that can, which inverts this project's verify-with-per-item-records rule.
+Every acceptance criterion is still checkable, but the interval distribution
+sizing the 3.5 s bound cannot be re-derived from that file. Flag removed; the next
+matrix carries its raw position evidence. **That fix is committed but NOT
+deployed** — the host still runs the released beta77.
+
 
 💻 **LIVE STATE, verified 2026-08-25 23:40 EDT.** The host runs
 `0.6.4-beta77` with PyMammotion `0.8.12.post3` (read back from inside the
@@ -42,8 +84,9 @@ serving paths, Lovelace resource `?v=0.6.4-beta77&build=544adfba`. The mower is
 `would_send: false` and the new `post_stop_observation_timeout_s: 3.5`, proving
 the beta77 executor is the loaded one. Full record:
 `docs/deploy-runbook-p0.md` → beta77.
-🛑 **A browser has NOT confirmed the new card** — ask the operator to check the
-console banner and footer read `0.6.4-beta77`.
+✅ **Browser-verified by the operator, 2026-08-26:** the card loads as
+`0.6.4-beta77`. The deploy is fully verified end to end — backend bytes, both
+serving paths, the Lovelace cache key, and the rendered card.
 
 
 ✅ **beta77/post3 REVIEWED, CORRECTED, RELEASED, AND DEPLOYED, 2026-08-25.** The

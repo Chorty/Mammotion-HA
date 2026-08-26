@@ -69,6 +69,74 @@ Raw artifacts remain local:
   marked as a derived classification that substitutes the retry for anomalous
   cell 12. It must not be represented as the untouched original matrix.
 
+## Stationary live results — 2026-08-26, both gates PASSED
+
+Run on beta77 + post3, at night, mower stationary and off the dock inside
+"Backyard Right". **No motion was commanded and the gate stayed disarmed
+throughout.** RTK held Fix in the dark, which is what made a night run legitimate:
+every predicate this test evaluates is RTK/BLE-derived and none touches VIO.
+
+### Gate 1 — 30 stationary ownership transitions: PASSED
+
+`docs/evidence-beta77-transitions-30-20260826.json`
+
+| Criterion | Result |
+| --- | --- |
+| Generations position-ready | **30 / 30** |
+| Lease across all cells | exactly one (`lease_id 3`) |
+| Generations | 3 -> 32, strictly monotonic, 30 distinct |
+| Sequence contiguity | every `first_position == baseline + 1` |
+| Dropped samples / sequence gaps | **zero** |
+| Position epoch | stable at 1 — no reconnect for the whole run |
+| Stage timing | complete on every cell, all eight stages |
+
+Time-to-ready median **366 ms**, min 202 ms. `receipt_to_publication` median
+**11.3 ms**, dominated by `broker_to_reducer` at 10.0 ms.
+
+⚠️ **One cell consumed 89% of the readiness budget.** Cell 3 took **3127.8 ms**
+against 3.5 s; the next slowest was 591.7 ms, so it is a 5.3x outlier rather than
+a tail. The budget held with 372 ms to spare on the worst draw. This is the
+predicted consequence of a 1.20x margin: **if a future run shows a single
+readiness failure, suspect the budget before suspecting ownership.**
+
+🔑 **The flush-boundary fix did not change this run's outcome, and that is worth
+saying plainly rather than implying it saved the run.** Zero cells saw a position
+arrive before the flush, and every accepted sample was `baseline + 1`, so no
+pre-flush sample was skipped either. Idle background cadence off the dock is slow,
+so nothing was in flight during the ~200 ms request-to-flush window. The risk the
+fix addresses is structurally a *matrix* problem, where each cell runs a live
+120 s stream and the next cell's baseline is taken while the previous subscription
+may still be emitting.
+
+### Gate 2 — randomized cadence matrix: PASSED, and UNTOUCHED
+
+`docs/evidence-beta77-cadence-matrix-20260826.json`, seed 20260825, same schedule
+as beta76.
+
+🏁 **beta76's cell-12 anomaly did not recur.** That cell delivered 3 position
+payloads while 118 generic reports arrived. Under serialized ownership all twelve
+cells delivered **119-121 payloads**, zero drops, zero sequence gaps, all twelve
+position-ready, one lease (`lease_id 4`), generations 33 -> 44 monotonic, epoch
+stable at 1. **This matrix needs no retry substitution**, so unlike beta76 it is
+classified on the untouched run — a strictly stronger evidentiary basis than the
+composite it replaces.
+
+The cadence conclusion is unchanged and now rests on better evidence: **1000 ms
+meets the p95 criterion; 100, 250 and 500 ms do not.** Per-cell position p95 spans
+1119-1372 ms at every requested period — the feed is ~1 Hz regardless of what is
+asked for. Pipeline latency was stable across all twelve cells
+(`receipt_to_publication` p50 10.5-11.6 ms), matching beta76's 10.7 ms median.
+
+⚠️ **This artifact is less auditable than the beta76 one, and the cause is now
+fixed.** `include_raw_samples=False` stripped the per-sample position
+`intervals_ms` and `pipeline_latencies_ms` from every cell while **retaining 228
+generic report intervals per cell** — keeping the channel this investigation
+proved cannot establish position freshness and discarding the evidence that can.
+That inverts this project's own rule, verify with per-item records not aggregates.
+Every acceptance criterion above is still checkable from what was kept, but the
+interval distribution that sizes the 3.5 s bound **cannot be re-derived from this
+file**. The flag is removed; a future matrix will carry its raw position evidence.
+
 ## Implementation status — beta77 / post3 (reviewed and released)
 
 The code portion of this plan is implemented as Home Assistant `0.6.4-beta77`
