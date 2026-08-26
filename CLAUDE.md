@@ -30,7 +30,25 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: beta77 + post3 deployed; BOTH stationary gates PASSED
+## Current build: beta78 + post3 deployed; BOTH stationary gates PASSED
+
+💻 **LIVE STATE, verified 2026-08-26 13:35 EDT.** The host runs
+`0.6.4-beta78` with PyMammotion `0.8.12.post3` (backend unchanged from beta77,
+read back from inside the container). 47/47 files byte-identical, card md5
+`b0ea22d9...` equal at both serving paths, Lovelace resource
+`?v=0.6.4-beta78&build=b0ea22d9`. Mower **docked**. Gate **disarmed** —
+`enabled: false`, `real_motion_allowed: false`, no session — confirmed from the
+live API **and** RAW `core.config_entries`. Record: `docs/deploy-runbook-p0.md`
+→ beta78.
+beta78 is an evidence-quality release only: it carries the raw-position-evidence
+retention and the named `position_invalid_for_motion: <predicate>` reason, both
+verified in the DEPLOYED bytes (`grep -c include_raw_samples` on the host = 0).
+⚠️ **The raw-evidence fix is deployed but UNEXERCISED** — a failed readiness check
+short-circuits before that code path, so confirming it end to end needs a cell
+that completes, i.e. the mower off the dock.
+🛑 **A browser has NOT confirmed the beta78 card** — ask the operator to check
+the banner and footer read `0.6.4-beta78`.
+
 
 🏁 **THE STATIONARY ACCEPTANCE GATES BOTH PASSED, 2026-08-26 — no motion was
 commanded and the gate never left disarmed.** Run at night with the mower

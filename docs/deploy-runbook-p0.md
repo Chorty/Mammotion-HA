@@ -8,6 +8,44 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta77 -> beta78 — 2026-08-26 13:26-13:35 EDT, motion-disabled
+
+Evidence-quality release. No backend change (still PyMammotion `0.8.12.post3`),
+no `LUBA_ACCEPTANCE_PROFILE` key touched (profile reports ACCEPTED). Carries the
+two fixes found while auditing the beta77 stationary runs.
+
+| | beta78 |
+| --- | --- |
+| tag / HEAD | `v0.6.4-beta78` (release commit `7a04269f`) |
+| quartet | manifest / pyproject / `CARD_VERSION` `0.6.4-beta78`, uv.lock `0.6.4b78` |
+| backend | PyMammotion `0.8.12.post3`, unchanged, read back from inside the container |
+| archive SHA-256 | `036a80a2a679cd09625609f9201cc6fead8efaf7c6739ac6858741b9b58a5a6b`, identical local and host |
+| file verification | **47 of 47 byte-identical**, zero AppleDouble files |
+| card md5 | `b0ea22d95efe7b1217a37006cb5db1bd`, equal at BOTH serving paths |
+| Lovelace resource | re-read as `?v=0.6.4-beta78&build=b0ea22d9` |
+| host backup | `/config/mammotion-backup-20260826-1326-pre-beta78.tgz` |
+| restart | API up after **30 s**, 132 entities at 144 s |
+| gate after deploy | `enabled: false`, `real_motion_allowed: false`, no active session; verified from the live API **and** RAW `core.config_entries` |
+| dry run | `heading_acquisition_window` `would_send: false`, `command_result.attempted: false` |
+
+**Both fixes verified in the DEPLOYED bytes, not just claimed:**
+`grep -c include_raw_samples` on the host returns **0** (raw position evidence is
+no longer stripped from matrix artifacts), and the named-predicate branch is
+present. A live one-transition probe against the docked mower returned
+`position_invalid_for_motion: zone_hash_unavailable` where beta77 returned a bare
+`position_invalid_for_motion` with no cause.
+
+⚠️ **That probe does NOT exercise the raw-evidence fix, and it should not be
+recorded as if it did.** A failed readiness check short-circuits before the block
+that builds `intervals_ms`/`pipeline_latencies_ms`, so the `intervals_ms` visible
+in its output is the result skeleton, not the retention path. Confirming that fix
+end to end needs a cell that COMPLETES, which needs the mower off the dock. The
+code is deployed and hash-verified; it is simply unexercised.
+
+🛑 **NOT verified: a browser has not loaded the beta78 card.** Backend bytes and
+both serving paths are confirmed; the console banner and footer still need a human
+to confirm they read `0.6.4-beta78`.
+
 ### beta76 -> beta77 — 2026-08-25 23:23-23:40 EDT, motion-disabled
 
 Ships the reviewed position-subscription lease work with PyMammotion
