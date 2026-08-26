@@ -8,6 +8,62 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta76 -> beta77 — 2026-08-25 23:23-23:40 EDT, motion-disabled
+
+Ships the reviewed position-subscription lease work with PyMammotion
+`0.8.12.post3`. No `LUBA_ACCEPTANCE_PROFILE` key touched
+(`scripts/check_accepted_profile.py` reports ACCEPTED). Continuous steering
+remains refused.
+
+| | beta77 |
+| --- | --- |
+| tag / HEAD | `v0.6.4-beta77` (release commit `348c71a8`, feature commit `cd591a05`) |
+| quartet | manifest / pyproject / `CARD_VERSION` `0.6.4-beta77`, uv.lock `0.6.4b77` |
+| backend | PyMammotion `0.8.12.post3`, read back from inside the container |
+| wheel SHA-256 | `cd3b0c3558d05c3ea6c7b6f2faad68c9c9eac523e70406bb930c5b01045a887a`, and `uv.lock` records the same hash independently |
+| archive SHA-256 | `ffc220cda9dcc29cb226100bbc5dc15c5459baf7f196358281634c7b94024f77`, identical local and host |
+| file verification | **47 of 47 byte-identical**, zero AppleDouble files |
+| card md5 | `544adfbabc0fdff2cbd81f2bf9693cdc`, equal at BOTH serving paths |
+| Lovelace resource | re-read as `?v=0.6.4-beta77&build=544adfba` |
+| host backup | `/config/mammotion-backup-20260825-2323-pre-beta77.tgz` |
+| restart | API up after **41 s**, 133 entities at 240 s |
+| new service registered | `report_stream_sequence_probe` present via `/api/services` with fields `entity_id, observation_seconds, periods_ms, readiness_timeout_seconds` |
+| gate after deploy | `enabled: false`, `real_motion_allowed: false`, no active session; verified from the live API **and** RAW `/config/.storage/core.config_entries` (`enable_experimental_motion: False`) |
+| dry runs | `heading_acquisition_window` and `continuous_motion_window` both `would_send: false`, `command_result.attempted: false`, and both report the new `post_stop_observation_timeout_s: 3.5` -- proving the beta77 executor is the one loaded |
+
+🔑 **This release exists because an independent review found a false-ready path
+in the beta77 candidate.** The readiness evidence boundary was taken from the
+return of `request_iot_sync_continuous`, which returns when the command is
+**queued**, not sent. A position payload still arriving from the configuration
+being replaced therefore satisfied the new generation's readiness. The boundary
+is now the post-queue-settle flush. Pinned by
+`test_isolated_probe_readiness_starts_at_the_start_flush_not_the_call`, which was
+verified to accept the stale sample on the pre-fix code.
+
+⚠️ **`requirements_test.txt` had drifted to post1 while the manifest shipped
+post2**, so CI had been testing a different backend than the deployed one since
+the post2 release. Now byte-identical to `manifest.json`. If you ever bump one,
+bump both.
+
+⚠️ **The version sites were deliberately NOT hand-bumped.** `Beta Release`
+computes one above the highest of the manifest suffix and the newest tag, so the
+candidate's hand-written beta77 bumps would have released **beta78**. They were
+reverted before the release ran, and the workflow produced beta77 as intended.
+
+⚠️ **Entity readback differs from this runbook's older "five benign
+unavailable" note:** 11 of 133 read `unavailable`/`unknown` — four buttons plus
+seven never-fired `last_*` timestamp sensors, all expected shortly after a
+restart. No baseline was captured before the restart, so this is reported as
+measured, not as a regression.
+
+🛑 **NOT verified: a browser has not loaded the new card.** Backend bytes and
+both serving paths are confirmed; the console banner and card footer still need
+a human to confirm they read `0.6.4-beta77`.
+
+🛑 **NOT done, and each needs its own authorization:** the >=30 stationary
+ownership transitions (these reconfigure the mower's report subscription), the
+matrix rerun that depends on them, and any physical motion.
+
 ### beta72 → beta73 — 2026-08-23 20:23-20:29 EDT, motion-disabled
 
 Ships the Phase 2 executor (`docs/phase2-executor-implemented-20260823.md`):

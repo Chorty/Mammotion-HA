@@ -30,9 +30,23 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: beta77 + post3, reviewed and released; steering still blocked
+## Current build: beta77 + post3 DEPLOYED motion-disabled; steering still blocked
 
-✅ **beta77/post3 REVIEWED, CORRECTED, AND RELEASED, 2026-08-25.** The
+💻 **LIVE STATE, verified 2026-08-25 23:40 EDT.** The host runs
+`0.6.4-beta77` with PyMammotion `0.8.12.post3` (read back from inside the
+container). 47/47 files byte-identical, card md5 `544adfba...` equal at both
+serving paths, Lovelace resource `?v=0.6.4-beta77&build=544adfba`. The mower is
+**docked**. The gate is **disarmed** — `enabled: false`,
+`real_motion_allowed: false`, no active session — confirmed from the live API
+**and** RAW `/config/.storage/core.config_entries`. Both dry runs report
+`would_send: false` and the new `post_stop_observation_timeout_s: 3.5`, proving
+the beta77 executor is the loaded one. Full record:
+`docs/deploy-runbook-p0.md` → beta77.
+🛑 **A browser has NOT confirmed the new card** — ask the operator to check the
+console banner and footer read `0.6.4-beta77`.
+
+
+✅ **beta77/post3 REVIEWED, CORRECTED, RELEASED, AND DEPLOYED, 2026-08-25.** The
 independent two-repo review of the beta77 candidate is complete. PyMammotion
 `0.8.12.post3` is published on the Chorty fork
 (`chorty-0.8.12.post3`, wheel SHA-256
