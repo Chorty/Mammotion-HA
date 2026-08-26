@@ -2547,6 +2547,105 @@ def _active_mowing_detected(telemetry: dict[str, Any], ha_state: str | None) -> 
     return ha_state == "mowing" or telemetry.get("work_mode_label") == "MODE_WORKING"
 
 
+#: How far the two independent heading sources may disagree and still be
+#: published as a trustworthy orientation, in degrees.
+#:
+#: The two sources are genuinely independent -- VIO is visual odometry, the
+#: mirror is derived from the RTK compass field -- so agreement is real evidence
+#: rather than a self-check. Measured 2026-08-26 across two supervised runs, they
+#: agreed to **0.91 deg** and **0.12 deg**, so 15 deg is loose by more than an
+#: order of magnitude. It is deliberately NOT tight: this gates a display arrow,
+#: and the failure that matters is drawing a confidently wrong heading, which a
+#: disagreement of any real size already catches.
+_ORIENTATION_AGREEMENT_TOLERANCE_DEGREES = 15.0
+
+
+def _current_orientation(
+    coordinator: MammotionReportUpdateCoordinator,
+    telemetry: dict[str, Any],
+) -> dict[str, Any]:
+    """Return a map-aligned body orientation, trustworthy only when corroborated.
+
+    🚨 **This field did not exist until 2026-08-26 and the card had been reading
+    it since beta19.** `mammotion-custom-path-card.js` gates its direction arrow
+    on `current_orientation.trustworthy === true`, nothing in this integration
+    ever emitted the key, so the arrow was unreachable by construction -- not a
+    data problem, a missing producer.
+
+    Two independent sources must agree before this is published as trustworthy:
+
+    * **VIO** (`vision_info.heading`) is body orientation and tracks in-place
+      rotation (established 2026-07-10). It is the reason an arrow is possible at
+      all -- but it is a *relative* sensor whose zero can shift across a re-init,
+      so it is never published alone.
+    * **The compass mirror** (`90.13 - toward`). `toward` was long believed to be
+      course-over-ground and blind to in-place rotation; that premise was
+      REFUTED 2026-08-12 (a pivot moved `toward` 99.55 deg on 3.8 cm of travel).
+      It does still freeze when the mower is genuinely stationary, which is
+      harmless here -- a stationary mower's orientation is not changing either.
+
+    Agreement between a visual and a magnetic source is real corroboration.
+    Disagreement means at least one is wrong and we cannot tell which, so the
+    honest output is no arrow -- the same conservative posture beta19 adopted
+    when it stopped drawing the last-travel projection as if it were orientation.
+
+    ⚠️ A degraded VIO feed is NOT trusted even though `vio_state` may still read
+    2: at dusk the tracked-feature count falls to zero while the state latches
+    and the heading freezes, so `_vio_feed_liveness` gates on the feature count.
+    """
+    feed = _vio_feed_liveness(coordinator)
+    vio_raw = _safe_attr_path(coordinator.data, "report_data.vision_info.heading")
+    toward = (telemetry.get("position") or {}).get("toward")
+
+    result: dict[str, Any] = {
+        "trustworthy": False,
+        "map_heading_degrees": None,
+        "source": None,
+        "reason": None,
+        "vio_feed_live": feed["live"],
+        "vio_tracked_features": feed["tracked_features"],
+    }
+
+    try:
+        vio_map = float(vio_raw) % 360.0
+    except TypeError, ValueError:
+        result["reason"] = "vio_heading_unavailable"
+        return result
+    if not math.isfinite(vio_map):
+        result["reason"] = "vio_heading_unavailable"
+        return result
+    if not feed["live"]:
+        result["reason"] = "vio_feed_degraded"
+        return result
+
+    if toward is None:
+        result["reason"] = "toward_unavailable"
+        return result
+    try:
+        mirror = _continuous_course_heading(float(toward))
+    except TypeError, ValueError:
+        result["reason"] = "toward_unavailable"
+        return result
+
+    disagreement = abs(((mirror - vio_map + 180.0) % 360.0) - 180.0)
+    result["vio_map_heading_degrees"] = round(vio_map, 3)
+    result["mirror_map_heading_degrees"] = round(mirror, 3)
+    result["disagreement_degrees"] = round(disagreement, 3)
+    result["agreement_tolerance_degrees"] = _ORIENTATION_AGREEMENT_TOLERANCE_DEGREES
+
+    if disagreement > _ORIENTATION_AGREEMENT_TOLERANCE_DEGREES:
+        result["reason"] = "heading_sources_disagree"
+        return result
+
+    # VIO is the published value: it is body orientation by construction, while
+    # the mirror only corroborates it.
+    result["trustworthy"] = True
+    result["map_heading_degrees"] = round(vio_map, 3)
+    result["source"] = "vio_heading corroborated by compass mirror"
+    result["reason"] = "corroborated"
+    return result
+
+
 def _runtime_blade_diagnostics(
     telemetry: dict[str, Any],
     *,
@@ -3017,6 +3116,9 @@ def _export_runtime_state(
     pipeline_diagnostics = getattr(coordinator, "position_pipeline_diagnostics", None)
     return {
         "ha_state": ha_state,
+        # The card's direction arrow reads this and nothing produced it until
+        # 2026-08-26; see _current_orientation.
+        "current_orientation": _current_orientation(coordinator, telemetry),
         "online": telemetry.get("online"),
         "work_mode": telemetry.get("work_mode"),
         "work_mode_label": telemetry.get("work_mode_label"),

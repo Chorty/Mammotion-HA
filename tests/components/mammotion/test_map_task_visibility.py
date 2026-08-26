@@ -9,7 +9,7 @@ import pathlib
 import time
 from collections.abc import Callable, Coroutine
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -66,6 +66,7 @@ from custom_components.mammotion.services import (
     _ble_link_liveness,
     _ble_ready_for_motion,
     _ble_transport_usable,
+    _current_orientation,
     _custom_path_telemetry_snapshot,
     _dry_run_custom_path,
     _experimental_execute_segment_burst,
@@ -2799,6 +2800,83 @@ async def test_vio_turn_to_heading_refuses_real_turn_when_vio_cold() -> None:
     assert "vio_active" in result["blockers"]
     coordinator.manager.send_command_with_args.assert_not_called()
     coordinator.async_stop_manual_motion.assert_not_called()
+
+
+def _orientation_coordinator(
+    *, vio_heading: float, toward: float, features: int = 80
+) -> tuple[Any, dict[str, Any]]:
+    """Build a coordinator whose VIO and compass headings are set independently."""
+    coordinator = _pulse_coordinator()
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        heading=vio_heading, vio_state=2, track_feature_num=features, brightness=200
+    )
+    return coordinator, {"position": {"toward": toward}}
+
+
+def test_current_orientation_publishes_only_when_two_sources_corroborate() -> None:
+    """The card's arrow needs a heading no single sensor can vouch for alone.
+
+    Live values from the 2026-08-26 6 m run: toward -1.800 gives a compass mirror
+    of 91.93 deg and VIO read 91.81, agreeing to 0.12 deg.
+    """
+    coordinator, telemetry = _orientation_coordinator(vio_heading=91.81, toward=-1.800)
+
+    result = _current_orientation(coordinator, telemetry)
+
+    assert result["trustworthy"] is True
+    assert result["map_heading_degrees"] == pytest.approx(91.81, abs=0.01)
+    assert result["reason"] == "corroborated"
+    assert result["disagreement_degrees"] == pytest.approx(0.12, abs=0.02)
+    # VIO is the published value; the mirror only corroborates it.
+    assert result["source"] == "vio_heading corroborated by compass mirror"
+
+
+def test_current_orientation_refuses_when_the_two_sources_disagree() -> None:
+    """Disagreement means one source is wrong and we cannot tell which.
+
+    Drawing a confidently wrong arrow is the failure that matters -- it is the
+    exact reason beta19 stopped rendering the last-travel projection -- so the
+    honest output is no arrow.
+    """
+    # VIO says 91.8; the compass mirror says ~0. Both cannot be right.
+    coordinator, telemetry = _orientation_coordinator(vio_heading=91.81, toward=90.13)
+
+    result = _current_orientation(coordinator, telemetry)
+
+    assert result["trustworthy"] is False
+    assert result["map_heading_degrees"] is None
+    assert result["reason"] == "heading_sources_disagree"
+    assert result["disagreement_degrees"] > 15.0
+
+
+def test_current_orientation_refuses_a_dusk_latched_vio_feed() -> None:
+    """`vio_state` stays 2 at dusk while the track goes blind and heading freezes.
+
+    Gating on the feature count rather than the state is what catches it.
+    """
+    coordinator, telemetry = _orientation_coordinator(
+        vio_heading=91.81, toward=-1.800, features=0
+    )
+
+    result = _current_orientation(coordinator, telemetry)
+
+    assert result["trustworthy"] is False
+    assert result["reason"] == "vio_feed_degraded"
+    assert result["vio_feed_live"] is False
+
+
+def test_current_orientation_is_absent_not_wrong_without_vio() -> None:
+    """No VIO heading at all must read as unavailable, never as a default."""
+    coordinator = _pulse_coordinator()
+    coordinator.data.report_data.vision_info = SimpleNamespace(
+        vio_state=0, track_feature_num=0
+    )
+
+    result = _current_orientation(coordinator, {"position": {"toward": -1.800}})
+
+    assert result["trustworthy"] is False
+    assert result["map_heading_degrees"] is None
+    assert result["reason"] == "vio_heading_unavailable"
 
 
 def test_vio_feed_liveness_gates_on_tracked_features() -> None:
