@@ -30,10 +30,48 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: beta78 + post3 deployed; REACH MEASURED AT 5.0 m
+## Current build: beta78 + post3 deployed; REACH CLOSED AT 6.0 m
 
-🏁 **REACH IS 5.0 m, MEASURED 2026-08-26 — `target_reached` at 0.10148 m against
-0.15 m tolerance.** One supervised, explicitly authorized single vector segment,
+🏁🏁 **REACH IS CLOSED AT 6.0 m, 2026-08-26 — `target_reached` at 0.11440 m
+against 0.15 m tolerance, and there is nowhere further to go.**
+`_MAX_SEGMENT_LENGTH_M` is a hard **6.10 m** pre-dispatch refusal, so 6.0 m is
+the largest single segment that can exist on this build. 19 linear pulses of a 22
+ceiling, so it STILL stopped on tolerance with the ceiling never binding. The
+three-point curve is **0.1023 m @ 4 m / 0.1015 m @ 5 m / 0.1144 m @ 6 m** —
+**landing does not degrade with distance** across a 50% increase in length. Gate
+armed for the run, verified disarmed after from the live API **and** RAW
+`core.config_entries`. Read `docs/reach-closed-at-6m-20260826.md`.
+
+⚠️ **The binding constraint at 6 m is the CORRECTION budget, not the pulse
+ceiling.** Terminal heading error reached **−27.48°** — the largest on record and
+still growing at the finish — and the run landed only because TWO mid-drive
+re-aims (pulses 15 and 16, aim errors 17.016° and 16.579°) held cross-track to
+0.094 m. That used 2 of the default `vio_max_realignments: 3` while the pulse
+ceiling had 3 spare. A slightly longer leg would plausibly need a third. 🚨 **Do
+NOT respond to a future exhaustion by raising that budget** — it was tried and
+reverted twice in 2026-08-17 review. The 6.10 m cap sits in about the right place.
+
+🚨 **THE GUARDED TURN QUANTUM IS NOT PREDICTABLE — 2.6x spread on IDENTICAL
+parameters.** Two back-to-back `raw_pymammotion_turn_to_heading` steps at angular
+500 / 1500 ms / refresh 200 measured **21.8°/pulse** then **57.0°/pulse**; the
+documented night fit `32.2 °/s·t − 2.4` predicts ~45.9. **Do not tune any turn
+constant against 21.8, 57.0, or 45.9.** Same registered cause as the older
+rotation-rate variance: a pulse rotates only while refresh writes arrive, so a
+blocked write stops the motor while the executor still divides by the whole
+window. 🔑 **Give a turn enough command budget to absorb the spread and let it
+close on measured heading — do not predict the pulse count.** Turn 2 converged in
+2 pulses to 5.27° because it was sized at `max_commands: 5` off turn 1's number.
+⚠️ **Two parameter traps on that service:** `angular_speed_fast` defaults to
+**180**, in the stationary deadband — use 500, and set `angular_speed_slow` to 500
+too or the slow tier stalls; `motion_refresh_interval_ms` defaults to **0**, the
+one-shot h-watchdog bug — use 200.
+🔑 **Its `target_heading_degrees` is in the `toward` (compass) frame, NOT map** —
+`_raw_turn_to_heading_status` compares it straight against `position.toward` with
+no conversion, so convert with `toward = 90.13 − map_heading`.
+
+*(Superseded but method still current: the 5.0 m run,
+`docs/reach-5m-20260826.md`.)* 🏁 **REACH WAS 5.0 m, MEASURED 2026-08-26 —
+`target_reached` at 0.10148 m against 0.15 m tolerance.** One supervised, explicitly authorized single vector segment,
 daylight, starting aligned, no junction turn. **17 linear pulses of a 22 ceiling,
 so it stopped on TOLERANCE and the ceiling never bound** — 5.0 m is a demonstrated
 FLOOR, not a limit, exactly as 4.0 m was. Cross-track at finish 0.09373 m, one
@@ -1127,12 +1165,16 @@ still open, and the sole outlier.
   distance cap on the VIO path** — it is emergent from the pulse budget:
   - *fixed budget* (`max_linear_pulse_ceiling: null`) — `max_linear_commands` is
     schema-capped at **3**, so ~1.0–1.3 m, then `max_linear_commands_reached`;
-  - *loop-to-tolerance* (the accepted profile sends **22**) — **5 m measured**
-    2026-08-26 in 17 pulses at 0.10148 m, stopping on tolerance with the ceiling
-    never binding (`docs/reach-5m-20260826.md`). The earlier 4 m point stands as
-    11 pulses at 0.1023 m. Cumulative travel is separately capped at
-    `segment_length × linear_distance_ceiling_factor` (default 2.0), and a
-    pre-dispatch `segment_too_long` cap refuses anything over **6.10 m**.
+  - *loop-to-tolerance* (the accepted profile sends **22**) — **REACH IS CLOSED
+    AT 6.0 m**, the largest single segment the **6.10 m** `segment_too_long`
+    pre-dispatch cap permits. Measured 2026-08-26 in 19 pulses at 0.11440 m,
+    stopping on tolerance with the ceiling never binding
+    (`docs/reach-closed-at-6m-20260826.md`). Curve: 4 m / 11 pulses / 0.1023 m,
+    5 m / 17 / 0.10148 m, 6 m / 19 / 0.11440 m — flat, no degradation with
+    distance. Cumulative travel is separately capped at `segment_length ×
+    linear_distance_ceiling_factor` (default 2.0). ⚠️ At 6 m the binding
+    constraint is the **correction** budget (2 of 3 `vio_max_realignments` used),
+    not the pulse ceiling (3 spare).
   ⚠️ **This entry has now gone stale TWICE under "do not re-derive".** It first
   read "per-segment reach is ~1 m; a 2.0 m leg is not dispatchable" — the
   pre-ceiling number, left standing through the entire reach programme, corrected
