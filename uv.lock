@@ -1342,7 +1342,7 @@ wheels = [
 
 [[package]]
 name = "mammotion-ha"
-version = "0.6.4b75"
+version = "0.6.4b77"
 source = { virtual = "." }
 dependencies = [
     { name = "autotyping" },
@@ -1365,7 +1365,7 @@ dev = [
 requires-dist = [
     { name = "autotyping", specifier = ">=24.3.0" },
     { name = "homeassistant", specifier = ">=2026.1.0" },
-    { name = "pymammotion", url = "https://github.com/Chorty/PyMammotion/releases/download/chorty-0.8.12.post1/pymammotion-0.8.12.post1-py3-none-any.whl" },
+    { name = "pymammotion", url = "https://github.com/Chorty/PyMammotion/releases/download/chorty-0.8.12.post3/pymammotion-0.8.12.post3-py3-none-any.whl" },
     { name = "sdp-transform", specifier = ">=1.1.0" },
     { name = "websockets", specifier = ">=15.0.1" },
 ]
@@ -1863,8 +1863,8 @@ wheels = [
 
 [[package]]
 name = "pymammotion"
-version = "0.8.12.post1"
-source = { url = "https://github.com/Chorty/PyMammotion/releases/download/chorty-0.8.12.post1/pymammotion-0.8.12.post1-py3-none-any.whl" }
+version = "0.8.12.post3"
+source = { url = "https://github.com/Chorty/PyMammotion/releases/download/chorty-0.8.12.post3/pymammotion-0.8.12.post3-py3-none-any.whl" }
 dependencies = [
     { name = "aiohttp" },
     { name = "aiomqtt" },
@@ -1889,7 +1889,7 @@ dependencies = [
     { name = "websockets" },
 ]
 wheels = [
-    { url = "https://github.com/Chorty/PyMammotion/releases/download/chorty-0.8.12.post1/pymammotion-0.8.12.post1-py3-none-any.whl", hash = "sha256:9dd85e3fbf160ded3e2221203429a7edb94809e1be0817b99fc0cca9d4153e2c" },
+    { url = "https://github.com/Chorty/PyMammotion/releases/download/chorty-0.8.12.post3/pymammotion-0.8.12.post3-py3-none-any.whl", hash = "sha256:cd3b0c3558d05c3ea6c7b6f2faad68c9c9eac523e70406bb930c5b01045a887a" },
 ]
 
 [package.metadata]
