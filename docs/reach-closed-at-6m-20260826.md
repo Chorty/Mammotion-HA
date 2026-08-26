@@ -57,6 +57,67 @@ Per-pulse travel: median **0.3374 m**, max 0.3866, min 0.0528 (a final-approach
 pulse, shortened by design once remaining is inside
 `final_approach_metres_per_pulse` = 1.06 — NOT a BLE stall).
 
+### Both corrections were spent inside the last metre
+
+| | fired after | at travelled | remaining | travel AFTER it |
+| --- | --- | --- | --- | --- |
+| re-aim 1 | pulse 15 | 5.0046 m | 0.9954 m | **0.8380 m** |
+| re-aim 2 | pulse 16 | 5.3307 m | 0.6693 m | **0.5119 m** |
+
+🔑 **They fired late because the trigger is a projected miss, not an angle.**
+Pulse 11 carried −6.7° with 2.29 m still to run and did NOT fire; pulse 15
+carried −12.8° with 1.00 m left and did, at a recorded aim error of 17.016°
+(projected miss ~0.29 m against a 0.15 m tolerance). The error had grown steadily
+since pulse 5; the controller waited until the geometry crossed the threshold.
+That is the beta57 trigger change working as designed — the older angle-based
+trigger is exactly the one that never fired in the far field.
+
+🔑 **What actually made a −27.5° terminal error survivable was the final-approach
+shortening, not the corrections.** The last two pulses travelled 0.1129 m and
+0.0528 m, so even 27.5° of heading error buys only ~0.024 m of cross-track on the
+final pulse. **This sharpens the case for the cap:** a longer leg would need a
+third correction *before* final-approach shortening begins, in the regime where
+pulses are still ~0.33 m and a 27° error costs ~0.15 m each.
+
+Total forward-pulse travel was 5.8426 m against a 6.0 m plan; the balance is the
+opening turn, the calibration pulse, and the corrections' own translation, none
+of which appear in the forward-pulse ledger.
+
+### The two re-aims are visually confirmed
+
+`docs/evidence-reach-6m-reaim-frames-20260826.png` is an 8-frame strip
+(GIF frames 460–544, 5 fps) cropped to the mower. The body is near-square to the
+frame at the start of the window and progressively rotates through it — the
+operator independently observed the mower "going straight then turning" late in
+the run, before reviewing any telemetry.
+
+This corroborates the *count and lateness* of the corrections: exactly two turn
+events during the drive (plus the opening turn, `turn_commands_sent: 3`), both in
+the final quarter. It also rules out the alternative reading that −27.48° was a
+telemetry artifact — the machine is physically angled, on camera, at rest, at the
+end of the run.
+
+⚠️ **The frame-to-pulse alignment is INFERRED, not synchronised.** Frames were
+mapped to pulses by assuming uniform cadence (19 pulses over ~121.8 s ≈ 6.4 s
+each), which places pulses 15–16 near frames 480–515. Neither the GIF nor the
+evidence file carries an absolute timestamp, so no true synchronisation exists.
+**The pulse-indexed numbers above come from telemetry alone; the video supports
+the count and the timing-within-the-run, not the per-frame mapping.**
+
+⚠️ **The video does NOT demonstrate crabbing.** Crabbing requires body axis and
+travel direction observed simultaneously; the camera is handheld, so apparent
+in-frame motion is mower motion plus camera motion, and by the final frames the
+mower is already stopped on `target_reached`. Source clip (not committed, 57 MB):
+`G6 Turret 8-26-2026 - optimized.gif`, 609 frames at 5 fps.
+
+🔑 **The clip length is an independent cadence check worth keeping.** 121.8 s for
+a 6.0 m run is **0.049 m/s** effective, alongside the 0.0565 m/s the 9 m Route B
+chain managed end to end — corroborating the ~22% stop-measure-go duty cycle from
+a source with no shared failure mode with the position feed. A gross under-report
+like the 2026-07-18 incident (telemetry 15 cm against ~82 cm observed) would have
+been obvious here, and there is no sign of one. ⚠️ Clip boundaries are not known
+to align exactly with dispatch and stop, so treat 121.8 s as approximate.
+
 ## The guarded turn works, and its quantum is not predictable
 
 Getting from the 5 m end pose to the 6 m start needed a ~174° about-face. Rather

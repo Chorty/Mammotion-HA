@@ -42,6 +42,28 @@ three-point curve is **0.1023 m @ 4 m / 0.1015 m @ 5 m / 0.1144 m @ 6 m** —
 armed for the run, verified disarmed after from the live API **and** RAW
 `core.config_entries`. Read `docs/reach-closed-at-6m-20260826.md`.
 
+🔑 **BOTH corrections were spent inside the LAST METRE** — re-aim 1 after pulse
+15 at 5.005 m travelled (0.838 m of travel followed it), re-aim 2 after pulse 16
+at 5.331 m (0.512 m followed). They fire late because the trigger is a **projected
+miss, not an angle**: pulse 11 carried −6.7° with 2.29 m to run and did NOT fire;
+pulse 15 carried −12.8° with 1.00 m left and did. That is the beta57 trigger
+change working as designed.
+🔑 **What made a −27.5° terminal error survivable was the FINAL-APPROACH
+SHORTENING, not the corrections** — the last two pulses travelled 0.1129 m and
+0.0528 m, so 27.5° buys only ~0.024 m of cross-track on the final pulse. A longer
+leg would need a third correction *before* that shortening begins, where pulses
+are still ~0.33 m and 27° costs ~0.15 m each.
+📷 **The two re-aims are VISUALLY CONFIRMED** — the operator independently
+observed "going straight then turning" late in the run before seeing any
+telemetry; frame strip banked at
+`docs/evidence-reach-6m-reaim-frames-20260826.png`. ⚠️ Frame-to-pulse alignment is
+**inferred** from uniform cadence, not synchronised — no absolute timestamp
+exists on either side, so the video supports the COUNT and lateness, not the
+per-frame mapping, and it does **not** demonstrate crabbing (handheld camera;
+mower already stopped by the final frames). 🔑 The clip's 121.8 s for 6.0 m is
+**0.049 m/s** effective, corroborating the ~22% duty cycle from a source with no
+shared failure mode with the position feed.
+
 ⚠️ **The binding constraint at 6 m is the CORRECTION budget, not the pulse
 ceiling.** Terminal heading error reached **−27.48°** — the largest on record and
 still growing at the finish — and the run landed only because TWO mid-drive
