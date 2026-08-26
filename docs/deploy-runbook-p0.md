@@ -42,9 +42,11 @@ in its output is the result skeleton, not the retention path. Confirming that fi
 end to end needs a cell that COMPLETES, which needs the mower off the dock. The
 code is deployed and hash-verified; it is simply unexercised.
 
-🛑 **NOT verified: a browser has not loaded the beta78 card.** Backend bytes and
-both serving paths are confirmed; the console banner and footer still need a human
-to confirm they read `0.6.4-beta78`.
+✅ **Browser-verified by the operator, 2026-08-26: the card footer reads
+`card v0.6.4-beta78`.** This deploy is verified end to end. The card's own runtime
+panel independently read `PyMammotion backend 0.8.12.post3 (verified)`, which also
+confirms the `installed_pymammotion_version` `lru_cache` added in beta77 reports
+the live version correctly across a restart rather than caching a stale one.
 
 ### beta76 -> beta77 — 2026-08-25 23:23-23:40 EDT, motion-disabled
 

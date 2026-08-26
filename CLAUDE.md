@@ -46,8 +46,9 @@ verified in the DEPLOYED bytes (`grep -c include_raw_samples` on the host = 0).
 ⚠️ **The raw-evidence fix is deployed but UNEXERCISED** — a failed readiness check
 short-circuits before that code path, so confirming it end to end needs a cell
 that completes, i.e. the mower off the dock.
-🛑 **A browser has NOT confirmed the beta78 card** — ask the operator to check
-the banner and footer read `0.6.4-beta78`.
+✅ **Browser-verified 2026-08-26: the card footer reads `card v0.6.4-beta78`**
+and its runtime panel independently reads `PyMammotion backend 0.8.12.post3
+(verified)`. Both deploys this cycle are now verified end to end.
 
 
 🏁 **THE STATIONARY ACCEPTANCE GATES BOTH PASSED, 2026-08-26 — no motion was
