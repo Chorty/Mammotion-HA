@@ -30,6 +30,52 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
+## Current build: beta78 + post3 deployed; REACH MEASURED AT 5.0 m
+
+🏁 **REACH IS 5.0 m, MEASURED 2026-08-26 — `target_reached` at 0.10148 m against
+0.15 m tolerance.** One supervised, explicitly authorized single vector segment,
+daylight, starting aligned, no junction turn. **17 linear pulses of a 22 ceiling,
+so it stopped on TOLERANCE and the ceiling never bound** — 5.0 m is a demonstrated
+FLOOR, not a limit, exactly as 4.0 m was. Cross-track at finish 0.09373 m, one
+turn command, one mid-drive realignment, 95 refresh writes, zero errors. The gate
+was armed for the run and verified disarmed immediately after from the live API
+**and** RAW `core.config_entries`. Read `docs/reach-5m-20260826.md`; evidence
+`docs/evidence-reach-5m-beta78-20260826.json`.
+
+🔑 **Landing does NOT degrade with distance.** 4 m landed 0.1023 m, 5 m landed
+0.1015 m — flat. That is the third distance (3, 4, 5 m) at which measurement
+contradicts the pessimistic `_correctable_leg_length_limit_m` bound of 0.58 m.
+**The constant stays**: it is a conservative advisory that has never blocked a
+run, not a prediction.
+
+🔑 **The mid-drive re-aim fired at pulse 14 and it mattered** — facing 284.91°
+against bearing-to-target 266.876°, aim error **−18.034°**, corrected to
+`target_heading_reached`, after which pulse 15 travelled 0.3472 m, the longest of
+the run. First time that correction has been observed firing on a leg this long.
+Travel-direction error grew monotonically before it (+0.59° at pulse 1 → +12.39°
+by pulse 14), which is the documented mid-leg divergence now resolved across 17
+pulses instead of 3.
+
+🚨 **TWO TRAPS THAT SILENTLY INVALIDATE A LONG-LEG TEST — both hit this session.**
+**(1) The CARD cannot run one.** It auto-splits any leg over
+`SPLIT_LEG_TARGET_METRES` (3.85 m), so a 5 m click becomes 2 × 2.5 m sub-legs and
+measures the splitter. Use `raw_pymammotion_execute_vector_segment` directly,
+where `split_leg_target_length_m` defaults to off. **(2) The service schema
+defaults are NOT the accepted profile.** `max_linear_pulse_ceiling` defaults to
+`None` (accepted 22) — without it the run is fixed-budget and stops after ~1
+pulse; `waypoint_tolerance` defaults 0.08 (accepted 0.15); and
+`calibrated_forward_heading_offset_degrees` defaults to **116.5** where the
+profile is **102.4**. A first dry run here silently used 116.5. **Send
+`docs/accepted-profile.json` verbatim and verify identity key-by-key against the
+response** — that is what makes a result comparable to Gate 5.
+
+⚠️ **n = 1 at 5 m. Feasibility, not reliability** — 3.0 m sat at 5 reached / 1
+failed before it accumulated runs. Do not quote 0.101 m as an expected landing.
+⚠️ **Says nothing about 5 m AFTER a junction turn.** The leg began aligned by
+construction; reach and post-turn landing accuracy are different properties.
+🔑 **Still dispatchable and unmeasured: 5.5 m and 6.0 m.** `_MAX_SEGMENT_LENGTH_M`
+is 6.10 m and the budget gate allows `22 × 0.30 = 6.60 m`.
+
 ## Current build: beta78 + post3 deployed; BOTH stationary gates PASSED
 
 💻 **LIVE STATE, verified 2026-08-26 13:35 EDT.** The host runs
@@ -1081,13 +1127,20 @@ still open, and the sole outlier.
   distance cap on the VIO path** — it is emergent from the pulse budget:
   - *fixed budget* (`max_linear_pulse_ceiling: null`) — `max_linear_commands` is
     schema-capped at **3**, so ~1.0–1.3 m, then `max_linear_commands_reached`;
-  - *loop-to-tolerance* (the accepted profile sends **14**) — **4 m measured** in
-    11 pulses at 0.1023 m, stopping on tolerance, the ceiling never binding.
-    Cumulative travel is separately capped at `segment_length ×
-    linear_distance_ceiling_factor` (default 2.0).
-  ⚠️ The old line here read "per-segment reach is ~1 m; a 2.0 m leg is not
-  dispatchable." That was the pre-ceiling number and was left standing under
-  "do not re-derive" through the entire reach programme. Corrected 2026-08-15.
+  - *loop-to-tolerance* (the accepted profile sends **22**) — **5 m measured**
+    2026-08-26 in 17 pulses at 0.10148 m, stopping on tolerance with the ceiling
+    never binding (`docs/reach-5m-20260826.md`). The earlier 4 m point stands as
+    11 pulses at 0.1023 m. Cumulative travel is separately capped at
+    `segment_length × linear_distance_ceiling_factor` (default 2.0), and a
+    pre-dispatch `segment_too_long` cap refuses anything over **6.10 m**.
+  ⚠️ **This entry has now gone stale TWICE under "do not re-derive".** It first
+  read "per-segment reach is ~1 m; a 2.0 m leg is not dispatchable" — the
+  pre-ceiling number, left standing through the entire reach programme, corrected
+  2026-08-15. It then read "the accepted profile sends 14" and "4 m measured",
+  both already wrong: beta57 moved the ceiling to 22 on 2026-08-18 and 5 m was
+  measured on 2026-08-26. Corrected again 2026-08-26. **If you are about to quote
+  a reach number from this section, grep the tree and the newest evidence file
+  first** — this specific bullet has a track record.
 - **Night is hard-capped at 1.0 m** (`_NIGHT_MAX_SEGMENT_LENGTH_M`), refused
   pre-dispatch by `night_segment_too_long`, and night also refuses
   loop-to-tolerance (`night_linear_loop_unsupported`). That 1.0 is chosen, not
