@@ -9,12 +9,18 @@ Read, in order, and stop at the provenance line:
 1. **"Current build"** directly below — what is released and installed.
 2. **"Standing decisions"** — the operator's scope calls. They override any
    older recommendation in this file.
-3. `docs/CLAUDE-BETA77-TAKEOVER-PROMPT-20260825.md` for the current two-repo
-   review handoff and exact safety boundary.
-4. `docs/position-cadence-safety-followup-plan-20260825.md` for the evidence,
-   implementation status, and release gates.
-5. Treat `docs/NEXT-SESSION.md` as historical unless its live state is freshly
-   reverified; this handoff did not query Home Assistant or the mower.
+3. `docs/reach-closed-at-6m-20260826.md` — reach is CLOSED at 6.0 m against a
+   hard 6.10 m cap. Read this before proposing any longer single segment.
+4. `docs/phase2-steering-refusal-recommendation-20260826.md` — the scored
+   decision on whether to open continuous steering, and the conditions on it.
+   Read before touching `steering_not_motion_validated`.
+5. `docs/position-cadence-safety-followup-plan-20260825.md` for the report-cadence
+   evidence and the stationary gates that passed 2026-08-26.
+   ⚠️ `docs/CLAUDE-BETA77-TAKEOVER-PROMPT-20260825.md` is HISTORICAL: that review
+   completed, its findings were fixed, and beta77/post3 shipped.
+6. Treat `docs/NEXT-SESSION.md` as historical unless its live state is freshly
+   reverified. ⚠️ The live state in "Current build" was true at the END of the
+   2026-08-26 session; requery Home Assistant and the mower before acting on it.
 
 ⚠️ **Everything from "Build provenance" down is history**, including entries
 that read as open items. It is accurate as a *record* — the measurements stand,
@@ -30,7 +36,42 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: beta78 + post3 deployed; REACH CLOSED AT 6.0 m
+## Current build: beta78 deployed; beta79 released and NOT deployed
+
+🛑 **START HERE, 2026-08-26 end of session.** Two different versions are in play
+and confusing them will waste your time:
+
+* **The HOST runs `0.6.4-beta78`** with PyMammotion `0.8.12.post3`. That is what
+  is executing right now.
+* **`0.6.4-beta79` is RELEASED but NOT DEPLOYED** (tag `v0.6.4-beta79`, backend
+  unchanged at post3). It adds one thing: the backend `current_orientation` field
+  that makes the card's direction arrow renderable. **The arrow will not appear
+  until beta79 is deployed.**
+
+🔋 **LIVE STATE — reverify before acting, this was true at end of session, not
+now.** Mower **OFF the dock** in "Backyard Right" at roughly (5.5, −0.24),
+**battery 26% and not charging**, gate **disarmed** (`enabled: false`,
+`real_motion_allowed: false`, verified live API and RAW storage), no active
+session. ⚠️ **Dock and charge before any physical work.** Leaving it off-dock at
+low battery is how the 2026-08-24 incident started: the battery died overnight
+and the BLE session never recovered until a config-entry reload.
+
+**Queued next steps, in this order:**
+
+1. Dock and charge.
+2. Deploy beta79 motion-disabled (`docs/deploy-runbook-p0.md`) → arrow appears.
+3. Real `heading_acquisition_window` run — exercises Phase 2 defect 1 with **no
+   steering**. The 2026-08-24 corridor blocker is gone; open lawn gives ~5 m
+   clearance against the 1.06 m disk.
+4. **Only if 3 passes:** the steering-refusal decision. Read
+   `docs/phase2-steering-refusal-recommendation-20260826.md` first — it scores
+   the 2026-08-24 failure against the registered criteria and recommends opening
+   the refusal with `max_abs_angular_speed` capped well below 180 and scoring
+   predeclared. It authorizes nothing.
+
+⚠️ `docs/CLAUDE-BETA77-TAKEOVER-PROMPT-20260825.md` is now **historical** — its
+review was completed, its findings fixed, and beta77/post3 shipped.
+
 
 🏁🏁 **REACH IS CLOSED AT 6.0 m, 2026-08-26 — `target_reached` at 0.11440 m
 against 0.15 m tolerance, and there is nowhere further to go.**
@@ -144,7 +185,7 @@ construction; reach and post-turn landing accuracy are different properties.
 🔑 **Still dispatchable and unmeasured: 5.5 m and 6.0 m.** `_MAX_SEGMENT_LENGTH_M`
 is 6.10 m and the budget gate allows `22 × 0.30 = 6.60 m`.
 
-## Current build: beta78 + post3 deployed; BOTH stationary gates PASSED
+## (history) beta78 deploy + both stationary gates PASSED, 2026-08-26
 
 💻 **LIVE STATE, verified 2026-08-26 13:35 EDT.** The host runs
 `0.6.4-beta78` with PyMammotion `0.8.12.post3` (backend unchanged from beta77,
