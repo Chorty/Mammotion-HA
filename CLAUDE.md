@@ -77,7 +77,15 @@ reverted twice in 2026-08-17 review. The 6.10 m cap sits in about the right plac
 parameters.** Two back-to-back `raw_pymammotion_turn_to_heading` steps at angular
 500 / 1500 ms / refresh 200 measured **21.8°/pulse** then **57.0°/pulse**; the
 documented night fit `32.2 °/s·t − 2.4` predicts ~45.9. **Do not tune any turn
-constant against 21.8, 57.0, or 45.9.** Same registered cause as the older
+constant against 21.8, 57.0, or 45.9.**
+⚠️ **SCOPE: stationary in-place pivots ONLY — the 2.6x does NOT transfer to
+steering while moving.** Arc behaviour is different and was measured clean and
+linear (2026-08-12: +22.20° of course over 0.5823 m against +0.00° for the
+zero-angular control). Quoting 2.6x as a bound on arc or continuous-steering
+response is a category error; read
+`docs/phase2-steering-refusal-recommendation-20260826.md` §4 before using this
+figure anywhere near Phase 2. The transferable part is the CAUSE, not the number.
+Same registered cause as the older
 rotation-rate variance: a pulse rotates only while refresh writes arrive, so a
 blocked write stops the motor while the executor still divides by the whole
 window. 🔑 **Give a turn enough command budget to absorb the spread and let it

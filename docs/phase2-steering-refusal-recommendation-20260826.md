@@ -86,12 +86,47 @@ the evidence that a second attempt is survivable.
 ## 4. New evidence since the gate doc was written
 
 🔑 **The turn quantum varies 2.6× on identical parameters** (measured 2026-08-26:
-21.8 then 57.0 °/pulse — `docs/reach-closed-at-6m-20260826.md`). This *sounds*
-disqualifying for a steering law but largely is not: the continuous controller
-re-anchors on **measured heading every ~1 Hz step** rather than integrating a
-yaw-rate model, which is precisely why the 2026-08-22 out-of-sample work took yaw
-calibration off the Phase 2 critical path. It does argue against ever tuning the
-gain against a predicted rotation rate.
+21.8 then 57.0 °/pulse — `docs/reach-closed-at-6m-20260826.md`).
+
+🗑️ **CORRECTED 2026-08-26, same day: an earlier draft of this section let that
+number stand as if it bounded steering response. It does not, and quoting it that
+way is a category error.** Both measurements are **stationary in-place pivots**
+(linear 0, angular 500). The continuous controller steers **while moving**, which
+is the arc regime, and this project's own record says the two behave differently:
+"angular needs 500" is explicitly a **stationary-only** finding and angular 180
+actuated fine in an arc, while the 2026-08-12 arc measurement was clean and
+linear — `linear 400 + angular 180` rotated course **+22.20°** over 0.5823 m
+against **+0.00°** for the zero-angular control, the two distances 1.8 mm apart.
+**Do not transfer the 2.6× figure to arc steering.**
+
+🔑 **What DOES carry over is the cause, not the number.** The registered
+explanation is BLE-cadence gating: a pulse rotates only while refresh writes
+arrive, and a blocked write lets the watchdog stop the motor while the executor
+still divides by the whole commanded window. That mechanism is transport-level
+and regime-independent, so it applies while moving too — the 2026-08-09 data
+shows the same shape (cadence-intact pulses 23–43 °/s, a stalled one 9.23 °/s).
+The controller already guards it: `refresh_max_gap_since_last_decision_s` bounded
+at 0.60 s, which held at **0.520 s** on 2026-08-24.
+
+**Why none of this is disqualifying:** the continuous controller re-anchors on
+**measured heading every ~1 Hz step** rather than integrating a yaw-rate model.
+It does not need to know how much rotation a command produces — it commands,
+measures, corrects. That is exactly why the 2026-08-22 out-of-sample work
+concluded a continuous controller needs accurate heading *feedback* rather than
+an accurate yaw *model*, taking yaw calibration off the Phase 2 critical path.
+
+**What it changes, concretely:**
+
+1. **Never tune the gain against a predicted rotation rate.** Plant gain is
+   uncertain, so any `K` derived from a °/s figure rests on an unstable number.
+2. **It strengthens condition B below.** With uncertain plant gain, a
+   proportional loop tuned for a sluggish response overshoots when the response
+   is brisk — and "no oscillation between saturated ±180 commands" is a
+   registered pass criterion.
+3. **It adds a required output for the first steering run.** Nobody has measured
+   the actual rotation response per commanded angular **while moving under
+   refresh**; the arc data is two points at a single speed. Record it as a
+   result of the run rather than assuming it going in.
 
 ⚠️ **The structural risk is the feedback interval, and it is not a bug.** At the
 configured 0.2482 m/s nominal speed, one ~1 Hz correction interval is **0.248 m

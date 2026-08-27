@@ -138,6 +138,14 @@ bounded steps. Evidence: `docs/evidence-guarded-turn1-beta78-20260826.json`,
 Both at **identical parameters**: angular 500, `pulse_duration_ms` 1500,
 `motion_refresh_interval_ms` 200, tolerance 18.
 
+⚠️ **SCOPE: these are STATIONARY in-place pivots (linear 0), and the number does
+NOT transfer to steering while moving.** The arc regime behaves differently —
+"angular needs 500" is explicitly a stationary-only finding, angular 180 actuated
+fine in an arc, and the 2026-08-12 arc measurement was clean and linear
+(+22.20° of course over 0.5823 m against +0.00° for the zero-angular control).
+Quoting 2.6x as a bound on arc or continuous-steering response is a category
+error. See `docs/phase2-steering-refusal-recommendation-20260826.md` §4.
+
 🚨 **The pulse quantum varied 2.6x between two back-to-back turns with identical
 parameters, and neither matched the model.** The documented night-branch fit
 `rotation ≈ 32.2 °/s·t − 2.4` predicts ~45.9° at t=1.5 s; the two measurements
