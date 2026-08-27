@@ -38,9 +38,42 @@ this file every time.
 
 ## Current build: beta81 deployed; steering OPEN behind an opt-in, sign still UNTESTED
 
-🛑 **THE STEERING SIGN HAS STILL NEVER MOVED A WHEEL.** Two attempts on
-2026-08-27 both refused before any steering command. Neither exercised the
-predeclared criteria, so **there is nothing to score.**
+🛑 **THE STEERING SIGN HAS STILL NEVER MOVED A WHEEL.** THREE attempts on
+2026-08-27, three distinct refusals, none reaching a steering command. The
+predeclared criteria are unexercised, so **there is nothing to score — and
+"three refusals" is NOT evidence the steering law is wrong. It has not run.**
+
+🚨 **ATTEMPT 3 DROVE 0.51 m WHILE BELIEVING IT HAD MOVED 0.021 m — a 24x
+under-observation.** Position sequence sat at **17 for a full second** while the
+mower travelled as commanded (`linear 400` for 2.159 s ≈ 0.54 m predicted, 0.5097 m
+actual). Blind travel stayed **inside the 1.06 m disk** and it stopped fail-closed
+on `heading_acquisition_timeout` — **but it stopped because it was BLIND, not
+because it noticed.** Had the feed delivered just enough for the 0.15 m chord and
+then gone quiet, the controller would have steered on a stale position. Same shape
+as the beta76 cell-12 anomaly: subscription `started: true`, `queue_settle` live at
+depth 0, no saga, no error — and no position payloads. Sequences 15/16/17 arrived
+in ~1 s, then silence. Read
+`docs/phase2-steering-attempt3-blind-travel-20260827.md`.
+⚠️ **`baseline_position_epoch` was 2 where earlier runs ran at epoch 1**, so BLE
+was re-established between attempts 2 and 3 and the burst-then-stall followed a
+reconnect. **n = 1 — a correlation to chase, NOT a mechanism to write down.**
+Attempt 2 minutes earlier measured 0.2407 m correctly; the behaviour is
+intermittent.
+
+🔑 **ACQUISITION IS MARGINAL BY CONSTRUCTION, independent of that stall.** At
+~1 Hz, a 0.15 m chord from standstill needs ~2 position samples ≈ 2 s, and
+`max_heading_acquisition_s` is exactly **2.0 s**. Attempt 2 made it at 1.95 s;
+attempt 3 did not. ⚠️ **Raising it is a SAFETY TRADE, not a tweak** — it sizes the
+blind disk directly (`0.28 x budget + 0.50`), so 3.0 s means a 1.34 m disk and more
+required clearance. 🗑️ **Do NOT lower `min_travel_for_heading_trust_m` (0.15 m)
+instead** — it is the registered informativeness floor at sigma = 0.0031 m.
+
+**Next, in order: (1)** investigate the burst-then-stall with
+`report_stream_sequence_probe` around a reconnect; **(2)** decide the acquisition
+budget deliberately as a stated safety trade; **(3)** only then retry the sign.
+The attempt-3 config (6 s window, 8° route offset,
+`docs/phase2-steering-attempt3-design-20260827.md`) is sound and was never
+reached.
 
 | | attempt 1 (beta80) | attempt 2 (beta81) |
 | --- | --- | --- |
