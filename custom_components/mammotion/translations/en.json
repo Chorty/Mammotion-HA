@@ -960,6 +960,10 @@
         "confirm_clear_area": {
           "name": "Confirm clear area",
           "description": "Required for a real window after confirming safe clearance."
+        },
+        "confirm_steering_validation_run": {
+          "name": "Confirm steering validation run",
+          "description": "Required for real continuous steering, on top of the experimental motion gate. Steering has never completed a physical run: the one attempt diverged on an inverted sign and hard-aborted, so it must be opted into deliberately every time. Leave off unless you are running a supervised steering validation."
         }
       }
     },
@@ -967,14 +971,38 @@
       "name": "Heading acquisition window",
       "description": "Bounded straight-only position-chord acquisition. Angular speed stays zero, movement stops on the first qualifying 0.15 m chord or any safety fault, and no heading token or steering command is retained.",
       "fields": {
-        "entity_id": {"name": "Entity", "description": "Any Mammotion mower entity belonging to the device."},
-        "route_start": {"name": "Route start", "description": "Frozen map-local x/y point used for containment and heading measurement."},
-        "route_target": {"name": "Route target", "description": "Frozen map-local target defining the desired straight course."},
-        "corridor_polygon": {"name": "Corridor polygon", "description": "Pre-scanned polygon that must contain the complete 1.06 m acquisition disk."},
-        "prefer_ble": {"name": "Prefer BLE", "description": "Prefer the existing BLE transport for the bounded command."},
-        "dry_run": {"name": "Dry run", "description": "When true, report gates and geometry without commanding motion."},
-        "confirm_blades_off": {"name": "Confirm blades off", "description": "Required for a real acquisition."},
-        "confirm_clear_area": {"name": "Confirm clear area", "description": "Required for a real acquisition after confirming safe clearance."}
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        },
+        "route_start": {
+          "name": "Route start",
+          "description": "Frozen map-local x/y point used for containment and heading measurement."
+        },
+        "route_target": {
+          "name": "Route target",
+          "description": "Frozen map-local target defining the desired straight course."
+        },
+        "corridor_polygon": {
+          "name": "Corridor polygon",
+          "description": "Pre-scanned polygon that must contain the complete 1.06 m acquisition disk."
+        },
+        "prefer_ble": {
+          "name": "Prefer BLE",
+          "description": "Prefer the existing BLE transport for the bounded command."
+        },
+        "dry_run": {
+          "name": "Dry run",
+          "description": "When true, report gates and geometry without commanding motion."
+        },
+        "confirm_blades_off": {
+          "name": "Confirm blades off",
+          "description": "Required for a real acquisition."
+        },
+        "confirm_clear_area": {
+          "name": "Confirm clear area",
+          "description": "Required for a real acquisition after confirming safe clearance."
+        }
       }
     },
     "copy_task": {

@@ -880,11 +880,15 @@ continuous_motion_window:
     max_abs_angular_speed:
       required: false
       default: 180
+      # step 60 over 120..180 offers exactly {120, 180}, matching the schema's
+      # vol.In([120, 180]). Both are MEASURED arc values; the turn rate is
+      # measured only across 120-180 and must not be scaled outside that band,
+      # so a smaller value would be unmeasured rather than safer.
       selector:
         number:
-          min: 180
+          min: 120
           max: 180
-          step: 1
+          step: 60
     duration_ms:
       required: false
       default: 4000
@@ -943,6 +947,11 @@ continuous_motion_window:
       selector:
         boolean:
     confirm_clear_area:
+      required: false
+      default: false
+      selector:
+        boolean:
+    confirm_steering_validation_run:
       required: false
       default: false
       selector:

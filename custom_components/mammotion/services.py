@@ -984,8 +984,15 @@ CONTINUOUS_MOTION_WINDOW_SCHEMA = vol.Schema(
         # v1 is straight-line only (docs/phase2-continuous-motion-design-20260823.md);
         # this bounds the STEERING correction the pure controller may request,
         # it does not request a turn on its own.
+        # 🚨 **120 and 180 ONLY, and 180 stays the default.** The turn rate is
+        # measured across angular 120-180 and MUST NOT be scaled outside that
+        # band, so a "safer because smaller" value like 60 is NOT safer -- it is
+        # unmeasured, and may sit in an actuation deadband where the mower
+        # steers less than commanded or not at all. 120 was added 2026-08-27 as
+        # the lowest MEASURED arc value, for the first steering validation run,
+        # where reduced correction authority is wanted on measured ground.
         vol.Optional("max_abs_angular_speed", default=180): vol.All(
-            vol.Coerce(int), vol.In([180])
+            vol.Coerce(int), vol.In([120, 180])
         ),
         # The plan's own v1 cap is 4 s / 1.5 m
         # (docs/continuous-motion-feasibility-plan-20260821.md); 8000 is the
@@ -1010,6 +1017,14 @@ CONTINUOUS_MOTION_WINDOW_SCHEMA = vol.Schema(
         vol.Optional("dry_run", default=True): cv.boolean,
         vol.Optional("confirm_blades_off", default=False): cv.boolean,
         vol.Optional("confirm_clear_area", default=False): cv.boolean,
+        # 🚨 **THE STEERING OPT-IN.** Until 2026-08-27 this service refused ALL
+        # real steering unconditionally (`steering_not_motion_validated`).
+        # Opening that refusal did not make steering the default: it is now a
+        # deliberate per-call act, defaulting False, on top of the experimental
+        # motion gate and every other confirmation. Steering has never completed
+        # a physical run -- the one attempt (2026-08-24) diverged on an inverted
+        # sign and hard-aborted -- so a caller must say so explicitly every time.
+        vol.Optional("confirm_steering_validation_run", default=False): cv.boolean,
     },
     extra=vol.ALLOW_EXTRA,
 )
@@ -8684,6 +8699,7 @@ async def _continuous_motion_window_impl(  # noqa: C901, PLR0913
     dry_run: bool = True,
     confirm_blades_off: bool = False,
     confirm_clear_area: bool = False,
+    confirm_steering_validation_run: bool = False,
 ) -> dict[str, Any]:
     """Run or simulate one continuous straight-line steering window.
 
@@ -8790,12 +8806,23 @@ async def _continuous_motion_window_impl(  # noqa: C901, PLR0913
             result["reason"] = "blocked"
         return result
 
-    # Position-event acquisition must be validated independently before any
-    # correction command is motion-authorized.  Keep the geometry dry run, but
-    # make real steering impossible through this service.
-    if not acquisition_only:
-        result["reason"] = "steering_not_motion_validated"
-        result["blockers"] = ["steering_not_motion_validated"]
+    # 🚨 **THE STEERING BOUNDARY.** Until 2026-08-27 this refused all real
+    # steering unconditionally, because position-event acquisition had never
+    # been validated on hardware. It has been now
+    # (`docs/evidence-phase2-acquisition-beta79-20260827.json`: `heading_acquired`,
+    # both decisions at `angular_speed: 0`, chord 0.4667 m), which satisfies
+    # condition A of `docs/phase2-steering-refusal-recommendation-20260826.md`.
+    #
+    # The refusal is therefore now conditional rather than absolute -- but
+    # steering stays OFF unless a caller opts in per call. It is not enough to
+    # arm the motion gate. ⚠️ The corrected steering sign has still never moved a
+    # wheel: the sole physical attempt (2026-08-24) diverged monotonically
+    # (46.64° → 48.25° → 77.40° while saturated at +180) and hard-aborted on the
+    # 0.30 m cross-track bound at 0.517 m. Every guard held, which is why a second
+    # attempt is reasonable -- and why the opt-in is explicit.
+    if not acquisition_only and not confirm_steering_validation_run:
+        result["reason"] = "steering_not_confirmed_for_validation_run"
+        result["blockers"] = ["steering_not_confirmed_for_validation_run"]
         return result
 
     if position_stream is None:
@@ -9079,27 +9106,88 @@ async def _continuous_motion_window(  # noqa: PLR0913
     dry_run: bool = True,
     confirm_blades_off: bool = False,
     confirm_clear_area: bool = False,
+    confirm_steering_validation_run: bool = False,
 ) -> dict[str, Any]:
-    """Own and close the safety-consumer position stream for one window."""
-    return await _continuous_motion_window_impl(
-        coordinator,
-        position_stream=None,
-        acquisition_only=False,
-        route_start=route_start,
-        route_target=route_target,
-        corridor_polygon=corridor_polygon,
-        linear_speed=linear_speed,
-        max_abs_angular_speed=max_abs_angular_speed,
-        duration_ms=duration_ms,
-        motion_refresh_interval_ms=motion_refresh_interval_ms,
-        decision_sample_interval_ms=decision_sample_interval_ms,
-        max_distance_m=max_distance_m,
-        max_cross_track_m=max_cross_track_m,
-        prefer_ble=prefer_ble,
-        dry_run=dry_run,
-        confirm_blades_off=confirm_blades_off,
-        confirm_clear_area=confirm_clear_area,
-    )
+    """Own and close the safety-consumer position stream for one window.
+
+    ⚠️ **This wrapper passed `position_stream=None` and no report lease until
+    2026-08-27**, which was harmless only because the executor refused all real
+    steering before it ever reached them. With the refusal now conditional, a
+    real run needs the same lease-and-stream ownership
+    `_heading_acquisition_window` already had -- otherwise it fails on
+    `position_stream_unavailable` and reads as a telemetry fault rather than a
+    wiring gap.
+    """
+    common: dict[str, Any] = {
+        "acquisition_only": False,
+        "route_start": route_start,
+        "route_target": route_target,
+        "corridor_polygon": corridor_polygon,
+        "linear_speed": linear_speed,
+        "max_abs_angular_speed": max_abs_angular_speed,
+        "duration_ms": duration_ms,
+        "motion_refresh_interval_ms": motion_refresh_interval_ms,
+        "decision_sample_interval_ms": decision_sample_interval_ms,
+        "max_distance_m": max_distance_m,
+        "max_cross_track_m": max_cross_track_m,
+        "prefer_ble": prefer_ble,
+        "confirm_blades_off": confirm_blades_off,
+        "confirm_clear_area": confirm_clear_area,
+        "confirm_steering_validation_run": confirm_steering_validation_run,
+    }
+    if dry_run:
+        return await _continuous_motion_window_impl(
+            coordinator,
+            position_stream=None,
+            report_lease=None,
+            dry_run=True,
+            **common,
+        )
+
+    handle = coordinator.manager.mower(coordinator.device_name)
+    exclusive_factory = getattr(handle, "exclusive_report_subscription", None)
+    open_position_stream = getattr(coordinator, "open_position_sample_stream", None)
+    if not callable(exclusive_factory) or not callable(open_position_stream):
+        return {
+            "service": SERVICE_CONTINUOUS_MOTION_WINDOW,
+            "mode": "real_continuous_motion_window",
+            "dry_run": False,
+            "would_send": False,
+            "blockers": ["position_subscription_lease_unavailable"],
+            "reason": "position_subscription_lease_unavailable",
+        }
+
+    result: dict[str, Any] | None = None
+    async with exclusive_factory("continuous_motion_window") as report_lease:
+        position_stream = open_position_stream(maxsize=1)
+        try:
+            result = await _continuous_motion_window_impl(
+                coordinator,
+                position_stream=position_stream,
+                report_lease=report_lease,
+                dry_run=False,
+                **common,
+            )
+            return result  # noqa: RET504 - finally annotates report-stream teardown
+        finally:
+            # The lease owns the report configuration; always issue its stop,
+            # including when the executor raises before it can return a result.
+            stop_reports = getattr(coordinator, "async_stop_continuous_reports", None)
+            if callable(stop_reports):
+                try:
+                    await stop_reports()
+                    if result is not None:
+                        result.setdefault("report_stream", {})["stopped"] = True
+                except Exception as err:  # noqa: BLE001
+                    if result is not None:
+                        result.setdefault("report_stream", {})["stop_error"] = (
+                            f"{type(err).__name__}: {err}"
+                        )
+            # `open_position_sample_stream` may legitimately return None. The
+            # executor already refuses that with `position_stream_unavailable`;
+            # teardown must not crash on it and mask the real reason.
+            if position_stream is not None:
+                position_stream.close()
 
 
 async def _heading_acquisition_window(
@@ -18892,6 +18980,9 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             dry_run=call.data["dry_run"],
             confirm_blades_off=call.data["confirm_blades_off"],
             confirm_clear_area=call.data["confirm_clear_area"],
+            confirm_steering_validation_run=call.data[
+                "confirm_steering_validation_run"
+            ],
         )
 
     async def handle_heading_acquisition_window(

@@ -165,16 +165,20 @@ def test_services_yaml_and_translations_agree_with_the_schema() -> None:
         "dry_run",
         "confirm_blades_off",
         "confirm_clear_area",
+        "confirm_steering_validation_run",
     }
     assert fields_yaml["linear_speed"]["selector"]["number"] == {
         "min": 400,
         "max": 400,
         "step": 1,
     }
+    # step 60 over 120..180 offers exactly {120, 180} and nothing between, which
+    # is what the schema's vol.In([120, 180]) accepts. A plain min/max range here
+    # would offer 121-179 in the UI and have them refused by validation.
     assert fields_yaml["max_abs_angular_speed"]["selector"]["number"] == {
-        "min": 180,
+        "min": 120,
         "max": 180,
-        "step": 1,
+        "step": 60,
     }
     assert fields_yaml["max_cross_track_m"]["selector"]["number"]["max"] == 0.30
 
@@ -374,7 +378,59 @@ def test_real_continuous_steering_is_blocked_before_dispatch(
             confirm_clear_area=True,
         )
     )
-    assert result["reason"] == "steering_not_motion_validated"
+    # Arming the motion gate is NOT enough. Steering additionally requires a
+    # deliberate per-call opt-in, because the corrected steering sign has still
+    # never completed a physical run.
+    assert result["reason"] == "steering_not_confirmed_for_validation_run"
+    assert result["would_send"] is False
+    assert sent is False
+
+
+def test_steering_opt_in_is_required_but_does_not_bypass_other_gates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The opt-in clears ONLY the steering refusal, never any safety gate.
+
+    Guards against the opt-in quietly becoming a master switch: with it set, the
+    run must still be refused here for want of a position stream, not waved
+    through.
+    """
+    sent = False
+
+    async def _unexpected_send(*_args: Any, **_kwargs: Any) -> None:
+        nonlocal sent
+        sent = True
+
+    monkeypatch.setattr(
+        services, "_custom_path_telemetry_snapshot", lambda _c: _snapshot()
+    )
+    monkeypatch.setattr(
+        services,
+        "_continuous_motion_gates",
+        lambda *_a, **_k: [
+            {
+                "name": "blind_heading_acquisition_contained",
+                "passed": True,
+                "diagnostics": {"required_radius_m": 1.06},
+            }
+        ],
+    )
+    monkeypatch.setattr(services, "_send_manager_command_with_args", _unexpected_send)
+
+    result = asyncio.run(
+        _continuous_motion_window(
+            _FakeCoordinator(),
+            route_start=STRAIGHT_ROUTE,
+            route_target=STRAIGHT_TARGET,
+            corridor_polygon=ACQUISITION_CORRIDOR,
+            dry_run=False,
+            confirm_blades_off=True,
+            confirm_clear_area=True,
+            confirm_steering_validation_run=True,
+        )
+    )
+
+    assert result["reason"] != "steering_not_confirmed_for_validation_run"
     assert result["would_send"] is False
     assert sent is False
 
