@@ -36,7 +36,44 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: beta78 deployed; beta79 released and NOT deployed
+## Current build: beta79 deployed; Phase 2 ACQUISITION PASSED, steering still refused
+
+🏁 **PHASE 2 HEADING ACQUISITION PASSED ON HARDWARE, 2026-08-27 — first time.**
+A real `heading_acquisition_window` on beta79 returned **`heading_acquired`**.
+🔑 **Defect 1's fix is hardware-validated: BOTH decisions commanded
+`angular_speed: 0`** (`acquiring_heading`, then `heading_acquired`), so the
+opening never steered against an unconfirmed heading — the exact error of the
+2026-08-24 run, which opened at 46.64° and saturated at 180 immediately. Heading
+came from a **0.4667 m position chord** (3.1x the 0.15 m floor) at **0.538°**
+uncertainty → course **278.55°**, against a pre-run two-way estimate of 276.96°,
+**1.59° apart**. Travel 0.4667 m inside the 1.06 m blind disk, post-stop
+observation clean, stop confirmed, `blockers: []` throughout, gate disarmed and
+verified from live API **and** RAW storage. Evidence
+`docs/evidence-phase2-acquisition-beta79-20260827.json`.
+⚠️ **DEFECT 2 — the inverted steering sign — REMAINS UNTESTED.** That service is
+`acquisition_only` and never reaches the steering path. Continuous steering is
+still refused in code (`steering_not_motion_validated`).
+
+📐 **THE DIRECTION ARROW WORKS.** beta79 adds the backend `current_orientation`
+field the card had been reading since beta19 with no producer. Live readback:
+`trustworthy: true`, map heading **277.188°**, VIO and compass mirror agreeing to
+**0.224°**. It publishes only when both sources corroborate within 15°, and
+reports `vio_feed_degraded` in the dark rather than guessing.
+
+🔑 **The Phase 2 acquisition path needs NO VIO** — its gates are geometry only
+(`corridor_polygon_valid`, `frozen_start_inside_corridor`,
+`start_drift_within_bound`, `blind_heading_acquisition_contained`) and heading
+comes from an RTK position chord. **It is night-capable**, unlike the pulsed
+vector-segment executor whose turns close on VIO. Do not assume a Phase 2 run
+needs daylight.
+
+**Next step is the steering decision, and it is gated.** Read
+`docs/phase2-steering-refusal-recommendation-20260826.md`: condition A (this
+acquisition run) is now satisfied; condition B is opening the refusal with
+`max_abs_angular_speed` capped well below 180, since the failed run was saturated
+from its first decision and never demonstrated proportional control; condition C
+is predeclaring the scoring before dispatch.
+
 
 🛑 **START HERE, 2026-08-26 end of session.** Two different versions are in play
 and confusing them will waste your time:

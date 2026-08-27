@@ -8,6 +8,45 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta78 -> beta79 — 2026-08-27 17:05-17:12 EDT, motion-disabled
+
+Adds the backend `current_orientation` field so the card's direction arrow can
+render. No backend change (PyMammotion `0.8.12.post3`), no
+`LUBA_ACCEPTANCE_PROFILE` key touched.
+
+| | beta79 |
+| --- | --- |
+| tag | `v0.6.4-beta79` (commit `14b108cc`) |
+| deployed tree | `6dc9bcbc` — **code byte-identical to the tag**, only doc commits since; verified with `git diff v0.6.4-beta79..HEAD -- custom_components/` |
+| quartet | manifest / pyproject / `CARD_VERSION` `0.6.4-beta79`, uv.lock `0.6.4b79` |
+| backend | PyMammotion `0.8.12.post3`, unchanged, read from inside the container |
+| archive SHA-256 | `60754296bd2db1d2af44570c00c2a0f3e73c5b2ab9be782677d6b4f5a7677566` |
+| file verification | **47 of 47 byte-identical**, zero AppleDouble |
+| card md5 | `aac82658462827994699ca094d7f3c39`, equal at BOTH serving paths |
+| Lovelace resource | `?v=0.6.4-beta79&build=aac82658` |
+| host backup | `/config/mammotion-backup-20260827-1705-pre-beta79.tgz` |
+| restart | API up after **45 s**, 133 entities at 165 s |
+| gate after deploy | `enabled: false`, `real_motion_allowed: false`, no session; live API **and** RAW `core.config_entries` |
+
+**The arrow verified live, not just present:** `current_orientation` returned
+`trustworthy: true`, map heading **277.188°**, VIO 277.188 against compass mirror
+276.964 — **0.224° apart**.
+
+🔑 **Checked BLE freshness before restarting, after an overnight gap.** The
+position sequence advanced 50 → 62 over 12 s, so the feed was live rather than a
+latched session. Worth repeating: the 2026-08-24 incident looked healthy on every
+status field while serving hours-stale state.
+
+⚠️ **The mower was moved off the dock by the operator between the state check and
+the deploy**, so post-restart it read `AREA_INSIDE` with a valid position and
+`experimental_motion_disabled` as the ONLY blocker. That is the armed-would-be-empty
+posture this project has flagged five times. It was confirmed as an intentional
+manual move.
+
+🛑 **NOT verified: a browser has not loaded the beta79 card.** The backend field
+and both serving paths are confirmed; the arrow's on-screen rendering still needs
+a human to look at it.
+
 ### beta77 -> beta78 — 2026-08-26 13:26-13:35 EDT, motion-disabled
 
 Evidence-quality release. No backend change (still PyMammotion `0.8.12.post3`),

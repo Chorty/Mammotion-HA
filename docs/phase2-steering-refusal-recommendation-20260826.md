@@ -141,6 +141,21 @@ no proportional behaviour to demonstrate at all.
 
 ## 5. Recommendation — three conditions, in order
 
+✅ **CONDITION A IS NOW SATISFIED — 2026-08-27, beta79.** The real
+`heading_acquisition_window` ran and returned **`heading_acquired`**. Defect 1's
+fix is hardware-validated: **both decisions commanded `angular_speed: 0`**
+(`acquiring_heading` then `heading_acquired`), so the opening never steered
+against an unconfirmed heading — the exact thing the 2026-08-24 run did wrong.
+Heading came from a **0.4667 m position chord** (3.1x the 0.15 m floor) at
+**0.538°** uncertainty, giving course **278.55°** against a pre-run two-way
+estimate of 276.96° — **1.59° apart**. Travel was 0.4667 m inside the 1.06 m
+blind disk, post-stop observation returned clean (`wait_reason: null`), stop
+confirmed, `blockers: []` throughout, gate disarmed and verified from live API and
+RAW storage. Evidence:
+`docs/evidence-phase2-acquisition-beta79-20260827.json`.
+⚠️ **Defect 2 remains UNTESTED.** This service is `acquisition_only` and never
+reaches the steering path. Condition A is met, not bypassed.
+
 **A. Run the acquisition test first, and require it to pass.**
 `heading_acquisition_window` with `dry_run: false` exercises defect 1's fix, the
 fresh-origin requirement, the zero-angular opening, the stop, and the 3.5 s
