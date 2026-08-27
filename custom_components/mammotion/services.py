@@ -8097,6 +8097,27 @@ _CONTINUOUS_MIRROR_SUM_DEGREES = 90.13
 # the stationary matrix's 2.909 s maximum position gap with measured margin.
 _CONTINUOUS_POST_STOP_OBSERVATION_S = 3.5
 
+#: Queue depth for a SAFETY position-evidence stream, in samples.
+#:
+#: 🚨 **`maxsize=1` structurally guarantees a false `position_sequence_gap`.**
+#: `PositionSampleStream._offer` is latest-wins: when the queue is full it
+#: discards the OLDEST sample and increments `dropped_samples`. A safety consumer
+#: does not read continuously -- it opens the stream, then runs gates, takes a
+#: generation baseline, starts the report stream and settles the BLE queue before
+#: its first `get()`. At the measured ~1 Hz payload cadence that setup easily
+#: spans one or more samples, so at depth 1 every one of them is dropped and the
+#: contiguity check trips on a perfectly healthy feed.
+#:
+#: This refused Phase 2 steering run 1 before dispatch on 2026-08-27. It fails
+#: CLOSED, so nothing unsafe happened -- but it is a RELIABILITY defect and must
+#: not be read as evidence about the position channel.
+#:
+#: 64 covers a minute of setup at ~1 Hz with room to spare. Buffering weakens no
+#: check: sequence contiguity, epoch, the evidence boundary and the drop counter
+#: all still apply, and a drop now means a genuine overrun rather than "the
+#: consumer was busy starting up".
+_SAFETY_POSITION_STREAM_MAXSIZE = 64
+
 
 def _continuous_course_heading(toward: float) -> float:
     """Return the map-local course heading from the compass mirror.
@@ -8284,6 +8305,19 @@ async def _wait_for_fresh_continuous_origin(  # noqa: C901
                 "sample": None,
                 "elapsed_s": time.monotonic() - started,
             }
+        # A sample may have been queued between opening the stream and taking the
+        # baseline. It is explicitly pre-generation evidence, so SKIP it rather
+        # than calling it a gap.
+        #
+        # 🚨 This skip was missing until 2026-08-27 and
+        # `_wait_for_position_subscription_ready` already had it. The asymmetry
+        # refused Phase 2 steering run 1 before dispatch with
+        # `position_sequence_gap` on a perfectly healthy feed. It fails CLOSED,
+        # so nothing unsafe happened -- but it is a reliability defect, not
+        # evidence about the position channel, and reading it as the latter would
+        # have sent a future session chasing a telemetry ghost.
+        if sample.sequence <= baseline_sequence:
+            continue
         if sample.sequence != expected_sequence:
             return {
                 "ok": False,
@@ -9159,7 +9193,7 @@ async def _continuous_motion_window(  # noqa: PLR0913
 
     result: dict[str, Any] | None = None
     async with exclusive_factory("continuous_motion_window") as report_lease:
-        position_stream = open_position_stream(maxsize=1)
+        position_stream = open_position_stream(maxsize=_SAFETY_POSITION_STREAM_MAXSIZE)
         try:
             result = await _continuous_motion_window_impl(
                 coordinator,
@@ -9239,7 +9273,7 @@ async def _heading_acquisition_window(
 
     result: dict[str, Any] | None = None
     async with exclusive_factory("heading_acquisition_window") as report_lease:
-        position_stream = open_position_stream(maxsize=1)
+        position_stream = open_position_stream(maxsize=_SAFETY_POSITION_STREAM_MAXSIZE)
         try:
             result = await _continuous_motion_window_impl(
                 coordinator,

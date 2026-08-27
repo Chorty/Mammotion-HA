@@ -1106,6 +1106,47 @@ def test_fresh_origin_accepts_a_fresh_unchanged_coordinate() -> None:
     assert result["sample"]["position"]["x"] == 0.0
 
 
+def test_fresh_origin_skips_pre_baseline_samples_instead_of_calling_them_a_gap() -> (
+    None
+):
+    """A sample queued before the baseline is pre-generation evidence, not a gap.
+
+    🚨 This skip was MISSING until 2026-08-27 while
+    `_wait_for_position_subscription_ready` already had it. The asymmetry refused
+    Phase 2 steering run 1 before dispatch with `position_sequence_gap` on a
+    healthy feed. It fails closed, so nothing unsafe happened -- but read as
+    telemetry evidence it would send a future session chasing a ghost.
+    """
+    # Sequences 1 and 2 predate a baseline of 2; only 3 is real evidence.
+    stream = _position_stream([(0.0, 0.0, 180.0), (0.1, 0.0, 180.0), (0.2, 0.0, 180.0)])
+
+    result = asyncio.run(
+        _wait_for_fresh_continuous_origin(
+            stream,
+            request_started_at=time.monotonic() - 0.01,
+            baseline_sequence=2,
+            baseline_epoch=1,
+            timeout_s=0.05,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["reason"] is None
+    assert result["sample"]["sequence"] == 3
+
+
+def test_safety_position_stream_is_deep_enough_to_survive_setup() -> None:
+    """`maxsize=1` structurally guarantees a false gap for a safety consumer.
+
+    `PositionSampleStream._offer` is latest-wins: a full queue discards the
+    OLDEST sample and increments `dropped_samples`. A safety consumer opens its
+    stream, then runs gates, takes a baseline, starts the report stream and
+    settles the BLE queue before its first read -- which at ~1 Hz spans samples.
+    At depth 1 every one is dropped and contiguity trips on a healthy feed.
+    """
+    assert services._SAFETY_POSITION_STREAM_MAXSIZE >= 16  # noqa: SLF001
+
+
 def test_post_stop_observation_returns_latest_consecutive_sample() -> None:
     """Stopped observation does not return the first potentially lagged fix."""
     stream = _position_stream([(0.02, 0.0, 0.0), (0.20, 0.0, 0.0)])
