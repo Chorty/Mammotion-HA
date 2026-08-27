@@ -36,7 +36,53 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: beta79 deployed; Phase 2 ACQUISITION PASSED, steering still refused
+## Current build: beta81 deployed; steering OPEN behind an opt-in, sign still UNTESTED
+
+🛑 **THE STEERING SIGN HAS STILL NEVER MOVED A WHEEL.** Two attempts on
+2026-08-27 both refused before any steering command. Neither exercised the
+predeclared criteria, so **there is nothing to score.**
+
+| | attempt 1 (beta80) | attempt 2 (beta81) |
+| --- | --- | --- |
+| Refused with | `position_sequence_gap` | `opening_alignment_infeasible` |
+| Motion | none | 0.2407 m, all at `angular_speed: 0` |
+| Cause | two reliability defects, fixed | window budget eaten by the blind phase |
+
+🔑 **THE STEERING REFUSAL IS NOW CONDITIONAL, NOT GONE.** `continuous_motion_window`
+requires **`confirm_steering_validation_run: true` per call** — arming the motion
+gate is NOT sufficient. Proven live inside an armed window: without the flag it
+returned `steering_not_confirmed_for_validation_run` and commanded nothing.
+
+🚨 **THREE OF MY OWN DEFECTS FOUND BY THESE RUNS, ALL FAIL-CLOSED.**
+**(1)** `maxsize=1` on a safety position stream *structurally guarantees* a false
+`position_sequence_gap`: `_offer` is latest-wins, and a safety consumer runs gates,
+takes a baseline, starts the report stream and settles the BLE queue before its
+first read — at ~1 Hz that setup spans samples and every one is dropped. Now
+`_SAFETY_POSITION_STREAM_MAXSIZE = 64`.
+**(2)** `_wait_for_fresh_continuous_origin` lacked the pre-baseline skip that
+`_wait_for_position_subscription_ready` already had. ⚠️ **Fixing (1) alone would
+have made (2) bite harder** — more buffering means more pre-baseline samples.
+**(3)** `_continuous_motion_window` passed `position_stream=None` and no lease,
+harmless only while steering was refused outright.
+⚠️ **None of these were telemetry findings.** Reading that
+`position_sequence_gap` as evidence about the position channel would send a
+session chasing a ghost.
+
+🗑️ **CORRECTED, same day:** I first reported attempt 2 as refusing because the
+mower was "too well aligned". **False.** `alignment_feasibility` records
+`limiting_factor: "window_s"` — the blind phase consumed **1.950 s of a 2.000 s**
+window, leaving 0.0497 s against a 0.0889 s turn estimate. It refused on TIME, and
+the cause was my own `duration_ms: 2000`, set to bound exposure without checking
+that acquisition must finish inside the same window.
+
+**Attempt 3 is designed and not yet run:**
+`docs/phase2-steering-attempt3-design-20260827.md`. `duration_ms` 6000 (distance
+still binds first at ~4 s via the unchanged `max_distance_m: 1.00`), and a
+deliberate **8° route misalignment** so the run demonstrates PROPORTIONAL control
+— at gain 12 with the cap at 120 the command saturates at 10°, so 8° gives a 96
+angular command inside the cap. The seven pass criteria are unchanged.
+
+## (history) beta79 deploy — beta79 deployed; Phase 2 ACQUISITION PASSED, steering still refused
 
 🏁 **PHASE 2 HEADING ACQUISITION PASSED ON HARDWARE, 2026-08-27 — first time.**
 A real `heading_acquisition_window` on beta79 returned **`heading_acquired`**.
