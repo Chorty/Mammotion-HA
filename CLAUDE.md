@@ -1060,7 +1060,19 @@ settle is therefore near the **floor** of stop-measure-go, not slack. Motion run
 at a **29% duty cycle** (4.55 s cycle, 1.30 s of it moving; 57% of a run is
 position-settle). ⚠️ The vendor drives **continuously at ~0.55 m/s on this same
 ~1 Hz feed**, so 1 Hz does not block a continuous controller — it is what makes
-stop-measure-go expensive. And next position IS predictable from last fix +
+stop-measure-go expensive.
+🗑️ **THAT LAST INFERENCE IS UNSOUND — corrected 2026-08-27 from the APK.** The
+vendor is **not closing a position loop over the link at all.** The nav protocol
+has **no point-to-point drive primitive**: it offers coverage planning
+(`NavReqCoverPath`) plus task control, and the only raw motion command is
+`DrvMotionCtrl` linear/angular — the joystick path we use. So the vendor requests a
+path and **the mower executes it with its ONBOARD controller**, at whatever
+internal rate the firmware runs; the 1 Hz stream is telemetry for display, not the
+control signal. 🔑 **The mower's internal control rate is therefore almost
+certainly far above 1 Hz** — no firmware drives a 0.55 m/s machine on 1 Hz
+position. The vendor's fluency is evidence about ONBOARD control, not about what a
+remote 1 Hz loop can achieve, and it must stop being cited as proof that 1 Hz
+suffices for Phase 2. Read `docs/firmware-constraints-from-the-apk-20260827.md`. And next position IS predictable from last fix +
 commanded velocity to **0.029 m median / 0.097 m p90** when refresh cadence holds
 (180 of 262 pulses), which is ~5× better than tolerance.
 `docs/evidence-position-predictability-20260821.json`.
