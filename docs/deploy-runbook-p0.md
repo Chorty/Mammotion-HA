@@ -8,6 +8,97 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta81 -> beta82 — 2026-08-28 14:08-14:19 EDT, motion-disabled
+
+Ships the acquisition-budget change `da1806e0` (`max_heading_acquisition_s`
+2.0 -> 3.0 s), so the blind acquisition disk grows **1.06 -> 1.34 m**. No backend
+change (PyMammotion `0.8.12.post3`), no `LUBA_ACCEPTANCE_PROFILE` key touched.
+
+| | beta82 |
+| --- | --- |
+| tag | `v0.6.4-beta82` (release commit `56218a93`) |
+| deployed tree | **exactly the tag** — `git tag --points-at HEAD` = `v0.6.4-beta82` at deploy time |
+| quartet | manifest / pyproject / `CARD_VERSION` `0.6.4-beta82`, uv.lock `0.6.4b82` |
+| backend | PyMammotion `0.8.12.post3`, unchanged, read from inside the container |
+| archive SHA-256 | `e50a27eaacb3cdbb423f1ad1a47f6f561cb2f981ea3d8ee68c17f39f4f912ed3`, identical local and host |
+| file verification | **47 of 47 byte-identical**, zero AppleDouble |
+| card md5 | `54119a4b61e0f87d30a8e51c24a241f7`, equal at BOTH serving paths |
+| Lovelace resource | re-read as `?v=0.6.4-beta82&build=54119a4b` |
+| host backup | `/config/mammotion-backup-20260828-1408-pre-beta82.tgz` |
+| restart | API up after **61 s**, 132 entities at 236 s, 0 unavailable |
+| gate after deploy | `enabled: false`, `real_motion_allowed: false`, no session; live API **and** RAW `core.config_entries` |
+| dry run | `continuous_motion_window` `would_send: false`, `command_result.attempted: false` |
+
+🔑 **The 1.34 m disk is verified on the DEPLOYED build by a discriminating dry
+run, not by reading the constant.** Two `continuous_motion_window` dry runs
+against square corridors centred on the live start:
+
+| corridor half-width | `required_radius_m` | `boundary_clearance_m` | gate |
+| --- | --- | --- | --- |
+| 1.20 m | **1.34** | 1.200 | **FAILS** `blind_heading_acquisition_contained` |
+| 2.00 m | **1.34** | 2.000 | passes, `blockers: []` |
+
+The 1.20 m case is the discriminator: it would have **passed** on beta81's
+1.06 m disk and is refused here. Reported config on the host:
+`max_safety_speed_mps 0.28`, `max_heading_acquisition_s 3.0`,
+`stop_overshoot_m 0.5` -> `0.28 x 3.0 + 0.50 = 1.34`.
+
+🚨 **The attempt-3 frozen corridor is now only 1.12x the disk, and that is the
+binding constraint — not the yard.** The corridor in
+`docs/phase2-steering-attempt3-design-20260827.md` /
+`docs/evidence-phase2-steering-run3-blind-20260827.json` is a **3.0 m x 5.0 m**
+rotated rectangle, so its maximum possible boundary clearance is **1.50 m**.
+Recomputed with the shipped `blind_acquisition_feasibility` at the attempt-3
+start `(4.9889, -3.0019)`:
+
+```
+required_radius_m    1.34
+boundary_clearance_m 1.50
+margin               0.16 m   (1.12x)      <- was 1.42x at the old 1.06 m disk
+```
+
+It still passes, but **only because that start sits on the corridor centreline**.
+Any placement more than 0.16 m off-centre refuses the run.
+
+⚠️ **"The 2026-08-27 spot had 5.07 m clearance, so it is ample" measures the
+wrong thing.** That figure is the open-lawn clearance from
+`docs/phase2-steering-refusal-recommendation-20260826.md`, not the frozen
+corridor's. The **yard** is indeed ample — raw distance to the "Backyard Right"
+boundary and to both keep-out polygons, measured from the live `export_map`:
+
+| position | nearest area edge | nearest keep-out | clear radius | vs 1.34 m |
+| --- | --- | --- | --- | --- |
+| attempt-3 start `(4.9889, -3.0019)` | 4.0738 m | 5.8365 m | **4.0738 m** | 3.04x |
+| live off-dock `(4.8213, -1.3620)` | 2.4347 m | 5.6788 m | **2.4347 m** | 1.82x |
+
+**So attempt 4 needs a WIDER frozen corridor, not a different spot.** At 1.34 m
+a corridor must be at least `2 x 1.34 = 2.68 m` wide before any placement
+tolerance at all; attempt 3's 3.0 m leaves 0.16 m. Freeze a corridor of roughly
+3.5-4.0 m width and prefer the attempt-3 area, where the yard gives 4.07 m.
+
+⚠️ **`services.yaml` prose is stale.** The `continuous_motion_window`
+description still says the corridor must "provide at least 1.06 m of boundary
+clearance". The **code is correct at 1.34 m** — this is description text only,
+and it is exactly the class of staleness `scripts/check_doc_symbols.py` cannot
+catch (it checks names, not prose). Fix it in the next release; do not hand-patch
+the host.
+
+🔌 **BLE dropped across the restart and recovered on its own in ~10 minutes.**
+Post-restart the gate read `ble_client_not_connected` with
+`binary_sensor..._ble_link_live: off` and `active_transport: none`, while
+`ble_rssi` read a healthy **-44** — another instance of the standing rule that
+`ble_rssi` is self-reported and is **not** a liveness signal. It came back at
+14:18:55 without a config-entry reload, and RTK went `float -> fix` at the same
+time. No action was taken.
+
+🔑 **The `blade_rpm_nonzero` latch did NOT recur.** `cutter_rpm 0`,
+`blade_safe_for_motion: on` before and after the deploy.
+
+🛑 **NOT verified: a browser has not loaded the beta82 card.** Both serving
+paths, the md5s and the Lovelace cache key are confirmed server-side; the
+rendered footer still needs a human to look at it.
+
+
 ### beta78 -> beta79 — 2026-08-27 17:05-17:12 EDT, motion-disabled
 
 Adds the backend `current_orientation` field so the card's direction arrow can

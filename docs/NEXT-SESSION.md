@@ -1,5 +1,24 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
+## §0 Live state — 2026-08-28 14:20 EDT
+
+⚠️ **Everything BELOW this section is historical.** Reverify before acting on it.
+
+Host **0.6.4-beta82** + PyMammotion **0.8.12.post3**, deployed motion-disabled
+2026-08-28 (`docs/deploy-runbook-p0.md` → beta82). Mower **off the dock** at
+**(4.8213, -1.3620)** in "Backyard Right", RTK **Fix**, battery **54%**,
+`MODE_READY`, daylight. Gate **disarmed** — `enabled: false`,
+`real_motion_allowed: false`, no session, verified from the live API **and** RAW
+`core.config_entries`; sole blocker `experimental_motion_disabled`.
+
+🔑 **The blind-acquisition disk is now 1.34 m** (`0.28 x 3.0 + 0.50`), verified on
+the deployed build: a 1.20 m corridor is refused, a 2.00 m one passes.
+🚨 **The attempt-3 frozen corridor clears it by only 0.16 m** (3.0 m wide → 1.50 m
+maximum clearance, 1.12x). Attempt 4 needs a **wider** corridor, ~3.5-4.0 m. The
+yard itself is fine: 4.07 m of raw clearance at the attempt-3 start.
+⚠️ The 1.06 m figure quoted further down this file is the OLD disk.
+
+
 🛡️ **PHASE 2 HEADING-SAFETY REMEDIATION IMPLEMENTED OFFLINE,
 2026-08-24 — supersedes the old `toward`-based opening gate described later in
 this history.** `toward` is diagnostic only. A fresh post-stream position is

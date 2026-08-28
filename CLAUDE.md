@@ -44,7 +44,7 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: beta81 deployed; steering OPEN behind an opt-in, sign still UNTESTED
+## Current build: beta82 deployed; steering OPEN behind an opt-in, sign still UNTESTED
 
 🛑 **THE STEERING SIGN HAS STILL NEVER MOVED A WHEEL.** THREE attempts on
 2026-08-27, three distinct refusals, none reaching a steering command. The
@@ -76,19 +76,51 @@ not a tuning tweak: read
 `docs/phase2-acquisition-budget-decision-20260827.md` before touching it. The disk
 is COMPUTED from the budget, so raising one raises the clearance a run must prove
 — containment is not weakened, exposure and its required proof both grew.
-⚠️ **Built and COMMITTED but NOT RELEASED OR DEPLOYED** as of end of session
-2026-08-27. The host still runs **beta81**, whose disk is still 1.06 m.
+✅ **RELEASED AND DEPLOYED as beta82 on 2026-08-28.** The host now computes
+**1.34 m**, verified on the deployed build by a *discriminating* dry run rather
+than by reading the constant: a 1.20 m-clearance corridor — which beta81's 1.06 m
+disk would have **accepted** — is refused with
+`blind_heading_acquisition_contained`, while a 2.00 m one passes with
+`blockers: []`. Host config reads back `0.28 m/s x 3.0 s + 0.50 m = 1.34`.
+⚠️ **`services.yaml` prose still says 1.06 m** in the `continuous_motion_window`
+description. Code is right, text is stale; fix it in the next release.
 
-💻 **LIVE STATE at 21:10, 2026-08-27 — requery before acting.** Host **beta81** +
-PyMammotion **0.8.12.post3**. Mower **DOCKED** (`CHARGE_ON`), **battery 36%**.
-Gate **disarmed**: `enabled: false`, `real_motion_allowed: false`. Blockers were
-`experimental_motion_disabled`, `position_not_valid_for_motion` (expected on the
-dock) and **`blade_rpm_nonzero`**.
-🔑 **That blade blocker is the KNOWN LATCH, not a fault** — the device-side RPM
-register holds its last value while mode/state read OFF, and the live-feed
-discriminator needs roughly 15 minutes of HA uptime to clear it. HA was restarted
-for the beta81 deploy shortly before this reading. **Do not investigate it as a
-new problem; give HA uptime and re-read.**
+💻 **LIVE STATE at 14:20, 2026-08-28 — requery before acting.** Host **beta82** +
+PyMammotion **0.8.12.post3**. Mower **OFF THE DOCK**, moved there by the operator
+during the deploy session, at **(4.8213, -1.3620)** in "Backyard Right"
+(`AREA_INSIDE`, `zone_hash 1343645155037768237`, `valid_for_motion: true`),
+RTK **Fix**, **battery 54%**, `MODE_READY`, daylight (`camera_brightness: light`,
+VIO 80/80). Gate **disarmed**: `enabled: false`, `real_motion_allowed: false`,
+no session — verified from the live API **and** RAW `core.config_entries`.
+⚠️ **The sole blocker is now `experimental_motion_disabled`.** Off the dock,
+nothing else holds the gate shut. That is the "armed-would-be-empty" posture this
+file has flagged six times: the gate is closed **only** by the disable flag.
+✅ **The `blade_rpm_nonzero` latch did NOT recur** — `cutter_rpm 0`,
+`blade_safe_for_motion: on` throughout.
+🔌 **BLE dropped across the beta82 restart and recovered by itself in ~10 min**
+(`ble_link_live: off`, `active_transport: none`) while `ble_rssi` read a healthy
+**-44** — the standing rule holds: **`ble_rssi` is not a liveness signal.** No
+config-entry reload was needed; RTK went `float -> fix` at the same moment.
+
+🚨 **THE ATTEMPT-3 CORRIDOR IS NOW ONLY 1.12x THE DISK — the corridor binds, not
+the yard.** That corridor is a **3.0 x 5.0 m** rotated rectangle, so its maximum
+possible boundary clearance is **1.50 m** against the new 1.34 m disk: **0.16 m
+of margin**, where the old 1.06 m disk had 1.42x. It passes **only** because the
+attempt-3 start sat on the centreline; any placement more than 0.16 m off-centre
+refuses the run.
+⚠️ **"The 2026-08-27 spot had 5.07 m clearance, so it is ample" measures the
+wrong thing** — that is open-lawn clearance from
+`docs/phase2-steering-refusal-recommendation-20260826.md`, not the frozen
+corridor's. The **yard** genuinely is ample (raw distance to the area boundary
+and both keep-outs, from the live `export_map`): **4.07 m** at the attempt-3
+start (3.04x) and **2.43 m** at the mower's current spot (1.82x).
+🔑 **So attempt 4 needs a WIDER frozen corridor, not a different spot.** At
+1.34 m a corridor is at least `2 x 1.34 = 2.68 m` wide before ANY placement
+tolerance. Freeze roughly **3.5-4.0 m** of width and prefer the attempt-3 area,
+where the yard gives 4.07 m. Everything else in
+`docs/phase2-steering-attempt3-design-20260827.md` (6 s window, 8° route offset,
+angular 120) is unaffected, and the seven criteria in
+`docs/phase2-steering-run1-predeclared-20260827.md` are unchanged.
 
 🗑️ **ANSWERED 2026-08-27, AND THE ANSWER IS NO — that research question is
 CLOSED.** The mower's own onboard path execution **cannot** serve click-to-path.
@@ -133,15 +165,18 @@ the hazardous test could not pay off even if it worked. See §8.
 ⚠️ **Do not re-open "would the firmware accept an uploaded path?" as new work.**
 It is moot, not pending.
 
-**TOMORROW, in order:**
-1. Release beta82, deploy motion-disabled, verify the quartet/hashes/gate.
-2. ⚠️ **Re-check the corridor against 1.34 m, not 1.06 m** before opening a
-   window. The mower's 2026-08-27 spot had 5.07 m clearance, so it is ample —
-   but the number to check has changed.
-3. Phase 2 steering attempt 4:
+**NEXT, in order:**
+1. ✅ **DONE 2026-08-28** — beta82 released and deployed motion-disabled;
+   quartet, 47/47 hashes, both card paths, Lovelace key and the disarmed gate all
+   verified. Record: `docs/deploy-runbook-p0.md` → beta82.
+2. ✅ **DONE 2026-08-28** — the deployed build computes **1.34 m**, proven by a
+   discriminating dry run. **But the corridor check changed the answer:** the
+   attempt-3 corridor clears it by only 0.16 m. See the live-state block above.
+3. **Freeze a wider corridor (~3.5-4.0 m) for attempt 4**, then the run itself —
    `docs/phase2-steering-attempt3-design-20260827.md` (6 s window, 8° route
-   offset, angular 120). Criteria are predeclared and UNCHANGED in
-   `docs/phase2-steering-run1-predeclared-20260827.md`.
+   offset, angular 120), scored against the UNCHANGED criteria in
+   `docs/phase2-steering-run1-predeclared-20260827.md`. **Physical run: needs
+   explicit per-run operator authorization, daylight and the e-stop in reach.**
 
 🔑 **ACQUISITION IS MARGINAL BY CONSTRUCTION, independent of that stall.** At
 ~1 Hz, a 0.15 m chord from standstill needs ~2 position samples ≈ 2 s, and
