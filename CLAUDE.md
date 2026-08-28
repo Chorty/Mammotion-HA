@@ -9,18 +9,24 @@ Read, in order, and stop at the provenance line:
 1. **"Current build"** directly below — what is released and installed.
 2. **"Standing decisions"** — the operator's scope calls. They override any
    older recommendation in this file.
-3. `docs/reach-closed-at-6m-20260826.md` — reach is CLOSED at 6.0 m against a
-   hard 6.10 m cap. Read this before proposing any longer single segment.
-4. `docs/phase2-steering-refusal-recommendation-20260826.md` — the scored
-   decision on whether to open continuous steering, and the conditions on it.
-   Read before touching `steering_not_motion_validated`.
-5. `docs/position-cadence-safety-followup-plan-20260825.md` for the report-cadence
+3. 🔑 `docs/firmware-constraints-from-the-apk-20260827.md` — **read this before
+   any further Phase 2 work.** The vendor never closes a position loop over the
+   link, so the "vendor proves 1 Hz is enough" argument is unsound, and the
+   highest-value open question is whether the mower's OWN path execution can serve
+   click-to-path instead.
+4. `docs/reach-closed-at-6m-20260826.md` — reach is CLOSED at 6.0 m against a
+   hard 6.10 m cap. Read before proposing any longer single segment.
+5. `docs/phase2-steering-refusal-recommendation-20260826.md` — the scored decision
+   on continuous steering, plus `docs/phase2-acquisition-budget-decision-20260827.md`
+   for the 2.0 → 3.0 s budget and its 1.06 → 1.34 m disk cost. Read both before
+   touching `steering_not_confirmed_for_validation_run`.
+6. `docs/position-cadence-safety-followup-plan-20260825.md` for the report-cadence
    evidence and the stationary gates that passed 2026-08-26.
    ⚠️ `docs/CLAUDE-BETA77-TAKEOVER-PROMPT-20260825.md` is HISTORICAL: that review
    completed, its findings were fixed, and beta77/post3 shipped.
-6. Treat `docs/NEXT-SESSION.md` as historical unless its live state is freshly
+7. Treat `docs/NEXT-SESSION.md` as historical unless its live state is freshly
    reverified. ⚠️ The live state in "Current build" was true at the END of the
-   2026-08-26 session; requery Home Assistant and the mower before acting on it.
+   2026-08-27 session; requery Home Assistant and the mower before acting on it.
 
 ⚠️ **Everything from "Build provenance" down is history**, including entries
 that read as open items. It is accurate as a *record* — the measurements stand,
@@ -70,6 +76,29 @@ is COMPUTED from the budget, so raising one raises the clearance a run must prov
 — containment is not weakened, exposure and its required proof both grew.
 ⚠️ **Built and COMMITTED but NOT RELEASED OR DEPLOYED** as of end of session
 2026-08-27. The host still runs **beta81**, whose disk is still 1.06 m.
+
+💻 **LIVE STATE at 21:10, 2026-08-27 — requery before acting.** Host **beta81** +
+PyMammotion **0.8.12.post3**. Mower **DOCKED** (`CHARGE_ON`), **battery 36%**.
+Gate **disarmed**: `enabled: false`, `real_motion_allowed: false`. Blockers were
+`experimental_motion_disabled`, `position_not_valid_for_motion` (expected on the
+dock) and **`blade_rpm_nonzero`**.
+🔑 **That blade blocker is the KNOWN LATCH, not a fault** — the device-side RPM
+register holds its last value while mode/state read OFF, and the live-feed
+discriminator needs roughly 15 minutes of HA uptime to clear it. HA was restarted
+for the beta81 deploy shortly before this reading. **Do not investigate it as a
+new problem; give HA uptime and re-read.**
+
+🔑 **THE RESEARCH QUESTION THAT MAY MAKE THE SIGN TEST MOOT.** Before spending
+more runs on remote closed-loop steering, settle whether the mower's **own
+onboard path execution** can serve click-to-path. The APK shows the nav protocol
+has **no point-to-point drive primitive** — only coverage planning
+(`NavReqCoverPath`, zone-hash shaped), task control, and raw `DrvMotionCtrl`. If
+a short planned route CAN be handed to the mower's own controller, that delivers
+the fluidity this project actually wants **without remote control over a 1 Hz
+link at all**. If it cannot, that is equally worth knowing, because it means
+stop-measure-go and Phase 2 are the only two options that exist. **Offline APK
+reading first; no device contact needed to answer it.** Read
+`docs/firmware-constraints-from-the-apk-20260827.md` §5.
 
 **TOMORROW, in order:**
 1. Release beta82, deploy motion-disabled, verify the quartet/hashes/gate.
