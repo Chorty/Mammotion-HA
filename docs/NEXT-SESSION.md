@@ -1,22 +1,28 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
-## §0 Live state — 2026-08-28 14:20 EDT
+## §0 Live state — 2026-08-28 15:05 EDT
 
 ⚠️ **Everything BELOW this section is historical.** Reverify before acting on it.
 
 Host **0.6.4-beta82** + PyMammotion **0.8.12.post3**, deployed motion-disabled
-2026-08-28 (`docs/deploy-runbook-p0.md` → beta82). Mower **off the dock** at
-**(4.8213, -1.3620)** in "Backyard Right", RTK **Fix**, battery **54%**,
-`MODE_READY`, daylight. Gate **disarmed** — `enabled: false`,
-`real_motion_allowed: false`, no session, verified from the live API **and** RAW
-`core.config_entries`; sole blocker `experimental_motion_disabled`.
+2026-08-28 (`docs/deploy-runbook-p0.md` → beta82). Mower off the dock at
+**(6.6067, -6.2147)**, settled after steering attempt 4, RTK **Fix**, battery
+**47%**, BLE live. Gate **disarmed**, verified live API **and** RAW
+`core.config_entries`.
 
-🔑 **The blind-acquisition disk is now 1.34 m** (`0.28 x 3.0 + 0.50`), verified on
-the deployed build: a 1.20 m corridor is refused, a 2.00 m one passes.
-🚨 **The attempt-3 frozen corridor clears it by only 0.16 m** (3.0 m wide → 1.50 m
-maximum clearance, 1.12x). Attempt 4 needs a **wider** corridor, ~3.5-4.0 m. The
-yard itself is fine: 4.07 m of raw clearance at the attempt-3 start.
-⚠️ The 1.06 m figure quoted further down this file is the OLD disk.
+🏁 **THE STEERING SIGN IS CORRECT** — attempt 4 steered for the first time
+(angular −111 / −120 / −65, course −67.42° → −53.87° crossing the desired
+−55.75°). **Verdict is still FAIL, 6 of 7**: criterion 2 fails because
+`|cross_track|` grew monotonically 0.009 → 0.072 m, the window having ended on
+`max_distance_m` exactly as heading error crossed zero. **The criterion was not
+edited.** Read `docs/evidence-phase2-steering-attempt4-20260828.json`.
+
+🔑 **Reusable corridor** — 5.0 × 5.0 m square
+`[(3.48,-7.74), (8.48,-7.74), (8.48,-2.74), (3.48,-2.74)]` centred on
+**(5.98, -5.24)**, the max-clearance point in "Backyard Right" (5.97 m, 4.45× the
+1.34 m disk). Read `route_start` from the live position AFTER placement —
+`_CONTINUOUS_MAX_START_DRIFT_M` is 0.30 m and that gate passes unconditionally in
+a dry run.
 
 
 🛡️ **PHASE 2 HEADING-SAFETY REMEDIATION IMPLEMENTED OFFLINE,

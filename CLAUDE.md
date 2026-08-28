@@ -44,12 +44,60 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: beta82 deployed; steering OPEN behind an opt-in, sign still UNTESTED
+## Current build: beta82 deployed; THE STEERING SIGN IS CORRECT — attempt 4 scored 6/7
 
-🛑 **THE STEERING SIGN HAS STILL NEVER MOVED A WHEEL.** THREE attempts on
-2026-08-27, three distinct refusals, none reaching a steering command. The
-predeclared criteria are unexercised, so **there is nothing to score — and
-"three refusals" is NOT evidence the steering law is wrong. It has not run.**
+🏁 **THE STEERING SIGN IS CORRECT, AND IT FINALLY MOVED A WHEEL — attempt 4,
+2026-08-28.** After three refusals on 2026-08-27 that never reached a steering
+command, a supervised operator-authorized run on beta82 **steered**: three
+`tracking_route` decisions at angular **−111 / −120 / −65**, 1.1131 m travelled,
+stopped on `distance_limit_reached`, stop confirmed, gate disarmed and verified
+from the live API **and** RAW storage. Evidence:
+`docs/evidence-phase2-steering-attempt4-20260828.json`.
+
+🔑 **The decisive question is ANSWERED YES.** Course ran
+**−67.42° → −68.04° → −61.18° → −53.87°**, crossing the desired −55.75° — so a
+**negative** commanded angular **increased** map course, exactly as the
+2026-08-12 relationship predicts and the opposite of what the 2026-08-24 run did
+while saturated at +180. Heading error **9.213 → 12.225 → 5.429**: it grew across
+ONE step, then more than halved. **The predeclared abort rule — growth across TWO
+consecutive decisions — was not triggered.** The 2026-08-24 inversion is fixed.
+
+🚨 **VERDICT IS STILL FAIL: 6 of 7 predeclared criteria.** Criterion 2 requires
+signed heading error **and** absolute cross-track to trend toward zero.
+`|cross_track|` grew **monotonically 0.009 → 0.037 → 0.071 → 0.072 m** and never
+turned over. **The criterion was NOT edited and the FAIL stands.**
+🔑 **The diagnosis, stated separately from the score:** cross-track *integrates*
+heading error, so it must grow until heading error crosses zero — and that
+crossing happened between decisions 3 and 4, exactly when `max_distance_m: 1.00`
+stopped the run at 1.1131 m. **The window ended at the instant cross-track would
+have begun closing.** That is a window-length limitation, not a control failure.
+⚠️ **Do NOT fix this by editing criterion 2 or by raising `max_distance_m` because
+you now know which way it would go.** A revision belongs in a follow-up document
+with its reasoning written before the next dispatch — the same rule that made the
+2026-08-22 mirror `no_go` trustworthy.
+
+📐 **ROTATION RESPONSE WHILE MOVING — measured for the first time, and it is NOT
+a rate law.** Per-interval course change against the angular commanded during
+that interval: **−111 → −0.61 °/s, −120 → +6.48 °/s, −65 → +7.39 °/s.**
+🚨 **The −65 command produced a HIGHER rate than −120.** That is ~1 s of actuation
+lag, not a gain curve: each interval still carries the previous command. **n = 3,
+lag-contaminated — do not fit any turn constant to these three numbers.**
+
+⚠️ **What a pass would have authorized, this does not.** The predeclaration says a
+PASS authorizes exactly **one more** steering run for repeatability. This is a
+FAIL, so it authorizes nothing further on its own terms — the sign result is
+evidence, not a licence for longer windows, higher angular authority, Phase 3
+waypoints, or removing the per-call opt-in.
+
+🚨 **THE CARD ARMS THE MOTION GATE, AND IT WAS LEFT ARMED AND FULLY OPEN.** The
+operator drove the mower into position with the card; afterwards the gate read
+`enabled: true`, `real_motion_allowed: true`, **`blockers: []`** in RAW storage —
+sixth armed-at-rest occurrence, and the first that was genuinely live rather than
+held shut by the dock. Disarmed after the run.
+⚠️ **A RAW read taken immediately after a disarm can lie.** Right after the
+disarm the live API read `false` while RAW `core.config_entries` still read
+`[True]`; it flipped within ~15 s. **HA writes `.storage` lazily — re-read before
+concluding a disarm failed.**
 
 🚨 **ATTEMPT 3 DROVE 0.51 m WHILE BELIEVING IT HAD MOVED 0.021 m — a 24x
 under-observation.** Position sequence sat at **17 for a full second** while the
@@ -85,22 +133,30 @@ disk would have **accepted** — is refused with
 ⚠️ **`services.yaml` prose still says 1.06 m** in the `continuous_motion_window`
 description. Code is right, text is stale; fix it in the next release.
 
-💻 **LIVE STATE at 14:20, 2026-08-28 — requery before acting.** Host **beta82** +
-PyMammotion **0.8.12.post3**. Mower **OFF THE DOCK**, moved there by the operator
-during the deploy session, at **(4.8213, -1.3620)** in "Backyard Right"
-(`AREA_INSIDE`, `zone_hash 1343645155037768237`, `valid_for_motion: true`),
-RTK **Fix**, **battery 54%**, `MODE_READY`, daylight (`camera_brightness: light`,
-VIO 80/80). Gate **disarmed**: `enabled: false`, `real_motion_allowed: false`,
-no session — verified from the live API **and** RAW `core.config_entries`.
-⚠️ **The sole blocker is now `experimental_motion_disabled`.** Off the dock,
-nothing else holds the gate shut. That is the "armed-would-be-empty" posture this
-file has flagged six times: the gate is closed **only** by the disable flag.
-✅ **The `blade_rpm_nonzero` latch did NOT recur** — `cutter_rpm 0`,
-`blade_safe_for_motion: on` throughout.
-🔌 **BLE dropped across the beta82 restart and recovered by itself in ~10 min**
-(`ble_link_live: off`, `active_transport: none`) while `ble_rssi` read a healthy
-**-44** — the standing rule holds: **`ble_rssi` is not a liveness signal.** No
-config-entry reload was needed; RTK went `float -> fix` at the same moment.
+💻 **LIVE STATE at 15:05, 2026-08-28 — requery before acting.** Host **beta82** +
+PyMammotion **0.8.12.post3**. Mower **off the dock**, settled after steering
+attempt 4 at **(6.6067, -6.2147)**, `toward 137.5143`, inside "Backyard Right"
+and inside the attempt-4 corridor. RTK **Fix**, battery **47%** (was 54% before
+the card repositioning and the run), daylight, BLE live at **-72 dBm**. Gate
+**disarmed** — `enabled: false`, `real_motion_allowed: false`, no session,
+verified live API **and** RAW `core.config_entries`.
+
+🔑 **THE ATTEMPT-4 CORRIDOR IS THE ONE TO REUSE — 5.0 x 5.0 m, axis-aligned:**
+`[(3.48,-7.74), (8.48,-7.74), (8.48,-2.74), (3.48,-2.74)]`, centred on
+**(5.98, -5.24)**, the max-inscribed-clearance point in "Backyard Right"
+(**5.97 m** of real clearance to both the area boundary and the trampoline
+keep-out, **4.45x** the 1.34 m disk). The operator placed the mower **0.113 m**
+from that point via the card, and all **15 of 15** gates passed with
+`boundary_clearance_m 2.393` against `required_radius_m 1.34` (**1.79x**).
+🔑 **It is SQUARE on purpose.** The route heading is derived at dispatch from the
+mower's measured heading plus the 8° offset, so a narrow oriented corridor bets on
+a heading you do not know yet — the bet that left attempt 3 with 0.16 m. A square
+needs 2.5 m >= 1.0 route + 0.5 stop overshoot + 0.3 cross-track = 1.8 m in ANY
+direction, and it has it.
+⚠️ **`_CONTINUOUS_MAX_START_DRIFT_M` is 0.30 m**, so `route_start` must be read
+from the live position AFTER placement, not planned in advance. That gate reads
+`"passed": dry_run or (drift <= 0.30)` — **it passes unconditionally in a dry
+run**, so a green dry run proves nothing about placement.
 
 🚨 **THE ATTEMPT-3 CORRIDOR IS NOW ONLY 1.12x THE DISK — the corridor binds, not
 the yard.** That corridor is a **3.0 x 5.0 m** rotated rectangle, so its maximum
@@ -166,17 +222,19 @@ the hazardous test could not pay off even if it worked. See §8.
 It is moot, not pending.
 
 **NEXT, in order:**
-1. ✅ **DONE 2026-08-28** — beta82 released and deployed motion-disabled;
-   quartet, 47/47 hashes, both card paths, Lovelace key and the disarmed gate all
-   verified. Record: `docs/deploy-runbook-p0.md` → beta82.
+1. ✅ **DONE 2026-08-28** — beta82 released and deployed motion-disabled; quartet,
+   47/47 hashes, both card paths, Lovelace key and the disarmed gate verified.
 2. ✅ **DONE 2026-08-28** — the deployed build computes **1.34 m**, proven by a
-   discriminating dry run. **But the corridor check changed the answer:** the
-   attempt-3 corridor clears it by only 0.16 m. See the live-state block above.
-3. **Freeze a wider corridor (~3.5-4.0 m) for attempt 4**, then the run itself —
-   `docs/phase2-steering-attempt3-design-20260827.md` (6 s window, 8° route
-   offset, angular 120), scored against the UNCHANGED criteria in
-   `docs/phase2-steering-run1-predeclared-20260827.md`. **Physical run: needs
-   explicit per-run operator authorization, daylight and the e-stop in reach.**
+   discriminating dry run; a wider corridor was designed and used.
+3. ✅ **DONE 2026-08-28** — steering attempt 4 RAN. **Sign correct, 6/7, FAIL on
+   criterion 2 (cross-track).** Read
+   `docs/evidence-phase2-steering-attempt4-20260828.json`.
+4. **Decide, in a document written BEFORE the next dispatch, whether criterion 2
+   is ill-posed for a distance-limited window** — and if so how it is repaired,
+   with the reasoning stated. Do **not** repair it by raising `max_distance_m`
+   now that the direction of the answer is known.
+5. Only then a repeat run. ⚠️ The predeclaration grants a repeat only on a PASS;
+   this was a FAIL, so a further run needs its own authorization and criteria.
 
 🔑 **ACQUISITION IS MARGINAL BY CONSTRUCTION, independent of that stall.** At
 ~1 Hz, a 0.15 m chord from standstill needs ~2 position samples ≈ 2 s, and

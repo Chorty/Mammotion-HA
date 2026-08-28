@@ -1,0 +1,213 @@
+{
+ "what": "Phase 2 steering attempt 4 \u2014 the corrected steering sign moved a wheel for the first time",
+ "when": "2026-08-28",
+ "build": "0.6.4-beta82",
+ "backend": "0.8.12.post3",
+ "verdict": "FAIL on the predeclared criterion set (6 of 7), but the SIGN IS CORRECT and is now hardware-demonstrated",
+ "decisive_question": {
+  "question": "Does heading error DECREASE after the first steering command?",
+  "answer": "YES, after one step of lag. 9.213 -> 12.225 -> 5.429. The abort rule (growth across TWO consecutive decisions) was NOT triggered. Course rotated -67.42 -> -68.04 -> -61.18 -> -53.87, crossing the desired -55.75, so negative commanded angular INCREASED map course exactly as the 2026-08-12 relationship predicts. The 2026-08-24 inversion is fixed."
+ },
+ "config": {
+  "entity_id": "lawn_mower.back_yard_clip_skywalker",
+  "route_start": {
+   "x": 6.0154,
+   "y": -5.1327
+  },
+  "route_target": {
+   "x": 6.9893,
+   "y": -6.8795
+  },
+  "corridor_polygon": [
+   {
+    "x": 3.48,
+    "y": -7.74
+   },
+   {
+    "x": 8.48,
+    "y": -7.74
+   },
+   {
+    "x": 8.48,
+    "y": -2.74
+   },
+   {
+    "x": 3.48,
+    "y": -2.74
+   }
+  ],
+  "linear_speed": 400,
+  "max_abs_angular_speed": 120,
+  "duration_ms": 6000,
+  "max_distance_m": 1.0,
+  "max_cross_track_m": 0.3,
+  "motion_refresh_interval_ms": 200,
+  "decision_sample_interval_ms": 100,
+  "prefer_ble": true,
+  "confirm_blades_off": true,
+  "confirm_clear_area": true,
+  "confirm_steering_validation_run": true,
+  "dry_run": false
+ },
+ "criteria": {
+  "1_no_intermediate_stop": {
+   "pass": true,
+   "evidence": "decisions 0-3 action=drive; only decision 4 stops, on distance_limit_reached"
+  },
+  "2_heading_error_and_cross_track_trend_to_zero": {
+   "pass": false,
+   "evidence": "heading error [9.213191297127565, 12.224602666242447, 5.428820563350143] -- grew 9.213->12.225 then fell to 5.429, net down; |cross_track| [0.0089, 0.0371, 0.0706, 0.0715] -- grew MONOTONICALLY 0.009->0.072 and never trended toward zero"
+  },
+  "3_no_saturated_oscillation": {
+   "pass": true,
+   "evidence": "angular commands -111, -120, -65: all one sign, one at the 120 cap, no reversal"
+  },
+  "4_cross_track_never_exceeds_0.20m": {
+   "pass": true,
+   "evidence": "max |cross_track| 0.0715 m"
+  },
+  "5_hard_abort_never_fires": {
+   "pass": true,
+   "evidence": "stop reason \"distance_limit_reached\", not cross_track abort"
+  },
+  "6_duty_cycle_at_least_80pct": {
+   "pass": true,
+   "evidence": "drive commanded continuously 0->4.98 s; 24 refresh writes spanning 352-4983 ms of a 4980 ms motion phase; ~100%"
+  },
+  "7_stop_confirmed_and_gate_disarmed": {
+   "pass": true,
+   "evidence": "stop ok=true movement_ok=true; gate enabled=false real_motion_allowed=false verified live API AND RAW core.config_entries"
+  }
+ },
+ "criteria_passed": 6,
+ "decisions": [
+  {
+   "i": 0,
+   "phase": "acquiring_heading",
+   "t": 0.907,
+   "dist": 0.062067785525181905,
+   "course": null,
+   "desired": -60.21851783597096,
+   "err": null,
+   "cross": -0.008941193088765453,
+   "ang": 0,
+   "reason": "acquiring_heading",
+   "inside": true,
+   "gap": 0.41630100000000003,
+   "chord": null,
+   "unc": null
+  },
+  {
+   "i": 1,
+   "phase": "steering",
+   "t": 1.9,
+   "dist": 0.3206117856489523,
+   "course": -67.41863011098715,
+   "desired": -58.20543881385959,
+   "err": 9.213191297127565,
+   "cross": -0.03707521529012982,
+   "ang": -111,
+   "reason": "tracking_route",
+   "inside": true,
+   "gap": 0.31720399999999993,
+   "chord": 0.32057699543167495,
+   "unc": 0.7835016187872202
+  },
+  {
+   "i": 2,
+   "phase": "steering",
+   "t": 2.93,
+   "dist": 0.5877912197377311,
+   "course": -68.04328540324865,
+   "desired": -55.81868273700621,
+   "err": 12.224602666242447,
+   "cross": -0.0705561971189472,
+   "ang": -120,
+   "reason": "tracking_route",
+   "inside": true,
+   "gap": 0.4850630000000001,
+   "chord": 0.2671794340887787,
+   "unc": 0.9400637926903496
+  },
+  {
+   "i": 3,
+   "phase": "steering",
+   "t": 3.99,
+   "dist": 0.8501959834140022,
+   "course": -61.178683616279805,
+   "desired": -55.74986305292967,
+   "err": 5.428820563350143,
+   "cross": -0.07152467853920796,
+   "ang": -65,
+   "reason": "tracking_route",
+   "inside": true,
+   "gap": 0.4919970000000003,
+   "chord": 0.2624047636762711,
+   "unc": 0.957165872392015
+  },
+  {
+   "i": 4,
+   "phase": "stopping",
+   "t": 4.98,
+   "dist": 1.1130577151286054,
+   "course": -53.866858786953884,
+   "desired": null,
+   "err": null,
+   "cross": null,
+   "ang": 0,
+   "reason": "distance_limit_reached",
+   "inside": true,
+   "gap": 0.3241099999999997,
+   "chord": 0.26286173171460325,
+   "unc": 0.9555022104886688
+  }
+ ],
+ "rotation_response_while_moving": [
+  {
+   "interval": "1->2",
+   "commanded_angular": -111,
+   "dt_s": 1.03,
+   "course_change_deg": -0.625,
+   "rate_deg_per_s": -0.606
+  },
+  {
+   "interval": "2->3",
+   "commanded_angular": -120,
+   "dt_s": 1.06,
+   "course_change_deg": 6.865,
+   "rate_deg_per_s": 6.476
+  },
+  {
+   "interval": "3->4",
+   "commanded_angular": -65,
+   "dt_s": 0.99,
+   "course_change_deg": 7.312,
+   "rate_deg_per_s": 7.386
+  }
+ ],
+ "refresh": {
+  "commands_sent": 24,
+  "max_gap_since_last_decision_s": 0.4919970000000003,
+  "bound_s": 0.6,
+  "max_completion_gap_ms": 492.0
+ },
+ "travel": {
+  "cumulative_distance_m": 1.1130577151286054,
+  "max_distance_m": 1.0,
+  "overshoot_m": 0.1131,
+  "post_stop_creep_m": 0.1294,
+  "net_displacement_from_route_start_m": 1.233,
+  "final_position_inside_corridor": true
+ },
+ "gate_after": {
+  "enabled": false,
+  "real_motion_allowed": false,
+  "live_api": "verified",
+  "raw_config_entries": "verified [False]"
+ },
+ "note_raw_storage_lag": "immediately after the disarm, RAW core.config_entries still read [True] while the live API read false; it flipped to [False] within ~15 s. HA writes .storage lazily. A single RAW read taken straight after a disarm can wrongly look like the disarm failed.",
+ "why_criterion_2_failed": "cross-track integrates heading error, so it necessarily GROWS until heading error crosses zero. That crossing happened between decisions 3 and 4 -- exactly when max_distance_m stopped the run. The window ended at the moment cross-track would have begun closing. This is a window-length limitation, not a control failure. The criterion is NOT edited: it was predeclared and it failed. Any revision belongs in a follow-up document with its reasoning stated.",
+ "motion_commanded": true,
+ "supervised": true,
+ "operator_authorized": true
+}
