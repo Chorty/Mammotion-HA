@@ -1,0 +1,279 @@
+{
+ "what": "Phase 2 steering attempt 5 \u2014 the predicted oscillation happened; criterion 2b (the repair) PASSED",
+ "when": "2026-08-28",
+ "build": "0.6.4-beta82",
+ "backend": "0.8.12.post3",
+ "predeclaration": "docs/phase2-steering-attempt5-predeclared-20260828.md",
+ "verdict": "FAIL \u2014 6 of 8. 2a (heading error trends to zero) and 3 (no saturated oscillation) both fail.",
+ "headline": "The oscillation registered in \u00a74 of the predeclaration BEFORE dispatch is exactly what happened. That prediction coming true is the strongest evidence in this run.",
+ "criterion_2_repair_vindicated": "2b PASSED: |cross_track| peaked at 0.0864 m (d3) then decreased across TWO consecutive decisions (0.0651, 0.0084). The structural argument in the predeclaration \u2014 that cross-track cannot decrease until heading error crosses zero, and attempt 4's 1.00 m bound stopped it exactly at that crossing \u2014 is confirmed. The repair was correct and it was not a free pass: 2a and 3 still failed.",
+ "deviation_from_predeclaration": {
+  "what": "corridor recentred on the live position and reduced from 7.0x7.0 m to 6.0x6.0 m",
+  "why": "the mower sat 1.159 m from the predeclared centre (5.98,-5.24), outside the 0.95 m placement tolerance, and its clearance in the predeclared corridor was 2.5253 m against the required 2.55 m \u2014 short by 24.7 mm. Recentring the 7x7 on the live position satisfied clearance but left only 0.039 m of corner margin against the yard boundary (yard clearance 4.9886 m vs corner reach 4.9497 m). The 6x6 gives 3.000 m of start clearance (>= the required 2.55) and 0.746 m of corner margin.",
+  "what_did_NOT_change": "every criterion, the distance budget (max_distance_m 1.75), duration_ms 8000, max_cross_track_m 0.30, angular cap 120, linear 400, the 8 deg route offset. Section 5 of the predeclaration already lists 6x6 as satisfying the requirement.",
+  "flagged": "stated to the operator before dispatch, not applied silently"
+ },
+ "config": {
+  "entity_id": "lawn_mower.back_yard_clip_skywalker",
+  "route_start": {
+   "x": 6.6067,
+   "y": -6.2147
+  },
+  "route_target": {
+   "x": 8.1525,
+   "y": -7.4837
+  },
+  "corridor_polygon": [
+   {
+    "x": 3.607,
+    "y": -9.215
+   },
+   {
+    "x": 9.607,
+    "y": -9.215
+   },
+   {
+    "x": 9.607,
+    "y": -3.215
+   },
+   {
+    "x": 3.607,
+    "y": -3.215
+   }
+  ],
+  "linear_speed": 400,
+  "max_abs_angular_speed": 120,
+  "duration_ms": 8000,
+  "max_distance_m": 1.75,
+  "max_cross_track_m": 0.3,
+  "motion_refresh_interval_ms": 200,
+  "decision_sample_interval_ms": 100,
+  "prefer_ble": true,
+  "confirm_blades_off": true,
+  "confirm_clear_area": true,
+  "confirm_steering_validation_run": true,
+  "dry_run": false
+ },
+ "criteria": {
+  "1_no_intermediate_stop": {
+   "pass": true,
+   "evidence": "actions ['drive', 'drive', 'drive', 'drive', 'drive', 'drive', 'drive']"
+  },
+  "2a_heading_error_trends_to_zero": {
+   "pass": false,
+   "evidence": "[9.176, 13.151, 9.215, 0.133, -11.853, -28.738] -- converged +9.176 -> +13.151 -> +9.215 -> +0.133 (crossed zero), then DIVERGED to -11.853 and -28.738. Magnitude growing at the stop."
+  },
+  "2b_cross_track_peaks_then_decreases_twice": {
+   "pass": true,
+   "evidence": "[0.0067, 0.0364, 0.0728, 0.0864, 0.0651, 0.0084, 0.0746] -- peak 0.0864 m at d3, then 0.0651 (d4) and 0.0084 (d5): 2 consecutive decreases"
+  },
+  "3_no_saturated_oscillation": {
+   "pass": false,
+   "evidence": "angular [0, -110, -120, -111, 0, 120, 120]: saturated -120 at d2 then saturated +120 at d5 and d6 -- a reversal between saturated commands of opposite sign"
+  },
+  "4_cross_track_never_exceeds_0.20m": {
+   "pass": true,
+   "evidence": "max |cross_track| 0.0864 m"
+  },
+  "5_hard_abort_never_fires": {
+   "pass": true,
+   "evidence": "stopped on the 8000 ms window, not the 0.30 m cross-track abort; max |cross| 0.0864 m"
+  },
+  "6_duty_cycle_at_least_80pct": {
+   "pass": true,
+   "evidence": "drive commanded continuously 0->7.05 s; 40 refresh writes spanning 373-8151 ms"
+  },
+  "7_stop_confirmed_and_gate_disarmed": {
+   "pass": true,
+   "evidence": "stop ok=true movement_ok=true; gate enabled=false real_motion_allowed=false verified live API AND RAW [False]"
+  }
+ },
+ "criteria_passed": 6,
+ "criteria_total": 8,
+ "decisions": [
+  {
+   "i": 0,
+   "phase": "acquiring_heading",
+   "t": 1.027,
+   "dist": 0.0582740079280633,
+   "action": "drive",
+   "course": null,
+   "desired": -38.90480436339881,
+   "err": null,
+   "cross": -0.006687378167016415,
+   "ang": 0,
+   "reason": "acquiring_heading",
+   "inside": true,
+   "gap": 0.20735899999999993
+  },
+  {
+   "i": 1,
+   "phase": "steering",
+   "t": 2.05,
+   "dist": 0.3141404183847706,
+   "action": "drive",
+   "course": -45.95441141839574,
+   "desired": -36.777964434086634,
+   "err": 9.17644698430911,
+   "cross": -0.036408615634956176,
+   "ang": -110,
+   "reason": "tracking_route",
+   "inside": true,
+   "gap": 0.22961900000000013
+  },
+  {
+   "i": 2,
+   "phase": "steering",
+   "t": 3.056,
+   "dist": 0.5764822755101635,
+   "action": "drive",
+   "course": -47.33258225204056,
+   "desired": -34.18141710197217,
+   "err": 13.15116515006838,
+   "cross": -0.07283842549336161,
+   "ang": -120,
+   "reason": "tracking_route",
+   "inside": true,
+   "gap": 0.23069799999999988
+  },
+  {
+   "i": 3,
+   "phase": "steering",
+   "t": 4.005,
+   "dist": 0.8374534808183351,
+   "action": "drive",
+   "course": -42.43761864245228,
+   "desired": -33.22282398863896,
+   "err": 9.214794653813328,
+   "cross": -0.08635571624219945,
+   "ang": -111,
+   "reason": "tracking_route",
+   "inside": true,
+   "gap": 0.2556213134636282
+  },
+  {
+   "i": 4,
+   "phase": "steering",
+   "t": 5.002,
+   "dist": 1.1007142830658405,
+   "action": "drive",
+   "course": -34.867212411961845,
+   "desired": -34.73409878018658,
+   "err": 0.1331136317752737,
+   "cross": -0.06506414914018965,
+   "ang": 0,
+   "reason": "tracking_route",
+   "inside": true,
+   "gap": 0.3405509999999995
+  },
+  {
+   "i": 5,
+   "phase": "steering",
+   "t": 6.029,
+   "dist": 1.3584902516897603,
+   "action": "drive",
+   "course": -26.793676425982483,
+   "desired": -38.646447441566245,
+   "err": -11.852771015583755,
+   "cross": -0.008360194316875291,
+   "ang": 120,
+   "reason": "tracking_route",
+   "inside": true,
+   "gap": 0.3077037278990747
+  },
+  {
+   "i": 6,
+   "phase": "steering",
+   "t": 7.051,
+   "dist": 1.6241944481187962,
+   "action": "drive",
+   "course": -21.27283607717462,
+   "desired": -50.010938875181964,
+   "err": -28.738102798007333,
+   "cross": 0.07455433202033535,
+   "ang": 120,
+   "reason": "tracking_route",
+   "inside": true,
+   "gap": 0.23219800000000032
+  }
+ ],
+ "rotation_response_while_moving": [
+  {
+   "interval": "1->2",
+   "commanded_angular": -110,
+   "dt_s": 1.006,
+   "course_change_deg": -1.378,
+   "rate_deg_per_s": -1.37
+  },
+  {
+   "interval": "2->3",
+   "commanded_angular": -120,
+   "dt_s": 0.949,
+   "course_change_deg": 4.895,
+   "rate_deg_per_s": 5.158
+  },
+  {
+   "interval": "3->4",
+   "commanded_angular": -111,
+   "dt_s": 0.997,
+   "course_change_deg": 7.57,
+   "rate_deg_per_s": 7.593
+  },
+  {
+   "interval": "4->5",
+   "commanded_angular": 0,
+   "dt_s": 1.027,
+   "course_change_deg": 8.074,
+   "rate_deg_per_s": 7.861
+  },
+  {
+   "interval": "5->6",
+   "commanded_angular": 120,
+   "dt_s": 1.022,
+   "course_change_deg": 5.521,
+   "rate_deg_per_s": 5.402
+  }
+ ],
+ "the_mechanism": {
+  "finding": "ACTUATION LAG EXCEEDS THE CONTROL PERIOD, measured directly for the first time.",
+  "evidence": [
+   "interval 4->5: commanded angular was ZERO and the mower still rotated +7.861 deg/s -- nearly the fastest rate in the run",
+   "interval 5->6: commanded angular was +120, the REVERSING direction, and the mower still rotated +5.402 deg/s the SAME way",
+   "the rate decayed +7.593 (cmd -111) -> +7.861 (cmd 0) -> +5.402 (cmd +120) and never reversed inside the ~8 s window"
+  ],
+  "consequence": "the rotational time constant is comparable to or larger than the ~1 Hz decision period, so a proportional-only loop carries roughly a full period of dead time. Oscillation is then structural, not a gain-tuning error.",
+  "do_not": "do NOT respond by lowering angular_speed_per_heading_degree. A gain change cannot fix dead time that exceeds the sample period; it only changes the amplitude of the same hunt."
+ },
+ "sign_is_still_correct": "The second-half divergence is OSCILLATION about the setpoint, NOT sign inversion. The error converged cleanly first (+9.176 -> +13.151 -> +9.215 -> +0.133), crossing zero, then overshot. An inverted sign diverges monotonically from the first decision, as the 2026-08-24 run did (46.64 -> 48.25 -> 77.40). Do NOT invoke the run-1 'stop and re-derive the sign' rule here.",
+ "safety": {
+  "max_abs_cross_track_m": 0.0864,
+  "bound_m": 0.2,
+  "hard_abort_m": 0.3,
+  "hard_abort_fired": false,
+  "inside_corridor_every_decision": true,
+  "refresh_writes": 40,
+  "max_refresh_completion_gap_ms": 340.5509999999995,
+  "max_per_decision_gap_s": 0.341,
+  "bound_s": 0.6,
+  "travel_m": 1.6242,
+  "distance_budget_m": 1.75,
+  "stopped_on": "8000 ms window",
+  "stop_confirmed": true,
+  "gate_after": "enabled false, real_motion_allowed false, live API AND RAW [False]"
+ },
+ "final_position": {
+  "x": 8.285,
+  "y": -7.3959,
+  "toward": 126.8278,
+  "last_in_window": {
+   "x": 7.8892,
+   "y": -7.1726
+  },
+  "post_stop_creep_m": 0.4544,
+  "net_displacement_m": 2.0523,
+  "inside_corridor": true
+ },
+ "motion_commanded": true,
+ "supervised": true,
+ "operator_authorized": true
+}

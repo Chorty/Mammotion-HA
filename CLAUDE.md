@@ -44,7 +44,71 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: beta82 deployed; THE STEERING SIGN IS CORRECT — attempt 4 scored 6/7
+## Current build: beta82; SIGN CORRECT, but the 1 Hz LOOP OSCILLATES — attempt 5 scored 6/8
+
+🚨 **ATTEMPT 5, 2026-08-28 — THE PREDICTED OSCILLATION HAPPENED. VERDICT FAIL,
+6 of 8.** The oscillation was registered in §4 of
+`docs/phase2-steering-attempt5-predeclared-20260828.md` **before dispatch**, and it
+is exactly what occurred. **That prediction coming true is the strongest evidence
+in the run.** Evidence: `docs/evidence-phase2-steering-attempt5-20260828.json`.
+
+| # | hdg err | cross | angular |
+| --- | --- | --- | --- |
+| 1 | +9.176° | −0.0364 | −110 |
+| 2 | +13.151° | −0.0728 | **−120** |
+| 3 | +9.215° | **−0.0864** ← peak | −111 |
+| 4 | **+0.133°** ← crossed zero | −0.0651 | 0 |
+| 5 | −11.853° | −0.0084 | **+120** |
+| 6 | **−28.738°** | +0.0746 | **+120** |
+
+✅ **THE CRITERION-2 REPAIR WAS RIGHT AND IS VINDICATED — 2b PASSED.**
+`|cross_track|` peaked at 0.0864 m then **decreased across two consecutive
+decisions** (0.0651, 0.0084), confirming the structural argument that attempt 4's
+`max_distance_m: 1.00` stopped the run exactly at the zero crossing.
+🔑 **And it was not a free pass**: 2a and 3 still failed, which is what a
+falsifiable repair is supposed to allow.
+
+🚨 **ACTUATION LAG EXCEEDS THE CONTROL PERIOD — measured directly, first time.**
+* Interval 4→5: commanded angular was **ZERO** and the mower still rotated
+  **+7.861 °/s**, nearly the fastest rate in the run.
+* Interval 5→6: commanded **+120**, the *reversing* direction, and it still
+  rotated **+5.402 °/s the same way**.
+* The rate decayed `+7.593 (cmd −111) → +7.861 (cmd 0) → +5.402 (cmd +120)` and
+  **never reversed inside the window.**
+
+🔑 **So the rotational time constant is comparable to or larger than the ~1 Hz
+decision period: the loop carries roughly a full period of DEAD TIME. Oscillation
+is structural, not a gain-tuning error.**
+🗑️ **Do NOT respond by lowering `angular_speed_per_heading_degree`.** A gain change
+cannot fix dead time that exceeds the sample period — it only changes the hunt's
+amplitude. This is the same ~1 Hz ceiling documented in
+`docs/the-1hz-bundle-is-the-ceiling-20260822.md`, now biting the control loop
+rather than the observer.
+
+⚠️ **THE SIGN IS STILL CORRECT — do NOT invoke the run-1 "re-derive the sign"
+rule.** The second-half divergence is oscillation *about* the setpoint: the error
+converged cleanly first (+9.176 → +13.151 → +9.215 → +0.133) and **crossed zero**
+before overshooting. An inverted sign diverges monotonically from the first
+decision, as 2026-08-24 did (46.64 → 48.25 → 77.40).
+
+⚠️ **STOP OVERSHOOT CAME WITHIN 4.6 cm OF ITS BUDGET.** Post-stop creep measured
+**0.4544 m** against `stop_overshoot_m = 0.50` — 9% margin, against 0.1294 m on
+attempt 4. **Do not raise commanded speed or run length without re-deriving that
+constant.**
+
+📐 **Safety held throughout**: max `|cross_track|` **0.0864 m** against a 0.20 m
+criterion and a 0.30 m hard abort that never fired; `inside_corridor: true` on
+every decision; 40 refresh writes, max per-decision gap **0.341 s** against 0.60 s;
+travel 1.6242 m of a 1.75 m budget, stopped on the 8000 ms window; stop confirmed;
+gate disarmed and verified live API **and** RAW `[False]`.
+
+⚠️ **DEVIATION FROM THE PREDECLARATION, stated before dispatch not after.** The
+corridor was recentred on the live position and reduced **7×7 → 6×6**: the mower
+sat 1.159 m from the predeclared centre (outside the 0.95 m tolerance) and cleared
+the predeclared corridor by 2.5253 m against a required 2.55 m — **short by
+24.7 mm**. A recentred 7×7 left only **0.039 m** of corner margin against the yard;
+the 6×6 gives 3.000 m of start clearance and 0.746 m of corner margin. **No
+criterion, threshold or budget moved**, and §5 already listed 6×6 as sufficient.
 
 🏁 **THE STEERING SIGN IS CORRECT, AND IT FINALLY MOVED A WHEEL — attempt 4,
 2026-08-28.** After three refusals on 2026-08-27 that never reached a steering
@@ -222,27 +286,26 @@ the hazardous test could not pay off even if it worked. See §8.
 It is moot, not pending.
 
 **NEXT, in order:**
-1. ✅ **DONE 2026-08-28** — beta82 released and deployed motion-disabled; quartet,
-   47/47 hashes, both card paths, Lovelace key and the disarmed gate verified.
-2. ✅ **DONE 2026-08-28** — the deployed build computes **1.34 m**, proven by a
-   discriminating dry run; a wider corridor was designed and used.
-3. ✅ **DONE 2026-08-28** — steering attempt 4 RAN. **Sign correct, 6/7, FAIL on
-   criterion 2 (cross-track).** Read
-   `docs/evidence-phase2-steering-attempt4-20260828.json`.
-4. ✅ **DONE 2026-08-28** — the repair is predeclared in
-   `docs/phase2-steering-attempt5-predeclared-20260828.md`, written before any
-   attempt-5 capture exists. Criterion 2 is **split**: **2a** heading error trends
-   to zero (attempt 4 satisfies it) and **2b** `|cross_track|` reaches a maximum
-   then DECREASES across two consecutive decisions (attempt 4 cannot test it).
-   The other six criteria are verbatim unchanged.
-5. **Attempt 5 — needs explicit per-run authorization.** `max_distance_m` **1.75**
-   (derived: 1.00 m to null + 2 x 0.264 m per decision = 1.53 m minimum),
-   `duration_ms` 8000, a **7.0 x 7.0 m** corridor at (5.98, -5.24) — the 5x5 gives
-   2.50 m against a 2.55 m requirement and **cannot be reused**.
-   🚨 **A criterion-3 (oscillation) failure is PREDICTED and registered**: ~1 s of
-   actuation lag against ~7 deg/s of authority, proportional-only, hunt period
-   ~3.6 s over a ~7.8 s run. **If it oscillates, record the FAIL — do not add a
-   derivative term mid-programme and re-run.**
+1-3. ✅ **DONE 2026-08-28** — beta82 released and deployed; the 1.34 m disk verified
+   on the deployed build; attempt 4 ran and proved the sign.
+4. ✅ **DONE** — criterion 2 repaired and predeclared
+   (`docs/phase2-steering-attempt5-predeclared-20260828.md`).
+5. ✅ **DONE** — attempt 5 ran. **2b PASSED, verdict FAIL 6/8 on 2a and 3.** The
+   oscillation predicted before dispatch is what happened.
+6. 🔑 **THE OPEN QUESTION IS NOW DEAD TIME, NOT THE SIGN AND NOT THE GAIN.** The
+   measured rotational lag is ≥ one ~1 Hz decision period, so a proportional loop
+   at this sample rate cannot be made stable by tuning. Before any attempt 6,
+   decide — in a document written first — which of these is being tested:
+   * **damp it** (a derivative/rate term, or command-rate limiting), accepting that
+     this is a real controller change needing its own criteria; or
+   * **shorten the dead time** (faster refresh, or a heading source that is not the
+     ~1 Hz position chord); or
+   * **accept 1 Hz proportional control is not stable here** and say so — which
+     would make stop-measure-go the answer for click-to-path, and is a legitimate
+     outcome, not a failure to fix.
+   ⚠️ **Do NOT lower `angular_speed_per_heading_degree` and re-run.** It cannot fix
+   dead time exceeding the sample period.
+
 
 🛑 **STANDING CHECK, added 2026-08-28 because this mistake has now cost THREE
 attempts.** Before any Phase 2 dispatch, for each exposure bound (`duration_ms`,
