@@ -11,9 +11,11 @@ Read, in order, and stop at the provenance line:
    older recommendation in this file.
 3. 🔑 `docs/firmware-constraints-from-the-apk-20260827.md` — **read this before
    any further Phase 2 work.** The vendor never closes a position loop over the
-   link, so the "vendor proves 1 Hz is enough" argument is unsound, and the
-   highest-value open question is whether the mower's OWN path execution can serve
-   click-to-path instead.
+   link, so the "vendor proves 1 Hz is enough" argument is unsound.
+   ⚠️ Its §5 item 1 — *can the mower's OWN path execution serve click-to-path?* —
+   was **ANSWERED NO** on 2026-08-27; read
+   `docs/onboard-path-execution-refuted-20260827.md` with it. **Phase 2 and
+   stop-measure-go are the only two options.**
 4. `docs/reach-closed-at-6m-20260826.md` — reach is CLOSED at 6.0 m against a
    hard 6.10 m cap. Read before proposing any longer single segment.
 5. `docs/phase2-steering-refusal-recommendation-20260826.md` — the scored decision
@@ -88,17 +90,48 @@ discriminator needs roughly 15 minutes of HA uptime to clear it. HA was restarte
 for the beta81 deploy shortly before this reading. **Do not investigate it as a
 new problem; give HA uptime and re-read.**
 
-🔑 **THE RESEARCH QUESTION THAT MAY MAKE THE SIGN TEST MOOT.** Before spending
-more runs on remote closed-loop steering, settle whether the mower's **own
-onboard path execution** can serve click-to-path. The APK shows the nav protocol
-has **no point-to-point drive primitive** — only coverage planning
-(`NavReqCoverPath`, zone-hash shaped), task control, and raw `DrvMotionCtrl`. If
-a short planned route CAN be handed to the mower's own controller, that delivers
-the fluidity this project actually wants **without remote control over a 1 Hz
-link at all**. If it cannot, that is equally worth knowing, because it means
-stop-measure-go and Phase 2 are the only two options that exist. **Offline APK
-reading first; no device contact needed to answer it.** Read
-`docs/firmware-constraints-from-the-apk-20260827.md` §5.
+🗑️ **ANSWERED 2026-08-27, AND THE ANSWER IS NO — that research question is
+CLOSED.** The mower's own onboard path execution **cannot** serve click-to-path.
+There is no message, on any channel, that is app→device, carries caller-chosen
+coordinates, and causes the mower to drive. **So stop-measure-go and Phase 2 are
+the only two options that exist.** There is no third path where the firmware
+does the driving for us. Read
+`docs/onboard-path-execution-refuted-20260827.md`.
+
+🔑 **The three strongest leads all died the same way, and the reason generalises:
+a todev_ prefix is NOT evidence the app sends a message.** The channel-line
+message (repeated point list, todev-prefixed), the zone start point (x, y,
+index) and the task breakpoint (x, y, toward) each have **zero** app-side send
+sites — they exist only inside the generated protobuf class. **Count send sites,
+not field names.** Across the ENTIRE decompiled app there is exactly **one**
+app→device push carrying a coordinate list, and its type enum is
+VirtualWall / RestrictedZone / SecurityZone — keep-out geometry, which commands
+no motion and cannot make a mowable area.
+🔑 **The clincher is the vendor's own UI text, not the protocol:** to get the
+mower from A to B — for channel mapping, for boundary drawing — the app instructs
+the operator to *"Control the robot to..."*. **The vendor's answer to point-to-point
+travel is the joystick.** A vendor with a drive-to-coordinate primitive would not
+ship those strings.
+⚠️ **The onboard planner is real and unreachable, and both halves matter.**
+Return-to-dock and leave-dock send no path at all and the mower crosses the yard
+itself — but they are bare integers with no destination field. The capability
+exists; the API does not. **This does NOT revive the refuted "vendor proves 1 Hz
+is enough" argument** — §2 of
+`docs/firmware-constraints-from-the-apk-20260827.md` stands unchanged.
+🗑️ **The path-upload residual is CLOSED TOO, researched the same day — and it
+was closed OFFLINE, so no firmware-risk experiment is owed.** The question was
+being attacked from the wrong end. Whether the firmware would accept an inbound
+path frame is unknowable without the device, but it is **moot**, because a
+second independent gate blocks execution regardless: **no command in the
+protocol names a path to execute.** The route-request message has a path-hash
+field and **the app never sets it** — every setter hit in the whole app is
+device→app telemetry (the mower reporting which path it is running, with its
+progress and position along it). Jobs are started by plan **id string**; a plan's
+only spatial content is zone hashes; the device plans, stores and executes the
+path itself. **App-supplied geometry cannot enter that chain at any point.** So
+the hazardous test could not pay off even if it worked. See §8.
+⚠️ **Do not re-open "would the firmware accept an uploaded path?" as new work.**
+It is moot, not pending.
 
 **TOMORROW, in order:**
 1. Release beta82, deploy motion-disabled, verify the quartet/hashes/gate.

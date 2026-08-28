@@ -8373,14 +8373,22 @@ async def _wait_for_fresh_continuous_origin(  # noqa: C901
             "elapsed_s": time.monotonic() - started,
         }
     # `generic_report_advanced` is reported as EVIDENCE, never promoted into the
-    # reason. This wait is bounded by `max_heading_acquisition_s` (2.0 s), and the
-    # beta76 stationary matrix shows 28 of 1434 healthy position intervals -- 1.95%
-    # -- already exceed 2.0 s, while generic frames arrive at roughly 2 Hz. Calling
-    # that `position_channel_stalled` would give a routine tail-of-distribution gap
+    # reason. This wait is bounded by `max_heading_acquisition_s`, raised 2.0 ->
+    # 3.0 s on 2026-08-27 (see `docs/phase2-acquisition-budget-decision-20260827.md`).
+    # The argument for not promoting a timeout here to a channel-fault verdict is
+    # unchanged by that raise: the beta76 stationary matrix showed 28 of 1434
+    # healthy position intervals -- 1.95% -- exceeding 2.0 s while generic frames
+    # arrived at roughly 2 Hz, so a tail-of-distribution gap is a NORMAL event on
+    # this feed. Calling it `position_channel_stalled` would give that routine gap
     # the same name as cell 12's real outage (3 payloads, then ~119 s of silence
-    # against 118 normal generic reports). The readiness probe's 3.5 s budget is a
-    # different case: nothing in 1434 intervals exceeded it, so `stalled` is well
-    # founded there and is kept.
+    # against 118 normal generic reports).
+    # ⚠️ The 1.95% figure is measured against the OLD 2.0 s bound and is retained
+    # as the historical measurement it is -- the fraction exceeding 3.0 s is
+    # necessarily smaller but has NOT been re-derived, because the beta77 matrix
+    # artifact was written with `include_raw_samples=False` and its per-sample
+    # position intervals were stripped. Do not quote 1.95% as the rate for 3.0 s.
+    # The readiness probe's 3.5 s budget is a different case: nothing in 1434
+    # intervals exceeded it, so `stalled` is well founded there and is kept.
     generic_advanced = (
         handle is not None
         and report_generation is not None
