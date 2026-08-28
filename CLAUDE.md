@@ -44,7 +44,22 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: beta82; SIGN CORRECT, but the 1 Hz LOOP OSCILLATES — attempt 5 scored 6/8
+## Current build: beta82; PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
+
+🛑 **PHASE 2 CONTINUOUS STEERING IS PARKED — operator decision, 2026-08-28.**
+Not abandoned as broken, and **not because a run failed**: parked because it buys
+**~4x speed and not capability**. Stop-measure-go already does click-to-path —
+reach CLOSED at 6.0 m with landings flat at 0.1023 / 0.1015 / 0.1144 m across
+4 / 5 / 6 m — and standing decision 4 asks for *"click-to-go reliable enough to
+trust without watching"*, which does not mention speed. See standing decision 5.
+⚠️ **Do NOT propose steering runs, gain changes, damping terms, or attempt 6 as
+next work.** The two questions that would justify resuming (Q1 actuator-vs-observer
+lag, Q2 its size) are designed in
+`docs/phase2-dead-time-step-test-design-20260828.md` and **explicitly deferred**.
+🔑 **Read that document's second section before ever commanding motion for this:
+half of Q1 is ARITHMETIC on banked captures, not an experiment.** If observer lag
+alone already exceeds the ~1 s decision period, Q1 is answered with no run at all
+and the answer closes the programme.
 
 🚨 **ATTEMPT 5, 2026-08-28 — THE PREDICTED OSCILLATION HAPPENED. VERDICT FAIL,
 6 of 8.** The oscillation was registered in §4 of
@@ -285,26 +300,17 @@ the hazardous test could not pay off even if it worked. See §8.
 ⚠️ **Do not re-open "would the firmware accept an uploaded path?" as new work.**
 It is moot, not pending.
 
-**NEXT, in order:**
-1-3. ✅ **DONE 2026-08-28** — beta82 released and deployed; the 1.34 m disk verified
-   on the deployed build; attempt 4 ran and proved the sign.
-4. ✅ **DONE** — criterion 2 repaired and predeclared
-   (`docs/phase2-steering-attempt5-predeclared-20260828.md`).
-5. ✅ **DONE** — attempt 5 ran. **2b PASSED, verdict FAIL 6/8 on 2a and 3.** The
-   oscillation predicted before dispatch is what happened.
-6. 🔑 **THE OPEN QUESTION IS NOW DEAD TIME, NOT THE SIGN AND NOT THE GAIN.** The
-   measured rotational lag is ≥ one ~1 Hz decision period, so a proportional loop
-   at this sample rate cannot be made stable by tuning. Before any attempt 6,
-   decide — in a document written first — which of these is being tested:
-   * **damp it** (a derivative/rate term, or command-rate limiting), accepting that
-     this is a real controller change needing its own criteria; or
-   * **shorten the dead time** (faster refresh, or a heading source that is not the
-     ~1 Hz position chord); or
-   * **accept 1 Hz proportional control is not stable here** and say so — which
-     would make stop-measure-go the answer for click-to-path, and is a legitimate
-     outcome, not a failure to fix.
-   ⚠️ **Do NOT lower `angular_speed_per_heading_degree` and re-run.** It cannot fix
-   dead time exceeding the sample period.
+**NEXT — the Phase 2 queue is CLOSED, not paused mid-task.**
+1-5. ✅ **DONE 2026-08-28** — beta82 released and deployed; the 1.34 m disk verified
+   on the deployed build; attempt 4 proved the sign; criterion 2 repaired and
+   predeclared; attempt 5 ran and the predicted oscillation happened.
+6. 🛑 **PARKED by the operator.** Nothing in Phase 2 is queued. If it resumes, the
+   entry point is `docs/phase2-dead-time-step-test-design-20260828.md` — and its
+   free arithmetic step comes before any motion.
+🔑 **The finding that stands regardless:** at ~1 Hz the loop carries roughly a full
+period of DEAD TIME, so proportional control cannot be stabilised by tuning. That
+is a property of the telemetry rate, not of this controller, and it will be true of
+any future attempt at continuous steering on this hardware.
 
 
 🛑 **STANDING CHECK, added 2026-08-28 because this mistake has now cost THREE
@@ -1683,6 +1689,13 @@ recommendation below.
    the tooling no longer has to be built. Read-only survey, 2026-08-15.
 4. **The goal is consistency, not precision** — click-to-go reliable enough to
    trust without watching.
+5. **Phase 2 continuous steering is PARKED, 2026-08-28.** Decided after attempt 5,
+   on value not on failure: it buys ~4x speed, not capability, and stop-measure-go
+   already delivers click-to-path at 6.0 m. **This overrides every "next steering
+   run" recommendation elsewhere in this file.** The measured blocker — dead time
+   >= the ~1 Hz decision period — is recorded and is a property of the telemetry
+   rate, so it does not expire. Resuming is an operator call, not a code question.
+   ⚠️ **Do not treat the parked Q1/Q2 step test as a work queue.**
 
 ⚠️ **Documentation is the known weak point, not capability.** On 2026-08-14 an
 audit of the three session-entry docs found a paragraph calling an
