@@ -68,7 +68,18 @@ not a tuning tweak: read
 `docs/phase2-acquisition-budget-decision-20260827.md` before touching it. The disk
 is COMPUTED from the budget, so raising one raises the clearance a run must prove
 — containment is not weakened, exposure and its required proof both grew.
-⚠️ **Built but NOT YET RELEASED OR DEPLOYED** as of end of session.
+⚠️ **Built and COMMITTED but NOT RELEASED OR DEPLOYED** as of end of session
+2026-08-27. The host still runs **beta81**, whose disk is still 1.06 m.
+
+**TOMORROW, in order:**
+1. Release beta82, deploy motion-disabled, verify the quartet/hashes/gate.
+2. ⚠️ **Re-check the corridor against 1.34 m, not 1.06 m** before opening a
+   window. The mower's 2026-08-27 spot had 5.07 m clearance, so it is ample —
+   but the number to check has changed.
+3. Phase 2 steering attempt 4:
+   `docs/phase2-steering-attempt3-design-20260827.md` (6 s window, 8° route
+   offset, angular 120). Criteria are predeclared and UNCHANGED in
+   `docs/phase2-steering-run1-predeclared-20260827.md`.
 
 🔑 **ACQUISITION IS MARGINAL BY CONSTRUCTION, independent of that stall.** At
 ~1 Hz, a 0.15 m chord from standstill needs ~2 position samples ≈ 2 s, and
