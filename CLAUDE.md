@@ -46,7 +46,8 @@ predeclared criteria are unexercised, so **there is nothing to score — and
 🚨 **ATTEMPT 3 DROVE 0.51 m WHILE BELIEVING IT HAD MOVED 0.021 m — a 24x
 under-observation.** Position sequence sat at **17 for a full second** while the
 mower travelled as commanded (`linear 400` for 2.159 s ≈ 0.54 m predicted, 0.5097 m
-actual). Blind travel stayed **inside the 1.06 m disk** and it stopped fail-closed
+actual). Blind travel stayed **inside the 1.06 m disk of the day** (the budget
+was 2.0 s then; it is 3.0 s / 1.34 m since) and it stopped fail-closed
 on `heading_acquisition_timeout` — **but it stopped because it was BLIND, not
 because it noticed.** Had the feed delivered just enough for the 0.15 m chord and
 then gone quiet, the controller would have steered on a stale position. Same shape
@@ -59,6 +60,15 @@ was re-established between attempts 2 and 3 and the burst-then-stall followed a
 reconnect. **n = 1 — a correlation to chase, NOT a mechanism to write down.**
 Attempt 2 minutes earlier measured 0.2407 m correctly; the behaviour is
 intermittent.
+
+✅ **ACQUISITION BUDGET RAISED 2.0 -> 3.0 s, 2026-08-27, operator-approved.**
+The blind disk therefore grows **1.06 -> 1.34 m** (`0.28 x budget + 0.50`), and
+blind travel grows from ~0.51 m to ~0.75 m. This is a **deliberate safety trade**,
+not a tuning tweak: read
+`docs/phase2-acquisition-budget-decision-20260827.md` before touching it. The disk
+is COMPUTED from the budget, so raising one raises the clearance a run must prove
+— containment is not weakened, exposure and its required proof both grew.
+⚠️ **Built but NOT YET RELEASED OR DEPLOYED** as of end of session.
 
 🔑 **ACQUISITION IS MARGINAL BY CONSTRUCTION, independent of that stall.** At
 ~1 Hz, a 0.15 m chord from standstill needs ~2 position samples ≈ 2 s, and
@@ -125,7 +135,7 @@ opening never steered against an unconfirmed heading — the exact error of the
 2026-08-24 run, which opened at 46.64° and saturated at 180 immediately. Heading
 came from a **0.4667 m position chord** (3.1x the 0.15 m floor) at **0.538°**
 uncertainty → course **278.55°**, against a pre-run two-way estimate of 276.96°,
-**1.59° apart**. Travel 0.4667 m inside the 1.06 m blind disk, post-stop
+**1.59° apart**. Travel 0.4667 m inside the then-1.06 m blind disk, post-stop
 observation clean, stop confirmed, `blockers: []` throughout, gate disarmed and
 verified from live API **and** RAW storage. Evidence
 `docs/evidence-phase2-acquisition-beta79-20260827.json`.
@@ -178,7 +188,7 @@ and the BLE session never recovered until a config-entry reload.
 2. Deploy beta79 motion-disabled (`docs/deploy-runbook-p0.md`) → arrow appears.
 3. Real `heading_acquisition_window` run — exercises Phase 2 defect 1 with **no
    steering**. The 2026-08-24 corridor blocker is gone; open lawn gives ~5 m
-   clearance against the 1.06 m disk.
+   clearance against the disk (1.06 m at the time; 1.34 m since 2026-08-27).
 4. **Only if 3 passes:** the steering-refusal decision. Read
    `docs/phase2-steering-refusal-recommendation-20260826.md` first — it scores
    the 2026-08-24 failure against the registered criteria and recommends opening
@@ -464,7 +474,8 @@ in force. Experimental v1 is pinned to measured `linear_speed=400` and
 
 🚫 **The 2026-08-24 frozen corridor cannot support blind acquisition.**
 Its live-start clearance is approximately 0.30 m; the complete required disk
-is **1.06 m** (0.28 m/s x 2.0 s + 0.50 m stop/guard overshoot), so it now
+was **1.06 m** (0.28 m/s x 2.0 s + 0.50 m stop/guard overshoot) and is
+**1.34 m** since the 2026-08-27 budget change (0.28 x 3.0 + 0.50), so it now
 refuses before movement. Read
 `docs/phase2-heading-safety-remediation-20260824.md`. Implementation and
 verification are offline only: no deployment, HA/BLE call, gate change, or

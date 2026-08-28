@@ -104,6 +104,11 @@ travel at stop; and gate state afterwards from the live API **and** RAW storage.
 
 ## Preconditions
 
+⚠️ **The acquisition budget moved to 3.0 s after this document was written**
+(`docs/phase2-acquisition-budget-decision-20260827.md`), so the blind disk is now
+**1.34 m**, not 1.06 m, and the corridor must clear that. The 8° offset and 6 s
+window below are unaffected.
+
 Daylight is not required — the steering path uses RTK position chords and has no
 VIO gate. Battery should be comfortable: attempts so far have run it from 57% to
 roughly 45%. BLE has drifted between −42 and −72 today; the record is explicit

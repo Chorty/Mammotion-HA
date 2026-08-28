@@ -8093,8 +8093,9 @@ async def _raw_pymammotion_motion_probe(  # noqa: PLR0913
 _CONTINUOUS_MAX_START_DRIFT_M = 0.30
 _CONTINUOUS_MIRROR_SUM_DEGREES = 90.13
 # The mower is already stopped during this wait, so it consumes no blind-motion
-# budget and does not enlarge the 1.06 m acquisition disk. The 3.5 s bound covers
-# the stationary matrix's 2.909 s maximum position gap with measured margin.
+# budget and does not enlarge the acquisition disk (1.34 m since the 2026-08-27
+# budget change; 1.06 m before it). The 3.5 s bound covers the stationary
+# matrix's 2.909 s maximum position gap with measured margin.
 _CONTINUOUS_POST_STOP_OBSERVATION_S = 3.5
 
 #: Queue depth for a SAFETY position-evidence stream, in samples.

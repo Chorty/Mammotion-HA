@@ -52,11 +52,21 @@ STRAIGHT_CORRIDOR = [
     {"x": 3.3, "y": 0.3},
     {"x": -0.3, "y": 0.3},
 ]
+# Half-width 1.5 m, so the blind-acquisition disk fits with margin.
+#
+# ⚠️ **Widened from 1.2 to 1.5 on 2026-08-27 because the disk GREW.** Raising
+# `max_heading_acquisition_s` 2.0 -> 3.0 s took the required radius from 1.06 m to
+# 1.34 m, and a corridor that was "healthy" at 1.06 m is genuinely not healthy at
+# 1.34 m. This edit is the safety cost of that budget change made concrete -- real
+# runs now need more clearance too. It is NOT a threshold moved to make a test
+# pass: the gate still refuses this corridor if the disk grows past 1.5 m, which
+# `test_narrow_corridor_refuses_blind_heading_acquisition` pins from the other
+# side.
 ACQUISITION_CORRIDOR = [
-    {"x": -1.2, "y": -1.2},
-    {"x": 4.2, "y": -1.2},
-    {"x": 4.2, "y": 1.2},
-    {"x": -1.2, "y": 1.2},
+    {"x": -1.5, "y": -1.5},
+    {"x": 4.5, "y": -1.5},
+    {"x": 4.5, "y": 1.5},
+    {"x": -1.5, "y": 1.5},
 ]
 
 
@@ -330,10 +340,11 @@ def test_dry_run_sends_nothing_and_reports_the_full_plan(
         "minimum_chord_m": 0.15,
         "maximum_age_s": 2.0,
     }
-    assert result["acquisition"]["required_radius_m"] == pytest.approx(1.06)
-    assert result["acquisition"]["boundary_clearance_m"] == pytest.approx(1.2)
+    assert result["acquisition"]["required_radius_m"] == pytest.approx(1.34)
+    assert result["acquisition"]["boundary_clearance_m"] == pytest.approx(1.5)
     assert result["remaining_budgets"] == {
-        "acquisition_s": 2.0,
+        # 3.0 s since 2026-08-27; see ContinuousControllerConfig for the trade.
+        "acquisition_s": 3.0,
         "window_s": 4.0,
         "distance_m": 1.5,
     }
@@ -362,7 +373,7 @@ def test_real_continuous_steering_is_blocked_before_dispatch(
             {
                 "name": "blind_heading_acquisition_contained",
                 "passed": True,
-                "diagnostics": {"required_radius_m": 1.06},
+                "diagnostics": {"required_radius_m": 1.34},
             }
         ],
     )
@@ -411,7 +422,7 @@ def test_steering_opt_in_is_required_but_does_not_bypass_other_gates(
             {
                 "name": "blind_heading_acquisition_contained",
                 "passed": True,
-                "diagnostics": {"required_radius_m": 1.06},
+                "diagnostics": {"required_radius_m": 1.34},
             }
         ],
     )
@@ -493,7 +504,7 @@ def test_acquisition_dispatches_no_angular_command(
             {
                 "name": "blind_heading_acquisition_contained",
                 "passed": True,
-                "diagnostics": {"required_radius_m": 1.06},
+                "diagnostics": {"required_radius_m": 1.34},
             }
         ],
     )
@@ -611,7 +622,7 @@ def test_start_drift_gate_is_dry_run_exempt() -> None:
 
 
 def test_narrow_corridor_refuses_blind_heading_acquisition() -> None:
-    """The frozen 0.30 m corridor cannot contain the required 1.06 m disk."""
+    """The frozen 0.30 m corridor cannot contain the required 1.34 m disk."""
     gates = _continuous_motion_gates(
         _FakeCoordinator(),
         _snapshot(),
@@ -626,7 +637,7 @@ def test_narrow_corridor_refuses_blind_heading_acquisition() -> None:
     gate = next(g for g in gates if g["name"] == "blind_heading_acquisition_contained")
 
     assert gate["passed"] is False
-    assert gate["diagnostics"]["required_radius_m"] == pytest.approx(1.06)
+    assert gate["diagnostics"]["required_radius_m"] == pytest.approx(1.34)
     assert gate["diagnostics"]["boundary_clearance_m"] == pytest.approx(0.30)
     assert gate["diagnostics"]["feasible"] is False
 
@@ -657,7 +668,7 @@ def test_toward_never_controls_blind_acquisition(toward: float | None) -> None:
     gate = next(g for g in gates if g["name"] == "blind_heading_acquisition_contained")
 
     assert gate["passed"] is True
-    assert gate["diagnostics"]["boundary_clearance_m"] == pytest.approx(1.2)
+    assert gate["diagnostics"]["boundary_clearance_m"] == pytest.approx(1.5)
 
 
 def test_blind_acquisition_gate_is_not_dry_run_exempt() -> None:
@@ -676,7 +687,7 @@ def test_blind_acquisition_gate_is_not_dry_run_exempt() -> None:
     gate = next(g for g in gates if g["name"] == "blind_heading_acquisition_contained")
 
     assert gate["passed"] is False
-    assert gate["diagnostics"]["required_radius_m"] == pytest.approx(1.06)
+    assert gate["diagnostics"]["required_radius_m"] == pytest.approx(1.34)
 
 
 @pytest.mark.parametrize(

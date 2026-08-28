@@ -159,11 +159,11 @@ reaches the steering path. Condition A is met, not bypassed.
 **A. Run the acquisition test first, and require it to pass.**
 `heading_acquisition_window` with `dry_run: false` exercises defect 1's fix, the
 fresh-origin requirement, the zero-angular opening, the stop, and the 3.5 s
-stopped observation — **without enabling steering**. It commands ~0.56 m inside a
-1.06 m disk. If the opening state machine misbehaves, it surfaces here at a
+stopped observation — **without enabling steering**. It commanded ~0.56 m inside the then-1.06 m disk; **the disk is 1.34 m since the
+2026-08-27 budget change**. If the opening state machine misbehaves, it surfaces here at a
 fraction of the exposure. The 2026-08-24 corridor blocker is gone: the mower's
-current open-lawn position has **5.07 m** clearance against the 1.06 m
-requirement.
+current open-lawn position has **5.07 m** clearance against the disk (1.06 m at
+the time; **1.34 m** since the 2026-08-27 budget change — still ample).
 
 **B. Open the refusal with tightened bounds for the first steering run, not the
 current ones.** Specifically:

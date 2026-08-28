@@ -119,13 +119,34 @@ class ContinuousControllerConfig:
     # confirm a separate `toward` value: the executor must derive the heading
     # from the chord and provide explicit `HeadingEvidence`.
     min_travel_for_heading_trust_m: float = 0.15
-    # A missing opening chord or an old rolling chord stops the window. Both
-    # match the existing 2 s stale-position bound.
-    max_heading_acquisition_s: float = 2.0
+    # A missing opening chord or an old rolling chord stops the window.
+    #
+    # 🚨 **RAISED 2.0 -> 3.0 s on 2026-08-27, and it is a SAFETY TRADE, not a
+    # tuning tweak** -- see `docs/phase2-acquisition-budget-decision-20260827.md`.
+    # Acquiring heading needs a >= `min_travel_for_heading_trust_m` (0.15 m)
+    # chord, which from a standstill takes about TWO position samples. The feed's
+    # median interval is 1016 ms (measured over 117 intervals, 2026-08-27,
+    # `docs/evidence-position-cadence-post-reconnect-20260827.json`), so a 2.0 s
+    # budget bought about two samples and losing either one failed acquisition.
+    # That is exactly what separated Phase 2 attempt 2 (acquired at 1.95 s) from
+    # attempt 3 (timed out at 2.03 s) -- 57% of intervals exceed 1010 ms, so it
+    # was close to a coin flip, and neither outcome was a fault.
+    #
+    # 3.0 s buys a third sample, so acquisition survives losing one interval.
+    # ⚠️ The cost is real and deliberate: blind travel grows from ~0.51 m to
+    # ~0.75 m and the required clear disk grows 26%, from 1.06 m to 1.34 m.
+    # 🗑️ Do NOT instead lower `min_travel_for_heading_trust_m` -- it is the
+    # registered informativeness floor at sigma = 0.0031 m position noise, and
+    # lowering it to make a test pass is what the 2026-08-23 repair prevents.
+    max_heading_acquisition_s: float = 3.0
+    # Unchanged: this bounds how OLD a heading may be when steering on it, a
+    # different question from how long acquiring one may take.
     max_heading_age_s: float = 2.0
     # Blind acquisition is admitted only when a complete worst-case disk fits
     # inside the frozen corridor. At the validated v1 command this is
-    # 0.28 m/s * 2.0 s + the banked 0.50 m guard/stop overshoot = 1.06 m.
+    # 0.28 m/s * 3.0 s + the banked 0.50 m guard/stop overshoot = **1.34 m**
+    # (it was 1.06 m while the budget was 2.0 s). The disk is COMPUTED from the
+    # budget, so raising one raises the clearance a run must prove.
     max_safety_speed_mps: float = 0.28
     stop_overshoot_m: float = 0.50
     lookahead_m: float = 0.80

@@ -475,13 +475,19 @@ def test_distance_alone_never_confirms_a_heading() -> None:
     assert decision.heading_confirmed_by_motion is False
 
 
-def test_missing_heading_evidence_times_out_after_two_seconds() -> None:
-    """Acquisition cannot continue past its shared two-second bound."""
+def test_missing_heading_evidence_times_out_at_the_acquisition_budget() -> None:
+    """Acquisition cannot continue past `max_heading_acquisition_s`.
+
+    That budget was 2.0 s until 2026-08-27 and is now 3.0 s; the test asserts
+    against the config rather than a literal so it tracks the value it guards.
+    See `docs/phase2-acquisition-budget-decision-20260827.md` for the trade.
+    """
+    budget = ContinuousControllerConfig().max_heading_acquisition_s
     decision = continuous_control_decision(
         _route(),
         _observation(
             course_heading_degrees=123.0,
-            elapsed_s=2.0,
+            elapsed_s=budget,
             heading_evidence=None,
         ),
     )
@@ -1069,28 +1075,36 @@ def test_position_chord_threshold_and_course_signs() -> None:
     assert south is not None and south.course_heading_degrees == pytest.approx(-90.0)
 
 
-def test_blind_acquisition_requires_the_complete_106_m_disk() -> None:
-    """Clearance must cover acquisition travel plus stopping overshoot."""
-    narrow = [
-        Point(-0.30, -0.30),
-        Point(0.30, -0.30),
-        Point(0.30, 0.30),
-        Point(-0.30, 0.30),
-    ]
-    wide = [
-        Point(-1.06, -1.06),
-        Point(1.06, -1.06),
-        Point(1.06, 1.06),
-        Point(-1.06, 1.06),
-    ]
+def test_blind_acquisition_requires_the_complete_disk() -> None:
+    """Clearance must cover acquisition travel plus stopping overshoot.
 
-    refused = blind_acquisition_feasibility(Point(0.0, 0.0), narrow)
-    admitted = blind_acquisition_feasibility(Point(0.0, 0.0), wide)
+    The corridors are derived from the config rather than hard-coded, so this
+    test tracks the disk it guards. It was written against a literal 1.06 m and
+    went stale the moment `max_heading_acquisition_s` moved 2.0 -> 3.0 s on
+    2026-08-27, which is exactly the drift the derivation prevents.
+    """
+    config = ContinuousControllerConfig()
+    radius = (
+        config.max_safety_speed_mps * config.max_heading_acquisition_s
+        + config.stop_overshoot_m
+    )
 
-    assert refused.required_radius_m == pytest.approx(1.06)
+    def square(half_width: float) -> list[Point]:
+        return [
+            Point(-half_width, -half_width),
+            Point(half_width, -half_width),
+            Point(half_width, half_width),
+            Point(-half_width, half_width),
+        ]
+
+    refused = blind_acquisition_feasibility(Point(0.0, 0.0), square(0.30))
+    # Exactly the required radius: admission is inclusive at the boundary.
+    admitted = blind_acquisition_feasibility(Point(0.0, 0.0), square(radius))
+
+    assert refused.required_radius_m == pytest.approx(radius)
     assert refused.boundary_clearance_m == pytest.approx(0.30)
     assert refused.feasible is False
-    assert admitted.boundary_clearance_m == pytest.approx(1.06)
+    assert admitted.boundary_clearance_m == pytest.approx(radius)
     assert admitted.feasible is True
 
 
