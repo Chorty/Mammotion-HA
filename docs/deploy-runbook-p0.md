@@ -94,9 +94,9 @@ time. No action was taken.
 🔑 **The `blade_rpm_nonzero` latch did NOT recur.** `cutter_rpm 0`,
 `blade_safe_for_motion: on` before and after the deploy.
 
-🛑 **NOT verified: a browser has not loaded the beta82 card.** Both serving
-paths, the md5s and the Lovelace cache key are confirmed server-side; the
-rendered footer still needs a human to look at it.
+✅ **Browser-verified by the operator, 2026-08-28: the card reads `0.6.4-beta82`.**
+The deploy is now closed end to end — backend bytes, both serving paths, the
+Lovelace cache key, and the rendered card.
 
 
 ### beta78 -> beta79 — 2026-08-27 17:05-17:12 EDT, motion-disabled

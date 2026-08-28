@@ -826,12 +826,157 @@ raw_pymammotion_motion_probe:
       selector:
         boolean:
 
+raw_pymammotion_step_response_probe:
+  description: >-
+    Open-loop dead-time measurement. Drives a fixed baseline -> step -> settle
+    command sequence (angular 0, then a measured angular, then angular 0 again)
+    without stopping in between, and records position at the in-window cadence.
+    There is NO controller: no route, no aim point, no steering law. It answers
+    whether the control lag is in the actuator or the observer, and how large it
+    is (docs/phase2-dead-time-step-test-design-20260828.md). corridor_polygon
+    must be pre-scanned and margin-verified offline and must clear
+    max_travel_m plus 0.50 m of stopping overshoot in EVERY direction, because
+    the path curves and its shape is the unknown under test. dry_run defaults
+    true and sends nothing; a real run additionally requires
+    confirm_step_response_run.
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+    route_start:
+      required: true
+      example:
+        x: 5.98
+        y: -5.24
+      selector:
+        object:
+    corridor_polygon:
+      required: true
+      example:
+        - x: 2.98
+          y: -8.24
+        - x: 8.98
+          y: -8.24
+        - x: 8.98
+          y: -2.24
+        - x: 2.98
+          y: -2.24
+      selector:
+        object:
+    linear_speed:
+      required: false
+      default: 400
+      example: 400
+      selector:
+        number:
+          min: 400
+          max: 400
+          step: 1
+    step_angular_speed:
+      required: false
+      default: 120
+      example: 120
+      selector:
+        select:
+          options:
+            - "-180"
+            - "-120"
+            - "120"
+            - "180"
+    baseline_ms:
+      required: false
+      default: 3000
+      example: 3000
+      selector:
+        number:
+          min: 1000
+          max: 5000
+          step: 100
+    step_ms:
+      required: false
+      default: 3000
+      example: 3000
+      selector:
+        number:
+          min: 1000
+          max: 5000
+          step: 100
+    settle_ms:
+      required: false
+      default: 4000
+      example: 4000
+      selector:
+        number:
+          min: 1000
+          max: 6000
+          step: 100
+    motion_refresh_interval_ms:
+      required: false
+      default: 200
+      example: 200
+      selector:
+        number:
+          min: 50
+          max: 1000
+          step: 50
+    sample_interval_ms:
+      required: false
+      default: 100
+      example: 100
+      selector:
+        number:
+          min: 50
+          max: 1000
+          step: 50
+    max_travel_m:
+      required: false
+      default: 2.50
+      example: 2.50
+      selector:
+        number:
+          min: 0.10
+          max: 3.0
+          step: 0.05
+          unit_of_measurement: m
+    prefer_ble:
+      required: false
+      default: true
+      example: true
+      selector:
+        boolean:
+    dry_run:
+      required: false
+      default: true
+      example: true
+      selector:
+        boolean:
+    confirm_blades_off:
+      required: false
+      default: false
+      example: false
+      selector:
+        boolean:
+    confirm_clear_area:
+      required: false
+      default: false
+      example: false
+      selector:
+        boolean:
+    confirm_step_response_run:
+      required: false
+      default: false
+      example: false
+      selector:
+        boolean:
+
 continuous_motion_window:
   description: >-
     Dry-runs Phase 2 steering geometry. Real execution is currently blocked
     with steering_not_motion_validated. Heading uses only fresh position chords
     of at least 0.15 m; toward is diagnostic only. corridor_polygon must
-    be pre-scanned, margin-verified offline, and provide at least 1.06 m of
+    be pre-scanned, margin-verified offline, and provide at least 1.34 m of
     boundary clearance around the live start
     (scripts/freeze_phase1_corridors.py, scripts/scan_contained_bearings.py).
     This service never scans or freezes one itself. dry_run defaults true and
@@ -964,7 +1109,7 @@ heading_acquisition_window:
     measured linear 400 command with angular speed fixed at zero, and stops on
     the first qualifying 0.15 m chord or any two-second, one-metre, corridor,
     position-sequence, transport-epoch, telemetry-age, refresh, or BLE fault.
-    The supplied corridor must contain the complete 1.06 m blind-acquisition
+    The supplied corridor must contain the complete 1.34 m blind-acquisition
     disk around the live origin. No heading token is persisted and steering is
     never enabled.
   fields:

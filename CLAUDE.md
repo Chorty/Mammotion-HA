@@ -55,7 +55,17 @@ trust without watching"*, which does not mention speed. See standing decision 5.
 ⚠️ **Do NOT propose steering runs, gain changes, damping terms, or attempt 6 as
 next work.** The two questions that would justify resuming (Q1 actuator-vs-observer
 lag, Q2 its size) are designed in
-`docs/phase2-dead-time-step-test-design-20260828.md` and **explicitly deferred**.
+`docs/phase2-dead-time-step-test-design-20260828.md`.
+🆕 **The probe that answers them now EXISTS but has NEVER RUN:
+`raw_pymammotion_step_response_probe`** (built 2026-08-28 at the operator's
+request). Open loop, **no controller** — baseline → step → settle through one
+serialized writer, `step_angular_speed` restricted to the measured ±120/±180
+band, `confirm_step_response_run` required per call, `step_path_contained`
+requiring `max_travel_m + 0.50 m` of clearance in every direction, and both
+helper tasks tripping the travel guard if they die.
+🛑 **Built and tested offline only — NOT RELEASED, NOT DEPLOYED, NEVER RUN.** 23
+offline tests; running it needs a release, a deploy, a fresh corridor scan and
+explicit per-run authorization.
 🔑 **Read that document's second section before ever commanding motion for this:
 half of Q1 is ARITHMETIC on banked captures, not an experiment.** If observer lag
 alone already exceeds the ~1 s decision period, Q1 is answered with no run at all

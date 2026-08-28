@@ -2490,6 +2490,76 @@
           "description": "Must be off. This validation pass does not support blade movement."
         }
       }
+    },
+    "raw_pymammotion_step_response_probe": {
+      "name": "Raw PyMammotion step response probe",
+      "description": "Open-loop dead-time measurement: drives baseline -> step -> settle without stopping and records position, to separate actuator lag from observer lag. No controller, no route, no steering law. Dry run by default.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "The mower to probe."
+        },
+        "route_start": {
+          "name": "Frozen start",
+          "description": "Pre-scanned start point as x/y in mower map coordinates. Never re-derived from live position."
+        },
+        "corridor_polygon": {
+          "name": "Corridor polygon",
+          "description": "Pre-scanned, offline margin-verified containment polygon. Must clear max_travel_m plus 0.50 m of stopping overshoot in every direction."
+        },
+        "linear_speed": {
+          "name": "Linear speed",
+          "description": "Forward command. Fixed at the measured value 400."
+        },
+        "step_angular_speed": {
+          "name": "Step angular speed",
+          "description": "Angular command applied during the step phase. Measured values only (120 or 180, either sign)."
+        },
+        "baseline_ms": {
+          "name": "Baseline duration",
+          "description": "Straight-line phase at angular 0, establishing a course before the step."
+        },
+        "step_ms": {
+          "name": "Step duration",
+          "description": "Phase holding the step angular command, used to measure the steady rotation rate."
+        },
+        "settle_ms": {
+          "name": "Settle duration",
+          "description": "Phase back at angular 0. This is the measurement: rotation accumulated here is the carryover."
+        },
+        "motion_refresh_interval_ms": {
+          "name": "Motion refresh interval",
+          "description": "Command resend cadence that holds the movement open."
+        },
+        "sample_interval_ms": {
+          "name": "Sample interval",
+          "description": "In-window telemetry sampling cadence."
+        },
+        "max_travel_m": {
+          "name": "Maximum travel",
+          "description": "Distance guard. Reaching it aborts the window and brings the mandatory stop forward."
+        },
+        "prefer_ble": {
+          "name": "Prefer BLE",
+          "description": "Use the BLE transport rather than cloud."
+        },
+        "dry_run": {
+          "name": "Dry run",
+          "description": "Plan and evaluate every safety gate without sending anything."
+        },
+        "confirm_blades_off": {
+          "name": "Confirm blades off",
+          "description": "Operator confirmation that the blades are off."
+        },
+        "confirm_clear_area": {
+          "name": "Confirm clear area",
+          "description": "Operator confirmation that the area is clear and supervised."
+        },
+        "confirm_step_response_run": {
+          "name": "Confirm step response run",
+          "description": "Per-call opt-in for this open-loop curved drive. Arming the motion gate is deliberately not sufficient."
+        }
+      }
     }
   },
   "exceptions": {

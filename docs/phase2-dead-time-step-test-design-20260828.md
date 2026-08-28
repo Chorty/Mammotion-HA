@@ -80,23 +80,54 @@ existing 100 ms in-window cadence, plus refresh write completions. The 100 ms
 sampler reads a cache that only refreshes at ~1 Hz, which is fine — what it buys
 is **arrival timestamps to 100 ms**, bounding when rotation started and stopped.
 
-## 🛑 It cannot be run with the services that exist today
+## ✅ The service now exists — `raw_pymammotion_step_response_probe`
 
-`_continuous_refresh_window` is the only writer that can change a command
-mid-window, and it has **exactly one call site** — inside
-`continuous_motion_window`, the steering service being parked. Every other motion
-path uses `_motion_refresh_window`, whose contract is explicitly to resend an
-**identical** command.
+**Built 2026-08-28 at the operator's request, after this document was written.**
+The paragraph this replaces said the test could not be run with existing
+services; that was true, and it is why the service was added.
 
-So this test needs a **small new open-loop service**: a two-phase command window
-driven by one serialized writer, distance-guarded, with the existing in-window
-sampling. It reuses `_continuous_refresh_window`; it does **not** need the
-controller, the corridor-breach override, or the heading state machine.
+Why nothing existing could do it: `_motion_refresh_window`'s contract is
+explicitly to resend an **identical** command, so it cannot express a step.
+`_continuous_refresh_window` **can** resend a changing one, but its only other
+caller is `continuous_motion_window` — the closed-loop steering service that
+standing decision 5 parks. Assembling the step from two bounded probe windows
+fails too: **the stop between them resets exactly the carryover being measured.**
 
-⚠️ **That is real code, and it is not free.** Weigh it against Q0: the programme is
-parked precisely because continuous steering buys ~4x speed and not capability.
-**Do not write this service speculatively** — write it only if the arithmetic
-above leaves Q1 genuinely open *and* the operator wants the programme resumed.
+The new service reuses `_continuous_refresh_window` as its one serialized writer
+and `_capture_in_window_telemetry` as its sampler and distance guard. It adds
+**no controller** — no route, no aim point, no steering law, no corridor-breach
+override, no heading state machine.
+
+| | |
+| --- | --- |
+| phases | `baseline_ms` 3000 → `step_ms` 3000 → `settle_ms` 4000, total capped at 12000 |
+| `step_angular_speed` | **±120 or ±180 only** — the measured band, both signs |
+| `max_travel_m` | 2.50 default, 3.0 ceiling; trips `travel_abort` and brings the mandatory stop forward |
+| containment | `step_path_contained` requires `max_travel_m + 0.50 m` of clearance in **every** direction |
+| opt-in | `confirm_step_response_run` **per call** — arming the motion gate is deliberately not sufficient |
+| default | `dry_run: true`, sends nothing |
+
+🔑 **Both helper tasks trip the guard if they die.** A dead sampler means the
+distance guard is gone; a phase scheduler that dies mid-step leaves a turn
+command standing for the rest of the window. Both set `travel_abort`, which stops
+the refresh loop and brings the stop forward — the same fail-closed shape as
+beta72's `_abort_if_sampler_died`.
+
+⚠️ **Both signs are offered deliberately.** A one-sided step cannot distinguish
+rotational carryover from a direction-dependent drivetrain asymmetry. Run both
+before believing either.
+
+**Outputs:** `course_series` (per-interval chord courses, each labelled with its
+phase by **midpoint** and flagged `informative` against the 0.15 m floor) and
+`analysis` (`omega_step_deg_per_s`, `rotation_after_zero_deg`,
+`tau_actuator_s`). ⚠️ **The series is the deliverable and the analysis is a
+convenience** — this project's standing rule is to verify with per-item records,
+not aggregates.
+
+🛑 **Built, tested offline, NOT deployed and NEVER RUN.** 23 offline tests, no
+coordinator I/O, no BLE, no mower command. Running it needs a release, a deploy,
+a fresh corridor scan and explicit per-run authorization, exactly like every
+other physical step in this project.
 
 ## Containment
 

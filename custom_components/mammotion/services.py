@@ -46,6 +46,9 @@ from .continuous_controller import (
     blind_acquisition_feasibility,
     continuous_control_decision,
     course_from_position_chord,
+    normalize_degrees,
+    point_in_polygon,
+    polygon_boundary_clearance,
     polygon_is_valid,
 )
 from .continuous_controller import (
@@ -110,6 +113,7 @@ SERVICE_MANUAL_VELOCITY_HEADING_CALIBRATION_TEST = (
 SERVICE_RAW_PYMAMMOTION_MOTION_PROBE = "raw_pymammotion_motion_probe"
 SERVICE_CONTINUOUS_MOTION_WINDOW = "continuous_motion_window"
 SERVICE_HEADING_ACQUISITION_WINDOW = "heading_acquisition_window"
+SERVICE_STEP_RESPONSE_PROBE = "raw_pymammotion_step_response_probe"
 SERVICE_RAW_PYMAMMOTION_EXECUTE_SEGMENT = "raw_pymammotion_execute_segment"
 SERVICE_RAW_PYMAMMOTION_ANGULAR_CALIBRATION = "raw_pymammotion_angular_calibration"
 SERVICE_RAW_PYMAMMOTION_TURN_TO_HEADING = "raw_pymammotion_turn_to_heading"
@@ -964,6 +968,50 @@ _CONTINUOUS_MOTION_POINT_SCHEMA = vol.Schema(
     {
         vol.Required("x"): vol.Coerce(float),
         vol.Required("y"): vol.Coerce(float),
+    }
+)
+
+STEP_RESPONSE_PROBE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+        vol.Required("route_start"): _CONTINUOUS_MOTION_POINT_SCHEMA,
+        vol.Required("corridor_polygon"): [_CONTINUOUS_MOTION_POINT_SCHEMA],
+        vol.Optional("linear_speed", default=400): vol.All(
+            vol.Coerce(int), vol.In([400])
+        ),
+        # 🚨 MEASURED VALUES ONLY, both signs. The turn rate is characterised
+        # across angular 120-180; anything smaller is unmeasured rather than
+        # safer and may sit in an actuation deadband. Both signs are offered
+        # because a one-sided step cannot distinguish carryover from a
+        # direction-dependent drivetrain asymmetry.
+        vol.Optional("step_angular_speed", default=120): vol.All(
+            vol.Coerce(int), vol.In([-180, -120, 120, 180])
+        ),
+        vol.Optional("baseline_ms", default=3000): vol.All(
+            vol.Coerce(int), vol.Range(min=1000, max=5000)
+        ),
+        vol.Optional("step_ms", default=3000): vol.All(
+            vol.Coerce(int), vol.Range(min=1000, max=5000)
+        ),
+        # The settle phase IS the experiment: it must outlast the carryover it
+        # is measuring, or tau is censored rather than measured.
+        vol.Optional("settle_ms", default=4000): vol.All(
+            vol.Coerce(int), vol.Range(min=1000, max=6000)
+        ),
+        vol.Optional("motion_refresh_interval_ms", default=200): vol.All(
+            vol.Coerce(int), vol.Range(min=50, max=1000)
+        ),
+        vol.Optional("sample_interval_ms", default=100): vol.All(
+            vol.Coerce(int), vol.Range(min=50, max=1000)
+        ),
+        vol.Optional("max_travel_m", default=2.50): vol.All(
+            vol.Coerce(float), vol.Range(min=0.10, max=3.0)
+        ),
+        vol.Optional("prefer_ble", default=True): cv.boolean,
+        vol.Optional("dry_run", default=True): cv.boolean,
+        vol.Optional("confirm_blades_off", default=False): cv.boolean,
+        vol.Optional("confirm_clear_area", default=False): cv.boolean,
+        vol.Optional("confirm_step_response_run", default=False): cv.boolean,
     }
 )
 
@@ -9321,6 +9369,577 @@ async def _heading_acquisition_window(
                             f"{type(err).__name__}: {err}"
                         )
             position_stream.close()
+
+
+# ============================================================================
+# Open-loop step-response probe -- answers Q1 (is the dead time in the ACTUATOR
+# or the OBSERVER?) and Q2 (how large is it?) from
+# `docs/phase2-dead-time-step-test-design-20260828.md`.
+#
+# 🔑 WHY THIS EXISTS AS A SEPARATE SERVICE. `_motion_refresh_window`'s contract
+# is explicitly to resend an IDENTICAL command, so it cannot express a step.
+# `_continuous_refresh_window` CAN resend a changing one, but its only other
+# caller is `continuous_motion_window` -- the closed-loop steering service that
+# standing decision 5 parks. Assembling the step out of two bounded probe
+# windows does not work either: the stop between them resets exactly the
+# rotational carryover being measured.
+#
+# 🔑 THIS PROBE HAS NO CONTROLLER. No route, no aim point, no steering law, no
+# corridor-breach override, no heading state machine. It commands a fixed
+# sequence and records. That is what makes it cheaper to reason about than
+# either steering attempt, and it is deliberate: the question is about the
+# PLANT, so nothing in the loop should be able to influence the answer.
+# ============================================================================
+
+# Sized from the design document, not from convenience. The probe drives an
+# OPEN LOOP curved path and nothing steers it back, so the only honest
+# containment is a disk around the frozen start large enough for every path the
+# command sequence can produce, plus the banked stop overshoot -- the same shape
+# as `blind_acquisition_feasibility`.
+# ⚠️ `stop_overshoot_m` is 0.50 m and attempt 5 measured 0.4544 m of post-stop
+# creep (docs/evidence-phase2-steering-attempt5-20260828.json) -- a 9% margin.
+# Budget the full constant and do not raise `linear_speed`.
+_STEP_RESPONSE_MAX_TOTAL_MS = 12000
+_STEP_RESPONSE_DEFAULT_TRAVEL_M = 2.50
+
+
+def _step_response_gates(
+    coordinator: MammotionReportUpdateCoordinator,
+    before: dict[str, Any],
+    *,
+    route_start: dict[str, float],
+    corridor_polygon: list[dict[str, float]],
+    max_travel_m: float,
+    dry_run: bool,
+    confirm_blades_off: bool,
+    confirm_clear_area: bool,
+) -> list[dict[str, Any]]:
+    """Return the safety gates for one open-loop step-response window."""
+    gates = list(
+        _manual_velocity_pulse_gates(
+            coordinator,
+            before,
+            dry_run=dry_run,
+            confirm_blades_off=confirm_blades_off,
+            confirm_clear_area=confirm_clear_area,
+        )
+    )
+    corridor_points = [ContinuousPoint(**point) for point in corridor_polygon]
+    corridor_valid = polygon_is_valid(corridor_points)
+    position = before.get("position", {}) or {}
+    live_x, live_y = position.get("x"), position.get("y")
+    drift = (
+        math.hypot(live_x - route_start["x"], live_y - route_start["y"])
+        if isinstance(live_x, (int, float)) and isinstance(live_y, (int, float))
+        else None
+    )
+    gates.append(
+        {
+            "name": "corridor_polygon_valid",
+            "passed": corridor_valid,
+            "detail": "The frozen corridor must be a real polygon, >= 3 vertices.",
+        }
+    )
+    gates.append(
+        {
+            "name": "frozen_start_inside_corridor",
+            "passed": corridor_valid
+            and _point_in_polygon(route_start, corridor_polygon),
+            "detail": "The frozen start must be inside the frozen corridor.",
+        }
+    )
+    gates.append(
+        {
+            "name": "start_drift_within_bound",
+            "passed": dry_run
+            or (drift is not None and drift <= _CONTINUOUS_MAX_START_DRIFT_M),
+            "detail": (
+                f"Live position must be within {_CONTINUOUS_MAX_START_DRIFT_M} m "
+                "of the frozen start. The start is never re-derived from live "
+                "position -- this gate aborts instead."
+            ),
+            "diagnostics": {"drift_m": drift},
+        }
+    )
+    # The open-loop path is curved and its exact shape is the UNKNOWN this probe
+    # exists to measure, so no direction may be assumed: require the whole disk.
+    # Computed directly rather than through `blind_acquisition_feasibility` --
+    # that helper derives its radius from the heading-acquisition budget, and
+    # bending this probe's budget into that shape would make the number look
+    # like an acquisition disk when it is not one.
+    stop_overshoot_m = ContinuousControllerConfig().stop_overshoot_m
+    required = round(max_travel_m + stop_overshoot_m, 6)
+    live_point = (
+        ContinuousPoint(float(live_x), float(live_y))
+        if isinstance(live_x, (int, float)) and isinstance(live_y, (int, float))
+        else None
+    )
+    clearance = (
+        polygon_boundary_clearance(live_point, corridor_points)
+        if live_point is not None and corridor_valid
+        else None
+    )
+    live_inside = (
+        point_in_polygon(live_point, corridor_points)
+        if live_point is not None and corridor_valid
+        else False
+    )
+    gates.append(
+        {
+            "name": "step_path_contained",
+            "passed": bool(
+                live_inside and clearance is not None and clearance >= required
+            ),
+            "detail": (
+                "The probe steers open loop on a curved path whose shape is the "
+                "unknown under test, so EVERY possible ray must fit the frozen "
+                f"corridor: {max_travel_m} m of commanded travel plus "
+                f"{stop_overshoot_m} m stopping/guard overshoot = {required} m."
+            ),
+            "diagnostics": {
+                "required_radius_m": required,
+                "boundary_clearance_m": clearance,
+                "live_position_inside": live_inside,
+                "commanded_travel_m": max_travel_m,
+                "stop_overshoot_m": stop_overshoot_m,
+            },
+        }
+    )
+    return gates
+
+
+async def _step_response_phase_scheduler(
+    command_state: dict[str, int],
+    *,
+    window_started: float,
+    baseline_ms: int,
+    step_ms: int,
+    step_angular_speed: int,
+    abort_event: asyncio.Event,
+) -> list[dict[str, Any]]:
+    """Flip the shared command through baseline -> step -> settle on the clock.
+
+    Writes only `command_state`, which `_continuous_refresh_window` re-reads on
+    every 200 ms write; it never touches BLE itself. That is the same
+    one-serialized-writer handoff `_continuous_decision_loop` relies on, and the
+    reason a phase change reaches the wire within one refresh interval -- proven
+    on attempt 5, whose wire log shows angular changing within ~200 ms of each
+    decision.
+    """
+    transitions: list[dict[str, Any]] = []
+
+    async def _hold_until(elapsed_ms: int) -> bool:
+        while True:
+            remaining = window_started + elapsed_ms / 1000.0 - time.monotonic()
+            if remaining <= 0:
+                return not abort_event.is_set()
+            if abort_event.is_set():
+                return False
+            await asyncio.sleep(min(remaining, 0.05))
+
+    def _record(phase: str, angular: int) -> None:
+        command_state["angular_speed"] = angular
+        transitions.append(
+            {
+                "phase": phase,
+                "angular_speed": angular,
+                "elapsed_ms": round((time.monotonic() - window_started) * 1000, 3),
+            }
+        )
+
+    _record("baseline", 0)
+    if await _hold_until(baseline_ms):
+        _record("step", step_angular_speed)
+    if await _hold_until(baseline_ms + step_ms):
+        # 🔑 THE WHOLE EXPERIMENT IS THIS INSTANT. Everything the mower rotates
+        # after it is carryover, and its integral divided by the steady rate
+        # measured during `step` is the actuator dead time.
+        _record("settle", 0)
+    return transitions
+
+
+def _step_response_course_series(
+    samples: list[dict[str, Any]],
+    *,
+    baseline_ms: int,
+    step_ms: int,
+    min_chord_m: float,
+) -> list[dict[str, Any]]:
+    """Turn 100 ms cache samples into per-interval chord courses.
+
+    ⚠️ **Emitted whole, and every headline number below is derived from it.**
+    This project's standing rule is to verify with per-item records rather than
+    aggregates (a net figure once hid a 27 degree turn reversal), so the raw
+    series is the deliverable and `_step_response_analysis` is a convenience.
+
+    The 100 ms sampler reads a cache that only refreshes at ~1 Hz. That is not a
+    defect here: what it buys is the ARRIVAL INSTANT of each new position to
+    within 100 ms, which is what bounds when rotation started and stopped.
+    """
+    distinct: list[tuple[float, float, float]] = []
+    for sample in samples:
+        position = sample.get("position") or {}
+        x, y = position.get("x"), position.get("y")
+        if not isinstance(x, (int, float)) or not isinstance(y, (int, float)):
+            continue
+        elapsed_ms = sample.get("elapsed_ms")
+        if not isinstance(elapsed_ms, (int, float)):
+            continue
+        if distinct and distinct[-1][1] == float(x) and distinct[-1][2] == float(y):
+            continue
+        distinct.append((float(elapsed_ms), float(x), float(y)))
+
+    series: list[dict[str, Any]] = []
+    for (t0, x0, y0), (t1, x1, y1) in zip(distinct, distinct[1:], strict=False):
+        chord = math.hypot(x1 - x0, y1 - y0)
+        midpoint_ms = (t0 + t1) / 2
+        phase = (
+            "baseline"
+            if midpoint_ms < baseline_ms
+            else "step"
+            if midpoint_ms < baseline_ms + step_ms
+            else "settle"
+        )
+        series.append(
+            {
+                "from_elapsed_ms": t0,
+                "to_elapsed_ms": t1,
+                # A chord is an interval AVERAGE, so its course describes the
+                # midpoint, not either endpoint. Recording that explicitly is
+                # what lets observer lag be separated from actuator lag offline.
+                "midpoint_elapsed_ms": round(midpoint_ms, 3),
+                "phase": phase,
+                "chord_m": round(chord, 6),
+                # Below the informativeness floor a chord's bearing is noise:
+                # at sigma = 0.0031 m a 0.076 m chord carries +/-7.4 degrees.
+                "informative": chord >= min_chord_m,
+                "course_degrees": (
+                    round(math.degrees(math.atan2(y1 - y0, x1 - x0)), 4)
+                    if chord >= min_chord_m
+                    else None
+                ),
+            }
+        )
+    return series
+
+
+def _step_response_analysis(
+    series: list[dict[str, Any]], *, baseline_ms: int, step_ms: int
+) -> dict[str, Any]:
+    """Derive the headline dead-time numbers from the per-interval series.
+
+    🔑 Measures the INTEGRAL, not the rate. Total angle accumulated after the
+    command goes to zero is a difference of two absolute headings, so it is
+    accurate at ANY sample rate -- which is what makes a ~1 s lag measurable on
+    a ~1 Hz feed. Per-sample rates are not, and must not be fitted here.
+    """
+    informative = [row for row in series if row["informative"]]
+    step_rows = [row for row in informative if row["phase"] == "step"]
+    settle_rows = [row for row in informative if row["phase"] == "settle"]
+
+    def _rate(rows: list[dict[str, Any]]) -> float | None:
+        if len(rows) < 2:
+            return None
+        span_s = (
+            rows[-1]["midpoint_elapsed_ms"] - rows[0]["midpoint_elapsed_ms"]
+        ) / 1000
+        if span_s <= 0:
+            return None
+        # normalize_degrees keeps the signed short way round, so a rotation
+        # through the +/-180 wrap is not read as a ~360 degree jump.
+        delta = normalize_degrees(
+            rows[-1]["course_degrees"] - rows[0]["course_degrees"]
+        )
+        return round(delta / span_s, 4)
+
+    omega_step = _rate(step_rows)
+    rotation_after_zero = (
+        round(
+            normalize_degrees(
+                settle_rows[-1]["course_degrees"] - step_rows[-1]["course_degrees"]
+            ),
+            4,
+        )
+        if step_rows and settle_rows
+        else None
+    )
+    tau: float | None = None
+    if rotation_after_zero is not None and omega_step is not None and omega_step != 0:
+        tau = round(abs(rotation_after_zero / omega_step), 4)
+    return {
+        "informative_intervals": {
+            "baseline": sum(1 for r in informative if r["phase"] == "baseline"),
+            "step": len(step_rows),
+            "settle": len(settle_rows),
+        },
+        "omega_step_deg_per_s": omega_step,
+        "rotation_after_zero_deg": rotation_after_zero,
+        "tau_actuator_s": tau,
+        # Stated so the number is never read as more than it is.
+        "interpretation": (
+            "tau_actuator_s = |rotation after commanding angular 0| / steady rate "
+            "during the step. Compare it against the ~1 s decision period: well "
+            "below means the dead time is dominated by the OBSERVER and damping "
+            "cannot fix it; comparable or above means real actuator carryover."
+        ),
+        "caveats": (
+            "n is small by construction at ~1 Hz. Do NOT fit a turn-rate law to "
+            "this, and do NOT reuse omega as a calibration constant -- the "
+            "2026-08-26 guarded-turn measurement showed a 2.6x spread on "
+            "identical stationary parameters."
+        ),
+    }
+
+
+async def _step_response_probe_impl(  # noqa: C901, PLR0913
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    position_stream: Any | None,
+    report_lease: Any | None = None,
+    route_start: dict[str, float],
+    corridor_polygon: list[dict[str, float]],
+    linear_speed: int = 400,
+    step_angular_speed: int = 120,
+    baseline_ms: int = 3000,
+    step_ms: int = 3000,
+    settle_ms: int = 4000,
+    motion_refresh_interval_ms: int = 200,
+    sample_interval_ms: int = 100,
+    max_travel_m: float = _STEP_RESPONSE_DEFAULT_TRAVEL_M,
+    prefer_ble: bool = True,
+    dry_run: bool = True,
+    confirm_blades_off: bool = False,
+    confirm_clear_area: bool = False,
+    confirm_step_response_run: bool = False,
+) -> dict[str, Any]:
+    """Run or simulate one open-loop baseline -> step -> settle window."""
+    before = _custom_path_telemetry_snapshot(coordinator)
+    total_ms = baseline_ms + step_ms + settle_ms
+    gates = _step_response_gates(
+        coordinator,
+        before,
+        route_start=route_start,
+        corridor_polygon=corridor_polygon,
+        max_travel_m=max_travel_m,
+        dry_run=dry_run,
+        confirm_blades_off=confirm_blades_off,
+        confirm_clear_area=confirm_clear_area,
+    )
+    blockers = [gate["name"] for gate in gates if not gate["passed"]]
+    # Opt-in PER CALL, exactly like `confirm_steering_validation_run`: arming the
+    # motion gate is deliberately not sufficient to drive an open-loop curve.
+    if not dry_run and not confirm_step_response_run:
+        blockers.append("step_response_run_not_confirmed")
+    if total_ms > _STEP_RESPONSE_MAX_TOTAL_MS:
+        blockers.append("step_window_too_long")
+
+    config = ContinuousControllerConfig()
+    result: dict[str, Any] = {
+        "service": SERVICE_STEP_RESPONSE_PROBE,
+        "mode": "dry_run" if dry_run else "real_step_response_probe",
+        "dry_run": dry_run,
+        "purpose": (
+            "Open-loop dead-time measurement for Q1/Q2 of "
+            "docs/phase2-dead-time-step-test-design-20260828.md. No controller, "
+            "no route, no steering law."
+        ),
+        "route_start": route_start,
+        "corridor_polygon": corridor_polygon,
+        "phases": {
+            "baseline_ms": baseline_ms,
+            "step_ms": step_ms,
+            "settle_ms": settle_ms,
+            "total_ms": total_ms,
+        },
+        "linear_speed": linear_speed,
+        "step_angular_speed": step_angular_speed,
+        "motion_refresh_interval_ms": motion_refresh_interval_ms,
+        "sample_interval_ms": sample_interval_ms,
+        "max_travel_m": max_travel_m,
+        "safety_gates": gates,
+        "blockers": blockers,
+        "would_send": not dry_run and not blockers,
+        "command_result": {
+            "attempted": False,
+            "ok": None,
+            "error": None,
+            "duration_ms": None,
+        },
+        "stop_result": {"attempted": False, "ok": None, "error": None},
+        "phase_transitions": [],
+        "samples": [],
+        "course_series": [],
+        "analysis": None,
+        "report_lease": {"held": report_lease is not None},
+    }
+    if dry_run or blockers:
+        result["reason"] = "dry_run" if dry_run else "safety_gates_failed"
+        return result
+    if position_stream is None:
+        result["would_send"] = False
+        result["blockers"] = ["position_stream_unavailable"]
+        result["reason"] = "position_stream_unavailable"
+        return result
+
+    command_state: dict[str, int] = {
+        "linear_speed": linear_speed,
+        "angular_speed": 0,
+    }
+    refresh_state: dict[str, Any] = {"completions_elapsed_ms": []}
+    travel_abort = asyncio.Event()
+    sampler_stop = asyncio.Event()
+    window_started = time.monotonic()
+
+    result["command_result"]["attempted"] = True
+    started = time.monotonic()
+    try:
+        await _send_manager_command_with_args(
+            coordinator,
+            "send_movement",
+            prefer_ble=prefer_ble,
+            command_kwargs=dict(command_state),
+        )
+        result["command_result"]["ok"] = True
+    except Exception as err:  # noqa: BLE001
+        result["command_result"]["ok"] = False
+        result["command_result"]["error"] = f"{type(err).__name__}: {err}"
+        result["reason"] = "command_failed"
+        return result
+    finally:
+        result["command_result"]["duration_ms"] = round(
+            (time.monotonic() - started) * 1000, 3
+        )
+    refresh_state["completions_elapsed_ms"].append(
+        float(result["command_result"]["duration_ms"])
+    )
+
+    sampler_task = asyncio.create_task(
+        _capture_in_window_telemetry(
+            coordinator,
+            sample_interval_ms=sample_interval_ms,
+            duration_ms=total_ms,
+            window_started=window_started,
+            stop_event=sampler_stop,
+            command="send_movement",
+            # The live dict, so every sample records the angular that was
+            # actually in force when it was taken.
+            command_args=command_state,
+            max_travel_m=max_travel_m,
+            travel_abort=travel_abort,
+            position_stream=position_stream,
+        )
+    )
+    phase_task = asyncio.create_task(
+        _step_response_phase_scheduler(
+            command_state,
+            window_started=window_started,
+            baseline_ms=baseline_ms,
+            step_ms=step_ms,
+            step_angular_speed=step_angular_speed,
+            abort_event=travel_abort,
+        )
+    )
+
+    # 🚨 NEITHER HELPER MAY DIE QUIETLY WHILE THE MOWER DRIVES. Same reasoning as
+    # beta72's `_abort_if_sampler_died` and the continuous window's decision-loop
+    # guard: a dead sampler means the distance guard is gone, and a phase
+    # scheduler that dies mid-step leaves a turn command standing for the rest of
+    # the window. Both must stop the refresh loop, which brings the mandatory
+    # stop forward.
+    def _abort_if_helper_died(task: asyncio.Task[Any]) -> None:
+        if task.cancelled() or task.exception() is not None:
+            travel_abort.set()
+
+    sampler_task.add_done_callback(_abort_if_helper_died)
+    phase_task.add_done_callback(_abort_if_helper_died)
+
+    try:
+        result["motion_refresh"] = await _continuous_refresh_window(
+            coordinator,
+            command_state=command_state,
+            prefer_ble=prefer_ble,
+            duration_seconds=total_ms / 1000.0,
+            refresh_interval_ms=motion_refresh_interval_ms,
+            window_started=window_started,
+            refresh_state=refresh_state,
+            abort_event=travel_abort,
+        )
+    finally:
+        # The stop is mandatory and must not be skipped by an exception path.
+        sampler_stop.set()
+        travel_abort.set()
+        with contextlib.suppress(BaseException):
+            await phase_task
+        result["stop_result"] = await _manual_velocity_stop_attempt(
+            coordinator, use_wifi=not prefer_ble
+        )
+
+    result["phase_transitions"] = phase_task.result() if phase_task.done() else []
+    result["samples"] = await sampler_task
+    result["course_series"] = _step_response_course_series(
+        result["samples"],
+        baseline_ms=baseline_ms,
+        step_ms=step_ms,
+        min_chord_m=config.min_travel_for_heading_trust_m,
+    )
+    result["analysis"] = _step_response_analysis(
+        result["course_series"], baseline_ms=baseline_ms, step_ms=step_ms
+    )
+    result["reason"] = (
+        "travel_guard_tripped" if travel_abort.is_set() else "window_complete"
+    )
+    result["after"] = _custom_path_telemetry_snapshot(coordinator)
+    return result
+
+
+async def _step_response_probe(
+    coordinator: MammotionReportUpdateCoordinator,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Hold the report-subscription lease around one step-response window."""
+    if kwargs.get("dry_run", True):
+        return await _step_response_probe_impl(
+            coordinator, position_stream=None, report_lease=None, **kwargs
+        )
+
+    handle = coordinator.manager.mower(coordinator.device_name)
+    exclusive_factory = getattr(handle, "exclusive_report_subscription", None)
+    open_position_stream = getattr(coordinator, "open_position_sample_stream", None)
+    if not callable(exclusive_factory) or not callable(open_position_stream):
+        return {
+            "service": SERVICE_STEP_RESPONSE_PROBE,
+            "mode": "real_step_response_probe",
+            "dry_run": False,
+            "would_send": False,
+            "blockers": ["position_subscription_lease_unavailable"],
+            "reason": "position_subscription_lease_unavailable",
+        }
+
+    result: dict[str, Any] | None = None
+    async with exclusive_factory(SERVICE_STEP_RESPONSE_PROBE) as report_lease:
+        position_stream = open_position_stream(maxsize=_SAFETY_POSITION_STREAM_MAXSIZE)
+        try:
+            result = await _step_response_probe_impl(
+                coordinator,
+                position_stream=position_stream,
+                report_lease=report_lease,
+                **kwargs,
+            )
+            return result  # noqa: RET504 - finally annotates report-stream teardown
+        finally:
+            stop_reports = getattr(coordinator, "async_stop_continuous_reports", None)
+            if callable(stop_reports):
+                try:
+                    await stop_reports()
+                    if result is not None:
+                        result.setdefault("report_stream", {})["stopped"] = True
+                except Exception as err:  # noqa: BLE001
+                    if result is not None:
+                        result.setdefault("report_stream", {})["stop_error"] = (
+                            f"{type(err).__name__}: {err}"
+                        )
+            if position_stream is not None:
+                position_stream.close()
 
 
 def _utc_timestamp() -> str:
@@ -19028,6 +19647,32 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             ],
         )
 
+    async def handle_step_response_probe(
+        call: ServiceCall,
+    ) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        return await _step_response_probe(
+            mower.reporting_coordinator,
+            route_start=dict(call.data["route_start"]),
+            corridor_polygon=[dict(point) for point in call.data["corridor_polygon"]],
+            linear_speed=call.data["linear_speed"],
+            step_angular_speed=call.data["step_angular_speed"],
+            baseline_ms=call.data["baseline_ms"],
+            step_ms=call.data["step_ms"],
+            settle_ms=call.data["settle_ms"],
+            motion_refresh_interval_ms=call.data["motion_refresh_interval_ms"],
+            sample_interval_ms=call.data["sample_interval_ms"],
+            max_travel_m=call.data["max_travel_m"],
+            prefer_ble=call.data["prefer_ble"],
+            dry_run=call.data["dry_run"],
+            confirm_blades_off=call.data["confirm_blades_off"],
+            confirm_clear_area=call.data["confirm_clear_area"],
+            confirm_step_response_run=call.data["confirm_step_response_run"],
+        )
+
     async def handle_heading_acquisition_window(
         call: ServiceCall,
     ) -> dict[str, Any]:
@@ -19875,6 +20520,17 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             handle_continuous_motion_window,
         ),
         schema=CONTINUOUS_MOTION_WINDOW_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_STEP_RESPONSE_PROBE,
+        _wrap_exclusive_manual_motion(
+            hass,
+            SERVICE_STEP_RESPONSE_PROBE,
+            handle_step_response_probe,
+        ),
+        schema=STEP_RESPONSE_PROBE_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
