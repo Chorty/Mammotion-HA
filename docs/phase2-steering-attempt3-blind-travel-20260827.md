@@ -33,9 +33,9 @@ as designed, and the stop was confirmed.
 Nothing in the run flagged that its own travel estimate was 24x low. Had the feed
 delivered just enough to satisfy the 0.15 m chord and then gone quiet, the
 controller would have begun steering on a stale position. That is precisely the
-hazard the position-cadence programme exists to prevent, and it is the same shape
-as the beta76 cell-12 anomaly: subscription status healthy, generic traffic fine,
-position payloads absent.
+hazard the position-cadence programme exists to prevent. ⚠️ **This is NOT the
+beta76 cell-12 anomaly** — see the refutation below; the feed was healthy and one
+ordinary interval was missed.
 
 ## What the subscription actually did
 
@@ -49,18 +49,37 @@ queue_settle                 live: true, depth 0, saga_active: false
 report_stream                started: true, continuous_started: true, error: null
 ```
 
-So sequences 15, 16, 17 arrived within roughly the first second — briefly faster
-than 1 Hz — and then the channel went quiet for the rest of the window. **A burst
-followed by silence**, with every status field reporting healthy.
+Sequences 15, 16 and 17 arrived within roughly the first second, and no further
+sample landed before the 2.03 s decision. ⚠️ **Read that as ONE missed interval,
+not a burst-then-silence anomaly** — the refutation immediately below shows the
+feed's median interval is 1016 ms, so a 1.01 s window with no new sample is
+close to a coin flip.
 
-🔑 **`baseline_position_epoch` was 2, where earlier runs today ran at epoch 1.**
-The epoch advances on transport teardown/replacement, so BLE was re-established
-between attempt 2 and attempt 3. That is a correlation worth chasing, not a
-demonstrated cause: the burst-then-stall followed a reconnect. ⚠️ **n = 1. Do not
-write this down as the mechanism.**
+🗑️ **REFUTED THE SAME EVENING — THERE WAS NO STALL.** This section originally
+read the missing sample as a burst-then-silence anomaly and flagged the epoch-2
+reconnect as a correlation to chase. Measurement says otherwise, and the
+"burst-then-stall" framing was an over-read of a single ordinary interval.
 
-Attempt 2, minutes earlier, saw updates fine and measured 0.2407 m of travel
-correctly. **The behaviour is intermittent.**
+A stationary `report_stream_sequence_probe` run **at the same epoch 2**, minutes
+later, found the feed perfectly healthy: 4 of 4 cells ready, ~30 payloads per 30 s
+cell, **zero drops, zero sequence gaps**, and over 117 intervals a median of
+**1016 ms**, p95 1102, p99 1127, max 1232. Evidence:
+`docs/evidence-position-cadence-post-reconnect-20260827.json`.
+
+🔑 **The arithmetic settles it.** Attempt 3 needed a NEW sample between t=1.02 s
+and t=2.03 s — a **1.01 s window** — against a feed whose **median interval is
+1016 ms**, with **57% of intervals exceeding 1010 ms**. Seeing no new sample in
+that window is close to a coin flip. **One ordinary interval, not a fault.**
+
+⚠️ **The epoch-2 correlation is withdrawn.** Attempt 2 ran at epoch 2 as well and
+saw its samples fine. The reconnect explains nothing here, and recording it as a
+lead would have sent the next session chasing a ghost — exactly the failure this
+document was written to prevent.
+
+**What remains true and important:** the executor really did travel 0.5097 m while
+believing 0.0211 m, and nothing flagged the discrepancy. That is a real property of
+a ~1 Hz feed under motion, not a malfunction — which makes it a DESIGN problem
+rather than a bug to hunt.
 
 ## The separate design problem this also exposed
 
@@ -95,11 +114,13 @@ Every one failed closed, and no unintended motion occurred in any of them.
 
 ## What to do next, in order
 
-1. **Investigate the burst-then-stall.** The lease and generation machinery built
-   for exactly this question is deployed; use `report_stream_sequence_probe`
-   around a transport reconnect and see whether epoch advance correlates.
+1. ✅ **DONE — there is no stall to investigate.** See the refutation above. The
+   feed is healthy at ~1 Hz and attempt 3 simply lost a coin flip on one interval.
 2. **Decide the acquisition budget deliberately**, as a stated safety trade
-   between `max_heading_acquisition_s` and the blind-disk radius it sets.
+   between `max_heading_acquisition_s` and the blind-disk radius it sets. **This
+   is now the ONLY thing standing between us and a sign test**, and item 1's
+   result makes it sharper: at a 1016 ms median interval, a 2.0 s budget buys
+   about two samples, and losing either one fails acquisition.
 3. **Only then attempt the sign again.** The attempt-3 configuration (6 s window,
    8° route offset) is sound and untested; the run never reached it.
 
