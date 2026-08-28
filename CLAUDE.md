@@ -229,12 +229,31 @@ It is moot, not pending.
 3. ✅ **DONE 2026-08-28** — steering attempt 4 RAN. **Sign correct, 6/7, FAIL on
    criterion 2 (cross-track).** Read
    `docs/evidence-phase2-steering-attempt4-20260828.json`.
-4. **Decide, in a document written BEFORE the next dispatch, whether criterion 2
-   is ill-posed for a distance-limited window** — and if so how it is repaired,
-   with the reasoning stated. Do **not** repair it by raising `max_distance_m`
-   now that the direction of the answer is known.
-5. Only then a repeat run. ⚠️ The predeclaration grants a repeat only on a PASS;
-   this was a FAIL, so a further run needs its own authorization and criteria.
+4. ✅ **DONE 2026-08-28** — the repair is predeclared in
+   `docs/phase2-steering-attempt5-predeclared-20260828.md`, written before any
+   attempt-5 capture exists. Criterion 2 is **split**: **2a** heading error trends
+   to zero (attempt 4 satisfies it) and **2b** `|cross_track|` reaches a maximum
+   then DECREASES across two consecutive decisions (attempt 4 cannot test it).
+   The other six criteria are verbatim unchanged.
+5. **Attempt 5 — needs explicit per-run authorization.** `max_distance_m` **1.75**
+   (derived: 1.00 m to null + 2 x 0.264 m per decision = 1.53 m minimum),
+   `duration_ms` 8000, a **7.0 x 7.0 m** corridor at (5.98, -5.24) — the 5x5 gives
+   2.50 m against a 2.55 m requirement and **cannot be reused**.
+   🚨 **A criterion-3 (oscillation) failure is PREDICTED and registered**: ~1 s of
+   actuation lag against ~7 deg/s of authority, proportional-only, hunt period
+   ~3.6 s over a ~7.8 s run. **If it oscillates, record the FAIL — do not add a
+   derivative term mid-programme and re-run.**
+
+🛑 **STANDING CHECK, added 2026-08-28 because this mistake has now cost THREE
+attempts.** Before any Phase 2 dispatch, for each exposure bound (`duration_ms`,
+`max_distance_m`, `max_heading_acquisition_s`) write down the time or distance the
+run needs to *demonstrate* each criterion, and confirm the bound exceeds it.
+Attempt 2's `duration_ms: 2000` made acquisition unreachable; attempt 4's
+`max_distance_m: 1.00` made criterion 2 unreachable — heading error nulls at
+~1.00 m and cross-track cannot decrease before that, so **the bound and the
+criterion contradicted each other the moment both were written.** ⚠️ **A bound
+that is safe but makes the test impossible is a wasted run, not a conservative
+one.**
 
 🔑 **ACQUISITION IS MARGINAL BY CONSTRUCTION, independent of that stall.** At
 ~1 Hz, a 0.15 m chord from standstill needs ~2 position samples ≈ 2 s, and
