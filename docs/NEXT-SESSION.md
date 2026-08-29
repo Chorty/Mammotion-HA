@@ -1,29 +1,36 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
-## §0 Live state — 2026-08-29 10:52 EDT
+## §0 Live state — 2026-08-29 11:52 EDT
 
 ⚠️ **Everything BELOW this section is historical.** Reverify before acting on it.
 
-Host **0.6.4-beta84** + PyMammotion **0.8.12.post3**. Mower off the dock at
-**(4.5976, -3.8887)**, `AREA_INSIDE`, RTK Fix, daylight. Gate **disarmed**,
-verified live API **and** RAW.
+Host **0.6.4-beta85** + PyMammotion **0.8.12.post3**, deployed motion-disabled.
+Mower **off the dock** at **(4.6021, -3.9626)**, `AREA_INSIDE`, RTK **Fix**,
+battery **95%**, daylight, BLE live at -68 dBm. Gate **disarmed**, verified live
+API **and** RAW `[False]`.
 
 🏁 **Q1 IS ANSWERED: the position stream STOPS DELIVERING during a motion window.**
-`position_sequence` stayed at **556** across 2.031 s while `last_report_at`
-advanced — frames arrived, none carried position — and the mower drove **0.4385 m**.
-Not stale coordinates. Read
+`position_sequence` held at 556 across 2.031 s while `last_report_at` advanced —
+frames arrived, none carried position — and the mower drove **0.4385 m**. Not
+stale coordinates. Reproduces to the millimetre (0.4375 / 0.4385 on different
+builds); **n = 3** with attempt 3. Read
 `docs/evidence-position-feed-stalls-during-motion-20260829.json`.
-🔑 **It reproduces to the millimetre**: 0.4375 m (beta83) vs 0.4385 m (beta84),
-plus attempt 3's 0.51 m. **n = 3.**
-🔑 **Different owner from the control work** — report delivery, not control. No
-gain, damping term or controller change touches it.
-🗑️ **Does NOT explain steering attempt 5**, whose feed worked (fresh positions
-every ~1 s, distance 0.058 → 1.624 m). Two regimes; do not merge them.
-⚠️ Measures nothing about actuator lag, and the **-120 sign was never run**.
+🔑 Different owner from the control work — report delivery, not control.
+🗑️ Does NOT explain steering attempt 5, whose feed worked. Two regimes.
 
-**Next:** find WHERE delivery stops — `report_stream_sequence_probe` across a
-MOTION window (it reconfigures the subscription, so it needs its own
-authorization). Phase 2 steering stays parked.
+🆕 **beta85 adds the NEXT discriminator and it is UNEXERCISED.** Every 100 ms
+in-window sample now also records `is_connected`, `queue_depth`,
+`queue_dispatch_paused` and `saga_active`, so the next stall says whether the GATT
+link dropped, the queue gated, a backlog built, or **none of the four** — which
+would mean the fault is not in our dispatch path at all.
+⚠️ **Do NOT diagnose from the `ble_link_live` entity.** It is a coordinator-tick
+composite that includes `queue_depth`, so our own 200 ms refresh writes can flap
+it, and on 2026-08-29 it reported `ble_client_not_connected` while a live
+recomputation said BLE was fine. **Its transitions cannot time anything.**
+
+**Next:** one motion run of `raw_pymammotion_step_response_probe` at **both**
+signs, with a freshly scanned corridor (>= 3.00 m clearance). Phase 2 steering
+stays parked (standing decision 5).
 
 
 🛡️ **PHASE 2 HEADING-SAFETY REMEDIATION IMPLEMENTED OFFLINE,

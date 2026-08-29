@@ -8,6 +8,50 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta84 -> beta85 — 2026-08-29 11:37-11:50 EDT, motion-disabled
+
+Ships `_in_window_ble_snapshot`: `is_connected`, `queue_depth`,
+`queue_dispatch_paused` and `saga_active` recorded into every 100 ms in-window
+telemetry sample, alongside the `position_sequence` / `position_epoch` added in
+beta84. No backend change (PyMammotion `0.8.12.post3`), no
+`LUBA_ACCEPTANCE_PROFILE` key touched.
+
+| | beta85 |
+| --- | --- |
+| tag | `v0.6.4-beta85` (release commit `14a83001`) |
+| deployed tree | **exactly the tag** |
+| quartet | manifest / pyproject / `CARD_VERSION` `0.6.4-beta85`, uv.lock `0.6.4b85` |
+| backend | PyMammotion `0.8.12.post3`, read from inside the container |
+| archive SHA-256 | `d0f71202a34d7b03f1a00161f3f8623917da85501f12d83a51548849ae8c4ba5`, identical local and host |
+| file verification | **47 of 47 byte-identical**, zero AppleDouble |
+| card md5 | `1132c738d9dcd2f5422abef8dc70167a`, equal at BOTH serving paths |
+| Lovelace resource | re-read as `?v=0.6.4-beta85&build=1132c738` |
+| host backup | `/config/mammotion-backup-20260829-1137-pre-beta85.tgz` |
+| restart | API up after **30 s**, 132 entities at 237 s |
+| new code in deployed bytes | `_in_window_ble_snapshot` grep count **2**, matching local |
+| gate after deploy | `enabled: false`, `real_motion_allowed: false`, no session; live API **and** RAW `[False]` |
+
+🛑 **NO RUN WAS STARTED.** The operator asked for the release and deploy only.
+
+🔌 **BLE took ~9.5 minutes to re-establish after the restart** (`active_transport`
+`none` -> `ble` at 11:48:43), longer than beta82's ~10 min and beta84's recovery.
+⚠️ **While it was down HA served stale state** — `charge_on` and battery 100% for
+a mower that had been off the dock since 10:51. The true state (`AREA_INSIDE`,
+battery 95%) only appeared once the link came back. **This is the 2026-08-24
+failure shape: every field readable, all of it hours old.**
+
+🔎 **DIRECT CONFIRMATION THAT `ble_link_live` LAGS, recorded because it changes how
+its history may be read.** After settling, the ENTITY reported
+`ble_link_reason: ble_client_not_connected` while a **live** recomputation of the
+same gate listed only `experimental_motion_disabled` and `active_transport` read
+`ble`. The entity is a coordinator-tick derived value; **its transitions cannot be
+used to time anything**, which is exactly why beta85 records the raw BLE fields
+in-window instead.
+
+⚠️ **The new fields are DEPLOYED but UNEXERCISED** — `dry_run` returns before the
+sampler starts, so nothing populates them until a real motion window runs.
+
+
 ### beta83 -> beta84 — 2026-08-28 21:09-21:15 EDT, motion-disabled
 
 Ships one change: `_in_window_telemetry_sample` now records **`position_sequence`

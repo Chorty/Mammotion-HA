@@ -98,8 +98,11 @@ records **`is_connected`, `queue_depth`, `queue_dispatch_paused` and
 attributable instead of inferred: connection dropped, queue gated, backlog
 climbing, or saga holding. ⚠️ **All four are OUTBOUND facts** — a stalled inbound
 position stream with all four healthy would mean the fault is not in our dispatch
-path at all, which is itself the useful answer. **Built and tested offline; NOT
-DEPLOYED — the host runs beta84, which lacks it.**
+path at all, which is itself the useful answer. ✅ **DEPLOYED as beta85, 2026-08-29 11:50 EDT** — 47/47 byte-identical, card md5
+`1132c738` at both paths, `?v=0.6.4-beta85&build=1132c738`, grep count 2 in the
+deployed bytes, gate verified disarmed live **and** RAW. ⚠️ **UNEXERCISED** —
+`dry_run` returns before the sampler starts, so nothing populates these until a
+real motion window runs. 🛑 **No run has been started.**
 
 🔑 **THE FAULT HAS A DIFFERENT OWNER THAN THE CONTROL WORK.** This is
 report-subscription / position-delivery, not control. **No steering gain, damping
