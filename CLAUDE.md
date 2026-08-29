@@ -46,6 +46,53 @@ this file every time.
 
 ## Current build: beta82; PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
 
+🏁🏁 **THE STALL IS NOT IN OUR DISPATCH PATH, AND IT IS NOT DIRECTION-DEPENDENT —
+2026-08-29, beta85, BOTH SIGNS.** Two runs, `+120` and `−120`. On **both**, the
+position stream delivered nothing while **all four outbound BLE facts read
+healthy the entire time**. Read
+`docs/evidence-feed-stall-is-not-our-dispatch-path-20260829.json`.
+
+| | run A (+120) | run B (−120) |
+| --- | --- | --- |
+| `position_sequence` | **34 — frozen** | **35 — frozen** |
+| `is_connected` | **True** | **True** |
+| `queue_depth` | **0** | **0** |
+| `queue_dispatch_paused` | **False** | **False** |
+| `saga_active` | **False** | **False** |
+| blind travel | **0.4330 m** | **0.5959 m** |
+| informative intervals | **0** | **0** |
+
+🔑 **WHY THIS ELIMINATES OUR PATH.** Those four are the known ways this
+integration's dispatch fails: `is_connected` rules out a link drop, `queue_depth 0`
+rules out the documented proxy slot-leak backlog, `queue_dispatch_paused False`
+rules out a gated queue, `saga_active False` rules out an exclusive saga. All four
+healthy while position stops means **the fault is INBOUND** — the mower stops
+emitting position frames during motion, or pymammotion stops decoding/publishing
+them. **Both are outside this integration.**
+
+🔑 **FIRST TWO-SIGN RESULT, and it kills the asymmetry hypothesis.** `+120` and
+`−120` behaved identically, so the stall is **not** a drivetrain or
+turn-direction artefact.
+
+🔑 **n = 5 ACROSS THREE BUILDS**: 0.51 (attempt 3) / 0.4375 (beta83) / 0.4385
+(beta84) / 0.4330 and 0.5959 (beta85). **Reproducible, not intermittent.**
+
+🗑️ **STILL ZERO ROTATION DATA.** `omega`, `rotation_after_zero` and `tau` are null
+on **both** runs. **The dead-time question the probe was built for is STILL
+UNMEASURED** — two signs of nothing is still nothing about the plant. Do not let
+"we ran both signs" read as progress on Q2.
+⚠️ **The four BLE fields are OUTBOUND-side only.** Healthy outbound says nothing
+*directly* about the inbound notification path; it only removes our dispatch as
+the explanation.
+
+🗑️ **DO NOT DIAGNOSE THIS FROM THE `ble_link_live` ENTITY.** `_ble_link_liveness`
+composes it from seven checks including `queue_depth`, so **our own 200 ms refresh
+writes can flap it**, and it is a coordinator-tick value that cannot resolve a ~2 s
+event. Proven on 2026-08-29: the entity reported `ble_client_not_connected` while
+a **live** recomputation of the same gate listed only
+`experimental_motion_disabled` and `active_transport` read `ble`. **Its history can
+neither confirm nor exclude a glitch inside a window.**
+
 🏁 **Q1 IS ANSWERED, 2026-08-29, AND THE ANSWER IS NEITHER OPTION I PREDICTED:
 THE POSITION STREAM SIMPLY STOPS DELIVERING DURING A MOTION WINDOW.** Not stale
 coordinates, not observer lag — **zero position payloads for 2.031 s while the
@@ -373,11 +420,17 @@ disk would have **accepted** — is refused with
 ⚠️ **`services.yaml` prose still says 1.06 m** in the `continuous_motion_window`
 description. Code is right, text is stale; fix it in the next release.
 
-💻 **LIVE STATE at 10:52, 2026-08-29 — requery before acting.** Host **beta84** +
-PyMammotion **0.8.12.post3**. Mower **off the dock** at **(4.5976, -3.8887)** in
-"Backyard Right", `AREA_INSIDE`, RTK **Fix**, daylight (VIO 80/80), battery was
-100% at undock. Gate **disarmed** — `enabled: false`, `real_motion_allowed: false`,
-no session, verified live API **and** RAW `[False]`.
+💻 **LIVE STATE at 14:40, 2026-08-29 — requery before acting.** Host **beta85** +
+PyMammotion **0.8.12.post3**. Mower **off the dock** at **(4.6581, -4.9900)** in
+"Backyard Right", `AREA_INSIDE`, RTK **Fix**, daylight, battery ~95% at the start
+of the runs. Gate **disarmed** — verified live API **and** RAW `[False]`.
+
+🔑 **CORRIDOR USED FOR BOTH RUNS — a 6.20 m square re-centred on the live start
+before EACH run.** Run A: centred on `(4.6021, -3.9626)`. Run B: re-centred on
+`(4.6274, -4.3949)` **because run A's 0.4330 m of blind travel exceeded the 0.30 m
+start-drift bound** — a corridor cannot be reused across a run that moves the
+mower. Both gave 3.0996 m of clearance against the required 3.00 m, 15/15 gates.
+⚠️ **The mower has moved again since**, so re-scan rather than reusing either.
 
 🔑 **CORRIDOR SCANNED AND USED TODAY — 6.20 m square:**
 `[(1.475,-6.551), (7.675,-6.551), (7.675,-0.351), (1.475,-0.351)]`, centred on the
@@ -482,19 +535,22 @@ the hazardous test could not pay off even if it worked. See §8.
 ⚠️ **Do not re-open "would the firmware accept an uploaded path?" as new work.**
 It is moot, not pending.
 
-**NEXT — Phase 2 steering stays CLOSED. The open thread moved to the FEED.**
-1. ✅ **DONE 2026-08-29** — Q1 answered: the position stream stops delivering
-   during a motion window. `position_sequence` frozen while frames arrived.
-2. 🔑 **The question is now WHERE delivery stops** — device, BLE transport, or the
-   report subscription. `report_stream_sequence_probe` is the instrument, and it
-   reconfigures the subscription, so it needs its own authorization.
-   ⚠️ **It must run across MOTION**; a stationary run characterises the idle feed,
-   which is a different case and has never shown this.
-3. **Retry the step probe at BOTH signs only once the feed delivers during
-   motion.** One sign is not a result — it cannot separate rotational carryover
-   from a direction-dependent drivetrain asymmetry.
-🗑️ **Do NOT write controller code for this.** It is a delivery fault, not a
-control fault, and it is more likely pymammotion or device-side than ours.
+**NEXT — Phase 2 steering stays CLOSED. The feed thread has narrowed twice.**
+1. ✅ **DONE 2026-08-29** — the stall is a delivery failure, not stale
+   coordinates (`position_sequence` frozen while frames arrived).
+2. ✅ **DONE 2026-08-29** — it is **not our dispatch path** and **not
+   direction-dependent**: both signs stalled with `is_connected` True,
+   `queue_depth` 0, no gating, no saga.
+3. 🔑 **The remaining question is WHERE inbound delivery stops** — the mower's own
+   emission, the BLE notification path, or pymammotion's decode/publish. Our four
+   fields are outbound-side and cannot see any of those.
+   **`report_stream_sequence_probe` across a MOTION window is the next
+   instrument**; it reconfigures the subscription, so it needs its own
+   authorization.
+4. **Q2 (dead time) remains UNMEASURED and unmeasurable until the feed delivers
+   during motion.** Two signs of nothing is not a two-sign result about the plant.
+🗑️ **Do NOT write controller code, and do NOT tune anything.** Nothing measured
+here is about control.
 
 
 🛑 **STANDING CHECK, added 2026-08-28 because this mistake has now cost THREE
