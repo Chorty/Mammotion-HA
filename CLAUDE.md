@@ -103,8 +103,12 @@ is owed.**
 🔑 **Read it like this**, across a window where x/y never change:
 **sequence ADVANCING → payloads arrived carrying STALE coordinates (observer
 lag). Sequence FROZEN → no position payloads arrived at all (a feed stall).**
-Different faults, different owners. ⚠️ **DEPLOYED? NO** — the host runs beta83,
-which does not have this. It needs a release before the next probe run.
+Different faults, different owners. ✅ **DEPLOYED as beta84, 2026-08-28 21:15 EDT.** 47/47 byte-identical, card md5
+`12e49354` at both paths, `?v=0.6.4-beta84&build=12e49354`, gate verified disarmed
+from the live API **and** RAW.
+⚠️ **DEPLOYED but UNEXERCISED** — `dry_run` returns before the sampler starts, so
+nothing populates `position_sequence` until a real motion window runs. Byte parity
+confirmed and unit-tested; **that is not the same as having seen it emit a value.**
 
 ⚠️ **BLIND TRAVEL IS NOW n = 2, AND BOTH FOLLOWED A RECONNECT.** Attempt 3 ran at
 `baseline_position_epoch` 2 where earlier runs ran at 1; this run followed the HA
@@ -273,15 +277,19 @@ disk would have **accepted** — is refused with
 ⚠️ **`services.yaml` prose still says 1.06 m** in the `continuous_motion_window`
 description. Code is right, text is stale; fix it in the next release.
 
-💻 **LIVE STATE at 18:50, 2026-08-28 — requery before acting.** Host **beta83** +
-PyMammotion **0.8.12.post3**. Mower **off the dock** near **(8.63, -7.65)** in
-"Backyard Right", `AREA_INSIDE`, RTK **Fix**, **battery 29% and NOT charging**,
-`ble_rssi` **-76 dBm**. Gate **disarmed** — `enabled: false`,
-`real_motion_allowed: false`, no session, verified live API **and** RAW
-`core.config_entries`.
-🔋 **DOCK AND CHARGE FIRST.** See the battery warning above.
-✅ **Card browser-verified at `0.6.4-beta82` by the operator on 2026-08-28**;
-beta83's card has NOT been browser-verified.
+💻 **LIVE STATE at 21:16, 2026-08-28 — requery before acting.** Host **beta84** +
+PyMammotion **0.8.12.post3**. Mower **ON THE DOCK** (`charge_on`), **battery 59%**
+but `charging: off` — worth a glance. RTK **Fix, 32 satellites**. `ble_rssi`
+**-64 dBm**. Gate **disarmed**, verified live API **and** RAW `[False]`; blockers
+`experimental_motion_disabled` and `position_not_valid_for_motion` (the latter is
+the expected dock blocker).
+🌙 **DARK, and it does not block the step probe.** VIO fully collapsed
+(`camera_brightness: dark`, `tracked_features: 0`, `signal_none`). Verified in
+code: there is **no VIO gate** in `_manual_velocity_pulse_gates` nor in the step
+probe's four geometry gates. Every predicate is RTK/BLE/geometry-derived, the same
+basis that made the 2026-08-26 night stationary run legitimate.
+🛑 **The mower must come OFF the dock before the retry** — `not_docked_or_charging`
+is a real gate — and the corridor must be re-scanned at wherever it ends up.
 
 🔑 **CORRIDOR USED FOR THE STEP PROBE — 6.20 m square, freshly scanned:**
 `[(5.183,-10.494), (11.383,-10.494), (11.383,-4.294), (5.183,-4.294)]`, centred on

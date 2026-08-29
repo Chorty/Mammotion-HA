@@ -8,6 +8,38 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta83 -> beta84 — 2026-08-28 21:09-21:15 EDT, motion-disabled
+
+Ships one change: `_in_window_telemetry_sample` now records **`position_sequence`
+and `position_epoch`**, the discriminator the 2026-08-28 step-probe abort could
+not provide. No backend change (PyMammotion `0.8.12.post3`), no
+`LUBA_ACCEPTANCE_PROFILE` key touched.
+
+| | beta84 |
+| --- | --- |
+| tag | `v0.6.4-beta84` (release commit `d4ab2ad1`) |
+| deployed tree | **exactly the tag** |
+| quartet | manifest / pyproject / `CARD_VERSION` `0.6.4-beta84`, uv.lock `0.6.4b84` |
+| backend | PyMammotion `0.8.12.post3`, unchanged, read from inside the container |
+| archive SHA-256 | `fd9daa3a13326d802df60fe4f91736819b5d7fa5425eff69906018039d5fe6c1`, identical local and host |
+| file verification | **47 of 47 byte-identical**, zero AppleDouble |
+| card md5 | `12e493548625785b3be224ea82b5a1dc`, equal at BOTH serving paths |
+| Lovelace resource | re-read as `?v=0.6.4-beta84&build=12e49354` |
+| host backup | `/config/mammotion-backup-20260828-2109-pre-beta84.tgz` |
+| restart | API up after **30 s**, 132 entities at 147 s |
+| gate after deploy | `enabled: false`, `real_motion_allowed: false`, no session; live API **and** RAW `[False]` |
+
+⚠️ **The new field is DEPLOYED but UNEXERCISED.** `dry_run` returns before the
+sampler starts, so nothing populates `position_sequence` until a real motion
+window runs. Byte parity is confirmed (grep count 2, matching local) and the code
+path is unit-tested; **that is not the same as having seen it produce a value.**
+
+🌙 **Deployed in the dark, deliberately.** VIO is fully collapsed
+(`camera_brightness: dark`, `tracked_features: 0`, `signal_none`) and it does not
+matter: there is **no VIO gate** anywhere in `_manual_velocity_pulse_gates` or in
+the step probe's own four geometry gates. RTK held **Fix with 32 satellites**.
+
+
 ### beta82 -> beta83 — 2026-08-28 18:41-18:47 EDT, motion-disabled
 
 Ships `raw_pymammotion_step_response_probe`, the open-loop dead-time probe, and
