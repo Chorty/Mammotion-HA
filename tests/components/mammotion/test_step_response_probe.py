@@ -25,6 +25,7 @@ import voluptuous as vol
 
 from custom_components.mammotion.services import (
     STEP_RESPONSE_PROBE_SCHEMA,
+    _in_window_ble_snapshot,
     _in_window_telemetry_sample,
     _step_response_analysis,
     _step_response_course_series,
@@ -429,3 +430,104 @@ def test_last_report_at_alone_cannot_answer_the_2026_08_28_question() -> None:
     second = _sample(frames_arriving)
     assert second["last_report_at_monotonic"] > first["last_report_at_monotonic"]
     assert second["position_sequence"] == first["position_sequence"]
+
+
+# --- outbound BLE facts, recorded in-window -----------------------------------
+
+
+def _handle_with_queue(
+    *, connected: bool, depth: int, gate_set: bool, saga: bool
+) -> object:
+    class _Gate:
+        @staticmethod
+        def is_set() -> bool:
+            return gate_set
+
+    class _Q:
+        @staticmethod
+        def qsize() -> int:
+            return depth
+
+    return SimpleNamespace(
+        last_report_at=1.0,
+        position_epoch=1,
+        latest_position_sample=SimpleNamespace(sequence=3),
+        get_transport=lambda _t: SimpleNamespace(is_connected=connected),
+        queue=SimpleNamespace(
+            is_saga_active=saga, _transport_gate=_Gate(), _queue=_Q()
+        ),
+    )
+
+
+def test_ble_snapshot_reports_the_four_discriminating_fields() -> None:
+    """Connection, backlog, gating and saga are recorded separately.
+
+    They separate different causes of a stalled position stream, so folding
+    them into one verdict would lose exactly the information wanted.
+    """
+
+    class _C(_FakeCoordinator):
+        class _Manager:
+            @staticmethod
+            def mower(_name: str) -> object:
+                return _handle_with_queue(
+                    connected=True, depth=7, gate_set=False, saga=True
+                )
+
+        manager = _Manager()
+
+    snap = _in_window_ble_snapshot(_C())
+    assert snap["is_connected"] is True
+    assert snap["queue_depth"] == 7
+    assert snap["queue_dispatch_paused"] is True
+    assert snap["saga_active"] is True
+
+
+def test_ble_snapshot_reads_none_rather_than_healthy_when_introspection_fails() -> None:
+    """Absence must never read as healthy.
+
+    `_ble_link_liveness` degrades to "not live" for the same reason: a gate that
+    silently passes when it cannot see is the vacuously-true failure this
+    project has been bitten by before.
+    """
+
+    class _C(_FakeCoordinator):
+        class _Manager:
+            @staticmethod
+            def mower(_name: str) -> object:
+                return SimpleNamespace(last_report_at=1.0)
+
+        manager = _Manager()
+
+    snap = _in_window_ble_snapshot(_C())
+    assert snap == {
+        "is_connected": None,
+        "queue_depth": None,
+        "queue_dispatch_paused": None,
+        "saga_active": None,
+    }
+
+
+def test_telemetry_sample_carries_the_ble_snapshot() -> None:
+    """The BLE facts ride the same 100 ms sample as position_sequence."""
+
+    class _C(_FakeCoordinator):
+        class _Manager:
+            @staticmethod
+            def mower(_name: str) -> object:
+                return _handle_with_queue(
+                    connected=False, depth=0, gate_set=True, saga=False
+                )
+
+        manager = _Manager()
+
+    sample = _in_window_telemetry_sample(
+        _C(),
+        index=0,
+        window_started=time.monotonic(),
+        command="send_movement",
+        command_args={"linear_speed": 400, "angular_speed": 0},
+    )
+    assert sample["ble"]["is_connected"] is False
+    assert sample["ble"]["queue_dispatch_paused"] is False
+    assert sample["position_sequence"] == 3

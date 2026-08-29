@@ -71,6 +71,36 @@ and leaves a delivery stall.
 on beta84 (2026-08-29) — **1 mm apart on different builds**, plus attempt 3's
 0.51 m. **n = 3. This is reproducible, not intermittent noise.**
 
+🔎 **THE BLE HISTORY NARROWS IT, AND ONE SENSOR IS A TRAP.** `active_transport`
+had **zero** state changes on 2026-08-29 — it read `ble` all day, so the
+integration never switched transport. But `binary_sensor..._ble_link_live`
+**flapped eight times**, including three ~6 s off/on cycles at 10:48:54–10:50:01
+EDT, right around the run, plus a 10-minute outage at 10:25–10:35.
+⚠️ **`ble_link_live` is NOT a radio-liveness signal and must not be read as one.**
+`_ble_link_liveness` composes it from `is_connected`, `is_usable`, cooldown,
+`last_send_age_seconds`, **`queue_depth`**, `queue_dispatch_paused` and
+`saga_active`, and its own docstring calls it *"a conservative preflight
+snapshot, not proof that the next write will complete."* A flap can therefore be
+caused by **our own 200 ms refresh writes filling the command queue** — reading
+that as the cause would be circular.
+🔑 **It is still a real lead**, because the slot-leak signature that helper
+documents is uncannily close to ours: `active_transport` reading `ble`,
+`is_usable` True, RSSI fine, `command_result.ok` True, while the executor samples
+the window and reports the mower stationary when it is not
+(`docs/pymammotion-ble-slot-leak-bug.md`).
+🗑️ **But it cannot be concluded from the entity.** The flaps ended ~50 s BEFORE
+the run, and `ble_link_live` is a coordinator-tick sensor — far too slow to
+resolve a 2.031 s event. **Absence of a flap inside the window is NOT evidence
+there wasn't one.**
+✅ **FIXED THE SAME WAY THE LAST AMBIGUITY WAS.** `_in_window_ble_snapshot` now
+records **`is_connected`, `queue_depth`, `queue_dispatch_paused` and
+`saga_active`** into every 100 ms in-window sample, so the next stall is
+attributable instead of inferred: connection dropped, queue gated, backlog
+climbing, or saga holding. ⚠️ **All four are OUTBOUND facts** — a stalled inbound
+position stream with all four healthy would mean the fault is not in our dispatch
+path at all, which is itself the useful answer. **Built and tested offline; NOT
+DEPLOYED — the host runs beta84, which lacks it.**
+
 🔑 **THE FAULT HAS A DIFFERENT OWNER THAN THE CONTROL WORK.** This is
 report-subscription / position-delivery, not control. **No steering gain, damping
 term or controller change touches it**, and it is more likely pymammotion or

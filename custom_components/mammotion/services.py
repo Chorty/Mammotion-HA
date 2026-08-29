@@ -7458,6 +7458,72 @@ async def _send_manager_command_with_args(
     )
 
 
+def _in_window_ble_snapshot(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> dict[str, Any]:
+    """Read the four BLE dispatch facts that separate the causes of a stall.
+
+    🔑 **Why not just call `_ble_link_liveness`.** That helper answers "is it
+    safe to START dispatching", folding seven checks into one boolean plus a
+    first-failing `reason`. Inside a window we do not want a verdict, we want
+    the raw fields at 100 ms so a 2-second event is visible at all -- the
+    `ble_link_live` ENTITY is a coordinator-tick sensor and is far too slow to
+    resolve one. On 2026-08-29 it flapped three times in 67 s around a run and
+    could neither confirm nor exclude a glitch inside the 2.031 s window itself.
+
+    What each field discriminates, when position payloads stop arriving:
+      * `is_connected` False        -> the GATT link actually dropped
+      * `queue_dispatch_paused`     -> the command queue is gated
+      * `queue_depth` climbing      -> outbound backlog, the documented proxy
+                                       slot-leak signature where `active_transport`
+                                       still reads `ble` and `is_usable` is True
+                                       (`docs/pymammotion-ble-slot-leak-bug.md`)
+      * `saga_active`               -> an exclusive saga is holding the queue
+
+    ⚠️ **All four are OUTBOUND-side facts.** A stalled inbound position stream
+    with all four healthy would mean the fault is not in our dispatch path at
+    all -- which is itself the useful answer, and the reason to record them
+    rather than assume.
+
+    Every read is an in-memory attribute access. No I/O, matching
+    `_in_window_telemetry_sample`'s contract.
+    """
+    snapshot: dict[str, Any] = {
+        "is_connected": None,
+        "queue_depth": None,
+        "queue_dispatch_paused": None,
+        "saga_active": None,
+    }
+    try:
+        handle = coordinator.manager.mower(coordinator.device_name)
+    except Exception:  # noqa: BLE001
+        return snapshot
+    get_transport = getattr(handle, "get_transport", None)
+    if callable(get_transport):
+        try:
+            transport = get_transport(TransportType.BLE)
+        except Exception:  # noqa: BLE001
+            transport = None
+        if transport is not None:
+            with contextlib.suppress(Exception):
+                snapshot["is_connected"] = bool(transport.is_connected)
+    queue = getattr(handle, "queue", None)
+    if queue is not None:
+        with contextlib.suppress(Exception):
+            snapshot["saga_active"] = bool(queue.is_saga_active)
+        # Private in pinned pymammotion; there is no public equivalent, and
+        # absence must read as None rather than as healthy.
+        gate = getattr(queue, "_transport_gate", None)
+        if gate is not None:
+            with contextlib.suppress(Exception):
+                snapshot["queue_dispatch_paused"] = not gate.is_set()
+        pending = getattr(queue, "_queue", None)
+        if pending is not None:
+            with contextlib.suppress(Exception):
+                snapshot["queue_depth"] = int(pending.qsize())
+    return snapshot
+
+
 def _in_window_telemetry_sample(
     coordinator: MammotionReportUpdateCoordinator,
     *,
@@ -7518,6 +7584,9 @@ def _in_window_telemetry_sample(
             "pos_type": position.get("pos_type"),
             "zone_hash": position.get("zone_hash"),
         },
+        # Outbound BLE dispatch facts, recorded at the same 100 ms cadence as
+        # position so a 2-second stall is attributable rather than inferred.
+        "ble": _in_window_ble_snapshot(coordinator),
         "vio": {
             "heading": _safe_attr_path(
                 coordinator.data, "report_data.vision_info.heading"
