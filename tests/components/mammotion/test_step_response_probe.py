@@ -18,12 +18,14 @@ from __future__ import annotations
 
 import asyncio
 import time
+from types import SimpleNamespace
 
 import pytest
 import voluptuous as vol
 
 from custom_components.mammotion.services import (
     STEP_RESPONSE_PROBE_SCHEMA,
+    _in_window_telemetry_sample,
     _step_response_analysis,
     _step_response_course_series,
     _step_response_gates,
@@ -356,3 +358,74 @@ def test_rotation_through_the_wrap_is_not_read_as_a_full_turn() -> None:
     analysis = _step_response_analysis(series, baseline_ms=0, step_ms=1500)
     assert analysis["omega_step_deg_per_s"] == pytest.approx(20.0)
     assert analysis["rotation_after_zero_deg"] == pytest.approx(10.0)
+
+
+# --- the discriminator the 2026-08-28 abort could not provide ------------------
+
+
+def _sample(handle: object) -> dict:
+    class _Coordinator(_FakeCoordinator):
+        class _Manager:
+            @staticmethod
+            def mower(_name: str) -> object:
+                return handle
+
+        manager = _Manager()
+
+    return _in_window_telemetry_sample(
+        _Coordinator(),
+        index=0,
+        window_started=time.monotonic(),
+        command="send_movement",
+        command_args={"linear_speed": 400, "angular_speed": 0},
+    )
+
+
+def test_sample_records_position_sequence_and_epoch() -> None:
+    """The fields that separate a stale payload from an absent one.
+
+    pymammotion bumps `_position_sequence` inside `_publish_position_sample`,
+    which the handle calls ONLY when the decoded frame actually carried a
+    position payload. So across a window where x/y never change, an ADVANCING
+    sequence means payloads arrived carrying stale coordinates (observer lag)
+    while a FROZEN one means no position payloads arrived at all (a feed stall).
+    """
+    handle = SimpleNamespace(
+        last_report_at=123.0,
+        position_epoch=4,
+        latest_position_sample=SimpleNamespace(sequence=57),
+    )
+    sample = _sample(handle)
+    assert sample["position_sequence"] == 57
+    assert sample["position_epoch"] == 4
+    assert sample["last_report_at_monotonic"] == 123.0
+
+
+def test_sample_is_none_safe_when_no_position_has_ever_been_published() -> None:
+    """`latest_position_sample` is legitimately None before the first payload."""
+    handle = SimpleNamespace(
+        last_report_at=0.0, position_epoch=1, latest_position_sample=None
+    )
+    sample = _sample(handle)
+    assert sample["position_sequence"] is None
+    assert sample["position_epoch"] == 1
+
+
+def test_last_report_at_alone_cannot_answer_the_2026_08_28_question() -> None:
+    """Pin why the extra fields exist, so nobody removes them as redundant.
+
+    On 2026-08-28 `last_report_at` advanced three times across a 2.088 s window
+    in which the mower travelled 0.4375 m and x/y never changed. It stamps every
+    LubaMsg, so it proved frames arrived and nothing about position payloads.
+    """
+    frames_arriving = SimpleNamespace(
+        last_report_at=200.0,
+        position_epoch=2,
+        latest_position_sample=SimpleNamespace(sequence=17),
+    )
+    first = _sample(frames_arriving)
+    # A later frame arrives, but no position payload came with it.
+    frames_arriving.last_report_at = 201.0
+    second = _sample(frames_arriving)
+    assert second["last_report_at_monotonic"] > first["last_report_at_monotonic"]
+    assert second["position_sequence"] == first["position_sequence"]

@@ -7479,8 +7479,36 @@ def _in_window_telemetry_sample(
         "captured_at": _utc_timestamp(),
         # DeviceHandle stamps this monotonic value for every received LubaMsg.
         # Unlike x/y, it proves a fresh report even if position is unchanged.
+        # ⚠️ **It proves a FRAME arrived, NOT a position payload** -- every
+        # LubaMsg bumps it, and only some carry `sys.toapp_report_data`. On
+        # 2026-08-28 that distinction was the whole question and this field
+        # could not answer it: it advanced three times across a 2.088 s window
+        # in which the mower travelled 0.4375 m and x/y never changed
+        # (`docs/evidence-step-response-probe-aborted-20260828.json`).
         "last_report_at_monotonic": (
             _safe_attr_path(handle, "last_report_at") if handle is not None else None
+        ),
+        # 🔑 **THE DISCRIMINATOR `last_report_at` CANNOT BE.** pymammotion bumps
+        # `_position_sequence` inside `_publish_position_sample`, which the
+        # handle calls ONLY when the decoded frame actually carried a position
+        # payload (`if position_source is not None and not self._stopping:`).
+        # So across a window where x/y never change:
+        #   sequence ADVANCING -> payloads arrived carrying STALE coordinates,
+        #                         i.e. observer lag;
+        #   sequence FROZEN    -> no position payloads arrived at all,
+        #                         i.e. a feed stall.
+        # Those are different faults with different owners, and nothing else
+        # recorded in this sample separates them. `position_epoch` comes with it
+        # because a BLE re-establishment bumps the epoch, and both known blind-
+        # travel events followed a reconnect -- n = 2, a pattern to chase and
+        # NOT a mechanism.
+        "position_sequence": (
+            _safe_attr_path(handle, "latest_position_sample.sequence")
+            if handle is not None
+            else None
+        ),
+        "position_epoch": (
+            _safe_attr_path(handle, "position_epoch") if handle is not None else None
         ),
         "position": {
             "source": position.get("source"),

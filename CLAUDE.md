@@ -89,11 +89,22 @@ run, and the programme closes.** `report_stream_sequence_probe` across a MOTION
 window is the instrument; a stationary run characterises the idle feed, which is a
 different case.
 
-🐛 **DEFECT FOUND BY THE PROBE'S OWN FIRST RUN — THE STEP PROBE CANNOT DIAGNOSE
-ITS OWN FAILURE MODE.** Its in-window samples record `last_report_at_monotonic`
-but **not position sequence or epoch**, so when the feed freezes it cannot say
-whether payloads were stale or absent. **NOT FIXED.** Without it a retry may fail
-identically and be just as uninterpretable.
+✅ **FIXED THE SAME DAY — and the instrument was already in the pinned backend.**
+`_in_window_telemetry_sample` now records **`position_sequence` and
+`position_epoch`** alongside `last_report_at_monotonic`.
+🗑️ **CORRECTION: I first said this needed a backend bump for upstream's
+`last_report_data_at`. Half wrong.** That field is genuinely absent from
+`chorty-0.8.12.post3` — but pymammotion already bumps `_position_sequence` inside
+`_publish_position_sample`, which `handle.py` calls **only** when the decoded
+frame actually carried a position payload
+(`if position_source is not None and not self._stopping:`). So the discriminator
+was reachable all along via `latest_position_sample.sequence`. **No backend bump
+is owed.**
+🔑 **Read it like this**, across a window where x/y never change:
+**sequence ADVANCING → payloads arrived carrying STALE coordinates (observer
+lag). Sequence FROZEN → no position payloads arrived at all (a feed stall).**
+Different faults, different owners. ⚠️ **DEPLOYED? NO** — the host runs beta83,
+which does not have this. It needs a release before the next probe run.
 
 ⚠️ **BLIND TRAVEL IS NOW n = 2, AND BOTH FOLLOWED A RECONNECT.** Attempt 3 ran at
 `baseline_position_epoch` 2 where earlier runs ran at 1; this run followed the HA
