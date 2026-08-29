@@ -379,23 +379,30 @@ disk would have **accepted** — is refused with
 ⚠️ **`services.yaml` prose still says 1.06 m** in the `continuous_motion_window`
 description. Code is right, text is stale; fix it in the next release.
 
-💻 **LIVE STATE at 17:25, 2026-08-29 — requery before acting.** Host **beta86** +
-PyMammotion **0.8.12.post3**. Mower **off the dock** at **(4.4598, -7.3451)** plus
-run B's travel, in "Backyard Right", `AREA_INSIDE`, RTK **Fix**, battery **66%**
-and falling (off dock since morning). Gate **disarmed**, verified live API **and**
-RAW `[False]`.
-🔋 **Dock and charge before further physical work.**
+💻 **LIVE STATE at 17:45, 2026-08-29 — requery before acting.** Host **beta86** +
+PyMammotion **0.8.12.post3**. Mower **off the dock** at roughly **(4.374, -9.578)**
+— **12.87 m from the dock**, at the far end of "Backyard Right" — `AREA_INSIDE`,
+RTK **Fix**, battery **63%**.
 
-🔑 **CORRIDOR METHOD THAT WORKED TWICE TODAY:** a **6.20 m axis-aligned square
-re-centred on the live position before EACH run**, giving 3.0998 m against the
-probe's required 3.00 m, 15/15 gates both signs.
-⚠️ **A corridor cannot be reused across a run that moves the mower** — each run
-travels ~2.5 m to the travel guard, far past the 0.30 m start-drift bound. Re-scan
-and re-verify containment every time.
-⚠️ **The 4 s settle phase is too short.** Both runs tripped the travel guard with
-the mower still rotating, so τ was censored. A longer settle needs either a bigger
-`max_travel_m` (and therefore more corridor) or a slower `linear_speed` — and
-`linear_speed` is schema-pinned at the measured 400.
+🚨 **BLE IS DOWN AND IT IS A RANGE PROBLEM, NOT A SOFTWARE ONE.** `ble_rssi`
+**-84 dBm**, well past the documented wall (works above ~-70, dies below ~-76);
+`ble_link_live` off since 17:15 EDT with `ble_client_not_connected`.
+⚠️ **`active_transport` still reads `ble`** — that is routing *eligibility*, not a
+live GATT link. Do not read it as connected.
+🔑 **Waiting does not fix this** — at -84 dBm the mower is out of range, not
+dozing. Recovery is: send it home over the **cloud** (`mqtt_status:
+reported_online`; return-to-dock is a vendor task command, not `DrvMotionCtrl`, so
+it does not need the BLE motion path — but `ble_only_fallback_mode` is
+`fallback_active`, so the **vendor app** is the more reliable route), move a proxy
+closer, or walk it back.
+
+✅ **The gate is ARMED and the operator armed it deliberately** (stated 2026-08-29).
+**This is NOT an armed-at-rest occurrence and must not be added to that count** —
+the count tracks the gate being found armed with nobody having armed it. Its only
+blocker is `ble_client_not_connected`, so it goes live the moment BLE returns.
+
+⚠️ **Re-scan before any option-B run.** Run 1 needs a **7.2 m** corridor and this
+spot is near the yard edge; do not assume the clearance is there.
 
 🔑 **THE ATTEMPT-4 CORRIDOR IS THE ONE TO REUSE — 5.0 x 5.0 m, axis-aligned:**
 `[(3.48,-7.74), (8.48,-7.74), (8.48,-2.74), (3.48,-2.74)]`, centred on
