@@ -6201,5 +6201,12 @@
   "run_B_minus_120": "command open 2.0-5.0 s. Rates: +2.009 (pre), -1.394, +9.689 (peak), +3.102, +6.767, +1.091.",
   "why_it_matters": "Onset lag is a separate quantity from the decay constant and is arguably worse for control: the loop issues a correction and NOTHING happens for a full sample period or two. A ~1 Hz proportional loop is therefore commanding into a plant that has not yet responded to the previous command.",
   "caveat": "The decay is NOT monotonic in either run (-0.645 then -2.907; +6.767 then +1.091). That is chord noise on ~0.26 m chords. It is why tau is taken from the INTEGRAL rather than any per-interval fit, and why no rate law should be fitted to these numbers."
+ },
+ "__CAVEAT_ADDED_2026_08_29__": {
+  "the_field_name_claims_more_than_the_measurement": "`tau_actuator_s` cannot distinguish ACTUATOR lag from OBSERVER lag. Both present identically: the course keeps changing after the command stops. A ~1 s observation lag inflates tau.",
+  "rough_split": "The step phase ran ~3 s at ~4.7 deg/s = ~14 deg, and 17 deg arrived after the command zeroed. If observation lags ~1 s, roughly 4.7 deg of that 17 is step-phase rotation seen late, leaving ~12 deg genuinely post-command.",
+  "what_survives": "tau is still several times the ~1 Hz control period, so proportional control at this sample rate remains ruled out. What is NOT established is how much of tau is the plant.",
+  "what_it_would_take": "Separating them needs a feedback path faster than the ~1 Hz bundle. The beta77 cadence matrix requested 100/250/500/1000 ms report periods and measured p95 intervals of 1119-1372 ms at EVERY one -- only 1000 ms is honoured. The rate is the device's choice, not the transport's, so no faster path exists on this hardware (docs/evidence-beta77-cadence-matrix-20260826.json, docs/the-1hz-bundle-is-the-ceiling-20260822.md).",
+  "consequence_for_design": "A feed-forward design must be built against tau as an EFFECTIVE loop dead time -- the quantity the controller actually faces -- not as a plant constant. That is fine for control purposes and must not be quoted as a mechanical property of the mower."
  }
 }

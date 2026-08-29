@@ -22,11 +22,17 @@ stopping its own report stream. Read
 `docs/evidence-step-probe-stalled-on-its-own-lease-20260829.md` before any
 evidence file dated 2026-08-28 or -29.
 
-**Next is an operator decision, not code:** continuous steering at ~1 Hz needs a
-feed-forward/predictive design, or a faster feedback path that the 1 Hz bundle says
-does not exist, or acceptance that stop-measure-go is the answer. Phase 2 stays
-parked (standing decision 5). **Do not tune a proportional gain** — that is the one
-design this measurement rules out.
+✅ **DECIDED 2026-08-29 — the operator chose option B: design for the dead time.**
+Read `docs/phase2-feedforward-measurement-predeclared-20260829.md`. Two
+measurements are predeclared and **neither is authorized yet**: run 1 re-measures
+τ **uncensored** (settle 6000 ms, `max_travel_m` 3.00, a 7.2 m corridor), run 2
+repeats it at **+180** to find whether ω scales with command. Only then is the
+feed-forward design written, with its own criteria.
+⚠️ **τ is an EFFECTIVE LOOP DEAD TIME, not a plant constant** — the probe cannot
+separate actuator from observer lag, and the beta77 cadence matrix shows no faster
+feed exists (requested 100/250/500/1000 ms, p95 1119–1372 ms at every one).
+🗑️ **Do not tune a proportional gain** — that is the one design already ruled out.
+Phase 2 stays parked (standing decision 5); these are measurements, not steering.
 
 
 🛡️ **PHASE 2 HEADING-SAFETY REMEDIATION IMPLEMENTED OFFLINE,

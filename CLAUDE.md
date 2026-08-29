@@ -84,10 +84,27 @@ which is why τ comes from the **integral** and why **no rate law may be fitted 
 these numbers**.
 
 🔑 **WHAT IT SETTLES.** A proportional loop at ~1 Hz cannot be stabilised here by
-tuning, because the plant's time constant is several times the sample period —
-now measured with **no controller in the loop**, rather than inferred from a
-hunting one. It does **not** rule out a damped or feed-forward design; it rules
-out the one that was tried.
+tuning, because the loop's dead time is several times the sample period — now
+measured with **no controller in the loop**, rather than inferred from a hunting
+one. It does **not** rule out a damped or feed-forward design; it rules out the
+one that was tried.
+
+🗑️ **CORRECTION TO MY OWN FIELD NAME: `tau_actuator_s` CLAIMS MORE THAN THE
+MEASUREMENT SUPPORTS.** The step probe **cannot separate actuator lag from
+observer lag** — both present identically as "course keeps changing after the
+command stops", and a ~1 s observation lag inflates τ. Rough split: the step ran
+~3 s at ~4.7 °/s ≈ 14°, and 17° arrived after zero; if observation lags ~1 s then
+~4.7° of that is step-phase rotation seen late, leaving **~12° genuinely
+post-command**.
+🔑 **What survives:** τ is still several times the control period, so proportional
+control stays ruled out. **What does NOT:** how much of τ is the plant.
+🔑 **Treat τ as an EFFECTIVE LOOP DEAD TIME** — the quantity a controller actually
+faces — **never as a mechanical property of the mower.** Separating them needs a
+feed faster than the ~1 Hz bundle, and the beta77 cadence matrix proves there
+isn't one: requested periods **100 / 250 / 500 / 1000 ms** all measured p95
+**1119–1372 ms**, only 1000 ms honoured. **The rate is the device's choice, not
+the transport's** — so no config option, cloud/MQTT path, or bypassing this
+integration changes it.
 
 🗑️🗑️ **RETRACTION, 2026-08-29 — THE "POSITION FEED STALL" WAS THIS PROBE
 STOPPING ITS OWN FEED.** Read
@@ -460,22 +477,25 @@ the hazardous test could not pay off even if it worked. See §8.
 ⚠️ **Do not re-open "would the firmware accept an uploaded path?" as new work.**
 It is moot, not pending.
 
-**NEXT — Q2 is measured. The programme now has a real decision to make.**
-1. ✅ **DONE 2026-08-29** — probe bug found, fixed, released as beta86 and deployed.
-2. ✅ **DONE 2026-08-29** — dead time measured open loop, both signs:
-   **τ ≥ 2.6–3.6 s**, onset lag ~1–2 s, no drivetrain asymmetry.
-3. 🔑 **THE OPERATOR DECISION, and it is a value call not a code question:**
-   with the plant's time constant several times the sample period, continuous
-   steering at ~1 Hz needs either a **feed-forward/predictive** design (not a
-   tuned proportional one), or a **faster feedback path** that
-   `docs/the-1hz-bundle-is-the-ceiling-20260822.md` says does not exist on this
-   hardware, or **acceptance that stop-measure-go is the answer**.
-   ⚠️ Phase 2 remains PARKED under standing decision 5 either way.
-4. **If more measurement is wanted first**, the cheapest useful additions are a
-   **longer settle** (τ is currently censored) and a **second commanded angular**
-   (180) to see whether ω scales — both runs used |120|.
-🗑️ **Do NOT tune a proportional gain.** That is the one design this measurement
-rules out.
+**NEXT — OPERATOR CHOSE OPTION B, 2026-08-29: design for the dead time.**
+🔑 **Read `docs/phase2-feedforward-measurement-predeclared-20260829.md` first.**
+It predeclares the two measurements a feed-forward design needs, and it
+**authorizes nothing** — each run needs explicit per-run authorization.
+1. 🔋 **Dock and charge.** Both runs are longer than any so far.
+2. **Run 1 — τ uncensored.** `baseline 1500 / step 2500 / settle 6000`,
+   `max_travel_m 3.00`, `+120`, in a **7.2 m** corridor (half-width 3.60 ≥ the
+   required 3.50). 🔑 **It succeeds only if the course goes FLAT before the window
+   ends** — still moving at the last sample means τ is censored again and the run
+   FAILED. Do not quote a censored number.
+3. **Run 2 — does ω scale?** Identical but `+180`. Proportional → a linear
+   command→rate map is usable. Flat → the 2026-08-22 arc result repeats and a
+   predictive design cannot modulate rate in this band at all.
+   🗑️ **Two points are a direction, not a law.** Do not fit a curve.
+4. **Only then** write the feed-forward design, with its own predeclared criteria.
+🗑️ **Not being run:** the opposite signs (asymmetry is answered — |ω| within 12%),
+and any steering run. **Phase 2 stays PARKED**; this is measurement, no controller.
+⚠️ **τ is an EFFECTIVE LOOP DEAD TIME, not a plant constant** — the probe cannot
+separate actuator from observer lag, and no faster feed exists to do it.
 
 
 🛑 **STANDING CHECK, added 2026-08-28 because this mistake has now cost THREE
