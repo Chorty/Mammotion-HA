@@ -56,16 +56,56 @@ trust without watching"*, which does not mention speed. See standing decision 5.
 next work.** The two questions that would justify resuming (Q1 actuator-vs-observer
 lag, Q2 its size) are designed in
 `docs/phase2-dead-time-step-test-design-20260828.md`.
-🆕 **The probe that answers them now EXISTS but has NEVER RUN:
-`raw_pymammotion_step_response_probe`** (built 2026-08-28 at the operator's
-request). Open loop, **no controller** — baseline → step → settle through one
-serialized writer, `step_angular_speed` restricted to the measured ±120/±180
-band, `confirm_step_response_run` required per call, `step_path_contained`
-requiring `max_travel_m + 0.50 m` of clearance in every direction, and both
-helper tasks tripping the travel guard if they die.
-🛑 **Built and tested offline only — NOT RELEASED, NOT DEPLOYED, NEVER RUN.** 23
-offline tests; running it needs a release, a deploy, a fresh corridor scan and
-explicit per-run authorization.
+🆕 **`raw_pymammotion_step_response_probe` is BUILT, DEPLOYED (beta83) AND HAS
+RUN ONCE — and it measured NOTHING.** Open loop, **no controller** — baseline →
+step → settle through one serialized writer, `step_angular_speed` restricted to
+the measured ±120/±180 band, `confirm_step_response_run` required per call,
+`step_path_contained` requiring `max_travel_m + 0.50 m` of clearance in every
+direction, and both helper tasks tripping the travel guard if they die.
+
+🚨 **ITS FIRST RUN ABORTED ON A FROZEN POSITION FEED, 2026-08-28 — AND THE MOWER
+WAS MOVING THE WHOLE TIME.** `travel_guard_tripped` at 2.218 s, **zero
+informative intervals**. All 21 in-window samples read bit-identical
+`x 8.2832, y -7.3937, toward 126.8278`, and the snapshot taken *immediately
+after* the run still read the pre-run position — yet the mower had **travelled
+0.4375 m** by the time the feed caught up (~0.197 m/s implied). Read
+`docs/evidence-step-response-probe-aborted-20260828.json`.
+⚠️ **THIS ESTABLISHES NOTHING ABOUT Q1 OR Q2.** Do not read "the step probe ran"
+as progress on the dead-time question. The **−120 sign was never run**, so nothing
+here is a two-sign result either.
+✅ **The probe fail-closed exactly as designed** — cumulative distance was 0, so
+this was beta72's stale-feed trip, not a distance trip — and the stop confirmed.
+
+🔑 **THE AMBIGUITY THIS RUN COULD NOT SETTLE, and it is the whole question.**
+Either **(a)** position payloads arrived carrying **stale** coordinates → genuine
+observer lag ≥ 2 s, or **(b)** **no position payloads arrived at all**, only
+generic frames → a feed stall. `last_report_at` advanced three times during the
+window, but it stamps **every** LubaMsg, so that proves frames arrived, **not**
+that any carried `sys.toapp_report_data`. Upstream pymammotion's
+`last_report_data_at` would separate them and is **not** in our pinned
+`chorty-0.8.12.post3`.
+🔑 **If the answer is (a), Q1 is ANSWERED as observer lag with no further motion
+run, and the programme closes.** `report_stream_sequence_probe` across a MOTION
+window is the instrument; a stationary run characterises the idle feed, which is a
+different case.
+
+🐛 **DEFECT FOUND BY THE PROBE'S OWN FIRST RUN — THE STEP PROBE CANNOT DIAGNOSE
+ITS OWN FAILURE MODE.** Its in-window samples record `last_report_at_monotonic`
+but **not position sequence or epoch**, so when the feed freezes it cannot say
+whether payloads were stale or absent. **NOT FIXED.** Without it a retry may fail
+identically and be just as uninterpretable.
+
+⚠️ **BLIND TRAVEL IS NOW n = 2, AND BOTH FOLLOWED A RECONNECT.** Attempt 3 ran at
+`baseline_position_epoch` 2 where earlier runs ran at 1; this run followed the HA
+restart for the beta83 deploy. **A pattern worth recording and STILL NOT A
+MECHANISM** — it sharpens where to point the sequence probe, it does not diagnose
+anything. Prior: `docs/phase2-steering-attempt3-blind-travel-20260827.md`.
+
+🔋 **DOCK AND CHARGE BEFORE ANY FURTHER PHYSICAL WORK.** Battery went **44% → 29%**
+across this run, off dock and not charging, with `ble_rssi` at **−76 dBm** — on the
+documented BLE wall. 29% off-dock is the condition that started the 2026-08-24
+incident, where the battery died overnight and BLE did not recover until a
+config-entry reload.
 🔑 **Read that document's second section before ever commanding motion for this:
 half of Q1 is ARITHMETIC on banked captures, not an experiment.** If observer lag
 alone already exceeds the ~1 s decision period, Q1 is answered with no run at all
@@ -222,13 +262,26 @@ disk would have **accepted** — is refused with
 ⚠️ **`services.yaml` prose still says 1.06 m** in the `continuous_motion_window`
 description. Code is right, text is stale; fix it in the next release.
 
-💻 **LIVE STATE at 15:05, 2026-08-28 — requery before acting.** Host **beta82** +
-PyMammotion **0.8.12.post3**. Mower **off the dock**, settled after steering
-attempt 4 at **(6.6067, -6.2147)**, `toward 137.5143`, inside "Backyard Right"
-and inside the attempt-4 corridor. RTK **Fix**, battery **47%** (was 54% before
-the card repositioning and the run), daylight, BLE live at **-72 dBm**. Gate
-**disarmed** — `enabled: false`, `real_motion_allowed: false`, no session,
-verified live API **and** RAW `core.config_entries`.
+💻 **LIVE STATE at 18:50, 2026-08-28 — requery before acting.** Host **beta83** +
+PyMammotion **0.8.12.post3**. Mower **off the dock** near **(8.63, -7.65)** in
+"Backyard Right", `AREA_INSIDE`, RTK **Fix**, **battery 29% and NOT charging**,
+`ble_rssi` **-76 dBm**. Gate **disarmed** — `enabled: false`,
+`real_motion_allowed: false`, no session, verified live API **and** RAW
+`core.config_entries`.
+🔋 **DOCK AND CHARGE FIRST.** See the battery warning above.
+✅ **Card browser-verified at `0.6.4-beta82` by the operator on 2026-08-28**;
+beta83's card has NOT been browser-verified.
+
+🔑 **CORRIDOR USED FOR THE STEP PROBE — 6.20 m square, freshly scanned:**
+`[(5.183,-10.494), (11.383,-10.494), (11.383,-4.294), (5.183,-4.294)]`, centred on
+the then-live `(8.2832, -7.3937)`. Gave **3.0997 m** of clearance against the
+**3.00 m** the probe requires (`max_travel_m 2.50 + 0.50 m stop overshoot`), and
+15/15 gates passed on **both** signs before dispatch.
+⚠️ **The mower has since moved**, so re-scan rather than reusing that polygon.
+⚠️ **Phase budget vs the distance guard is TIGHT.** At the measured ~0.23 m/s a
+10 s window runs ~2.30 m against a 2.50 m guard, which would truncate the
+**settle** phase — and settle IS the measurement. `baseline_ms 2000 / step_ms 3000
+/ settle_ms 4000` (9 s, ~2.07 m) is what was used, and it leaves ~0.4 m.
 
 🔑 **THE ATTEMPT-4 CORRIDOR IS THE ONE TO REUSE — 5.0 x 5.0 m, axis-aligned:**
 `[(3.48,-7.74), (8.48,-7.74), (8.48,-2.74), (3.48,-2.74)]`, centred on
@@ -310,17 +363,19 @@ the hazardous test could not pay off even if it worked. See §8.
 ⚠️ **Do not re-open "would the firmware accept an uploaded path?" as new work.**
 It is moot, not pending.
 
-**NEXT — the Phase 2 queue is CLOSED, not paused mid-task.**
-1-5. ✅ **DONE 2026-08-28** — beta82 released and deployed; the 1.34 m disk verified
-   on the deployed build; attempt 4 proved the sign; criterion 2 repaired and
-   predeclared; attempt 5 ran and the predicted oscillation happened.
-6. 🛑 **PARKED by the operator.** Nothing in Phase 2 is queued. If it resumes, the
-   entry point is `docs/phase2-dead-time-step-test-design-20260828.md` — and its
-   free arithmetic step comes before any motion.
-🔑 **The finding that stands regardless:** at ~1 Hz the loop carries roughly a full
-period of DEAD TIME, so proportional control cannot be stabilised by tuning. That
-is a property of the telemetry rate, not of this controller, and it will be true of
-any future attempt at continuous steering on this hardware.
+**NEXT — Phase 2 steering stays CLOSED. The one open thread is READ-ONLY.**
+1. 🔋 **Dock and charge.** 29% off-dock, not charging.
+2. 🔑 **`report_stream_sequence_probe` across a MOTION window** — decide whether
+   the position payloads were arriving-but-stale or not arriving at all. This is
+   read-only and needs no steering. **If they were arriving but stale, Q1 is
+   answered as observer lag with NO further motion run, and the Phase 2 question
+   closes on a measurement.**
+3. 🐛 **Add position sequence and epoch to the step probe's in-window samples**
+   before retrying it. Without that it cannot diagnose its own failure and a
+   retry may be just as uninterpretable.
+4. Only then, if it is still wanted: retry the step probe at **both** signs.
+   ⚠️ A one-sided step cannot separate rotational carryover from a
+   direction-dependent drivetrain asymmetry, so one sign is not a result.
 
 
 🛑 **STANDING CHECK, added 2026-08-28 because this mistake has now cost THREE

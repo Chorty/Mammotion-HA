@@ -1,27 +1,33 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
-## §0 Live state — 2026-08-28, end of session
+## §0 Live state — 2026-08-28 18:50 EDT
 
 ⚠️ **Everything BELOW this section is historical.** Reverify before acting on it.
 
-Host **0.6.4-beta82** + PyMammotion **0.8.12.post3**. Mower off the dock at
-**(8.285, -7.3959)**, settled after steering attempt 5, inside its corridor and
-inside "Backyard Right". RTK Fix, battery ~44%. Gate **disarmed**, verified live
-API **and** RAW `core.config_entries`.
+Host **0.6.4-beta83** + PyMammotion **0.8.12.post3**. Mower off the dock near
+**(8.63, -7.65)**, RTK Fix, **battery 29% and NOT charging**, `ble_rssi` -76 dBm.
+Gate **disarmed**, verified live API **and** RAW.
+🔋 **DOCK AND CHARGE BEFORE ANY PHYSICAL WORK.** 29% off-dock is the condition
+that started the 2026-08-24 incident.
 
-🛑 **PHASE 2 CONTINUOUS STEERING IS PARKED — operator decision, 2026-08-28.** Not
-abandoned as broken: parked because it buys ~4x speed and not capability, while
-stop-measure-go already does click-to-path at 6.0 m. **There is no Phase 2 work
-queued.** Do not propose steering runs, gain changes, or damping terms.
+🛑 **Phase 2 continuous steering is PARKED** (standing decision 5). No steering
+work is queued.
 
-🔑 **The finding that stands:** attempt 5 measured dead time >= the ~1 Hz decision
-period (commanded angular ZERO, mower still rotating +7.861 deg/s; commanded the
-REVERSING +120, still rotating +5.402 deg/s the same way). A proportional loop at
-this sample rate cannot be stabilised by tuning. That is a property of the
-telemetry rate, not of this controller.
+🚨 **THE POSITION FEED WENT BLIND AGAIN, 2026-08-28 — n = 2.** The new
+`raw_pymammotion_step_response_probe` ran once and **measured nothing**: it
+aborted on a frozen feed at 2.218 s with zero informative intervals, while the
+mower **travelled 0.4375 m** that the feed never reported. It fail-closed exactly
+as designed. Read `docs/evidence-step-response-probe-aborted-20260828.json`.
+⚠️ **Nothing about Q1 or Q2 was established**, and the -120 sign was never run.
 
-If it ever resumes: `docs/phase2-dead-time-step-test-design-20260828.md`, whose
-first step is **arithmetic on banked captures, not a run**.
+🔑 **THE NEXT STEP IS READ-ONLY.** Run `report_stream_sequence_probe` across a
+MOTION window to decide whether position payloads were arriving-but-stale or not
+arriving at all. `last_report_at` stamps every LubaMsg, so it cannot tell them
+apart. **If they were arriving but stale, Q1 is answered as observer lag with no
+further motion run and the programme closes.**
+🐛 **The step probe cannot diagnose its own failure** — its samples omit position
+sequence and epoch. Fix that before retrying it, or a retry may be equally
+uninterpretable.
 
 
 🛡️ **PHASE 2 HEADING-SAFETY REMEDIATION IMPLEMENTED OFFLINE,

@@ -1,0 +1,865 @@
+{
+ "what": "Step-response probe, first ever run \u2014 ABORTED on a frozen position feed. Establishes NOTHING about Q1 or Q2.",
+ "when": "2026-08-28",
+ "build": "0.6.4-beta83",
+ "backend": "0.8.12.post3",
+ "verdict": "NO MEASUREMENT. Zero informative intervals. The probe fail-closed exactly as designed; the telemetry did not cooperate.",
+ "explicitly_not_established": [
+  "Nothing about actuator vs observer lag (Q1).",
+  "Nothing about the size of the dead time (Q2).",
+  "Nothing about the rotation response to angular +120 while moving.",
+  "The -120 sign was NOT run, so nothing here is a two-sign result."
+ ],
+ "what_happened": {
+  "commanded": "linear 400, baseline 2000 ms at angular 0 then step to angular +120",
+  "aborted_at_ms": 2218.388,
+  "reason": "travel_guard_tripped",
+  "phase_transitions": [
+   {
+    "phase": "baseline",
+    "angular_speed": 0,
+    "elapsed_ms": 67.25
+   },
+   {
+    "phase": "step",
+    "angular_speed": 120,
+    "elapsed_ms": 2001.204
+   }
+  ],
+  "stop_confirmed": true,
+  "informative_intervals": {
+   "baseline": 0,
+   "step": 0,
+   "settle": 0
+  },
+  "course_series_length": 0
+ },
+ "the_observation": {
+  "headline": "The mower TRAVELLED while the position feed reported nothing. All 21 samples over 2.088 s read bit-identical x/y/toward; a snapshot taken immediately after the run still read the pre-run position; the feed later caught up 0.4375 m away.",
+  "frozen_position": {
+   "x": 8.2832,
+   "y": -7.3937,
+   "toward": 126.8278
+  },
+  "samples_all_identical": 21,
+  "window_span_ms": 2020.9589999999998,
+  "position_when_feed_caught_up": {
+   "x": 8.6347,
+   "y": -7.6542,
+   "toward": 127.8448
+  },
+  "displacement_m": 0.4375,
+  "implied_speed_mps": 0.1972,
+  "last_report_at_monotonic_distinct": [
+   4688502.906926526,
+   4688503.954904872,
+   4688504.903214354
+  ],
+  "frames_were_arriving": true,
+  "refresh_writes": 10,
+  "refresh_error": null
+ },
+ "the_unresolved_ambiguity": {
+  "candidate_a": "Position payloads arrived carrying STALE coordinates -> genuine observer lag >= 2 s.",
+  "candidate_b": "No position payloads arrived at all; only generic frames -> a feed stall.",
+  "why_this_run_cannot_separate_them": "`last_report_at` stamps EVERY LubaMsg, so an advancing value proves frames arrived, not that any carried sys.toapp_report_data. Upstream pymammotion has `last_report_data_at`, set only on frames carrying position, and it is NOT in our pinned chorty-0.8.12.post3.",
+  "the_instrument_that_would": "report_stream_sequence_probe, run across a MOTION window -- a stationary run characterises the idle feed, which is a different case."
+ },
+ "probe_defect_found_by_its_own_first_run": {
+  "finding": "THE STEP PROBE CANNOT DIAGNOSE ITS OWN FAILURE MODE.",
+  "detail": "Its samples record `last_report_at_monotonic` but NOT position sequence or epoch, so when the feed freezes it cannot say whether payloads were stale or absent. Sample keys are index, elapsed_ms, captured_at, last_report_at_monotonic, position, vio, active_command.",
+  "fix": "add position sequence and epoch to the in-window sample. Without it a retry may fail identically and be equally uninterpretable.",
+  "status": "NOT FIXED. Recorded, not implemented."
+ },
+ "reconnect_correlation": {
+  "observation": "Both occurrences of blind travel followed a reconnect. Attempt 3 ran at baseline_position_epoch 2 where earlier runs ran at 1; this run followed the HA restart for the beta83 deploy, which re-established BLE.",
+  "status": "n = 2. A PATTERN WORTH RECORDING AND STILL NOT A MECHANISM. It sharpens where to point report_stream_sequence_probe; it is not a diagnosis.",
+  "prior": "docs/phase2-steering-attempt3-blind-travel-20260827.md"
+ },
+ "what_DID_work": {
+  "probe_failed_closed": "The travel guard tripped on the frozen feed rather than letting the run continue blind -- beta72's design, working. Cumulative distance was 0, so this was the stale-feed trip and not a distance trip.",
+  "stop": "confirmed, movement_ok true",
+  "gates": "15 of 15 passed on BOTH signs before dispatch; containment 3.0997 m against a required 3.00 m",
+  "gate_after": "enabled false, real_motion_allowed false, verified live API AND RAW [False]"
+ },
+ "operational": {
+  "battery_before_run_pct": 44,
+  "battery_after_pct": 29,
+  "charging": false,
+  "off_dock": true,
+  "ble_rssi_dbm": -76,
+  "note": "29% off-dock and not charging is the condition that started the 2026-08-24 incident, where the battery died overnight and BLE did not recover until a config-entry reload. -76 dBm sits on the documented BLE wall."
+ },
+ "why_the_second_sign_was_not_run": "Running -120 with the feed in this state measures the feed, not the plant, and spends battery to learn nothing. Both signs still matter -- a one-sided step cannot separate carryover from a direction-dependent drivetrain asymmetry -- but only once the feed delivers position during motion.",
+ "request": {
+  "entity_id": "lawn_mower.back_yard_clip_skywalker",
+  "route_start": {
+   "x": 8.2832,
+   "y": -7.3937
+  },
+  "corridor_polygon": [
+   {
+    "x": 5.183,
+    "y": -10.494
+   },
+   {
+    "x": 11.383,
+    "y": -10.494
+   },
+   {
+    "x": 11.383,
+    "y": -4.294
+   },
+   {
+    "x": 5.183,
+    "y": -4.294
+   }
+  ],
+  "linear_speed": 400,
+  "baseline_ms": 2000,
+  "step_ms": 3000,
+  "settle_ms": 4000,
+  "motion_refresh_interval_ms": 200,
+  "sample_interval_ms": 100,
+  "max_travel_m": 2.5,
+  "prefer_ble": true,
+  "confirm_blades_off": true,
+  "confirm_clear_area": true,
+  "confirm_step_response_run": true,
+  "step_angular_speed": 120,
+  "dry_run": false
+ },
+ "raw_samples": [
+  {
+   "index": 0,
+   "elapsed_ms": 67.161,
+   "captured_at": "2026-08-28T22:47:29.603343+00:00",
+   "last_report_at_monotonic": 4688502.906926526,
+   "position": {
+    "source": "report_data.locations[0]",
+    "x": 8.2832,
+    "y": -7.3937,
+    "toward": 126.8278,
+    "pos_type": 1,
+    "zone_hash": "1343645155037768237"
+   },
+   "vio": {
+    "heading": -37.508048831090115,
+    "state": 2
+   },
+   "active_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 400,
+     "angular_speed": 0
+    }
+   }
+  },
+  {
+   "index": 1,
+   "elapsed_ms": 168.484,
+   "captured_at": "2026-08-28T22:47:29.704676+00:00",
+   "last_report_at_monotonic": 4688502.906926526,
+   "position": {
+    "source": "report_data.locations[0]",
+    "x": 8.2832,
+    "y": -7.3937,
+    "toward": 126.8278,
+    "pos_type": 1,
+    "zone_hash": "1343645155037768237"
+   },
+   "vio": {
+    "heading": -37.508048831090115,
+    "state": 2
+   },
+   "active_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 400,
+     "angular_speed": 0
+    }
+   }
+  },
+  {
+   "index": 2,
+   "elapsed_ms": 270.112,
+   "captured_at": "2026-08-28T22:47:29.806303+00:00",
+   "last_report_at_monotonic": 4688502.906926526,
+   "position": {
+    "source": "report_data.locations[0]",
+    "x": 8.2832,
+    "y": -7.3937,
+    "toward": 126.8278,
+    "pos_type": 1,
+    "zone_hash": "1343645155037768237"
+   },
+   "vio": {
+    "heading": -37.508048831090115,
+    "state": 2
+   },
+   "active_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 400,
+     "angular_speed": 0
+    }
+   }
+  },
+  {
+   "index": 3,
+   "elapsed_ms": 371.098,
+   "captured_at": "2026-08-28T22:47:29.907288+00:00",
+   "last_report_at_monotonic": 4688502.906926526,
+   "position": {
+    "source": "report_data.locations[0]",
+    "x": 8.2832,
+    "y": -7.3937,
+    "toward": 126.8278,
+    "pos_type": 1,
+    "zone_hash": "1343645155037768237"
+   },
+   "vio": {
+    "heading": -37.508048831090115,
+    "state": 2
+   },
+   "active_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 400,
+     "angular_speed": 0
+    }
+   }
+  },
+  {
+   "index": 4,
+   "elapsed_ms": 471.937,
+   "captured_at": "2026-08-28T22:47:30.008126+00:00",
+   "last_report_at_monotonic": 4688502.906926526,
+   "position": {
+    "source": "report_data.locations[0]",
+    "x": 8.2832,
+    "y": -7.3937,
+    "toward": 126.8278,
+    "pos_type": 1,
+    "zone_hash": "1343645155037768237"
+   },
+   "vio": {
+    "heading": -37.508048831090115,
+    "state": 2
+   },
+   "active_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 400,
+     "angular_speed": 0
+    }
+   }
+  },
+  {
+   "index": 5,
+   "elapsed_ms": 573.427,
+   "captured_at": "2026-08-28T22:47:30.109615+00:00",
+   "last_report_at_monotonic": 4688502.906926526,
+   "position": {
+    "source": "report_data.locations[0]",
+    "x": 8.2832,
+    "y": -7.3937,
+    "toward": 126.8278,
+    "pos_type": 1,
+    "zone_hash": "1343645155037768237"
+   },
+   "vio": {
+    "heading": -37.508048831090115,
+    "state": 2
+   },
+   "active_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 400,
+     "angular_speed": 0
+    }
+   }
+  },
+  {
+   "index": 6,
+   "elapsed_ms": 674.659,
+   "captured_at": "2026-08-28T22:47:30.210846+00:00",
+   "last_report_at_monotonic": 4688503.954904872,
+   "position": {
+    "source": "report_data.locations[0]",
+    "x": 8.2832,
+    "y": -7.3937,
+    "toward": 126.8278,
+    "pos_type": 1,
+    "zone_hash": "1343645155037768237"
+   },
+   "vio": {
+    "heading": -37.508048831090115,
+    "state": 2
+   },
+   "active_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 400,
+     "angular_speed": 0
+    }
+   }
+  },
+  {
+   "index": 7,
+   "elapsed_ms": 775.747,
+   "captured_at": "2026-08-28T22:47:30.311936+00:00",
+   "last_report_at_monotonic": 4688503.954904872,
+   "position": {
+    "source": "report_data.locations[0]",
+    "x": 8.2832,
+    "y": -7.3937,
+    "toward": 126.8278,
+    "pos_type": 1,
+    "zone_hash": "1343645155037768237"
+   },
+   "vio": {
+    "heading": -37.508048831090115,
+    "state": 2
+   },
+   "active_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 400,
+     "angular_speed": 0
+    }
+   }
+  },
+  {
+   "index": 8,
+   "elapsed_ms": 876.714,
+   "captured_at": "2026-08-28T22:47:30.412905+00:00",
+   "last_report_at_monotonic": 4688503.954904872,
+   "position": {
+    "source": "report_data.locations[0]",
+    "x": 8.2832,
+    "y": -7.3937,
+    "toward": 126.8278,
+    "pos_type": 1,
+    "zone_hash": "1343645155037768237"
+   },
+   "vio": {
+    "heading": -37.508048831090115,
+    "state": 2
+   },
+   "active_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 400,
+     "angular_speed": 0
+    }
+   }
+  },
+  {
+   "index": 9,
+   "elapsed_ms": 978.033,
+   "captured_at": "2026-08-28T22:47:30.514223+00:00",
+   "last_report_at_monotonic": 4688503.954904872,
+   "position": {
+    "source": "report_data.locations[0]",
+    "x": 8.2832,
+    "y": -7.3937,
+    "toward": 126.8278,
+    "pos_type": 1,
+    "zone_hash": "1343645155037768237"
+   },
+   "vio": {
+    "heading": -37.508048831090115,
+    "state": 2
+   },
+   "active_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 400,
+     "angular_speed": 0
+    }
+   }
+  },
+  {
+   "index": 10,
+   "elapsed_ms": 1079.007,
+   "captured_at": "2026-08-28T22:47:30.615196+00:00",
+   "last_report_at_monotonic": 4688503.954904872,
+   "position": {
+    "source": "report_data.locations[0]",
+    "x": 8.2832,
+    "y": -7.3937,
+    "toward": 126.8278,
+    "pos_type": 1,
+    "zone_hash": "1343645155037768237"
+   },
+   "vio": {
+    "heading": -37.508048831090115,
+    "state": 2
+   },
+   "active_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 400,
+     "angular_speed": 0
+    }
+   }
+  },
+  {
+   "index": 11,
+   "elapsed_ms": 1179.652,
+   "captured_at": "2026-08-28T22:47:30.715842+00:00",
+   "last_report_at_monotonic": 4688503.954904872,
+   "position": {
+    "source": "report_data.locations[0]",
+    "x": 8.2832,
+    "y": -7.3937,
+    "toward": 126.8278,
+    "pos_type": 1,
+    "zone_hash": "1343645155037768237"
+   },
+   "vio": {
+    "heading": -37.508048831090115,
+    "state": 2
+   },
+   "active_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 400,
+     "angular_speed": 0
+    }
+   }
+  },
+  {
+   "index": 12,
+   "elapsed_ms": 1280.705,
+   "captured_at": "2026-08-28T22:47:30.816889+00:00",
+   "last_report_at_monotonic": 4688503.954904872,
+   "position": {
+    "source": "report_data.locations[0]",
+    "x": 8.2832,
+    "y": -7.3937,
+    "toward": 126.8278,
+    "pos_type": 1,
+    "zone_hash": "1343645155037768237"
+   },
+   "vio": {
+    "heading": -37.508048831090115,
+    "state": 2
+   },
+   "active_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 400,
+     "angular_speed": 0
+    }
+   }
+  },
+  {
+   "index": 13,
+   "elapsed_ms": 1381.405,
+   "captured_at": "2026-08-28T22:47:30.917594+00:00",
+   "last_report_at_monotonic": 4688503.954904872,
+   "position": {
+    "source": "report_data.locations[0]",
+    "x": 8.2832,
+    "y": -7.3937,
+    "toward": 126.8278,
+    "pos_type": 1,
+    "zone_hash": "1343645155037768237"
+   },
+   "vio": {
+    "heading": -37.508048831090115,
+    "state": 2
+   },
+   "active_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 400,
+     "angular_speed": 0
+    }
+   }
+  },
+  {
+   "index": 14,
+   "elapsed_ms": 1482.274,
+   "captured_at": "2026-08-28T22:47:31.018462+00:00",
+   "last_report_at_monotonic": 4688503.954904872,
+   "position": {
+    "source": "report_data.locations[0]",
+    "x": 8.2832,
+    "y": -7.3937,
+    "toward": 126.8278,
+    "pos_type": 1,
+    "zone_hash": "1343645155037768237"
+   },
+   "vio": {
+    "heading": -37.508048831090115,
+    "state": 2
+   },
+   "active_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 400,
+     "angular_speed": 0
+    }
+   }
+  },
+  {
+   "index": 15,
+   "elapsed_ms": 1583.45,
+   "captured_at": "2026-08-28T22:47:31.119640+00:00",
+   "last_report_at_monotonic": 4688504.903214354,
+   "position": {
+    "source": "report_data.locations[0]",
+    "x": 8.2832,
+    "y": -7.3937,
+    "toward": 126.8278,
+    "pos_type": 1,
+    "zone_hash": "1343645155037768237"
+   },
+   "vio": {
+    "heading": -37.508048831090115,
+    "state": 2
+   },
+   "active_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 400,
+     "angular_speed": 0
+    }
+   }
+  },
+  {
+   "index": 16,
+   "elapsed_ms": 1684.144,
+   "captured_at": "2026-08-28T22:47:31.220334+00:00",
+   "last_report_at_monotonic": 4688504.903214354,
+   "position": {
+    "source": "report_data.locations[0]",
+    "x": 8.2832,
+    "y": -7.3937,
+    "toward": 126.8278,
+    "pos_type": 1,
+    "zone_hash": "1343645155037768237"
+   },
+   "vio": {
+    "heading": -37.508048831090115,
+    "state": 2
+   },
+   "active_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 400,
+     "angular_speed": 0
+    }
+   }
+  },
+  {
+   "index": 17,
+   "elapsed_ms": 1785.334,
+   "captured_at": "2026-08-28T22:47:31.321522+00:00",
+   "last_report_at_monotonic": 4688504.903214354,
+   "position": {
+    "source": "report_data.locations[0]",
+    "x": 8.2832,
+    "y": -7.3937,
+    "toward": 126.8278,
+    "pos_type": 1,
+    "zone_hash": "1343645155037768237"
+   },
+   "vio": {
+    "heading": -37.508048831090115,
+    "state": 2
+   },
+   "active_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 400,
+     "angular_speed": 0
+    }
+   }
+  },
+  {
+   "index": 18,
+   "elapsed_ms": 1886.078,
+   "captured_at": "2026-08-28T22:47:31.422265+00:00",
+   "last_report_at_monotonic": 4688504.903214354,
+   "position": {
+    "source": "report_data.locations[0]",
+    "x": 8.2832,
+    "y": -7.3937,
+    "toward": 126.8278,
+    "pos_type": 1,
+    "zone_hash": "1343645155037768237"
+   },
+   "vio": {
+    "heading": -37.508048831090115,
+    "state": 2
+   },
+   "active_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 400,
+     "angular_speed": 0
+    }
+   }
+  },
+  {
+   "index": 19,
+   "elapsed_ms": 1986.97,
+   "captured_at": "2026-08-28T22:47:31.523159+00:00",
+   "last_report_at_monotonic": 4688504.903214354,
+   "position": {
+    "source": "report_data.locations[0]",
+    "x": 8.2832,
+    "y": -7.3937,
+    "toward": 126.8278,
+    "pos_type": 1,
+    "zone_hash": "1343645155037768237"
+   },
+   "vio": {
+    "heading": -37.508048831090115,
+    "state": 2
+   },
+   "active_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 400,
+     "angular_speed": 0
+    }
+   }
+  },
+  {
+   "index": 20,
+   "elapsed_ms": 2088.12,
+   "captured_at": "2026-08-28T22:47:31.624309+00:00",
+   "last_report_at_monotonic": 4688504.903214354,
+   "position": {
+    "source": "report_data.locations[0]",
+    "x": 8.2832,
+    "y": -7.3937,
+    "toward": 126.8278,
+    "pos_type": 1,
+    "zone_hash": "1343645155037768237"
+   },
+   "vio": {
+    "heading": -37.508048831090115,
+    "state": 2
+   },
+   "active_command": {
+    "command": "send_movement",
+    "kwargs": {
+     "linear_speed": 400,
+     "angular_speed": 120
+    }
+   },
+   "feed_stale_ms": 2021.4,
+   "travel_guard_tripped": true,
+   "travel_guard_reason": "feed_stale"
+  }
+ ],
+ "motion_refresh": {
+  "refresh_interval_ms": 200,
+  "refresh_commands_sent": 10,
+  "refresh_write_durations_ms": [
+   79.592,
+   85.256,
+   116.911,
+   277.22,
+   183.142,
+   242.309,
+   102.651,
+   129.028,
+   114.876,
+   217.803
+  ],
+  "refresh_write_completions_elapsed_ms": [
+   280.264,
+   486.351,
+   717.933,
+   1079.168,
+   1262.333,
+   1504.71,
+   1607.382,
+   1736.435,
+   1915.093,
+   2218.375
+  ],
+  "commands_by_refresh": [
+   {
+    "linear_speed": 400,
+    "angular_speed": 0
+   },
+   {
+    "linear_speed": 400,
+    "angular_speed": 0
+   },
+   {
+    "linear_speed": 400,
+    "angular_speed": 0
+   },
+   {
+    "linear_speed": 400,
+    "angular_speed": 0
+   },
+   {
+    "linear_speed": 400,
+    "angular_speed": 0
+   },
+   {
+    "linear_speed": 400,
+    "angular_speed": 0
+   },
+   {
+    "linear_speed": 400,
+    "angular_speed": 0
+   },
+   {
+    "linear_speed": 400,
+    "angular_speed": 0
+   },
+   {
+    "linear_speed": 400,
+    "angular_speed": 0
+   },
+   {
+    "linear_speed": 400,
+    "angular_speed": 0
+   }
+  ],
+  "refresh_error": null,
+  "aborted_early": true,
+  "elapsed_ms": 2218.388
+ },
+ "safety_gates": [
+  {
+   "name": "stop_primitive_available",
+   "passed": true,
+   "detail": "Coordinator must expose async_stop_manual_motion()."
+  },
+  {
+   "name": "ble_transport_required",
+   "passed": true,
+   "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+  },
+  {
+   "name": "ble_link_live",
+   "passed": true,
+   "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+   "diagnostics": {
+    "live": true,
+    "reason": null,
+    "is_connected": true,
+    "is_usable": true,
+    "cooldown_active": false,
+    "cooldown_remaining_seconds": 0.0,
+    "last_send_age_seconds": 4.8,
+    "queue_depth": 0,
+    "queue_dispatch_paused": false,
+    "saga_active": false,
+    "stall_threshold_seconds": 15.0,
+    "queue_depth_limit": 0
+   }
+  },
+  {
+   "name": "operator_confirmed_blades_off",
+   "passed": true,
+   "detail": "Real pulse requires confirm_blades_off=true."
+  },
+  {
+   "name": "operator_confirmed_clear_area",
+   "passed": true,
+   "detail": "Real pulse requires confirm_clear_area=true."
+  },
+  {
+   "name": "mower_reports_blades_off",
+   "passed": true,
+   "detail": "Real pulse requires blade state and cutter mode off. A nonzero latched RPM register is discounted only after three samples prove the position feed live and the RPM constant.",
+   "diagnostics": {
+    "blade": {
+     "reported_state": 0,
+     "reported_state_label": "OFF",
+     "knife_status": null,
+     "current_cutter_mode": 0,
+     "current_cutter_rpm": 0,
+     "blade_safe_for_motion": true,
+     "safety_blockers": [],
+     "blade_rpm_looks_latched": false,
+     "blade_rpm_stale_register": false
+    },
+    "rpm_stale_verdict": {
+     "stale_register": false,
+     "reasons": [
+      "insufficient_samples",
+      "rpm_not_consistently_nonzero",
+      "feed_not_proven_live"
+     ],
+     "samples": 1,
+     "rpm_values": [
+      0
+     ],
+     "feed_proven_live": false
+    }
+   }
+  },
+  {
+   "name": "mower_ready",
+   "passed": true,
+   "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+  },
+  {
+   "name": "not_docked_or_charging",
+   "passed": true,
+   "detail": "Real pulse requires the mower to be off the dock and not charging."
+  },
+  {
+   "name": "live_map_position_available",
+   "passed": true,
+   "detail": "Real pulse requires live map-local mower position."
+  },
+  {
+   "name": "position_area_inside",
+   "passed": true,
+   "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+  },
+  {
+   "name": "map_position_nonzero",
+   "passed": true,
+   "detail": "Real pulse requires nonzero map-local x/y coordinates."
+  },
+  {
+   "name": "corridor_polygon_valid",
+   "passed": true,
+   "detail": "The frozen corridor must be a real polygon, >= 3 vertices."
+  },
+  {
+   "name": "frozen_start_inside_corridor",
+   "passed": true,
+   "detail": "The frozen start must be inside the frozen corridor."
+  },
+  {
+   "name": "start_drift_within_bound",
+   "passed": true,
+   "detail": "Live position must be within 0.3 m of the frozen start. The start is never re-derived from live position -- this gate aborts instead.",
+   "diagnostics": {
+    "drift_m": 0.0
+   }
+  },
+  {
+   "name": "step_path_contained",
+   "passed": true,
+   "detail": "The probe steers open loop on a curved path whose shape is the unknown under test, so EVERY possible ray must fit the frozen corridor: 2.5 m of commanded travel plus 0.5 m stopping/guard overshoot = 3.0 m.",
+   "diagnostics": {
+    "required_radius_m": 3.0,
+    "boundary_clearance_m": 3.0997000000000003,
+    "live_position_inside": true,
+    "commanded_travel_m": 2.5,
+    "stop_overshoot_m": 0.5
+   }
+  }
+ ],
+ "motion_commanded": true,
+ "supervised": true,
+ "operator_authorized": true
+}

@@ -8,6 +8,44 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta82 -> beta83 — 2026-08-28 18:41-18:47 EDT, motion-disabled
+
+Ships `raw_pymammotion_step_response_probe`, the open-loop dead-time probe, and
+fixes two stale `services.yaml` descriptions that still said the corridor must
+clear 1.06 m where the code has computed 1.34 m since 2026-08-27. No backend
+change (PyMammotion `0.8.12.post3`), no `LUBA_ACCEPTANCE_PROFILE` key touched.
+
+| | beta83 |
+| --- | --- |
+| tag | `v0.6.4-beta83` (release commit `5a3e96bc`) |
+| deployed tree | **exactly the tag** — `git tag --points-at HEAD` = `v0.6.4-beta83` at deploy time |
+| quartet | manifest / pyproject / `CARD_VERSION` `0.6.4-beta83`, uv.lock `0.6.4b83` |
+| backend | PyMammotion `0.8.12.post3`, unchanged, read from inside the container |
+| archive SHA-256 | `ea3dd599c25f0d6365ac9bc9c8ef179edd427662943eb1dc74ac00ed524ca04f`, identical local and host |
+| file verification | **47 of 47 byte-identical**, zero AppleDouble |
+| card md5 | `5cee2702d94a66a341a160baa4ab05ce`, equal at BOTH serving paths |
+| Lovelace resource | re-read as `?v=0.6.4-beta83&build=5cee2702` |
+| host backup | `/config/mammotion-backup-20260828-1841-pre-beta83.tgz` |
+| restart | API up after **30 s**, 132 entities at 152 s |
+| gate after deploy | `enabled: false`, `real_motion_allowed: false`, no session; live API **and** RAW `core.config_entries` |
+| new service | registered live with all **16** fields, confirmed from `/api/services` |
+
+🚨 **THE PROBE'S FIRST RUN ABORTED ON A FROZEN POSITION FEED AND MEASURED
+NOTHING.** A supervised, operator-authorized `+120` run tripped
+`travel_guard_tripped` at **2.218 s** with **zero informative intervals**. All 21
+in-window samples read bit-identical `x 8.2832, y -7.3937, toward 126.8278`, and a
+snapshot taken immediately after the run still read the pre-run position — yet the
+mower had **travelled 0.4375 m** by the time the feed caught up (~0.197 m/s
+implied). Read `docs/evidence-step-response-probe-aborted-20260828.json`.
+✅ **The probe fail-closed exactly as designed** — cumulative distance was 0, so
+this was beta72's stale-feed trip and not a distance trip — and the stop confirmed.
+🛑 **The `-120` sign was NOT run.** Both signs still matter, but only once the feed
+delivers position during motion.
+
+⚠️ **This establishes NOTHING about Q1 or Q2.** Do not read "the step probe ran"
+as progress on the dead-time question.
+
+
 ### beta81 -> beta82 — 2026-08-28 14:08-14:19 EDT, motion-disabled
 
 Ships the acquisition-budget change `da1806e0` (`max_heading_acquisition_s`
