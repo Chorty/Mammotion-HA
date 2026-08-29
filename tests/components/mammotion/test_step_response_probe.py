@@ -19,10 +19,12 @@ from __future__ import annotations
 import asyncio
 import time
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 import voluptuous as vol
 
+from custom_components.mammotion import services
 from custom_components.mammotion.services import (
     STEP_RESPONSE_PROBE_SCHEMA,
     _in_window_ble_snapshot,
@@ -34,7 +36,7 @@ from custom_components.mammotion.services import (
     _step_response_probe,
 )
 
-from .test_continuous_motion_window import _FakeCoordinator
+from .test_continuous_motion_window import _FakeCoordinator, _position_stream
 
 ENTITY = "lawn_mower.test"
 START = {"x": 0.0, "y": 0.0}
@@ -531,3 +533,106 @@ def test_telemetry_sample_carries_the_ble_snapshot() -> None:
     assert sample["ble"]["is_connected"] is False
     assert sample["ble"]["queue_dispatch_paused"] is False
     assert sample["position_sequence"] == 3
+
+
+# --- the lease stops the report stream; the probe must restart it -------------
+#
+# 🐛 The probe's first bug, 2026-08-29. `exclusive_report_subscription` enqueues
+# RPT_STOP and clears `_ble_stream_active` as its first act, and blocks the
+# background loop from starting a new configuration for the life of the lease.
+# The probe took the lease and drove without restarting the stream, so four runs
+# across three builds recorded zero position payloads and were mis-read as a
+# device- or backend-side feed stall.
+
+
+def _real_run_snapshot() -> dict[str, Any]:
+    return {
+        "work_mode_label": "MODE_READY",
+        "charge_state_label": "not_charging",
+        "position": {
+            "source": "test",
+            "x": 0.0,
+            "y": 0.0,
+            "toward": 0.0,
+            "pos_type_label": "AREA_INSIDE",
+            "zone_hash": "1",
+        },
+        "blade": {"reported_state": 0, "current_cutter_rpm": 0},
+    }
+
+
+class _ReportingCoordinator(_FakeCoordinator):
+    """Records the report-start calls the probe must make under its lease."""
+
+    def __init__(self, position_stream: Any) -> None:
+        super().__init__(position_stream)
+        self.report_stream_starts = 0
+        self.continuous_report_starts = 0
+
+    async def async_start_report_stream(self, **_kwargs: Any) -> None:
+        self.report_stream_starts += 1
+
+    async def async_start_continuous_reports(self, **_kwargs: Any) -> None:
+        self.continuous_report_starts += 1
+
+
+async def _real_run(
+    monkeypatch: pytest.MonkeyPatch, coordinator: Any, **overrides: Any
+) -> dict[str, Any]:
+    monkeypatch.setattr(
+        services, "_custom_path_telemetry_snapshot", lambda _c: _real_run_snapshot()
+    )
+    monkeypatch.setattr(services, "_settle_ble_command_queue", _settle_stub)
+    # These two tests isolate the report-stream handoff, so the environmental
+    # gates (BLE preflight, map position) are stubbed passing. The gates
+    # themselves are covered separately above.
+    monkeypatch.setattr(
+        services,
+        "_step_response_gates",
+        lambda *_a, **_k: [{"name": "stubbed", "passed": True, "detail": ""}],
+    )
+    return await _step_response_probe(
+        coordinator,
+        route_start={"x": 0.0, "y": 0.0},
+        corridor_polygon=WIDE_CORRIDOR,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        confirm_step_response_run=True,
+        **overrides,
+    )
+
+
+async def _settle_stub(_coordinator: Any) -> dict[str, Any]:
+    return {"live": True, "queue_depth": 0}
+
+
+async def test_probe_starts_the_report_stream_it_took_the_lease_from(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both start calls must be made, under a fresh generation."""
+    coordinator = _ReportingCoordinator(_position_stream([]))
+    result = await _real_run(monkeypatch, coordinator)
+    assert coordinator.report_stream_starts == 1
+    assert coordinator.continuous_report_starts == 1
+    stream = result["report_stream"]
+    assert stream["started"] is True
+    assert stream["continuous_started"] is True
+    assert stream["subscription_generation"]["generation"] >= 1
+
+
+async def test_probe_refuses_to_drive_when_no_position_arrives(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """FAIL CLOSED. An empty stream must refuse, not drive blind.
+
+    This is the regression that would have caught the 2026-08-29 bug: without
+    it the probe drives, records nothing, and the null reads as a device fault.
+    """
+    coordinator = _ReportingCoordinator(_position_stream([]))
+    monkeypatch.setattr(services, "_STEP_RESPONSE_READINESS_TIMEOUT_S", 0.05)
+    result = await _real_run(monkeypatch, coordinator)
+    assert result["would_send"] is False
+    assert result["blockers"] == ["position_subscription_not_ready"]
+    assert result["command_result"]["attempted"] is False
+    assert result["report_stream"]["ready"] is False

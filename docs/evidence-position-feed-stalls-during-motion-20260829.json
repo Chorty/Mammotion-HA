@@ -1,4 +1,11 @@
 {
+ "__RETRACTION__": {
+  "RETRACTED": "The interpretation in this file is WITHDRAWN. The probe held an exclusive report-subscription lease, which STOPS the report stream, and never restarted it -- so the position feed was off for the whole window. The measurements are sound; the attribution is not.",
+  "read_first": "docs/evidence-step-probe-stalled-on-its-own-lease-20260829.md",
+  "what_survives": "The raw samples, the position_sequence readings and the discriminator logic are all correct. Only the cause is wrong.",
+  "n_correction": "Four of the five claimed occurrences were this bug. Only steering attempt 3 (2026-08-27, 0.51 m) remains unexplained, and it is n = 1.",
+  "specific": "The headline 'Q1 ANSWERED: the position stream STOPS DELIVERING' is withdrawn -- this probe had stopped it."
+ },
  "what": "Q1 ANSWERED: the position stream STOPS DELIVERING during a motion window. Not stale coordinates -- no position payloads at all.",
  "when": "2026-08-29",
  "build": "0.6.4-beta84",

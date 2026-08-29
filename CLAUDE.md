@@ -46,148 +46,47 @@ this file every time.
 
 ## Current build: beta82; PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
 
-🏁🏁 **THE STALL IS NOT IN OUR DISPATCH PATH, AND IT IS NOT DIRECTION-DEPENDENT —
-2026-08-29, beta85, BOTH SIGNS.** Two runs, `+120` and `−120`. On **both**, the
-position stream delivered nothing while **all four outbound BLE facts read
-healthy the entire time**. Read
-`docs/evidence-feed-stall-is-not-our-dispatch-path-20260829.json`.
+🗑️🗑️ **RETRACTION, 2026-08-29 — THE "POSITION FEED STALL" WAS THIS PROBE
+STOPPING ITS OWN FEED.** Read
+`docs/evidence-step-probe-stalled-on-its-own-lease-20260829.md` before any
+evidence file dated 2026-08-28 or -29.
 
-| | run A (+120) | run B (−120) |
-| --- | --- | --- |
-| `position_sequence` | **34 — frozen** | **35 — frozen** |
-| `is_connected` | **True** | **True** |
-| `queue_depth` | **0** | **0** |
-| `queue_dispatch_paused` | **False** | **False** |
-| `saga_active` | **False** | **False** |
-| blind travel | **0.4330 m** | **0.5959 m** |
-| informative intervals | **0** | **0** |
+🐛 **THE BUG.** `exclusive_report_subscription`'s **first act** is to stop the
+report stream — `RPT_STOP` enqueued, `_ble_stream_active = False` — and it blocks
+the background loop from restarting one for the life of the lease. Its docstring
+says so: *"stop background renewals."* `continuous_motion_window` restarts the
+stream inside the lease. **`raw_pymammotion_step_response_probe` took the lease
+and never restarted it**, and even called `async_stop_continuous_reports` in its
+`finally` — stopping what it never started. **Every step-probe run drove with no
+report configuration active.**
 
-🔑 **WHY THIS ELIMINATES OUR PATH.** Those four are the known ways this
-integration's dispatch fails: `is_connected` rules out a link drop, `queue_depth 0`
-rules out the documented proxy slot-leak backlog, `queue_dispatch_paused False`
-rules out a gated queue, `saga_active False` rules out an exclusive saga. All four
-healthy while position stops means **the fault is INBOUND** — the mower stops
-emitting position frames during motion, or pymammotion stops decoding/publishing
-them. **Both are outside this integration.**
+🔑 **IT EXPLAINS EVERYTHING, MORE SIMPLY.** Frozen `position_sequence` (no config
+running), advancing `last_report_at` (acks still arrive), all four outbound BLE
+facts healthy (outbound was never involved), perfect reproduction on every run and
+both signs (**deterministic, not a fault**), and — the row I kept calling a puzzle
+— **attempt 5's feed worked because that service starts the stream.** Two code
+paths, not two regimes.
 
-🔑 **FIRST TWO-SIGN RESULT, and it kills the asymmetry hypothesis.** `+120` and
-`−120` behaved identically, so the stall is **not** a drivetrain or
-turn-direction artefact.
+🚨 **n DROPS FROM 5 TO 1.** Four of the five "occurrences" were this bug. **Only
+steering attempt 3 (2026-08-27, 0.51 m blind) survives**, on
+`continuous_motion_window`, which *does* start the stream — unexplained, and back
+to n = 1 where it started.
+🗑️ **Withdrawn:** *"Q1 ANSWERED: the position stream stops delivering"* and *"the
+fault is INBOUND, outside this integration"*. The second is **inverted** — it was
+inside this integration. ⚠️ The **two-sign** result survives only as *both signs
+behaved identically*, which is what a deterministic code path does.
 
-🔑 **n = 5 ACROSS THREE BUILDS**: 0.51 (attempt 3) / 0.4375 (beta83) / 0.4385
-(beta84) / 0.4330 and 0.5959 (beta85). **Reproducible, not intermittent.**
+✅ **FIXED AND TESTED, NOT YET DEPLOYED.** The probe now does what the continuous
+window does — generation, `async_start_report_stream`,
+`async_start_continuous_reports`, queue settle — and **fails closed**: no position
+payload inside its own generation within 3.5 s ⇒ `position_subscription_not_ready`
+and **nothing is commanded**. Two regression tests pin it. The host still runs
+beta85, which has the bug.
 
-🗑️ **STILL ZERO ROTATION DATA.** `omega`, `rotation_after_zero` and `tau` are null
-on **both** runs. **The dead-time question the probe was built for is STILL
-UNMEASURED** — two signs of nothing is still nothing about the plant. Do not let
-"we ran both signs" read as progress on Q2.
-⚠️ **The four BLE fields are OUTBOUND-side only.** Healthy outbound says nothing
-*directly* about the inbound notification path; it only removes our dispatch as
-the explanation.
-
-🗑️ **DO NOT DIAGNOSE THIS FROM THE `ble_link_live` ENTITY.** `_ble_link_liveness`
-composes it from seven checks including `queue_depth`, so **our own 200 ms refresh
-writes can flap it**, and it is a coordinator-tick value that cannot resolve a ~2 s
-event. Proven on 2026-08-29: the entity reported `ble_client_not_connected` while
-a **live** recomputation of the same gate listed only
-`experimental_motion_disabled` and `active_transport` read `ble`. **Its history can
-neither confirm nor exclude a glitch inside a window.**
-
-🏁 **Q1 IS ANSWERED, 2026-08-29, AND THE ANSWER IS NEITHER OPTION I PREDICTED:
-THE POSITION STREAM SIMPLY STOPS DELIVERING DURING A MOTION WINDOW.** Not stale
-coordinates, not observer lag — **zero position payloads for 2.031 s while the
-mower drove 0.4385 m.** Read
-`docs/evidence-position-feed-stalls-during-motion-20260829.json`.
-
-🔑 **THE DISCRIMINATOR IS DECISIVE, AND THIS IS WHY.** pymammotion increments
-`_position_sequence` only inside `_publish_position_sample`, which `handle.py`
-calls **only** when the decoded frame carried a position payload
-(`if position_source is not None and not self._stopping:`). Across the window:
-
-| | |
-| --- | --- |
-| `position_sequence` | **556 — one value, never moved** |
-| `position_epoch` | 4, stable |
-| `last_report_at_monotonic` | **2 distinct values — frames WERE arriving** |
-| mower's actual displacement | **0.4385 m** |
-
-**Frames arrived and none carried position.** That rules out stale-but-arriving
-and leaves a delivery stall.
-
-🔑 **IT REPRODUCES TO THE MILLIMETRE.** 0.4375 m on beta83 (2026-08-28), 0.4385 m
-on beta84 (2026-08-29) — **1 mm apart on different builds**, plus attempt 3's
-0.51 m. **n = 3. This is reproducible, not intermittent noise.**
-
-🔎 **THE BLE HISTORY NARROWS IT, AND ONE SENSOR IS A TRAP.** `active_transport`
-had **zero** state changes on 2026-08-29 — it read `ble` all day, so the
-integration never switched transport. But `binary_sensor..._ble_link_live`
-**flapped eight times**, including three ~6 s off/on cycles at 10:48:54–10:50:01
-EDT, right around the run, plus a 10-minute outage at 10:25–10:35.
-⚠️ **`ble_link_live` is NOT a radio-liveness signal and must not be read as one.**
-`_ble_link_liveness` composes it from `is_connected`, `is_usable`, cooldown,
-`last_send_age_seconds`, **`queue_depth`**, `queue_dispatch_paused` and
-`saga_active`, and its own docstring calls it *"a conservative preflight
-snapshot, not proof that the next write will complete."* A flap can therefore be
-caused by **our own 200 ms refresh writes filling the command queue** — reading
-that as the cause would be circular.
-🔑 **It is still a real lead**, because the slot-leak signature that helper
-documents is uncannily close to ours: `active_transport` reading `ble`,
-`is_usable` True, RSSI fine, `command_result.ok` True, while the executor samples
-the window and reports the mower stationary when it is not
-(`docs/pymammotion-ble-slot-leak-bug.md`).
-🗑️ **But it cannot be concluded from the entity.** The flaps ended ~50 s BEFORE
-the run, and `ble_link_live` is a coordinator-tick sensor — far too slow to
-resolve a 2.031 s event. **Absence of a flap inside the window is NOT evidence
-there wasn't one.**
-✅ **FIXED THE SAME WAY THE LAST AMBIGUITY WAS.** `_in_window_ble_snapshot` now
-records **`is_connected`, `queue_depth`, `queue_dispatch_paused` and
-`saga_active`** into every 100 ms in-window sample, so the next stall is
-attributable instead of inferred: connection dropped, queue gated, backlog
-climbing, or saga holding. ⚠️ **All four are OUTBOUND facts** — a stalled inbound
-position stream with all four healthy would mean the fault is not in our dispatch
-path at all, which is itself the useful answer. ✅ **DEPLOYED as beta85, 2026-08-29 11:50 EDT** — 47/47 byte-identical, card md5
-`1132c738` at both paths, `?v=0.6.4-beta85&build=1132c738`, grep count 2 in the
-deployed bytes, gate verified disarmed live **and** RAW. ⚠️ **UNEXERCISED** —
-`dry_run` returns before the sampler starts, so nothing populates these until a
-real motion window runs. 🛑 **No run has been started.**
-
-🔑 **THE FAULT HAS A DIFFERENT OWNER THAN THE CONTROL WORK.** This is
-report-subscription / position-delivery, not control. **No steering gain, damping
-term or controller change touches it**, and it is more likely pymammotion or
-device-side than this integration. ⚠️ It does **not** identify *where* delivery
-stops — device, BLE transport, or subscription.
-
-🗑️ **DO NOT let this retroactively "explain" steering attempt 5.** That run's feed
-**worked**: decisions fired every ~1 s on fresh positions and cumulative distance
-advanced 0.058 → 1.624 m. Two different regimes. Merging them would manufacture a
-mechanism out of two unrelated observations.
-⚠️ **It also measures NOTHING about actuator lag** — zero informative intervals, so
-`omega`, `rotation_after_zero` and `tau` are all null. **And the −120 sign was
-never run**, so nothing here is a two-sign result.
-
-⚠️ **Reconnect correlation is now n = 3 and STILL A CORRELATION.** Epochs: attempt
-3 at 2, attempts 4/5 at 3, today at 4 — today's consistent with the beta84
-restart. Do not write it down as a mechanism.
-
-✅ **The probe's new fields did exactly what they were added for, on first use.**
-`position_sequence` / `position_epoch` emitted real values and answered the
-question. The probe also fail-closed correctly — cumulative distance 0, so the
-stale-feed trip, not a distance trip — stop confirmed, 15/15 gates on both signs,
-gate disarmed and verified live API **and** RAW.
-
-📏 **INCIDENTAL REACH DATA POINT, 2026-08-29.** The repositioning drive was a clean
-**5.59 m** single segment on the accepted profile: **`target_reached` at 0.1341 m**,
-18 linear pulses, **0 turn commands**, zero errors, 97.7 s, profile identity proven
-key-by-key (19 keys, 0 mismatched). Sits on the existing curve (4 m 0.1023 / 5 m
-0.1015 / 6 m 0.1144). n = 1 — feasibility, not reliability.
-
-⚠️ **UNDOCK TRAP, worth knowing before the next run.** The mower's undock button
-calls `async_leave_dock`, which sends the vendor `leave_dock`: **unbounded by us** — no
-corridor, no distance guard, no mandatory stop from our side. It moved 1.215 m in
-two stages. **Its intermediate states are `TURN_AREA_INSIDE` / `CHANNEL_AREA_OVERLAP`
-with `zone_hash 0` and only 0.216–0.452 m of clearance** — far too little for any
-probe. **Wait for it to settle to `AREA_INSIDE` with a populated zone before
-scanning a corridor.**
+⚠️ **THE LESSON.** Reusing a lease wrapper is not reusing what the lease is for:
+the lease *takes away* the stream and the caller must put it back. **And the tell
+was in the evidence — four runs of a perfect null with bit-identical positions.
+When a "reproducible fault" reproduces too perfectly, suspect the instrument.**
 
 🛑 **PHASE 2 CONTINUOUS STEERING IS PARKED — operator decision, 2026-08-28.**
 Not abandoned as broken, and **not because a run failed**: parked because it buys
@@ -535,22 +434,17 @@ the hazardous test could not pay off even if it worked. See §8.
 ⚠️ **Do not re-open "would the firmware accept an uploaded path?" as new work.**
 It is moot, not pending.
 
-**NEXT — Phase 2 steering stays CLOSED. The feed thread has narrowed twice.**
-1. ✅ **DONE 2026-08-29** — the stall is a delivery failure, not stale
-   coordinates (`position_sequence` frozen while frames arrived).
-2. ✅ **DONE 2026-08-29** — it is **not our dispatch path** and **not
-   direction-dependent**: both signs stalled with `is_connected` True,
-   `queue_depth` 0, no gating, no saga.
-3. 🔑 **The remaining question is WHERE inbound delivery stops** — the mower's own
-   emission, the BLE notification path, or pymammotion's decode/publish. Our four
-   fields are outbound-side and cannot see any of those.
-   **`report_stream_sequence_probe` across a MOTION window is the next
-   instrument**; it reconfigures the subscription, so it needs its own
-   authorization.
-4. **Q2 (dead time) remains UNMEASURED and unmeasurable until the feed delivers
-   during motion.** Two signs of nothing is not a two-sign result about the plant.
-🗑️ **Do NOT write controller code, and do NOT tune anything.** Nothing measured
-here is about control.
+**NEXT — the feed thread is BACK TO n = 1, and the probe is fixed but undeployed.**
+1. 🗑️ **DONE 2026-08-29** — the "feed stall" was retracted: four of five
+   occurrences were this probe stopping its own report stream.
+2. ✅ **DONE** — probe fixed to start the stream under its lease and **fail
+   closed** on `position_subscription_not_ready`. **NOT DEPLOYED.**
+3. **Release, deploy, re-run both signs.** If the feed now delivers, this finally
+   measures Q2 — the dead time — which remains **completely unmeasured**.
+4. **Only if the fixed probe STILL stalls** does the inbound question become real
+   again. The evidence for it is then attempt 3 alone, n = 1.
+🗑️ **Do NOT run `report_stream_sequence_probe` yet.** It was aimed at a fault
+this probe manufactured.
 
 
 🛑 **STANDING CHECK, added 2026-08-28 because this mistake has now cost THREE

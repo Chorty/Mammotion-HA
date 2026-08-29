@@ -9497,6 +9497,11 @@ async def _heading_acquisition_window(
 # creep (docs/evidence-phase2-steering-attempt5-20260828.json) -- a 9% margin.
 # Budget the full constant and do not raise `linear_speed`.
 _STEP_RESPONSE_MAX_TOTAL_MS = 12000
+# Matches the readiness budget the beta77 stationary work derived: the maximum
+# healthy stationary publication interval measured 2910.1 ms across n=1434, so
+# 3.5 s carries a 1.20x margin. It is a conservative stationary default, never
+# a proven distribution and never motion validation.
+_STEP_RESPONSE_READINESS_TIMEOUT_S = 3.5
 _STEP_RESPONSE_DEFAULT_TRAVEL_M = 2.50
 
 
@@ -9877,6 +9882,98 @@ async def _step_response_probe_impl(  # noqa: C901, PLR0913
         result["blockers"] = ["position_stream_unavailable"]
         result["reason"] = "position_stream_unavailable"
         return result
+
+    # 🚨 **THE LEASE STOPS THE REPORT STREAM. IT MUST BE RESTARTED HERE.**
+    # `exclusive_report_subscription` enqueues `RPT_STOP` and clears
+    # `_ble_stream_active` as its FIRST act -- its own docstring says it
+    # "stop[s] background renewals" -- and it blocks the background loop from
+    # starting a new configuration for the life of the lease. Taking the lease
+    # and driving without restarting the stream means NO position payloads for
+    # the whole window.
+    # 🐛 That was this probe's first bug, 2026-08-29. Four runs across three
+    # builds drove blind and were mis-read as a device- or backend-side feed
+    # stall, until `continuous_motion_window` -- which does restart the stream --
+    # turned out to be the only motion path whose feed worked. See
+    # `docs/evidence-step-probe-stalled-on-its-own-lease-20260829.md`.
+    handle = coordinator.manager.mower(coordinator.device_name)
+    begin_generation = getattr(handle, "begin_report_subscription_generation", None)
+    if report_lease is None or not callable(begin_generation):
+        result["would_send"] = False
+        result["blockers"] = ["report_subscription_generation_unavailable"]
+        result["reason"] = "report_subscription_generation_unavailable"
+        return result
+    report_generation = begin_generation(report_lease)
+    stream_result: dict[str, Any] = {
+        "attempted": True,
+        "started": False,
+        "continuous_started": False,
+        "error": None,
+        # Both start calls reach the queue at Priority.BACKGROUND with
+        # skip_if_saga_active=True, so a running saga drops them silently while
+        # these flags still read True. Capturing it keeps a dispatch failure
+        # distinguishable from a telemetry stall -- the exact confusion this
+        # probe already caused once.
+        "saga_active_before_request": _saga_active_for_diagnostics(handle),
+        "subscription_generation": {
+            "owner": report_generation.owner,
+            "lease_id": report_generation.lease_id,
+            "generation": report_generation.generation,
+            "baseline_position_sequence": (
+                report_generation.baseline_position_sequence
+            ),
+            "baseline_position_epoch": report_generation.baseline_position_epoch,
+        },
+    }
+    result["report_stream"] = stream_result
+    stream_duration_ms = max(10_000, total_ms + 5_000)
+    baseline_dropped_samples = position_stream.dropped_samples
+    try:
+        if hasattr(coordinator, "async_start_report_stream"):
+            await coordinator.async_start_report_stream(duration_ms=stream_duration_ms)
+            stream_result["started"] = True
+        if hasattr(coordinator, "async_start_continuous_reports"):
+            await coordinator.async_start_continuous_reports(
+                duration_ms=stream_duration_ms
+            )
+            stream_result["continuous_started"] = True
+        # Both start calls return on ENQUEUE, so only the post-settle instant
+        # proves the START reached the transport.
+        stream_result["queue_settle"] = await _settle_ble_command_queue(coordinator)
+        flushed_at = time.monotonic()
+        stream_result["subscription_command_flushed_at_monotonic"] = flushed_at
+    except Exception as err:  # noqa: BLE001
+        stream_result["error"] = f"{type(err).__name__}: {err}"
+        result["would_send"] = False
+        result["blockers"] = ["report_stream_start_failed"]
+        result["reason"] = "report_stream_start_failed"
+        return result
+
+    # 🔑 **FAIL CLOSED ON A FEED THAT IS NOT DELIVERING.** The only positive
+    # evidence a configuration is live is a position payload inside its OWN
+    # generation. Without this the probe would silently repeat 2026-08-29:
+    # drive, record nothing, and look like a device fault.
+    (
+        origin_sample,
+        _origin_elapsed,
+        origin_reason,
+    ) = await _wait_for_position_subscription_ready(
+        handle,
+        position_stream,
+        report_generation,
+        lease=report_lease,
+        timeout_seconds=_STEP_RESPONSE_READINESS_TIMEOUT_S,
+        not_before_monotonic=flushed_at,
+        baseline_dropped_samples=baseline_dropped_samples,
+    )
+    stream_result["readiness_reason"] = origin_reason
+    stream_result["ready"] = origin_sample is not None
+    if origin_sample is None:
+        result["would_send"] = False
+        result["blockers"] = ["position_subscription_not_ready"]
+        result["reason"] = origin_reason or "position_subscription_not_ready"
+        return result
+    stream_result["origin_position_sequence"] = origin_sample.sequence
+    stream_result["origin_position_epoch"] = origin_sample.epoch
 
     command_state: dict[str, int] = {
         "linear_speed": linear_speed,

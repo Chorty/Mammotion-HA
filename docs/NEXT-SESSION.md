@@ -1,30 +1,31 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
-## §0 Live state — 2026-08-29 14:40 EDT
+## §0 Live state — 2026-08-29, end of session
 
 ⚠️ **Everything BELOW this section is historical.** Reverify before acting on it.
 
 Host **0.6.4-beta85** + PyMammotion **0.8.12.post3**. Mower off the dock at
-**(4.6581, -4.9900)**, `AREA_INSIDE`, RTK **Fix**, daylight. Gate **disarmed**,
-verified live API **and** RAW `[False]`.
+**(4.6581, -4.9900)**, `AREA_INSIDE`, RTK Fix. Gate **disarmed**, verified live
+API **and** RAW `[False]`.
 
-🏁🏁 **THE FEED STALL IS NOT OUR DISPATCH PATH, AND NOT DIRECTION-DEPENDENT.**
-Two step-probe runs on beta85, `+120` and `-120`. Both stalled — `position_sequence`
-frozen at 34 and 35 — while **all four outbound BLE facts read healthy throughout**:
-`is_connected` True, `queue_depth` 0, `queue_dispatch_paused` False, `saga_active`
-False. Blind travel 0.4330 m and 0.5959 m. Read
-`docs/evidence-feed-stall-is-not-our-dispatch-path-20260829.json`.
-🔑 **So the fault is INBOUND** — the mower stops emitting position during motion,
-or pymammotion stops decoding/publishing it. Both outside this integration.
-🔑 **n = 5 across three builds.** Reproducible, not intermittent.
-🗑️ **STILL ZERO rotation data.** Q2 (dead time) is UNMEASURED on both runs and
-stays unmeasurable until the feed delivers during motion.
+🗑️🗑️ **RETRACTED: the "position feed stall" was the step probe stopping its own
+feed.** `exclusive_report_subscription` stops the report stream as its first act;
+`continuous_motion_window` restarts it inside the lease, and the step probe never
+did. Read `docs/evidence-step-probe-stalled-on-its-own-lease-20260829.md` BEFORE
+any evidence file dated 2026-08-28 or -29 — three of them carry a
+retraction banner at the top of the JSON.
+🚨 **n dropped 5 -> 1.** Only steering attempt 3 (2026-08-27, 0.51 m blind, on
+`continuous_motion_window`) survives as unexplained.
 
-**Next:** find WHERE inbound delivery stops. `report_stream_sequence_probe` across
-a MOTION window; it reconfigures the subscription, so it needs its own
-authorization. Phase 2 steering stays parked (standing decision 5).
-⚠️ **Do not diagnose from the `ble_link_live` entity** — it includes `queue_depth`,
-so our own refresh writes can flap it, and it lags the live gate.
+✅ **The probe is FIXED and NOT DEPLOYED** — it now starts the stream under its
+lease and refuses to drive without a position payload inside its own generation
+(`position_subscription_not_ready`). The host still runs beta85, which has the
+bug.
+
+**Next:** release, deploy, re-run both signs. **Q2 — the dead time the probe was
+built for — is still completely unmeasured.** Do NOT run
+`report_stream_sequence_probe`; it was aimed at a fault the probe manufactured.
+Phase 2 steering stays parked (standing decision 5).
 
 
 🛡️ **PHASE 2 HEADING-SAFETY REMEDIATION IMPLEMENTED OFFLINE,
