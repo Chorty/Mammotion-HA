@@ -1,33 +1,29 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
-## §0 Live state — 2026-08-28 18:50 EDT
+## §0 Live state — 2026-08-29 10:52 EDT
 
 ⚠️ **Everything BELOW this section is historical.** Reverify before acting on it.
 
-Host **0.6.4-beta83** + PyMammotion **0.8.12.post3**. Mower off the dock near
-**(8.63, -7.65)**, RTK Fix, **battery 29% and NOT charging**, `ble_rssi` -76 dBm.
-Gate **disarmed**, verified live API **and** RAW.
-🔋 **DOCK AND CHARGE BEFORE ANY PHYSICAL WORK.** 29% off-dock is the condition
-that started the 2026-08-24 incident.
+Host **0.6.4-beta84** + PyMammotion **0.8.12.post3**. Mower off the dock at
+**(4.5976, -3.8887)**, `AREA_INSIDE`, RTK Fix, daylight. Gate **disarmed**,
+verified live API **and** RAW.
 
-🛑 **Phase 2 continuous steering is PARKED** (standing decision 5). No steering
-work is queued.
+🏁 **Q1 IS ANSWERED: the position stream STOPS DELIVERING during a motion window.**
+`position_sequence` stayed at **556** across 2.031 s while `last_report_at`
+advanced — frames arrived, none carried position — and the mower drove **0.4385 m**.
+Not stale coordinates. Read
+`docs/evidence-position-feed-stalls-during-motion-20260829.json`.
+🔑 **It reproduces to the millimetre**: 0.4375 m (beta83) vs 0.4385 m (beta84),
+plus attempt 3's 0.51 m. **n = 3.**
+🔑 **Different owner from the control work** — report delivery, not control. No
+gain, damping term or controller change touches it.
+🗑️ **Does NOT explain steering attempt 5**, whose feed worked (fresh positions
+every ~1 s, distance 0.058 → 1.624 m). Two regimes; do not merge them.
+⚠️ Measures nothing about actuator lag, and the **-120 sign was never run**.
 
-🚨 **THE POSITION FEED WENT BLIND AGAIN, 2026-08-28 — n = 2.** The new
-`raw_pymammotion_step_response_probe` ran once and **measured nothing**: it
-aborted on a frozen feed at 2.218 s with zero informative intervals, while the
-mower **travelled 0.4375 m** that the feed never reported. It fail-closed exactly
-as designed. Read `docs/evidence-step-response-probe-aborted-20260828.json`.
-⚠️ **Nothing about Q1 or Q2 was established**, and the -120 sign was never run.
-
-🔑 **THE NEXT STEP IS READ-ONLY.** Run `report_stream_sequence_probe` across a
-MOTION window to decide whether position payloads were arriving-but-stale or not
-arriving at all. `last_report_at` stamps every LubaMsg, so it cannot tell them
-apart. **If they were arriving but stale, Q1 is answered as observer lag with no
-further motion run and the programme closes.**
-🐛 **The step probe cannot diagnose its own failure** — its samples omit position
-sequence and epoch. Fix that before retrying it, or a retry may be equally
-uninterpretable.
+**Next:** find WHERE delivery stops — `report_stream_sequence_probe` across a
+MOTION window (it reconfigures the subscription, so it needs its own
+authorization). Phase 2 steering stays parked.
 
 
 🛡️ **PHASE 2 HEADING-SAFETY REMEDIATION IMPLEMENTED OFFLINE,

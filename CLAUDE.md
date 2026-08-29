@@ -46,6 +46,69 @@ this file every time.
 
 ## Current build: beta82; PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
 
+🏁 **Q1 IS ANSWERED, 2026-08-29, AND THE ANSWER IS NEITHER OPTION I PREDICTED:
+THE POSITION STREAM SIMPLY STOPS DELIVERING DURING A MOTION WINDOW.** Not stale
+coordinates, not observer lag — **zero position payloads for 2.031 s while the
+mower drove 0.4385 m.** Read
+`docs/evidence-position-feed-stalls-during-motion-20260829.json`.
+
+🔑 **THE DISCRIMINATOR IS DECISIVE, AND THIS IS WHY.** pymammotion increments
+`_position_sequence` only inside `_publish_position_sample`, which `handle.py`
+calls **only** when the decoded frame carried a position payload
+(`if position_source is not None and not self._stopping:`). Across the window:
+
+| | |
+| --- | --- |
+| `position_sequence` | **556 — one value, never moved** |
+| `position_epoch` | 4, stable |
+| `last_report_at_monotonic` | **2 distinct values — frames WERE arriving** |
+| mower's actual displacement | **0.4385 m** |
+
+**Frames arrived and none carried position.** That rules out stale-but-arriving
+and leaves a delivery stall.
+
+🔑 **IT REPRODUCES TO THE MILLIMETRE.** 0.4375 m on beta83 (2026-08-28), 0.4385 m
+on beta84 (2026-08-29) — **1 mm apart on different builds**, plus attempt 3's
+0.51 m. **n = 3. This is reproducible, not intermittent noise.**
+
+🔑 **THE FAULT HAS A DIFFERENT OWNER THAN THE CONTROL WORK.** This is
+report-subscription / position-delivery, not control. **No steering gain, damping
+term or controller change touches it**, and it is more likely pymammotion or
+device-side than this integration. ⚠️ It does **not** identify *where* delivery
+stops — device, BLE transport, or subscription.
+
+🗑️ **DO NOT let this retroactively "explain" steering attempt 5.** That run's feed
+**worked**: decisions fired every ~1 s on fresh positions and cumulative distance
+advanced 0.058 → 1.624 m. Two different regimes. Merging them would manufacture a
+mechanism out of two unrelated observations.
+⚠️ **It also measures NOTHING about actuator lag** — zero informative intervals, so
+`omega`, `rotation_after_zero` and `tau` are all null. **And the −120 sign was
+never run**, so nothing here is a two-sign result.
+
+⚠️ **Reconnect correlation is now n = 3 and STILL A CORRELATION.** Epochs: attempt
+3 at 2, attempts 4/5 at 3, today at 4 — today's consistent with the beta84
+restart. Do not write it down as a mechanism.
+
+✅ **The probe's new fields did exactly what they were added for, on first use.**
+`position_sequence` / `position_epoch` emitted real values and answered the
+question. The probe also fail-closed correctly — cumulative distance 0, so the
+stale-feed trip, not a distance trip — stop confirmed, 15/15 gates on both signs,
+gate disarmed and verified live API **and** RAW.
+
+📏 **INCIDENTAL REACH DATA POINT, 2026-08-29.** The repositioning drive was a clean
+**5.59 m** single segment on the accepted profile: **`target_reached` at 0.1341 m**,
+18 linear pulses, **0 turn commands**, zero errors, 97.7 s, profile identity proven
+key-by-key (19 keys, 0 mismatched). Sits on the existing curve (4 m 0.1023 / 5 m
+0.1015 / 6 m 0.1144). n = 1 — feasibility, not reliability.
+
+⚠️ **UNDOCK TRAP, worth knowing before the next run.** The mower's undock button
+calls `async_leave_dock`, which sends the vendor `leave_dock`: **unbounded by us** — no
+corridor, no distance guard, no mandatory stop from our side. It moved 1.215 m in
+two stages. **Its intermediate states are `TURN_AREA_INSIDE` / `CHANNEL_AREA_OVERLAP`
+with `zone_hash 0` and only 0.216–0.452 m of clearance** — far too little for any
+probe. **Wait for it to settle to `AREA_INSIDE` with a populated zone before
+scanning a corridor.**
+
 🛑 **PHASE 2 CONTINUOUS STEERING IS PARKED — operator decision, 2026-08-28.**
 Not abandoned as broken, and **not because a run failed**: parked because it buys
 **~4x speed and not capability**. Stop-measure-go already does click-to-path —
@@ -277,19 +340,23 @@ disk would have **accepted** — is refused with
 ⚠️ **`services.yaml` prose still says 1.06 m** in the `continuous_motion_window`
 description. Code is right, text is stale; fix it in the next release.
 
-💻 **LIVE STATE at 21:16, 2026-08-28 — requery before acting.** Host **beta84** +
-PyMammotion **0.8.12.post3**. Mower **ON THE DOCK** (`charge_on`), **battery 59%**
-but `charging: off` — worth a glance. RTK **Fix, 32 satellites**. `ble_rssi`
-**-64 dBm**. Gate **disarmed**, verified live API **and** RAW `[False]`; blockers
-`experimental_motion_disabled` and `position_not_valid_for_motion` (the latter is
-the expected dock blocker).
-🌙 **DARK, and it does not block the step probe.** VIO fully collapsed
-(`camera_brightness: dark`, `tracked_features: 0`, `signal_none`). Verified in
-code: there is **no VIO gate** in `_manual_velocity_pulse_gates` nor in the step
-probe's four geometry gates. Every predicate is RTK/BLE/geometry-derived, the same
-basis that made the 2026-08-26 night stationary run legitimate.
-🛑 **The mower must come OFF the dock before the retry** — `not_docked_or_charging`
-is a real gate — and the corridor must be re-scanned at wherever it ends up.
+💻 **LIVE STATE at 10:52, 2026-08-29 — requery before acting.** Host **beta84** +
+PyMammotion **0.8.12.post3**. Mower **off the dock** at **(4.5976, -3.8887)** in
+"Backyard Right", `AREA_INSIDE`, RTK **Fix**, daylight (VIO 80/80), battery was
+100% at undock. Gate **disarmed** — `enabled: false`, `real_motion_allowed: false`,
+no session, verified live API **and** RAW `[False]`.
+
+🔑 **CORRIDOR SCANNED AND USED TODAY — 6.20 m square:**
+`[(1.475,-6.551), (7.675,-6.551), (7.675,-0.351), (1.475,-0.351)]`, centred on the
+then-live `(4.5753, -3.4508)`. Yard clearance there is **4.4779 m**; the square
+gave **3.0997 m** against the probe's required 3.00 m, with corner reach 4.384 m
+inside the 4.478 m yard clearance. 15/15 gates on **both** signs.
+⚠️ **The mower has since moved 0.44 m** during the aborted run, so re-scan rather
+than reusing that polygon.
+⚠️ **Phase budget vs the distance guard is TIGHT.** At the measured ~0.23 m/s a
+10 s window runs ~2.30 m against a 2.50 m guard, truncating the **settle** phase —
+and settle IS the measurement. `baseline 2000 / step 3000 / settle 4000` (9 s,
+~2.07 m) is what was used and leaves ~0.4 m.
 
 🔑 **CORRIDOR USED FOR THE STEP PROBE — 6.20 m square, freshly scanned:**
 `[(5.183,-10.494), (11.383,-10.494), (11.383,-4.294), (5.183,-4.294)]`, centred on
@@ -382,19 +449,19 @@ the hazardous test could not pay off even if it worked. See §8.
 ⚠️ **Do not re-open "would the firmware accept an uploaded path?" as new work.**
 It is moot, not pending.
 
-**NEXT — Phase 2 steering stays CLOSED. The one open thread is READ-ONLY.**
-1. 🔋 **Dock and charge.** 29% off-dock, not charging.
-2. 🔑 **`report_stream_sequence_probe` across a MOTION window** — decide whether
-   the position payloads were arriving-but-stale or not arriving at all. This is
-   read-only and needs no steering. **If they were arriving but stale, Q1 is
-   answered as observer lag with NO further motion run, and the Phase 2 question
-   closes on a measurement.**
-3. 🐛 **Add position sequence and epoch to the step probe's in-window samples**
-   before retrying it. Without that it cannot diagnose its own failure and a
-   retry may be just as uninterpretable.
-4. Only then, if it is still wanted: retry the step probe at **both** signs.
-   ⚠️ A one-sided step cannot separate rotational carryover from a
-   direction-dependent drivetrain asymmetry, so one sign is not a result.
+**NEXT — Phase 2 steering stays CLOSED. The open thread moved to the FEED.**
+1. ✅ **DONE 2026-08-29** — Q1 answered: the position stream stops delivering
+   during a motion window. `position_sequence` frozen while frames arrived.
+2. 🔑 **The question is now WHERE delivery stops** — device, BLE transport, or the
+   report subscription. `report_stream_sequence_probe` is the instrument, and it
+   reconfigures the subscription, so it needs its own authorization.
+   ⚠️ **It must run across MOTION**; a stationary run characterises the idle feed,
+   which is a different case and has never shown this.
+3. **Retry the step probe at BOTH signs only once the feed delivers during
+   motion.** One sign is not a result — it cannot separate rotational carryover
+   from a direction-dependent drivetrain asymmetry.
+🗑️ **Do NOT write controller code for this.** It is a delivery fault, not a
+control fault, and it is more likely pymammotion or device-side than ours.
 
 
 🛑 **STANDING CHECK, added 2026-08-28 because this mistake has now cost THREE
