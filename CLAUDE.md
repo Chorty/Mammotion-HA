@@ -46,6 +46,49 @@ this file every time.
 
 ## Current build: beta82; PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
 
+🏁🏁 **Q2 IS MEASURED, 2026-08-29, beta86 — AND IT IS FAR WORSE THAN THE
+CLOSED-LOOP RUNS SUGGESTED.** First genuine plant measurement the programme has
+produced: **open loop, no controller, both signs.** Read
+`docs/evidence-dead-time-measured-20260829.json`.
+
+| | run A (+120) | run B (−120) |
+| --- | --- | --- |
+| `omega_step_deg_per_s` | **−4.694** | **+4.147** |
+| `rotation_after_zero_deg` | **−16.99** | **+10.79** |
+| **`tau_actuator_s`** | **3.62** | **2.60** |
+| informative intervals | 8 | 7 |
+| `position_sequence` | 4 → 13 | 16 → 24 |
+
+🔑 **τ ≈ 2.6–3.6 s against a ~1 Hz control period — roughly 3x worse than the ~1 s
+inferred from attempt 5.** In run A the command went to zero at 5.0 s and the mower
+rotated a further **17°**, still turning when the window closed.
+
+🔑 **ONSET LAG IS THE OTHER HALF, and it may matter more.** Rotation does not
+*start* for ~1–2 s, and the PEAK rate occurs at or **after** the command ends
+(run A: −2.009 → **−7.505** → −6.500 → **−6.529**, that last one a full second
+after the command went to zero). **A ~1 Hz loop is commanding into a plant that
+has not yet responded to the previous command.**
+
+✅ **BOTH SIGNS AGREE — the drivetrain is NOT asymmetric.** |ω| 4.694 vs 4.147 °/s,
+within 12%. That is exactly what running both signs was for, and it is now
+answered. The sign relationship is also confirmed **open loop**: positive angular
+decreases map course, negative increases it, matching
+`docs/toward-tracks-in-place-rotation-20260812.md`.
+
+⚠️ **τ IS A LOWER BOUND, NOT A VALUE.** Both runs tripped the travel guard and
+run A was still rotating at its last sample — the 4 s settle never captured the
+full decay. **Quote it as "at least 2.6–3.6 s".**
+⚠️ **n = 1 per sign**, both at |120| — the low end of the measured 120–180 band.
+The decay is also **non-monotonic** in both runs (chord noise on ~0.26 m chords),
+which is why τ comes from the **integral** and why **no rate law may be fitted to
+these numbers**.
+
+🔑 **WHAT IT SETTLES.** A proportional loop at ~1 Hz cannot be stabilised here by
+tuning, because the plant's time constant is several times the sample period —
+now measured with **no controller in the loop**, rather than inferred from a
+hunting one. It does **not** rule out a damped or feed-forward design; it rules
+out the one that was tried.
+
 🗑️🗑️ **RETRACTION, 2026-08-29 — THE "POSITION FEED STALL" WAS THIS PROBE
 STOPPING ITS OWN FEED.** Read
 `docs/evidence-step-probe-stalled-on-its-own-lease-20260829.md` before any
@@ -319,40 +362,23 @@ disk would have **accepted** — is refused with
 ⚠️ **`services.yaml` prose still says 1.06 m** in the `continuous_motion_window`
 description. Code is right, text is stale; fix it in the next release.
 
-💻 **LIVE STATE at 14:40, 2026-08-29 — requery before acting.** Host **beta85** +
-PyMammotion **0.8.12.post3**. Mower **off the dock** at **(4.6581, -4.9900)** in
-"Backyard Right", `AREA_INSIDE`, RTK **Fix**, daylight, battery ~95% at the start
-of the runs. Gate **disarmed** — verified live API **and** RAW `[False]`.
+💻 **LIVE STATE at 17:25, 2026-08-29 — requery before acting.** Host **beta86** +
+PyMammotion **0.8.12.post3**. Mower **off the dock** at **(4.4598, -7.3451)** plus
+run B's travel, in "Backyard Right", `AREA_INSIDE`, RTK **Fix**, battery **66%**
+and falling (off dock since morning). Gate **disarmed**, verified live API **and**
+RAW `[False]`.
+🔋 **Dock and charge before further physical work.**
 
-🔑 **CORRIDOR USED FOR BOTH RUNS — a 6.20 m square re-centred on the live start
-before EACH run.** Run A: centred on `(4.6021, -3.9626)`. Run B: re-centred on
-`(4.6274, -4.3949)` **because run A's 0.4330 m of blind travel exceeded the 0.30 m
-start-drift bound** — a corridor cannot be reused across a run that moves the
-mower. Both gave 3.0996 m of clearance against the required 3.00 m, 15/15 gates.
-⚠️ **The mower has moved again since**, so re-scan rather than reusing either.
-
-🔑 **CORRIDOR SCANNED AND USED TODAY — 6.20 m square:**
-`[(1.475,-6.551), (7.675,-6.551), (7.675,-0.351), (1.475,-0.351)]`, centred on the
-then-live `(4.5753, -3.4508)`. Yard clearance there is **4.4779 m**; the square
-gave **3.0997 m** against the probe's required 3.00 m, with corner reach 4.384 m
-inside the 4.478 m yard clearance. 15/15 gates on **both** signs.
-⚠️ **The mower has since moved 0.44 m** during the aborted run, so re-scan rather
-than reusing that polygon.
-⚠️ **Phase budget vs the distance guard is TIGHT.** At the measured ~0.23 m/s a
-10 s window runs ~2.30 m against a 2.50 m guard, truncating the **settle** phase —
-and settle IS the measurement. `baseline 2000 / step 3000 / settle 4000` (9 s,
-~2.07 m) is what was used and leaves ~0.4 m.
-
-🔑 **CORRIDOR USED FOR THE STEP PROBE — 6.20 m square, freshly scanned:**
-`[(5.183,-10.494), (11.383,-10.494), (11.383,-4.294), (5.183,-4.294)]`, centred on
-the then-live `(8.2832, -7.3937)`. Gave **3.0997 m** of clearance against the
-**3.00 m** the probe requires (`max_travel_m 2.50 + 0.50 m stop overshoot`), and
-15/15 gates passed on **both** signs before dispatch.
-⚠️ **The mower has since moved**, so re-scan rather than reusing that polygon.
-⚠️ **Phase budget vs the distance guard is TIGHT.** At the measured ~0.23 m/s a
-10 s window runs ~2.30 m against a 2.50 m guard, which would truncate the
-**settle** phase — and settle IS the measurement. `baseline_ms 2000 / step_ms 3000
-/ settle_ms 4000` (9 s, ~2.07 m) is what was used, and it leaves ~0.4 m.
+🔑 **CORRIDOR METHOD THAT WORKED TWICE TODAY:** a **6.20 m axis-aligned square
+re-centred on the live position before EACH run**, giving 3.0998 m against the
+probe's required 3.00 m, 15/15 gates both signs.
+⚠️ **A corridor cannot be reused across a run that moves the mower** — each run
+travels ~2.5 m to the travel guard, far past the 0.30 m start-drift bound. Re-scan
+and re-verify containment every time.
+⚠️ **The 4 s settle phase is too short.** Both runs tripped the travel guard with
+the mower still rotating, so τ was censored. A longer settle needs either a bigger
+`max_travel_m` (and therefore more corridor) or a slower `linear_speed` — and
+`linear_speed` is schema-pinned at the measured 400.
 
 🔑 **THE ATTEMPT-4 CORRIDOR IS THE ONE TO REUSE — 5.0 x 5.0 m, axis-aligned:**
 `[(3.48,-7.74), (8.48,-7.74), (8.48,-2.74), (3.48,-2.74)]`, centred on
@@ -434,17 +460,22 @@ the hazardous test could not pay off even if it worked. See §8.
 ⚠️ **Do not re-open "would the firmware accept an uploaded path?" as new work.**
 It is moot, not pending.
 
-**NEXT — the feed thread is BACK TO n = 1, and the probe is fixed but undeployed.**
-1. 🗑️ **DONE 2026-08-29** — the "feed stall" was retracted: four of five
-   occurrences were this probe stopping its own report stream.
-2. ✅ **DONE** — probe fixed to start the stream under its lease and **fail
-   closed** on `position_subscription_not_ready`. **NOT DEPLOYED.**
-3. **Release, deploy, re-run both signs.** If the feed now delivers, this finally
-   measures Q2 — the dead time — which remains **completely unmeasured**.
-4. **Only if the fixed probe STILL stalls** does the inbound question become real
-   again. The evidence for it is then attempt 3 alone, n = 1.
-🗑️ **Do NOT run `report_stream_sequence_probe` yet.** It was aimed at a fault
-this probe manufactured.
+**NEXT — Q2 is measured. The programme now has a real decision to make.**
+1. ✅ **DONE 2026-08-29** — probe bug found, fixed, released as beta86 and deployed.
+2. ✅ **DONE 2026-08-29** — dead time measured open loop, both signs:
+   **τ ≥ 2.6–3.6 s**, onset lag ~1–2 s, no drivetrain asymmetry.
+3. 🔑 **THE OPERATOR DECISION, and it is a value call not a code question:**
+   with the plant's time constant several times the sample period, continuous
+   steering at ~1 Hz needs either a **feed-forward/predictive** design (not a
+   tuned proportional one), or a **faster feedback path** that
+   `docs/the-1hz-bundle-is-the-ceiling-20260822.md` says does not exist on this
+   hardware, or **acceptance that stop-measure-go is the answer**.
+   ⚠️ Phase 2 remains PARKED under standing decision 5 either way.
+4. **If more measurement is wanted first**, the cheapest useful additions are a
+   **longer settle** (τ is currently censored) and a **second commanded angular**
+   (180) to see whether ω scales — both runs used |120|.
+🗑️ **Do NOT tune a proportional gain.** That is the one design this measurement
+rules out.
 
 
 🛑 **STANDING CHECK, added 2026-08-28 because this mistake has now cost THREE

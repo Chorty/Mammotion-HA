@@ -8,6 +8,42 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta85 -> beta86 — 2026-08-29 17:01-17:07 EDT, motion-disabled
+
+Ships the step-probe report-stream fix: the probe now starts the report stream
+under its own lease and fails closed if no position payload arrives inside its own
+generation. No backend change (PyMammotion `0.8.12.post3`), no
+`LUBA_ACCEPTANCE_PROFILE` key touched.
+
+| | beta86 |
+| --- | --- |
+| tag | `v0.6.4-beta86` (release commit `ce244772`) |
+| deployed tree | **exactly the tag** |
+| quartet | manifest / pyproject / `CARD_VERSION` `0.6.4-beta86`, uv.lock `0.6.4b86` |
+| backend | PyMammotion `0.8.12.post3`, read from inside the container |
+| archive SHA-256 | `19e316fc8c328db3ecd05884b8046445a90268487afdc95850cc34d5c0b1d602`, identical local and host |
+| file verification | **47 of 47 byte-identical**, zero AppleDouble |
+| card md5 | `c5a78cc90f6453982f2f11a44ea31587`, equal at BOTH serving paths |
+| Lovelace resource | re-read as `?v=0.6.4-beta86&build=c5a78cc9` |
+| host backup | `/config/mammotion-backup-20260829-1701-pre-beta86.tgz` |
+| restart | API up after **45 s**, 132 entities at 184 s; BLE back immediately |
+| fix in deployed bytes | `async_start_continuous_reports` count **15**, matching local |
+| gate after deploy | `enabled: false`, `real_motion_allowed: false`; live API **and** RAW `[False]` |
+
+✅ **THE FIX IS CONFIRMED ON HARDWARE, and it is the first time this probe measured
+anything.** Two supervised runs, both signs: report stream `started`/`continuous`
+true, `ready` true with no `readiness_reason`, `position_sequence` advancing
+**4→13** and **16→24**, and **8 and 7 informative intervals** where every previous
+run produced zero. Read `docs/evidence-dead-time-measured-20260829.json`.
+
+🏁 **Result: τ ≥ 2.6–3.6 s of rotational dead time against a ~1 Hz control
+period**, with onset lag ~1–2 s and no drivetrain asymmetry between signs.
+
+⚠️ **Both runs tripped the travel guard with the mower still rotating**, so τ is
+censored and should be quoted as a lower bound. A longer settle needs more
+corridor, because `linear_speed` is schema-pinned at the measured 400.
+
+
 ### beta84 -> beta85 — 2026-08-29 11:37-11:50 EDT, motion-disabled
 
 Ships `_in_window_ble_snapshot`: `is_connected`, `queue_depth`,
