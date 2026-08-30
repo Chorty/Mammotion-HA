@@ -7690,7 +7690,19 @@ async def _capture_in_window_telemetry(  # noqa: C901
     if max_travel_m > 0 and position_stream is None:
         open_position_stream = getattr(coordinator, "open_position_sample_stream", None)
         if callable(open_position_stream):
-            position_stream = open_position_stream(maxsize=1)
+            # 🐛 **This was `maxsize=1` until 2026-08-30, and the comment on
+            # `_SAFETY_POSITION_STREAM_MAXSIZE` had warned since 2026-08-27 that
+            # that value "structurally guarantees a false
+            # `position_sequence_gap`".** The beta80 fix reached the two lease
+            # wrappers and missed this shared sampler, so any caller that let
+            # `_capture_in_window_telemetry` open its OWN stream still tripped.
+            # It cost a linear-300 speed check on 2026-08-30, which aborted at
+            # 413 ms with `trip_reason: position_sequence_gap` and
+            # `travel_at_trip_m: 0.0` -- a healthy feed, read through a
+            # one-deep queue.
+            position_stream = open_position_stream(
+                maxsize=_SAFETY_POSITION_STREAM_MAXSIZE
+            )
             owns_position_stream = True
     if max_travel_m > 0 and position_stream is None:
         sample = _in_window_telemetry_sample(
@@ -8176,8 +8188,11 @@ async def _raw_pymammotion_motion_probe(  # noqa: PLR0913
 ) -> dict[str, Any]:
     """Own position evidence before dispatch for a distance-guarded probe."""
     open_position_stream = getattr(coordinator, "open_position_sample_stream", None)
+    # Same defect, same day, same fix as the sampler above: a one-deep queue is
+    # latest-wins, so every sample that arrives while the caller is still
+    # setting up is dropped and the contiguity check trips on a healthy feed.
     position_stream = (
-        open_position_stream(maxsize=1)
+        open_position_stream(maxsize=_SAFETY_POSITION_STREAM_MAXSIZE)
         if max_travel_m > 0 and not dry_run and callable(open_position_stream)
         else None
     )

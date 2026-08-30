@@ -46,6 +46,52 @@ this file every time.
 
 ## Current build: beta82; PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
 
+🚨 **OPTION B STEP 1 FAILED TWICE, 2026-08-30, AND THE TWO FAILURES TOGETHER ARE
+THE FINDING: the measurement does not fit inside the travel budget.** Read
+`docs/evidence-option-b-blocked-by-travel-budget-20260830.json`. **τ is NOT
+measured. Run 2 (+180) was never dispatched.**
+
+| attempt | phases | why it failed |
+| --- | --- | --- |
+| 1 | 1500 / 2500 / 6000 | **0 informative intervals in baseline AND step** — every chord below the 0.15 m floor while the mower was still accelerating (0.139 m/s vs 0.265 by settle). `omega_step` null, so τ uncomputable. |
+| 2 | 3000 / 2500 / 4500 | **The course never went flat** — last two settle rates −0.067 and −2.648, **2.58 °/s apart** against a 1.5 °/s criterion. |
+
+🗑️ **Attempt 2's τ = 7.28 s is NOT a result and must not be quoted.** `omega` was
+taken from the step at −1.839 °/s while **the actual peak of −8.680 °/s arrived
+~2 s AFTER the command ended**, inside settle. The denominator measured the ramp.
+
+🔑 **THE STRUCTURAL FINDING.** Onset lag ~2 s means a step needs ~5–6 s to reach
+steady rotation, settle needs ~5 s to flatten, baseline ~3 s to reach speed —
+**~14 s ≈ 3.4 m of path, ~3.9–4.1 m of required clearance.** `max_travel_m` is
+schema-capped at **3.00** and `linear_speed` is pinned at **400**. **The exposure
+bound and the measurement requirement genuinely conflict, and one has to move.**
+
+🗑️ **ROUTE 2 (drive slower) IS ELIMINATED BY MEASUREMENT, 2026-08-30.** Measured
+directly: **linear 300 → 0.116 m/s, linear 400 → 0.191 m/s** (4 s averages
+including ramp and stop, so below the ~0.26 m/s steady figure; comparable to each
+other, which is what mattered). At 300 the mower covers **0.116 m per ~1 s update
+— BELOW the 0.15 m floor**, so heading cannot be read at all. **No slower speed
+works.**
+⚠️ **My extrapolation was wrong and this is why the check was worth 10 seconds:**
+I estimated 300 at 0.195 m/s from the single point at 400. **A 25% command cut
+produced a 39% speed cut — the relationship is NOT linear.**
+
+🐛 **DEFECT FOUND AND FIXED THE SAME DAY: `maxsize=1` on TWO more position
+streams.** The first speed check aborted at 413 ms with
+`trip_reason: position_sequence_gap`, `travel_at_trip_m: 0.0` — a healthy feed
+read through a one-deep latest-wins queue. **The comment on
+`_SAFETY_POSITION_STREAM_MAXSIZE` has warned since 2026-08-27 that this exact
+value structurally guarantees that false trip; the beta80 fix reached the two
+lease wrappers and missed the shared sampler AND the distance-guarded probe
+wrapper.** Both now use the constant, pinned by a source-scan test because the
+failure is a literal a new call site would reintroduce silently. ✅ Fixed and
+tested; ⚠️ **NOT DEPLOYED** — the host runs beta86.
+
+📏 **Two incidental reach points:** a **5.27 m** segment reached target at
+**0.1085 m** (16 linear, 1 turn, 85.8 s); a **2.20 m** segment stopped safely on
+`vio_realign_incomplete` 0.172 m out after 4 turn commands — the shortest such
+refusal on record.
+
 🏁🏁 **Q2 IS MEASURED, 2026-08-29, beta86 — AND IT IS FAR WORSE THAN THE
 CLOSED-LOOP RUNS SUGGESTED.** First genuine plant measurement the programme has
 produced: **open loop, no controller, both signs.** Read
@@ -484,25 +530,24 @@ the hazardous test could not pay off even if it worked. See §8.
 ⚠️ **Do not re-open "would the firmware accept an uploaded path?" as new work.**
 It is moot, not pending.
 
-**NEXT — OPERATOR CHOSE OPTION B, 2026-08-29: design for the dead time.**
-🔑 **Read `docs/phase2-feedforward-measurement-predeclared-20260829.md` first.**
-It predeclares the two measurements a feed-forward design needs, and it
-**authorizes nothing** — each run needs explicit per-run authorization.
-1. 🔋 **Dock and charge.** Both runs are longer than any so far.
-2. **Run 1 — τ uncensored.** `baseline 1500 / step 2500 / settle 6000`,
-   `max_travel_m 3.00`, `+120`, in a **7.2 m** corridor (half-width 3.60 ≥ the
-   required 3.50). 🔑 **It succeeds only if the course goes FLAT before the window
-   ends** — still moving at the last sample means τ is censored again and the run
-   FAILED. Do not quote a censored number.
-3. **Run 2 — does ω scale?** Identical but `+180`. Proportional → a linear
-   command→rate map is usable. Flat → the 2026-08-22 arc result repeats and a
-   predictive design cannot modulate rate in this band at all.
-   🗑️ **Two points are a direction, not a law.** Do not fit a curve.
-4. **Only then** write the feed-forward design, with its own predeclared criteria.
-🗑️ **Not being run:** the opposite signs (asymmetry is answered — |ω| within 12%),
-and any steering run. **Phase 2 stays PARKED**; this is measurement, no controller.
-⚠️ **τ is an EFFECTIVE LOOP DEAD TIME, not a plant constant** — the probe cannot
-separate actuator from observer lag, and no faster feed exists to do it.
+**NEXT — option B needs ROUTE 1, which needs a schema change first.**
+🔑 **Route 2 is dead (measured) and route 3 answers a different question.** Only
+route 1 remains: let the run travel further.
+1. 🔋 **Dock and charge.** 61% at end of 2026-08-30 and route 1's run is longer
+   than any so far.
+2. **Raise `max_travel_m` above 3.00** (the step probe's schema cap) to ~3.50 and
+   size the corridor to match: `3.50 + 0.50 = 4.00 m` of clearance, so a **8.0 m**
+   square. ⚠️ **This is raising a safety bound to fit a measurement** — it needs
+   its own predeclaration saying so, not a quiet edit.
+   🔑 **It fits:** the most open point in "Backyard Right" is **(6.00, -5.20)**
+   with **5.925 m** of clearance against the 4.00 m required.
+3. **Deploy the `maxsize=1` fix in the same release** — it is committed and the
+   host does not have it.
+4. Then run 1 (τ uncensored) and run 2 (+180), per
+   `docs/phase2-feedforward-measurement-predeclared-20260829.md`, whose criteria
+   are otherwise unchanged.
+🗑️ **Do NOT retry at linear 400 inside a 3.00 m cap.** That configuration has
+failed twice for two different reasons and the arithmetic says it cannot pass.
 
 
 🛑 **STANDING CHECK, added 2026-08-28 because this mistake has now cost THREE

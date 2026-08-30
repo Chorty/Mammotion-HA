@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -636,3 +637,27 @@ async def test_probe_refuses_to_drive_when_no_position_arrives(
     assert result["blockers"] == ["position_subscription_not_ready"]
     assert result["command_result"]["attempted"] is False
     assert result["report_stream"]["ready"] is False
+
+
+# --- the maxsize=1 defect, pinned so it cannot come back ----------------------
+
+
+def test_no_position_stream_is_opened_one_deep() -> None:
+    """Every position stream must use `_SAFETY_POSITION_STREAM_MAXSIZE`.
+
+    `maxsize=1` structurally guarantees a false `position_sequence_gap`:
+    `PositionSampleStream._offer` is latest-wins, and a safety consumer opens
+    the stream then runs gates and starts reports before its first `get()`, so
+    at ~1 Hz every sample in that gap is dropped.
+
+    The beta80 fix reached the two lease wrappers and MISSED
+    `_capture_in_window_telemetry` and the distance-guarded probe wrapper. That
+    cost a linear-300 speed check on 2026-08-30, which aborted at 413 ms with
+    `trip_reason: position_sequence_gap` and `travel_at_trip_m: 0.0` on a
+    perfectly healthy feed. A source scan is used rather than a behavioural
+    test because the failure is a *literal*: a new call site would reintroduce
+    it silently and no existing test would notice.
+    """
+    source = Path(services.__file__).read_text(encoding="utf-8").replace(" ", "")
+    assert "open_position_stream(maxsize=1)" not in source
+    assert "open_position_sample_stream(maxsize=1)" not in source

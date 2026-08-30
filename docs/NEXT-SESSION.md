@@ -1,38 +1,36 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
-## §0 Live state — 2026-08-29 17:25 EDT
+## §0 Live state — 2026-08-30, end of session
 
 ⚠️ **Everything BELOW this section is historical.** Reverify before acting on it.
 
-Host **0.6.4-beta86** + PyMammotion **0.8.12.post3**. Mower off the dock in
-"Backyard Right", `AREA_INSIDE`, RTK Fix, battery **66%**. Gate **disarmed**,
-verified live API **and** RAW `[False]`. 🔋 **Dock and charge.**
+Host **0.6.4-beta86** + PyMammotion **0.8.12.post3**. Mower **off the dock** in
+"Backyard Right", RTK Fix, **battery 61%**. Gate **disarmed**, verified live API
+**and** RAW `[False]`. 🔋 **Dock and charge.**
 
-🏁🏁 **Q2 IS MEASURED — τ ≥ 2.6–3.6 s against a ~1 Hz control period.** Open loop,
-no controller, both signs. `omega` −4.694 / +4.147 °/s, `rotation_after_zero`
-−16.99 / +10.79°, τ **3.62 / 2.60 s**. Read
-`docs/evidence-dead-time-measured-20260829.json`.
-🔑 **Onset lag ~1–2 s** and the peak rate arrives at or AFTER the command ends.
-✅ **No drivetrain asymmetry** — |ω| within 12% across signs.
-⚠️ **τ is a LOWER BOUND** — both runs tripped the travel guard with the mower
-still rotating. n = 1 per sign, both at |120|.
+🚨 **OPTION B STEP 1 FAILED TWICE. τ IS STILL NOT MEASURED.** Attempt 1 had zero
+informative intervals before the settle phase (chords below the 0.15 m floor while
+accelerating); attempt 2's course never went flat (last two settle rates 2.58 °/s
+apart against a 1.5 °/s criterion). **Attempt 2's τ = 7.28 s is NOT a result** —
+`omega` was taken from the ramp while the real peak arrived ~2 s after the command
+ended. Run 2 (+180) was never dispatched. Read
+`docs/evidence-option-b-blocked-by-travel-budget-20260830.json`.
 
-🗑️ **RETRACTED EARLIER THE SAME DAY:** the "position feed stall" was the probe
-stopping its own report stream. Read
-`docs/evidence-step-probe-stalled-on-its-own-lease-20260829.md` before any
-evidence file dated 2026-08-28 or -29.
+🔑 **THE FINDING:** at linear 400 the measurement (~14 s ≈ 3.4 m of path, ~4.0 m
+of clearance) **does not fit** the schema-capped `max_travel_m` of 3.00. The
+exposure bound and the measurement requirement conflict.
 
-✅ **DECIDED 2026-08-29 — the operator chose option B: design for the dead time.**
-Read `docs/phase2-feedforward-measurement-predeclared-20260829.md`. Two
-measurements are predeclared and **neither is authorized yet**: run 1 re-measures
-τ **uncensored** (settle 6000 ms, `max_travel_m` 3.00, a 7.2 m corridor), run 2
-repeats it at **+180** to find whether ω scales with command. Only then is the
-feed-forward design written, with its own criteria.
-⚠️ **τ is an EFFECTIVE LOOP DEAD TIME, not a plant constant** — the probe cannot
-separate actuator from observer lag, and the beta77 cadence matrix shows no faster
-feed exists (requested 100/250/500/1000 ms, p95 1119–1372 ms at every one).
-🗑️ **Do not tune a proportional gain** — that is the one design already ruled out.
-Phase 2 stays parked (standing decision 5); these are measurements, not steering.
+🗑️ **Route 2 (drive slower) is ELIMINATED BY MEASUREMENT:** linear 300 → **0.116
+m/s**, below the 0.15 m chord floor, so heading is unreadable. My extrapolation
+said 0.195 — a 25% command cut gave a 39% speed cut, not linear.
+
+🐛 **Fixed, NOT deployed:** `maxsize=1` on two more position streams, the cause of
+a false `position_sequence_gap` that aborted a speed check at 413 ms.
+
+**Next:** route 1 — raise `max_travel_m` to ~3.50 with its own predeclaration
+(it raises a safety bound), corridor 8.0 m at **(6.00, -5.20)** which has 5.925 m
+of clearance, deploy the `maxsize=1` fix in the same release, then both runs.
+Phase 2 steering stays parked (standing decision 5).
 
 
 🛡️ **PHASE 2 HEADING-SAFETY REMEDIATION IMPLEMENTED OFFLINE,

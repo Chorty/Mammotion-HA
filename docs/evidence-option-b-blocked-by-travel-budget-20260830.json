@@ -1,0 +1,271 @@
+{
+ "what": "Option B step 1 FAILED TWICE, and the two failures together show the measurement cannot fit inside the travel budget at linear 400. A speed check then eliminated the slow-down escape route by measurement.",
+ "when": "2026-08-30",
+ "build": "0.6.4-beta86",
+ "backend": "0.8.12.post3",
+ "verdict": "BOTH RUN-1 ATTEMPTS FAIL against docs/phase2-feedforward-measurement-predeclared-20260829.md. tau is NOT measured. Run 2 (+180) was never dispatched.",
+ "attempt_1": {
+  "label": "baseline 1500 / step 2500 / settle 6000, +120",
+  "phases": "1500/2500/6000",
+  "reason": "travel_guard_tripped",
+  "stop_confirmed": true,
+  "report_stream_ready": true,
+  "informative_intervals": {
+   "baseline": 2,
+   "step": 2,
+   "settle": 4
+  },
+  "analysis": {
+   "omega_step_deg_per_s": -1.8387,
+   "rotation_after_zero_deg": -13.3819,
+   "tau_actuator_s": 7.2779
+  },
+  "course_series": [
+   {
+    "from_elapsed_ms": 310.293,
+    "to_elapsed_ms": 1031.55,
+    "midpoint_elapsed_ms": 670.921,
+    "phase": "baseline",
+    "chord_m": 0.007976,
+    "informative": false,
+    "course_degrees": null
+   },
+   {
+    "from_elapsed_ms": 1031.55,
+    "to_elapsed_ms": 2261.555,
+    "midpoint_elapsed_ms": 1646.552,
+    "phase": "baseline",
+    "chord_m": 0.193513,
+    "informative": true,
+    "course_degrees": -86.7413
+   },
+   {
+    "from_elapsed_ms": 2261.555,
+    "to_elapsed_ms": 2970.488,
+    "midpoint_elapsed_ms": 2616.021,
+    "phase": "baseline",
+    "chord_m": 0.231603,
+    "informative": true,
+    "course_degrees": -83.2555
+   },
+   {
+    "from_elapsed_ms": 2970.488,
+    "to_elapsed_ms": 4084.552,
+    "midpoint_elapsed_ms": 3527.52,
+    "phase": "step",
+    "chord_m": 0.226392,
+    "informative": true,
+    "course_degrees": -84.1182
+   },
+   {
+    "from_elapsed_ms": 4084.552,
+    "to_elapsed_ms": 5010.059,
+    "midpoint_elapsed_ms": 4547.306,
+    "phase": "step",
+    "chord_m": 0.227556,
+    "informative": true,
+    "course_degrees": -85.9933
+   },
+   {
+    "from_elapsed_ms": 5010.059,
+    "to_elapsed_ms": 6125.522,
+    "midpoint_elapsed_ms": 5567.791,
+    "phase": "settle",
+    "chord_m": 0.214053,
+    "informative": true,
+    "course_degrees": -87.8314
+   },
+   {
+    "from_elapsed_ms": 6125.522,
+    "to_elapsed_ms": 7035.575,
+    "midpoint_elapsed_ms": 6580.548,
+    "phase": "settle",
+    "chord_m": 0.221981,
+    "informative": true,
+    "course_degrees": -96.6224
+   },
+   {
+    "from_elapsed_ms": 7035.575,
+    "to_elapsed_ms": 8053.138,
+    "midpoint_elapsed_ms": 7544.356,
+    "phase": "settle",
+    "chord_m": 0.235301,
+    "informative": true,
+    "course_degrees": -96.6871
+   },
+   {
+    "from_elapsed_ms": 8053.138,
+    "to_elapsed_ms": 9065.531,
+    "midpoint_elapsed_ms": 8559.335,
+    "phase": "settle",
+    "chord_m": 0.227134,
+    "informative": true,
+    "course_degrees": -99.3752
+   }
+  ],
+  "why_it_failed": "ZERO informative intervals in baseline AND step -- every chord before settle fell below the 0.15 m floor (0.0277, 0.1387, 0.0456, 0.1177 m). The mower was still accelerating: 0.139 m/s through baseline+step against 0.265 m/s by settle. omega_step is null, so tau could not be computed at all.",
+  "my_error": "I trimmed baseline_ms 2000 -> 1500 to fund the longer settle, and removed the margin that let earlier runs get informative chords before the step. That is a predeclaration error, not a property of the mower.",
+  "what_DID_work": "The 6 s settle solved the censoring: rates ran -6.696 -> +2.157 -> +0.724 -> -0.426 deg/s and the last two agreed to 1.15 deg/s, inside the 1.5 deg/s criterion. The course went flat."
+ },
+ "attempt_2": {
+  "label": "baseline 3000 / step 2500 / settle 4500, +120",
+  "phases": "3000/2500/4500",
+  "reason": "travel_guard_tripped",
+  "stop_confirmed": true,
+  "report_stream_ready": true,
+  "informative_intervals": {
+   "baseline": 2,
+   "step": 2,
+   "settle": 4
+  },
+  "analysis": {
+   "omega_step_deg_per_s": -1.8387,
+   "rotation_after_zero_deg": -13.3819,
+   "tau_actuator_s": 7.2779
+  },
+  "course_series": [
+   {
+    "from_elapsed_ms": 310.293,
+    "to_elapsed_ms": 1031.55,
+    "midpoint_elapsed_ms": 670.921,
+    "phase": "baseline",
+    "chord_m": 0.007976,
+    "informative": false,
+    "course_degrees": null
+   },
+   {
+    "from_elapsed_ms": 1031.55,
+    "to_elapsed_ms": 2261.555,
+    "midpoint_elapsed_ms": 1646.552,
+    "phase": "baseline",
+    "chord_m": 0.193513,
+    "informative": true,
+    "course_degrees": -86.7413
+   },
+   {
+    "from_elapsed_ms": 2261.555,
+    "to_elapsed_ms": 2970.488,
+    "midpoint_elapsed_ms": 2616.021,
+    "phase": "baseline",
+    "chord_m": 0.231603,
+    "informative": true,
+    "course_degrees": -83.2555
+   },
+   {
+    "from_elapsed_ms": 2970.488,
+    "to_elapsed_ms": 4084.552,
+    "midpoint_elapsed_ms": 3527.52,
+    "phase": "step",
+    "chord_m": 0.226392,
+    "informative": true,
+    "course_degrees": -84.1182
+   },
+   {
+    "from_elapsed_ms": 4084.552,
+    "to_elapsed_ms": 5010.059,
+    "midpoint_elapsed_ms": 4547.306,
+    "phase": "step",
+    "chord_m": 0.227556,
+    "informative": true,
+    "course_degrees": -85.9933
+   },
+   {
+    "from_elapsed_ms": 5010.059,
+    "to_elapsed_ms": 6125.522,
+    "midpoint_elapsed_ms": 5567.791,
+    "phase": "settle",
+    "chord_m": 0.214053,
+    "informative": true,
+    "course_degrees": -87.8314
+   },
+   {
+    "from_elapsed_ms": 6125.522,
+    "to_elapsed_ms": 7035.575,
+    "midpoint_elapsed_ms": 6580.548,
+    "phase": "settle",
+    "chord_m": 0.221981,
+    "informative": true,
+    "course_degrees": -96.6224
+   },
+   {
+    "from_elapsed_ms": 7035.575,
+    "to_elapsed_ms": 8053.138,
+    "midpoint_elapsed_ms": 7544.356,
+    "phase": "settle",
+    "chord_m": 0.235301,
+    "informative": true,
+    "course_degrees": -96.6871
+   },
+   {
+    "from_elapsed_ms": 8053.138,
+    "to_elapsed_ms": 9065.531,
+    "midpoint_elapsed_ms": 8559.335,
+    "phase": "settle",
+    "chord_m": 0.227134,
+    "informative": true,
+    "course_degrees": -99.3752
+   }
+  ],
+  "why_it_failed": "Criterion 2 requires the last two settle rates to agree within 1.5 deg/s. They were -0.067 and -2.648 -- 2.58 deg/s apart. The course never went flat.",
+  "and_the_number_is_untrustworthy": "omega was taken from the step phase at -1.839 deg/s while the ACTUAL peak of -8.680 deg/s arrived ~2 s AFTER the command ended, inside settle. tau = 13.38/1.84 = 7.28 s is inflated by a denominator that measured the ramp rather than steady rotation. It is NOT quoted.",
+  "what_improved": "Informative intervals in all three phases (2/2/4) where attempt 1 had 0/0/5."
+ },
+ "the_structural_finding": {
+  "claim": "At linear 400 the measurement cannot fit inside the travel budget it must respect.",
+  "arithmetic": "Onset lag ~2 s means a step must run ~5-6 s to reach steady rotation; settle needs ~5 s to flatten; baseline needs ~3 s to reach speed. ~14 s total. At the steady ~0.26 m/s that is ~3.4 m of path, plus 0.50 m stop overshoot = ~3.9-4.1 m of required clearance. max_travel_m is schema-capped at 3.00 and linear_speed is pinned at 400.",
+  "consequence": "This is not a tuning problem. The exposure bound and the measurement requirement genuinely conflict, and one of them has to move."
+ },
+ "speed_check_2026_08_30": {
+  "purpose": "Test whether driving SLOWER buys enough window time inside the same 3.00 m cap, since slower means more seconds per metre.",
+  "method": "raw_pymammotion_motion_probe, 4000 ms, angular 0, motion_refresh_interval_ms 200, travel guard disabled (the clock bounds travel to ~1.5 m including stop, in a spot with ~5 m of clearance).",
+  "measurements": {
+   "linear_300": {
+    "displacement_m": 0.4838,
+    "commanded_s": 4.175,
+    "m_per_s": 0.1159
+   },
+   "linear_400": {
+    "displacement_m": 0.7632,
+    "commanded_s": 4.001,
+    "m_per_s": 0.1907
+   }
+  },
+  "note_on_the_figures": "These are AVERAGES over a 4 s window including the standstill ramp and stop overshoot, so they are lower than the ~0.26 m/s steady-state speed seen mid-run in the step probe's settle phase. Both numbers are directly comparable to each other, which is what the check needed.",
+  "result": "ROUTE 2 IS ELIMINATED BY MEASUREMENT. At linear 300 the mower covers 0.116 m per ~1 s position update, BELOW the 0.15 m informativeness floor, so the heading cannot be read at all. No slower speed works -- it only gets worse.",
+  "my_extrapolation_was_wrong": "I estimated linear 300 at 0.195 m/s from a single measured point at 400. It is 0.116. A 25% cut in command produced a 39% cut in speed -- the relationship is NOT linear. This is the sparse-fit trap this project has hit before, avoided this time for the cost of a 10-second run."
+ },
+ "defect_found_and_fixed": {
+  "what": "`maxsize=1` on position streams opened by the shared sampler and the distance-guarded probe wrapper.",
+  "evidence": "The first linear-300 speed check aborted at 413 ms with trip_reason `position_sequence_gap` and travel_at_trip_m 0.0 -- a healthy feed read through a one-deep, latest-wins queue.",
+  "history": "The comment on _SAFETY_POSITION_STREAM_MAXSIZE has warned since 2026-08-27 that this exact value structurally guarantees a false position_sequence_gap. The beta80 fix reached the two lease wrappers and missed BOTH of these call sites.",
+  "fix": "Both now use _SAFETY_POSITION_STREAM_MAXSIZE (64), pinned by a source-scan test because the failure is a literal that a new call site would reintroduce silently.",
+  "status": "FIXED, tested, NOT DEPLOYED -- the host runs beta86."
+ },
+ "incidental_reach_data": [
+  {
+   "length_m": 5.27,
+   "stop_reason": "target_reached",
+   "landing_error_m": 0.1085,
+   "linear_commands": 16,
+   "turn_commands": 1,
+   "wall_s": 85.8
+  },
+  {
+   "length_m": 2.2,
+   "stop_reason": "vio_realign_incomplete",
+   "final_offset_m": 0.172,
+   "linear_commands": 9,
+   "turn_commands": 4,
+   "wall_s": 57.6,
+   "note": "A safe refusal, not a landing. Recorded because a 2.2 m leg exhausting the turn budget is the shortest such stop on record."
+  }
+ ],
+ "safety": {
+  "all_runs": "15/15 gates before each step-probe dispatch; 13/13 before each reposition; every stop confirmed; gate disarmed and verified from the live API AND RAW core.config_entries after each session",
+  "corridor": "7.2 m square re-scanned and re-verified at the live position before each run; a corridor is never reused across a run that moves the mower"
+ },
+ "what_is_still_unmeasured": "tau. Q2 remains open. Run 2 (+180), which would answer whether omega scales with command, was never dispatched.",
+ "motion_commanded": true,
+ "supervised": true,
+ "operator_authorized": true
+}
