@@ -46,6 +46,33 @@ this file every time.
 
 ## Current build: beta88; PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
 
+🏁 **ROUTE 1 STEP EXTENSION PASSED — ALL SIX CRITERIA, 2026-08-30.** First
+full pass anywhere in the route-1 effort. Read
+`docs/evidence-route1-step-extension-pass-20260830.md` (raw:
+`docs/evidence-route1-step-extension-pass-20260830.json`). Extending
+`step_ms` 5000 → 7000 ms (baseline 3000 / step 7000 / settle 5000, +120,
+`max_travel_m=4.5`, 10.0 m corridor) confirmed the onset-lag hypothesis from
+the two prior FAILs: the step-rate sequence climbs then flattens
+(-9.026 → -6.127 → -8.241 → -8.353 °/s, last two 0.11°/s apart), where both
+5000 ms attempts were still accelerating when the phase ended. **2b passes
+too, but narrowly** (1.44°/s apart against the 1.5°/s bound, on only 4
+informative intervals — thinner than either 5000 ms run's settle). 🔑
+**`tau_actuator_s = 2.038 s` may now be quoted as a genuine measurement**, not
+a lower bound.
+
+✅ **The `reason`-field fix (commit `af5f547f`) is CONFIRMED on real
+hardware for the first time** — the service correctly reported
+`"window_complete"`, independently matching the raw per-sample evidence
+(`aborted_early: False`, 0/146 tripped) for the first time all day without
+needing manual correction.
+
+🔑 **What this authorizes, per
+`docs/phase2-route1-step-extension-predeclared-20260830.md` §7: repeating at
++180 with this same step length — nothing more.** Not another `step_ms`
+increase, not Phase 2 steering, not the feed-forward design document without
+that +180 run first. n=1 at this config; the thin 2b margin means a repeat
+could plausibly fail it even with 2a solid.
+
 🚀 **beta88 DEPLOYED, 2026-08-30 19:08-19:12 EDT, motion-disabled.** Ships the
 step-extension cap changes from
 `docs/phase2-route1-step-extension-predeclared-20260830.md` — another SAFETY

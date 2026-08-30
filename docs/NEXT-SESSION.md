@@ -4,6 +4,26 @@
 
 ⚠️ **Everything BELOW this section is historical.** Reverify before acting on it.
 
+🏁 **ROUTE 1 STEP EXTENSION PASSED, 19:47 EDT — FIRST FULL PASS OF THE ROUTE-1
+EFFORT.** Read `docs/evidence-route1-step-extension-pass-20260830.md` (raw:
+`docs/evidence-route1-step-extension-pass-20260830.json`). Extended
+`step_ms` 5000→7000 (baseline 3000/step 7000/settle 5000, +120,
+`max_travel_m=4.5`, 10.0 m corridor at `(6.1232, -5.2363)`). All six
+criteria PASS: 2a 0.11°/s apart (was 2.49/7.28°/s FAIL twice at 5000 ms), 2b
+1.44°/s apart (passes, but narrowly — only 4 informative intervals, thinnest
+margin of any run today). `tau_actuator_s = 2.038 s` is now a genuine
+measurement. The `reason`-field fix (commit `af5f547f`) is confirmed correct
+on real hardware for the first time (`"window_complete"`, matching the raw
+evidence unprompted).
+
+🔑 **NEXT: repeat at +180 with the same step length — that is ALL this pass
+authorizes**, per `docs/phase2-route1-step-extension-predeclared-20260830.md`
+§7. Not another cap change, not Phase 2 steering, not the feed-forward
+document without that +180 run. n=1 at this config; 2b's thin margin means a
+repeat could plausibly fail it even with 2a solid. Needs: a fresh corridor
+scan at the live position (10.0 m square, re-verify clearance ≥5.0 m in every
+direction), a passing dry run, and explicit per-run authorization.
+
 🚀 **beta88 DEPLOYED, 19:08-19:12 EDT, motion-disabled** — ships
 `docs/phase2-route1-step-extension-predeclared-20260830.md`'s cap changes
 (`step_ms` schema ceiling 5000→**7000** ms, `_STEP_RESPONSE_MAX_TOTAL_MS`
