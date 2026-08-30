@@ -8,6 +8,55 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta86 -> beta87 — 2026-08-30 16:47-16:50 EDT, motion-disabled
+
+Ships the route-1 cap changes from `docs/phase2-route1-predeclared-20260830.md`
+(a SAFETY BOUND raise, not a convenience one) plus the already-committed
+`maxsize=1` fix for the two remaining position streams. `max_travel_m`'s schema
+ceiling moves 3.0 -> **4.5** (default stays 2.50) and `_STEP_RESPONSE_MAX_TOTAL_MS`
+moves 12000 -> **14000** ms, so a `baseline 3000 / step 5000 / settle 5000` window
+(13000 ms) is now admissible where it was refused before. `step_ms` stays capped
+at 5000 and `linear_speed` stays pinned at 400, both deliberately unchanged. No
+`LUBA_ACCEPTANCE_PROFILE` key touched.
+
+🚨 **THE GATE WAS FOUND ARMED AND LIVE AT THE START OF THIS SESSION** —
+`enabled: true`, `real_motion_allowed: true`, `blockers: []`, no active session.
+Disarmed immediately, before any deploy step, and verified from both the live
+API and RAW `core.config_entries` (`enable_experimental_motion":false`). No
+motion was commanded before or during the disarm.
+
+| | beta87 |
+| --- | --- |
+| tag | `v0.6.4-beta87` (release commit `0787f6b1`) |
+| deployed tree | **exactly the tag**, fast-forwarded from `4f19a22e` |
+| quartet | manifest / pyproject / `CARD_VERSION` `0.6.4-beta87`, uv.lock `0.6.4b87` |
+| backend | PyMammotion `0.8.12.post3`, read from inside the container (unchanged) |
+| archive SHA-256 | `f167a6e2567e8cf42432bc983f9624ddc6f401ff7c8cf590bd7de53a3571bc2c`, identical local and host |
+| file verification | **47 of 47 byte-identical**, zero AppleDouble |
+| card md5 | `743765579a4f10f35ee9f1f542a00964`, equal at BOTH serving paths |
+| Lovelace resource | re-read as `?v=0.6.4-beta87&build=74376557` |
+| host backup | `/config/mammotion-backup-20260830-1644-pre-beta87.tgz` |
+| restart | API up in ~40 s; mammotion config entry `loaded` and 132 entities recovered ~110 s post-restart |
+| gate after deploy | `enabled: false`, `real_motion_allowed: false`, no active session; live API **and** RAW `[false]` |
+
+⚠️ **The restart briefly showed `cloud_mammotion permanently unavailable`** —
+`Re-login required for account 'matt.joslin@me.com': refresh_login returned no
+data`. This is the account's cloud MQTT token, unrelated to this change and to
+the deployed tree; the integration proceeded on BLE (this project's primary
+transport) and loaded normally. Not investigated further here — flag if it
+recurs or if a cloud-path service is ever needed.
+
+✅ **THE NEW CAPS ARE CONFIRMED LIVE IN THE DEPLOYED BYTES**, not just committed.
+A dry run of `raw_pymammotion_step_response_probe` with
+`baseline_ms=3000, step_ms=5000, settle_ms=5000, max_travel_m=4.0` was accepted
+by the schema (`phases.total_ms: 13000`, `max_travel_m: 4.0` both echoed back —
+the old 12000 ms / 3.0 m ceilings would have rejected this call outright) and
+returned `would_send: false`, `command_result.attempted: false`. The one gate
+that failed, `step_path_contained`, is expected: the corridor used was an
+ad hoc placeholder for this schema check, not a real pre-run scan, and no
+corridor scan, gate arming, or motion dispatch was performed as part of this
+deploy.
+
 ### beta85 -> beta86 — 2026-08-29 17:01-17:07 EDT, motion-disabled
 
 Ships the step-probe report-stream fix: the probe now starts the report stream

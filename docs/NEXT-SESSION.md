@@ -4,9 +4,25 @@
 
 ⚠️ **Everything BELOW this section is historical.** Reverify before acting on it.
 
-Host **0.6.4-beta86** + PyMammotion **0.8.12.post3**. Mower **off the dock** in
-"Backyard Right", RTK Fix, **battery 61%**. Gate **disarmed**, verified live API
-**and** RAW `[False]`. 🔋 **Dock and charge.**
+Host **0.6.4-beta87** + PyMammotion **0.8.12.post3** (backend unchanged).
+Deployed motion-disabled 16:47-16:50 EDT; full verification tail passed
+(47/47 files, card md5 equal at both paths, Lovelace `?v=0.6.4-beta87&build=74376557`).
+Read `docs/deploy-runbook-p0.md` → beta87. Mower **off the dock** in "Backyard
+Right", RTK Fix, **battery 61%** (as of the prior session — reverify). Gate
+**disarmed**, verified live API **and** RAW `[false]`. 🔋 **Dock and charge.**
+
+🚨 **THE GATE WAS FOUND ARMED AND LIVE AT THE START OF THIS SESSION** —
+`enabled: true`, `real_motion_allowed: true`, `blockers: []`, no active session.
+Disarmed before any deploy step and re-verified after. **Reverify gate state
+before trusting "disarmed" claimed anywhere in this file, including this one.**
+
+✅ **ROUTE 1'S CAP CHANGES ARE DEPLOYED AND CONFIRMED LIVE IN THE DEPLOYED
+BYTES**, per `docs/phase2-route1-predeclared-20260830.md`:
+`max_travel_m` schema ceiling 3.0 → **4.5** (default stays 2.50),
+`_STEP_RESPONSE_MAX_TOTAL_MS` 12000 → **14000** ms, `step_ms` still capped at
+5000, `linear_speed` still pinned at 400. A dry run on the host accepted
+`max_travel_m=4.0` and a 13000 ms phase sum that the old caps would have
+rejected outright. **This is a safety-bound raise and it authorizes no run.**
 
 🚨 **OPTION B STEP 1 FAILED TWICE. τ IS STILL NOT MEASURED.** Attempt 1 had zero
 informative intervals before the settle phase (chords below the 0.15 m floor while
@@ -17,26 +33,26 @@ ended. Run 2 (+180) was never dispatched. Read
 `docs/evidence-option-b-blocked-by-travel-budget-20260830.json`.
 
 🔑 **THE FINDING:** at linear 400 the measurement (~14 s ≈ 3.4 m of path, ~4.0 m
-of clearance) **does not fit** the schema-capped `max_travel_m` of 3.00. The
-exposure bound and the measurement requirement conflict.
+of clearance) **does not fit** the schema-capped `max_travel_m` of 3.00 —
+**now raised to 4.5, see above.** The exposure bound and the measurement
+requirement conflicted; that is what this deploy fixes.
 
 🗑️ **Route 2 (drive slower) is ELIMINATED BY MEASUREMENT:** linear 300 → **0.116
 m/s**, below the 0.15 m chord floor, so heading is unreadable. My extrapolation
 said 0.195 — a 25% command cut gave a 39% speed cut, not linear.
 
-🐛 **Fixed, NOT deployed:** `maxsize=1` on two more position streams, the cause of
+✅ **DEPLOYED, beta87:** `maxsize=1` on two more position streams, the cause of
 a false `position_sequence_gap` that aborted a speed check at 413 ms.
 
-**Next:** route 1, now PREDECLARED in
-`docs/phase2-route1-predeclared-20260830.md` — which authorizes nothing. It moves
-three caps, one of them a safety bound: `max_travel_m` 3.00 → **4.00** (ceiling
-3.0 → 4.5) and `_STEP_RESPONSE_MAX_TOTAL_MS` 12000 → **14000**, letting the mower
-drive **1.00 m further open loop** than any step-probe run so far. Phases
-`3000/5000/5000`, corridor **9.0 m** square (10.0 m verified contained). The
-`maxsize=1` fix ships in the same release. **Criterion 2 is split: 2a the step
-must reach steady rotation, 2b the settle must go flat** — 2a is what makes
-`omega` trustworthy after attempt 2 sampled it off the ramp. **A travel-guard trip
-is a FAIL.** Phase 2 steering stays parked (standing decision 5).
+**Next:** route 1 itself. Corridor **9.0 m** square (10.0 m verified contained,
+but re-scan and re-verify at the LIVE position before dispatch — the doc
+requires this before every run). **Criterion 2 is split: 2a the step must reach
+steady rotation, 2b the settle must go flat** — 2a is what makes `omega`
+trustworthy after attempt 2 sampled it off the ramp. **A travel-guard trip is a
+FAIL.** Preconditions: docked and charged, daylight for the repositioning drive
+(its turns close on VIO), a dry run showing 15/15 gates with `blockers: []` on
+the exact configuration, and explicit per-run operator authorization. Phase 2
+continuous steering stays parked (standing decision 5).
 
 
 🛡️ **PHASE 2 HEADING-SAFETY REMEDIATION IMPLEMENTED OFFLINE,

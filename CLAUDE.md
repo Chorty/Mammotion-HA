@@ -44,7 +44,32 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: beta82; PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
+## Current build: beta87; PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
+
+🚀 **beta87 DEPLOYED, 2026-08-30 16:47-16:50 EDT, motion-disabled.** Ships the
+route-1 cap changes from `docs/phase2-route1-predeclared-20260830.md` — a
+SAFETY BOUND raise, stated plainly: `max_travel_m`'s schema ceiling goes
+3.0 -> **4.5** (default stays 2.50) and `_STEP_RESPONSE_MAX_TOTAL_MS` goes
+12000 -> **14000** ms, so a `baseline 3000 / step 5000 / settle 5000` window
+(13000 ms) is now admissible. `step_ms` stays capped at 5000, `linear_speed`
+stays pinned at 400 — both deliberately unchanged. The already-committed
+`maxsize=1` fix ships in the same release. Full verification tail passed: 47/47
+files byte-identical, card md5 equal at both serving paths, Lovelace resource
+re-read as `?v=0.6.4-beta87&build=74376557`, and a dry run of
+`raw_pymammotion_step_response_probe` with `max_travel_m=4.0` and phases
+summing to 13000 ms was **accepted by the schema** on the deployed bytes
+(`would_send: false`, nothing dispatched). Record: `docs/deploy-runbook-p0.md`
+→ beta87. **This raises the exposure bound only — it authorizes no run.** Route
+1 itself needs a fresh corridor scan and explicit per-run operator
+authorization; see the predeclaration.
+
+🚨 **ANOTHER ARMED-AT-REST OCCURRENCE, found and closed 2026-08-30 before this
+deploy.** The gate was `enabled: true`, `real_motion_allowed: true`,
+`blockers: []`, no active session — live and armed with nobody having asked for
+it. Disarmed immediately and verified from both the live API and RAW
+`core.config_entries`. No motion was commanded. **The gate is disarmed now**,
+but re-verify before acting on any "disarmed" claim in this file — that is
+exactly the pattern this occurrence broke.
 
 🚨 **OPTION B STEP 1 FAILED TWICE, 2026-08-30, AND THE TWO FAILURES TOGETHER ARE
 THE FINDING: the measurement does not fit inside the travel budget.** Read
