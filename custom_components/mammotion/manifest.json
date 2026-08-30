@@ -33,5 +33,5 @@
   "requirements": [
     "pymammotion@https://github.com/Chorty/PyMammotion/releases/download/chorty-0.8.12.post3/pymammotion-0.8.12.post3-py3-none-any.whl"
   ],
-  "version": "0.6.4-beta87"
+  "version": "0.6.4-beta88"
 }
