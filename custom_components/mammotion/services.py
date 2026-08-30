@@ -991,7 +991,7 @@ STEP_RESPONSE_PROBE_SCHEMA = vol.Schema(
             vol.Coerce(int), vol.Range(min=1000, max=5000)
         ),
         vol.Optional("step_ms", default=3000): vol.All(
-            vol.Coerce(int), vol.Range(min=1000, max=5000)
+            vol.Coerce(int), vol.Range(min=1000, max=7000)
         ),
         # The settle phase IS the experiment: it must outlast the carryover it
         # is measuring, or tau is censored rather than measured.
@@ -9511,7 +9511,7 @@ async def _heading_acquisition_window(
 # ⚠️ `stop_overshoot_m` is 0.50 m and attempt 5 measured 0.4544 m of post-stop
 # creep (docs/evidence-phase2-steering-attempt5-20260828.json) -- a 9% margin.
 # Budget the full constant and do not raise `linear_speed`.
-_STEP_RESPONSE_MAX_TOTAL_MS = 14000
+_STEP_RESPONSE_MAX_TOTAL_MS = 16000
 # Matches the readiness budget the beta77 stationary work derived: the maximum
 # healthy stationary publication interval measured 2910.1 ms across n=1434, so
 # 3.5 s carries a 1.20x margin. It is a conservative stationary default, never

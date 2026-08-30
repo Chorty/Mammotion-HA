@@ -119,13 +119,29 @@ def test_schema_cannot_relax_the_travel_guard_above_four_point_five_metres() -> 
         _validated(max_travel_m=4.51)
 
 
-def test_max_total_window_is_pinned_at_fourteen_seconds() -> None:
+def test_schema_cannot_relax_the_step_phase_above_seven_seconds() -> None:
+    """A caller may shorten the step phase but never relax it past 7000 ms.
+
+    Raised from 5000 ms by
+    docs/phase2-route1-step-extension-predeclared-20260830.md -- a deliberate
+    safety-bound increase to test whether the step phase simply needs more
+    time to clear onset lag, not a tightening.
+    """
+    assert _validated(step_ms=1000)["step_ms"] == 1000
+    with pytest.raises(vol.Invalid):
+        _validated(step_ms=7001)
+
+
+def test_max_total_window_is_pinned_at_sixteen_seconds() -> None:
     """Pin the raised total-window cap so a future edit cannot drift it silently.
 
     docs/phase2-route1-predeclared-20260830.md moved this 12000 -> 14000 ms so
-    baseline 3000 + step 5000 + settle 5000 = 13000 ms fits.
+    baseline 3000 + step 5000 + settle 5000 = 13000 ms fits. Then
+    docs/phase2-route1-step-extension-predeclared-20260830.md moved it
+    14000 -> 16000 ms so baseline 3000 + step 7000 + settle 5000 = 15000 ms
+    fits, with the same 1000 ms margin the first raise used.
     """
-    assert _STEP_RESPONSE_MAX_TOTAL_MS == 14000
+    assert _STEP_RESPONSE_MAX_TOTAL_MS == 16000
 
 
 # --- gates --------------------------------------------------------------------
@@ -222,7 +238,7 @@ async def test_total_window_is_capped_even_when_every_phase_is_legal() -> None:
         route_start=START,
         corridor_polygon=WIDE_CORRIDOR,
         baseline_ms=5000,
-        step_ms=5000,
+        step_ms=7000,
         settle_ms=6000,
         dry_run=False,
         confirm_blades_off=True,

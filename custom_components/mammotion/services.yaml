@@ -901,7 +901,7 @@ raw_pymammotion_step_response_probe:
       selector:
         number:
           min: 1000
-          max: 5000
+          max: 7000
           step: 100
     settle_ms:
       required: false
