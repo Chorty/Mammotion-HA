@@ -1005,7 +1005,7 @@ STEP_RESPONSE_PROBE_SCHEMA = vol.Schema(
             vol.Coerce(int), vol.Range(min=50, max=1000)
         ),
         vol.Optional("max_travel_m", default=2.50): vol.All(
-            vol.Coerce(float), vol.Range(min=0.10, max=3.0)
+            vol.Coerce(float), vol.Range(min=0.10, max=4.5)
         ),
         vol.Optional("prefer_ble", default=True): cv.boolean,
         vol.Optional("dry_run", default=True): cv.boolean,
@@ -9511,7 +9511,7 @@ async def _heading_acquisition_window(
 # ⚠️ `stop_overshoot_m` is 0.50 m and attempt 5 measured 0.4544 m of post-stop
 # creep (docs/evidence-phase2-steering-attempt5-20260828.json) -- a 9% margin.
 # Budget the full constant and do not raise `linear_speed`.
-_STEP_RESPONSE_MAX_TOTAL_MS = 12000
+_STEP_RESPONSE_MAX_TOTAL_MS = 14000
 # Matches the readiness budget the beta77 stationary work derived: the maximum
 # healthy stationary publication interval measured 2910.1 ms across n=1434, so
 # 3.5 s carries a 1.20x margin. It is a conservative stationary default, never

@@ -27,6 +27,7 @@ import voluptuous as vol
 
 from custom_components.mammotion import services
 from custom_components.mammotion.services import (
+    _STEP_RESPONSE_MAX_TOTAL_MS,
     STEP_RESPONSE_PROBE_SCHEMA,
     _in_window_ble_snapshot,
     _in_window_telemetry_sample,
@@ -106,11 +107,24 @@ def test_schema_accepts_both_signs_of_the_measured_band(value: int) -> None:
     assert _validated(step_angular_speed=value)["step_angular_speed"] == value
 
 
-def test_schema_cannot_relax_the_travel_guard_above_three_metres() -> None:
-    """A caller may tighten the distance guard but never relax it past 3.0 m."""
+def test_schema_cannot_relax_the_travel_guard_above_four_point_five_metres() -> None:
+    """A caller may tighten the distance guard but never relax it past 4.5 m.
+
+    Raised from 3.0 m by docs/phase2-route1-predeclared-20260830.md -- a
+    deliberate safety-bound increase, not a tightening.
+    """
     assert _validated(max_travel_m=1.0)["max_travel_m"] == 1.0
     with pytest.raises(vol.Invalid):
-        _validated(max_travel_m=3.01)
+        _validated(max_travel_m=4.51)
+
+
+def test_max_total_window_is_pinned_at_fourteen_seconds() -> None:
+    """Pin the raised total-window cap so a future edit cannot drift it silently.
+
+    docs/phase2-route1-predeclared-20260830.md moved this 12000 -> 14000 ms so
+    baseline 3000 + step 5000 + settle 5000 = 13000 ms fits.
+    """
+    assert _STEP_RESPONSE_MAX_TOTAL_MS == 14000
 
 
 # --- gates --------------------------------------------------------------------

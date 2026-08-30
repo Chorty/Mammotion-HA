@@ -937,7 +937,7 @@ raw_pymammotion_step_response_probe:
       selector:
         number:
           min: 0.10
-          max: 3.0
+          max: 4.5
           step: 0.05
           unit_of_measurement: m
     prefer_ble:
