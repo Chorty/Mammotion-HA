@@ -46,6 +46,41 @@ this file every time.
 
 ## Current build: beta87; PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
 
+🔑 **ROUTE 1 RUN 1 REPEATED (n=2), 2026-08-30 — SETTLE PASSES, STEP STILL
+FAILS, AND WORSE.** Read `docs/evidence-route1-run1-repeat-fail-20260830.md`
+(raw: `docs/evidence-route1-run1-repeat-fail-20260830.json`). Identical config
+to run 1 (baseline 3000 / step 5000 / settle 5000, +120, `max_travel_m=4.0`).
+Both runs FAIL overall, but the failure mode split:
+
+| | run 1 | run 1 repeat |
+| --- | --- | --- |
+| 2a — step steady (≤1.5°/s) | FAIL, 2.49°/s apart | **FAIL, 7.28°/s apart — worse** |
+| 2b — settle flat (≤1.5°/s) | FAIL, 2.07°/s apart | **PASS, 0.26°/s apart** |
+
+🔑 **New working hypothesis, n=2 not confirmed:** in BOTH runs the step
+phase's FINAL interval showed the rotation rate *increasing* in magnitude
+versus the interval before it (run 1: -5.686→-8.179°/s; run 2:
+-3.828→-11.108°/s) — the signature of a rotation still accelerating through
+onset lag when the 5 s step ends, not chord noise decaying around a settled
+value as first hypothesized after run 1 alone. Matches the predeclaration's
+own onset-lag arithmetic. **Do NOT raise `step_ms` on this** — that stays a
+separate, deliberately-written decision; the cap exists specifically so this
+question could be asked honestly. Settle (5000 ms) now looks adequate on one
+clean pass; treat as a hint, not a conclusion.
+
+🔧 **A repositioning drive was needed between the two runs** and stopped
+safely once on `turn_budget_infeasible` (a 163.5° turn staged into 60°
+segments; the final stage's own feasibility check narrowly refused on
+translation budget, zero linear commands sent, no error) before a second call
+— reusing the first call's VIO calibration offset — completed it to
+`target_reached` at 0.149 m. Uses the accepted closed-loop reach profile
+(`docs/accepted-profile.json`), verified key-by-key before real dispatch.
+
+🐛 **The reason-field bug (below) is still undeployed** and reported
+`"travel_guard_tripped"` on this run too, wrongly, for the same reason as run
+1 — confirmed clean from raw samples (`aborted_early: False`, 0/128 tripped,
+full 13001 ms window).
+
 🚨 **ROUTE 1 RUN 1 FAILED, 2026-08-30 — BUT IT IS THE FIRST WINDOW TO COMPLETE
 CLEANLY.** One supervised, operator-authorized run of
 `raw_pymammotion_step_response_probe` (baseline 3000 / step 5000 / settle 5000,
