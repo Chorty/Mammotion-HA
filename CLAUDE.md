@@ -530,24 +530,28 @@ the hazardous test could not pay off even if it worked. See §8.
 ⚠️ **Do not re-open "would the firmware accept an uploaded path?" as new work.**
 It is moot, not pending.
 
-**NEXT — option B needs ROUTE 1, which needs a schema change first.**
-🔑 **Route 2 is dead (measured) and route 3 answers a different question.** Only
-route 1 remains: let the run travel further.
-1. 🔋 **Dock and charge.** 61% at end of 2026-08-30 and route 1's run is longer
-   than any so far.
-2. **Raise `max_travel_m` above 3.00** (the step probe's schema cap) to ~3.50 and
-   size the corridor to match: `3.50 + 0.50 = 4.00 m` of clearance, so a **8.0 m**
-   square. ⚠️ **This is raising a safety bound to fit a measurement** — it needs
-   its own predeclaration saying so, not a quiet edit.
-   🔑 **It fits:** the most open point in "Backyard Right" is **(6.00, -5.20)**
-   with **5.925 m** of clearance against the 4.00 m required.
-3. **Deploy the `maxsize=1` fix in the same release** — it is committed and the
-   host does not have it.
-4. Then run 1 (τ uncensored) and run 2 (+180), per
-   `docs/phase2-feedforward-measurement-predeclared-20260829.md`, whose criteria
-   are otherwise unchanged.
-🗑️ **Do NOT retry at linear 400 inside a 3.00 m cap.** That configuration has
-failed twice for two different reasons and the arithmetic says it cannot pass.
+**NEXT — route 1 is PREDECLARED and needs a code change, a release and a deploy.**
+🔑 **Read `docs/phase2-route1-predeclared-20260830.md` first. It authorizes
+nothing.**
+1. 🔋 **Dock and charge.** These are the longest runs attempted; 61% at the end of
+   2026-08-30.
+2. **Three caps move, and one of them is a SAFETY BOUND — say so, do not slip it
+   through:** `max_travel_m` 3.00 → **4.00** (schema ceiling 3.0 → 4.5) and
+   `_STEP_RESPONSE_MAX_TOTAL_MS` 12000 → **14000**. The mower will drive **1.00 m
+   further open loop on an uncorrected curve** than any step-probe run so far.
+   🗑️ **`step_ms` stays capped at 5000 and `linear_speed` stays 400** — see §4 of
+   the predeclaration for why raising them together would spoil the test.
+3. **Ship the `maxsize=1` fix in the same release** — committed, not deployed.
+4. Run 1: `baseline 3000 / step 5000 / settle 5000` (13.0 s ≈ 3.12 m of path,
+   0.88 m under the 4.00 m guard **on purpose** — a guard at the expected travel
+   is the truncation that censored both attempts). Corridor **9.0 m** square;
+   squares up to 10.0 m are verified contained in "Backyard Right".
+5. Then run 2 at **+180**.
+🔑 **Criterion 2 is now SPLIT — 2a the step reaches steady rotation, 2b the settle
+goes flat.** 2a is new and is what makes `omega` trustworthy: attempt 2 flattened
+in settle while `omega` was sampled off the ramp, producing a τ of 7.28 s that had
+to be discarded.
+🔑 **A travel-guard trip is a FAIL**, not a smaller number.
 
 
 🛑 **STANDING CHECK, added 2026-08-28 because this mistake has now cost THREE

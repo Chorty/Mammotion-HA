@@ -27,10 +27,16 @@ said 0.195 — a 25% command cut gave a 39% speed cut, not linear.
 🐛 **Fixed, NOT deployed:** `maxsize=1` on two more position streams, the cause of
 a false `position_sequence_gap` that aborted a speed check at 413 ms.
 
-**Next:** route 1 — raise `max_travel_m` to ~3.50 with its own predeclaration
-(it raises a safety bound), corridor 8.0 m at **(6.00, -5.20)** which has 5.925 m
-of clearance, deploy the `maxsize=1` fix in the same release, then both runs.
-Phase 2 steering stays parked (standing decision 5).
+**Next:** route 1, now PREDECLARED in
+`docs/phase2-route1-predeclared-20260830.md` — which authorizes nothing. It moves
+three caps, one of them a safety bound: `max_travel_m` 3.00 → **4.00** (ceiling
+3.0 → 4.5) and `_STEP_RESPONSE_MAX_TOTAL_MS` 12000 → **14000**, letting the mower
+drive **1.00 m further open loop** than any step-probe run so far. Phases
+`3000/5000/5000`, corridor **9.0 m** square (10.0 m verified contained). The
+`maxsize=1` fix ships in the same release. **Criterion 2 is split: 2a the step
+must reach steady rotation, 2b the settle must go flat** — 2a is what makes
+`omega` trustworthy after attempt 2 sampled it off the ramp. **A travel-guard trip
+is a FAIL.** Phase 2 steering stays parked (standing decision 5).
 
 
 🛡️ **PHASE 2 HEADING-SAFETY REMEDIATION IMPLEMENTED OFFLINE,
