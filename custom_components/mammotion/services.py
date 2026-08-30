@@ -10094,11 +10094,31 @@ async def _step_response_probe_impl(  # noqa: C901, PLR0913
     result["analysis"] = _step_response_analysis(
         result["course_series"], baseline_ms=baseline_ms, step_ms=step_ms
     )
-    result["reason"] = (
-        "travel_guard_tripped" if travel_abort.is_set() else "window_complete"
-    )
+    result["reason"] = _step_response_completion_reason(result["motion_refresh"])
     result["after"] = _custom_path_telemetry_snapshot(coordinator)
     return result
+
+
+def _step_response_completion_reason(motion_refresh: Mapping[str, Any]) -> str:
+    """Say why the window ended, from evidence the loop itself observed.
+
+    🐛 This used to read `travel_abort.is_set()` directly, which is ALWAYS true
+    by this point: the caller's `finally` block sets that same event
+    unconditionally as part of mandatory-stop teardown (to also unblock the
+    phase/sampler tasks), whether `_continuous_refresh_window` returned because
+    the guard fired mid-window or because the window simply finished on
+    schedule. `motion_refresh["aborted_early"]` is set only when the refresh
+    loop itself observed the abort event WHILE STILL RUNNING, so it is the one
+    signal that actually distinguishes the two. Found 2026-08-30 when route-1
+    run 1 completed its full 13000 ms window -- confirmed by phase_transitions
+    landing on schedule and zero tripped samples -- while the old logic still
+    reported "travel_guard_tripped".
+    """
+    return (
+        "travel_guard_tripped"
+        if motion_refresh.get("aborted_early")
+        else "window_complete"
+    )
 
 
 async def _step_response_probe(

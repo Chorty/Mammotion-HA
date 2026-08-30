@@ -1,0 +1,281 @@
+{
+  "what": "Route 1 run 1 (step-response probe, +120) completed its FULL 13000 ms window for the first time -- no truncation, good telemetry -- but FAILS the predeclared criteria 2a/2b: neither the step nor the settle phase reached a stable rate. Also surfaced a code bug: the service's own 'reason' field always reported 'travel_guard_tripped' regardless of whether the guard actually tripped.",
+  "when": "2026-08-30",
+  "build": "0.6.4-beta87",
+  "backend": "0.8.12.post3",
+  "predeclaration": "docs/phase2-route1-predeclared-20260830.md",
+  "verdict": "FAIL. Criteria 2 (2a) and 3 (2b) fail. Per the predeclaration, 'any failure is a FAIL' -- tau_actuator_s=2.049s must NOT be quoted as a settled result.",
+  "run_1": {
+    "label": "baseline 3000 / step 5000 / settle 5000, +120, max_travel_m=4.0",
+    "route_start": {
+      "x": 5.9465,
+      "y": -5.1394
+    },
+    "corridor_polygon": [
+      {
+        "x": 1.4465,
+        "y": -9.6394
+      },
+      {
+        "x": 10.4465,
+        "y": -9.6394
+      },
+      {
+        "x": 10.4465,
+        "y": -0.6394
+      },
+      {
+        "x": 1.4465,
+        "y": -0.6394
+      }
+    ],
+    "phases": {
+      "baseline_ms": 3000,
+      "step_ms": 5000,
+      "settle_ms": 5000,
+      "total_ms": 13000
+    },
+    "linear_speed": 400,
+    "step_angular_speed": 120,
+    "reported_reason_at_run_time": "travel_guard_tripped",
+    "actual_outcome": "window_complete -- see bug_found below. Zero of 127 samples carry travel_guard_tripped:true, phase_transitions land exactly on schedule (0 / 3000.7 / 8000.7 ms), last sample at 13000.739 ms of a 13000 ms window, cumulative_travel_m 2.7111 of the 4.00 m budget.",
+    "stop_confirmed": true,
+    "report_stream_ready": true,
+    "informative_intervals": {
+      "baseline": 2,
+      "step": 5,
+      "settle": 5
+    },
+    "analysis_raw": {
+      "informative_intervals": {
+        "baseline": 2,
+        "step": 5,
+        "settle": 5
+      },
+      "omega_step_deg_per_s": -5.5141,
+      "rotation_after_zero_deg": -11.2984,
+      "tau_actuator_s": 2.049,
+      "interpretation": "tau_actuator_s = |rotation after commanding angular 0| / steady rate during the step. Compare it against the ~1 s decision period: well below means the dead time is dominated by the OBSERVER and damping cannot fix it; comparable or above means real actuator carryover.",
+      "caveats": "n is small by construction at ~1 Hz. Do NOT fit a turn-rate law to this, and do NOT reuse omega as a calibration constant -- the 2026-08-26 guarded-turn measurement showed a 2.6x spread on identical stationary parameters."
+    },
+    "analysis_caveat": "tau_actuator_s=2.049s and omega_step_deg_per_s=-5.5141 came out of the analysis field but do not meet criteria 2a/2b (below) and must not be quoted as a clean measurement.",
+    "course_series": [
+      {
+        "from_elapsed_ms": 116.415,
+        "to_elapsed_ms": 1062.192,
+        "midpoint_elapsed_ms": 589.303,
+        "phase": "baseline",
+        "chord_m": 0.066484,
+        "informative": false,
+        "course_degrees": null
+      },
+      {
+        "from_elapsed_ms": 1062.192,
+        "to_elapsed_ms": 1973.098,
+        "midpoint_elapsed_ms": 1517.645,
+        "phase": "baseline",
+        "chord_m": 0.22693,
+        "informative": true,
+        "course_degrees": -48.8592
+      },
+      {
+        "from_elapsed_ms": 1973.098,
+        "to_elapsed_ms": 2991.774,
+        "midpoint_elapsed_ms": 2482.436,
+        "phase": "baseline",
+        "chord_m": 0.227488,
+        "informative": true,
+        "course_degrees": -50.5653
+      },
+      {
+        "from_elapsed_ms": 2991.774,
+        "to_elapsed_ms": 4019.174,
+        "midpoint_elapsed_ms": 3505.474,
+        "phase": "step",
+        "chord_m": 0.233262,
+        "informative": true,
+        "course_degrees": -48.9458
+      },
+      {
+        "from_elapsed_ms": 4019.174,
+        "to_elapsed_ms": 5036.429,
+        "midpoint_elapsed_ms": 4527.801,
+        "phase": "step",
+        "chord_m": 0.227691,
+        "informative": true,
+        "course_degrees": -49.2923
+      },
+      {
+        "from_elapsed_ms": 5036.429,
+        "to_elapsed_ms": 6056.435,
+        "midpoint_elapsed_ms": 5546.432,
+        "phase": "step",
+        "chord_m": 0.225779,
+        "informative": true,
+        "course_degrees": -57.4432
+      },
+      {
+        "from_elapsed_ms": 6056.435,
+        "to_elapsed_ms": 7076.659,
+        "midpoint_elapsed_ms": 6566.547,
+        "phase": "step",
+        "chord_m": 0.227901,
+        "informative": true,
+        "course_degrees": -63.2438
+      },
+      {
+        "from_elapsed_ms": 7076.659,
+        "to_elapsed_ms": 7993.256,
+        "midpoint_elapsed_ms": 7534.958,
+        "phase": "step",
+        "chord_m": 0.221776,
+        "informative": true,
+        "course_degrees": -71.1647
+      },
+      {
+        "from_elapsed_ms": 7993.256,
+        "to_elapsed_ms": 9012.107,
+        "midpoint_elapsed_ms": 8502.682,
+        "phase": "settle",
+        "chord_m": 0.216466,
+        "informative": true,
+        "course_degrees": -79.2974
+      },
+      {
+        "from_elapsed_ms": 9012.107,
+        "to_elapsed_ms": 10044.871,
+        "midpoint_elapsed_ms": 9528.489,
+        "phase": "settle",
+        "chord_m": 0.215908,
+        "informative": true,
+        "course_degrees": -82.7894
+      },
+      {
+        "from_elapsed_ms": 10044.871,
+        "to_elapsed_ms": 11060.97,
+        "midpoint_elapsed_ms": 10552.921,
+        "phase": "settle",
+        "chord_m": 0.229904,
+        "informative": true,
+        "course_degrees": -84.3836
+      },
+      {
+        "from_elapsed_ms": 11060.97,
+        "to_elapsed_ms": 12172.778,
+        "midpoint_elapsed_ms": 11616.874,
+        "phase": "settle",
+        "chord_m": 0.228544,
+        "informative": true,
+        "course_degrees": -82.3308
+      },
+      {
+        "from_elapsed_ms": 12172.778,
+        "to_elapsed_ms": 13000.739,
+        "midpoint_elapsed_ms": 12586.758,
+        "phase": "settle",
+        "chord_m": 0.229483,
+        "informative": true,
+        "course_degrees": -82.4631
+      }
+    ],
+    "phase_transitions": [
+      {
+        "phase": "baseline",
+        "angular_speed": 0,
+        "elapsed_ms": 116.528
+      },
+      {
+        "phase": "step",
+        "angular_speed": 120,
+        "elapsed_ms": 3000.726
+      },
+      {
+        "phase": "settle",
+        "angular_speed": 0,
+        "elapsed_ms": 8000.736
+      }
+    ],
+    "stop_result": {
+      "attempted": true,
+      "ok": true,
+      "error": null,
+      "coordinator_method": "async_stop_manual_motion",
+      "use_wifi": false,
+      "transport_preference": "ble_preferred",
+      "ack": {
+        "movement_ok": true
+      },
+      "duration_ms": 97.147
+    }
+  },
+  "criteria_scoring": {
+    "1_report_stream_ready": {
+      "result": "PASS",
+      "evidence": "started/continuous_started true, ready true, no readiness_reason, position_sequence advanced 99->112 across 127 samples."
+    },
+    "2_step_reaches_steady_rotation_2a": {
+      "result": "FAIL",
+      "requirement": ">=3 informative intervals AND last two step rates agree within 1.5 deg/s",
+      "informative_intervals": 5,
+      "step_rates_deg_per_s": [
+        -0.339,
+        -8.002,
+        -5.686,
+        -8.179
+      ],
+      "last_two_diff_deg_per_s": 2.493,
+      "note": "Rate computed as consecutive course_degrees delta / delta(midpoint_elapsed_ms). Rate was still increasing in magnitude at the end of the step phase, not settled."
+    },
+    "3_settle_goes_flat_2b": {
+      "result": "FAIL",
+      "requirement": ">=3 informative intervals AND last two settle rates agree within 1.5 deg/s",
+      "informative_intervals": 5,
+      "settle_rates_deg_per_s_including_carryover_from_step": [
+        -8.404,
+        -3.404,
+        -1.556,
+        1.929,
+        -0.136
+      ],
+      "last_two_diff_deg_per_s": 2.066,
+      "note": "Non-monotonic: rate crossed from positive (1.929) to near-zero (-0.136), the same 'chord noise on ~0.26 m chords' signature documented for the 2026-08-29 runs. Not a clean plateau."
+    },
+    "4_containment_and_stop": {
+      "result": "PASS",
+      "evidence": "0 of 127 samples outside the 9.0 m corridor (bounds x:[1.4465,10.4465] y:[-9.6394,-0.6394]); observed x:[5.9465,7.0299] y:[-7.5996,-5.1394]. stop_result.ok=true, ack.movement_ok=true."
+    },
+    "5_travel_guard_does_not_trip": {
+      "result": "PASS",
+      "evidence": "0 of 127 samples carry travel_guard_tripped:true; full 13000 ms window elapsed; cumulative_travel_m 2.7111 of 4.00 m budget never approached the cap.",
+      "caveat": "The service's own 'reason' field said 'travel_guard_tripped' at run time. That reading was WRONG -- see bug_found below. Scored here from the per-sample evidence, not the summary field."
+    },
+    "6_gate_disarmed_after_verified": {
+      "result": "PASS",
+      "evidence": "enabled:false, real_motion_allowed:false, no active session, verified from both the live API and RAW core.config_entries (enable_experimental_motion:false) after a ~15s propagation delay."
+    }
+  },
+  "bug_found": {
+    "what": "`_step_response_probe_impl`'s `reason` field read `travel_abort.is_set()`, which is ALWAYS true by the time it is checked: the function's own `finally` block sets that same asyncio.Event unconditionally as part of mandatory-stop teardown (to also unblock the phase/sampler tasks), whether `_continuous_refresh_window` returned because the guard genuinely fired mid-window or because the window simply completed on schedule.",
+    "how_found": "This run's phase_transitions landed exactly on the 0/3000/8000 ms schedule and the last sample was at 13000.739 ms of a 13000 ms window -- inconsistent with an early guard trip. Checked every sample for `travel_guard_tripped:true` and found zero, confirming the top-level 'reason' field was wrong.",
+    "fix": "commit-pending: `_step_response_completion_reason()` now reads `motion_refresh['aborted_early']` instead, which `_continuous_refresh_window` sets only when its own loop observed the abort event WHILE STILL RUNNING -- the one signal that actually distinguishes a real trip from normal completion. Two unit tests pin both branches.",
+    "scope_of_prior_evidence": "Two prior evidence files (docs/evidence-dead-time-measured-20260829.json, docs/evidence-option-b-blocked-by-travel-budget-20260830.json) also recorded 'reason: travel_guard_tripped' on every real run. This bug means that field cannot be trusted retroactively on its own. It does NOT invalidate those files' conclusions where they were drawn from other evidence (informative-interval counts, course_series values, explicit 'still rotating at the last sample' observations) -- those are independent of the reason field. Not re-audited here; flagged for awareness, not re-litigated."
+  },
+  "safety": {
+    "gates_before_dispatch": "15 of 15, blockers: []",
+    "corridor": "9.0 m square, re-scanned and re-verified at the live position (5.9465, -5.1394) immediately before dispatch, half-width 4.5 m against a required 4.50 m disk (max_travel_m 4.00 + stop_overshoot 0.50)",
+    "boundary_clearance_at_dispatch_m": 5.934,
+    "battery_pct_at_dispatch": "48 (operator explicitly authorized proceeding despite this being below the doc's docked-and-charged precondition)",
+    "gate_state": "found ARMED at session start (enabled:true, real_motion_allowed:true, blockers:[]) before this run's own arming -- consistent with the operator having just repositioned the mower via the card, which needs the gate armed for Nudge; not treated as an unexplained armed-at-rest occurrence",
+    "operator_confirmation": "explicit go/no-go confirmation taken immediately before dispatch (on-site, supervising, area clear, blades off)",
+    "gate_disarmed_after": true
+  },
+  "what_this_does_NOT_establish": [
+    "tau_actuator_s=2.049s is NOT a settled value -- both 2a and 2b failed, meaning neither phase reached a stable rate this run captured.",
+    "n=1. This is one run at one sign (+120). Run 2 (+180) is not authorized by a FAIL and was not dispatched.",
+    "Whether a longer step/settle phase would pass 2a/2b is unknown -- step_ms is deliberately capped at 5000 per the predeclaration's own reasoning (see phase2-route1-predeclared-20260830.md section 4), so the next lever is not obvious."
+  ],
+  "what_a_pass_would_have_authorized": "Writing the feed-forward design document (predeclaration section 9). This is a FAIL, so it authorizes nothing beyond recording the result.",
+  "motion_commanded": true,
+  "supervised": true,
+  "operator_authorized": true
+}

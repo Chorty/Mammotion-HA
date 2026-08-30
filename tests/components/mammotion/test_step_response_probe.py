@@ -32,6 +32,7 @@ from custom_components.mammotion.services import (
     _in_window_ble_snapshot,
     _in_window_telemetry_sample,
     _step_response_analysis,
+    _step_response_completion_reason,
     _step_response_course_series,
     _step_response_gates,
     _step_response_phase_scheduler,
@@ -376,6 +377,32 @@ def test_rotation_through_the_wrap_is_not_read_as_a_full_turn() -> None:
     analysis = _step_response_analysis(series, baseline_ms=0, step_ms=1500)
     assert analysis["omega_step_deg_per_s"] == pytest.approx(20.0)
     assert analysis["rotation_after_zero_deg"] == pytest.approx(10.0)
+
+
+# --- completion reason ---------------------------------------------------------
+#
+# Found 2026-08-30 on route-1 run 1: the window completed its full 13000 ms
+# schedule (phase transitions on time, zero tripped samples, cumulative travel
+# 2.71 m of a 4.00 m budget) and the service still reported
+# "travel_guard_tripped". The old logic read `travel_abort.is_set()`, which the
+# caller's own `finally` block sets UNCONDITIONALLY as mandatory-stop teardown
+# -- so it was always true, on every real run, trip or no trip.
+
+
+def test_reason_is_window_complete_when_the_refresh_loop_never_saw_the_abort() -> None:
+    """A normal end of window must not read back as a safety trip."""
+    assert (
+        _step_response_completion_reason({"aborted_early": False}) == "window_complete"
+    )
+    assert _step_response_completion_reason({}) == "window_complete"
+
+
+def test_reason_is_travel_guard_tripped_only_when_the_loop_observed_it() -> None:
+    """The one signal that actually distinguishes a real trip from teardown."""
+    assert (
+        _step_response_completion_reason({"aborted_early": True})
+        == "travel_guard_tripped"
+    )
 
 
 # --- the discriminator the 2026-08-28 abort could not provide ------------------

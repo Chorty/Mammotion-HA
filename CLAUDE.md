@@ -46,6 +46,44 @@ this file every time.
 
 ## Current build: beta87; PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
 
+🚨 **ROUTE 1 RUN 1 FAILED, 2026-08-30 — BUT IT IS THE FIRST WINDOW TO COMPLETE
+CLEANLY.** One supervised, operator-authorized run of
+`raw_pymammotion_step_response_probe` (baseline 3000 / step 5000 / settle 5000,
++120, `max_travel_m=4.0`, 9.0 m corridor at the live position). Read
+`docs/evidence-route1-run1-fail-20260830.md` and the raw evidence
+`docs/evidence-route1-run1-fail-20260830.json`.
+
+🔑 **Unlike either 2026-08-30 attempt, the full 13000 ms window ran to
+completion** — phase transitions landed exactly on schedule, 0 of 127 samples
+tripped the guard, cumulative travel finished at 2.71 m of the 4.00 m budget.
+**It still FAILS**: criteria 2a (step reaches steady rotation) and 2b (settle
+goes flat) both fail — last two step rates 2.49°/s apart, last two settle
+rates 2.07°/s apart, both against a 1.5°/s criterion. **`tau_actuator_s =
+2.049 s` must NOT be quoted as a settled result.** Safety held throughout:
+15/15 gates, full containment, stop confirmed, gate disarmed and verified
+live API + RAW after.
+
+🐛 **FOUND AND FIXED THE SAME DAY: the service's own `reason` field always said
+`"travel_guard_tripped"`, on every real run, whether the guard tripped or
+not.** `_step_response_probe_impl`'s `finally` block sets `travel_abort`
+unconditionally as mandatory-stop teardown, and `reason` read that same event
+afterward — so it could never distinguish a real trip from normal completion.
+Fixed by reading `motion_refresh["aborted_early"]` instead (set only when the
+refresh loop itself observed the abort mid-window), extracted into
+`_step_response_completion_reason()` and pinned by two unit tests. ⚠️ **This
+means the `reason` field in `docs/evidence-dead-time-measured-20260829.json`
+and `docs/evidence-option-b-blocked-by-travel-budget-20260830.json` cannot be
+trusted on its own either** — their conclusions were drawn from other evidence
+(informative-interval counts, course_series, explicit "still rotating at the
+last sample" observations) which this bug does not touch, but neither file's
+`reason` field has been re-verified against its own raw samples. Not
+re-audited; flagged for awareness.
+
+🔑 **A FAIL does not authorize run 2 (+180) or the feed-forward design
+document** — it was not dispatched. Next lever is unclear: `step_ms` stays
+deliberately capped at 5000 per the predeclaration's own reasoning, so a
+longer step phase is not a free option.
+
 🚀 **beta87 DEPLOYED, 2026-08-30 16:47-16:50 EDT, motion-disabled.** Ships the
 route-1 cap changes from `docs/phase2-route1-predeclared-20260830.md` — a
 SAFETY BOUND raise, stated plainly: `max_travel_m`'s schema ceiling goes

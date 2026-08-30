@@ -4,17 +4,45 @@
 
 ⚠️ **Everything BELOW this section is historical.** Reverify before acting on it.
 
+🚨 **ROUTE 1 RUN 1 FAILED, 17:37 EDT — BUT IT COMPLETED CLEANLY FOR THE FIRST
+TIME.** Read `docs/evidence-route1-run1-fail-20260830.md` (raw:
+`docs/evidence-route1-run1-fail-20260830.json`). Full 13000 ms window elapsed
+on schedule, cumulative travel 2.71 m of 4.00 m, zero guard trips, but
+criteria 2a and 2b (step/settle stability) both fail by ~2-2.5°/s against a
+1.5°/s bound. **`tau_actuator_s = 2.049 s` is NOT a settled result.** Run 2
+(+180) is not authorized by a FAIL and was not dispatched.
+
+🐛 **FOUND AND FIXED THE SAME DAY:** the probe's `reason` field always said
+`"travel_guard_tripped"` on every real run regardless of whether the guard
+actually tripped (`services.py`'s `finally` block set the abort event
+unconditionally as teardown). Fixed via `_step_response_completion_reason()`
+reading `motion_refresh["aborted_early"]` instead; two unit tests pin it.
+⚠️ This means the `reason` field in the two 2026-08-29/-30 evidence files is
+also unverified — their conclusions stand on other evidence, but neither has
+been re-checked against its own raw samples for this specific field.
+
 Host **0.6.4-beta87** + PyMammotion **0.8.12.post3** (backend unchanged).
 Deployed motion-disabled 16:47-16:50 EDT; full verification tail passed
 (47/47 files, card md5 equal at both paths, Lovelace `?v=0.6.4-beta87&build=74376557`).
-Read `docs/deploy-runbook-p0.md` → beta87. Mower **off the dock** in "Backyard
-Right", RTK Fix, **battery 61%** (as of the prior session — reverify). Gate
-**disarmed**, verified live API **and** RAW `[false]`. 🔋 **Dock and charge.**
+Read `docs/deploy-runbook-p0.md` → beta87. ⚠️ **The `reason`-field fix above is
+committed but NOT YET RELEASED/DEPLOYED** — the host still runs the beta87
+bytes that produced the misleading `"travel_guard_tripped"` reading.
 
-🚨 **THE GATE WAS FOUND ARMED AND LIVE AT THE START OF THIS SESSION** —
-`enabled: true`, `real_motion_allowed: true`, `blockers: []`, no active session.
-Disarmed before any deploy step and re-verified after. **Reverify gate state
-before trusting "disarmed" claimed anywhere in this file, including this one.**
+💻 Mower **off the dock** in "Backyard Right", near the run-1 corridor centre
+`(5.9465, -5.1394)` as of the last position check, RTK Fix, **battery 48% and
+draining (not charging)** as of 17:16 EDT — reverify, this is well below the
+predeclaration's docked-and-charged precondition (the operator explicitly
+authorized proceeding anyway for this run). 🔋 **Dock and charge before any
+further physical work.** Gate **disarmed**, verified live API **and** RAW
+`[false]` after ~15 s of the documented lazy-write delay.
+
+🚨 **THE GATE WAS FOUND ARMED AND LIVE TWICE THIS SESSION** — once at session
+start (`enabled: true`, `real_motion_allowed: true`, `blockers: []`, no active
+session, disarmed before any deploy step) and once again mid-session right
+before run 1 (consistent with the operator repositioning the mower via the
+card, which needs the gate armed for Nudge — not treated as unexplained).
+Disarmed and re-verified both times. **Reverify gate state before trusting
+"disarmed" claimed anywhere in this file, including this one.**
 
 ✅ **ROUTE 1'S CAP CHANGES ARE DEPLOYED AND CONFIRMED LIVE IN THE DEPLOYED
 BYTES**, per `docs/phase2-route1-predeclared-20260830.md`:
