@@ -8,6 +8,48 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta87 -> beta88 — 2026-08-30 19:08-19:12 EDT, motion-disabled
+
+Ships the step-extension cap changes from
+`docs/phase2-route1-step-extension-predeclared-20260830.md` (a further SAFETY
+BOUND raise, not a convenience one) plus the `reason`-field bug fix from
+commit `af5f547f`. `step_ms`'s schema ceiling moves 5000 -> **7000** ms and
+`_STEP_RESPONSE_MAX_TOTAL_MS` moves 14000 -> **16000** ms, so a
+`baseline 3000 / step 7000 / settle 5000` window (15000 ms) is now admissible
+where it was refused before. `settle_ms` and `baseline_ms` stay unchanged, and
+`max_travel_m`'s schema ceiling stays at the already-authorized 4.5 (no
+further ceiling change — using it, not raising it). No `LUBA_ACCEPTANCE_PROFILE`
+key touched.
+
+| | beta88 |
+| --- | --- |
+| tag | `v0.6.4-beta88` (release commit `015883a1`) |
+| deployed tree | **exactly the tag**, fast-forwarded from `875cc7dd` |
+| quartet | manifest / pyproject / `CARD_VERSION` `0.6.4-beta88`, uv.lock `0.6.4b88` |
+| backend | PyMammotion `0.8.12.post3`, read from inside the container (unchanged) |
+| archive SHA-256 | `4ce62289fb00bfab8571d996030f0d3c954abcec8e34f2204046431c2fbd9f5f`, identical local and host |
+| file verification | **47 of 47 byte-identical**, zero AppleDouble |
+| card md5 | `d4d0f519a321081a621a3c92b4c2aa23`, equal at BOTH serving paths |
+| Lovelace resource | re-read as `?v=0.6.4-beta88&build=d4d0f519` |
+| host backup | `/config/mammotion-backup-20260830-1908-pre-beta88.tgz` |
+| restart | API up in ~40 s; mammotion config entry `loaded` and 132 entities recovered ~4 min post-restart (same cloud-auth-cooldown-then-BLE-fallback pattern as the beta87 restart) |
+| gate after deploy | `enabled: false`, `real_motion_allowed: false`, no active session; live API **and** RAW `[false]` |
+
+✅ **THE NEW CAPS ARE CONFIRMED LIVE IN THE DEPLOYED BYTES.** A dry run of
+`raw_pymammotion_step_response_probe` with
+`baseline_ms=3000, step_ms=7000, settle_ms=5000, max_travel_m=4.5` was
+accepted by the schema (`phases.total_ms: 15000`, `max_travel_m: 4.5` both
+echoed back — the old 14000 ms / 5000 ms ceilings would have rejected this
+call outright) and returned `would_send: false`, nothing dispatched. The one
+failing gate, `step_path_contained`, is expected: the corridor used was a
+placeholder for this schema check, not a real pre-run scan.
+
+⚠️ **The `reason`-field fix also ships in this release but is UNEXERCISED on
+the host** — no real run has been dispatched against beta88 yet, so nothing
+has confirmed the fixed field reads correctly on live hardware. The two unit
+tests pin it offline; that is not the same as seeing it emit a correct value
+on a real run.
+
 ### beta86 -> beta87 — 2026-08-30 16:47-16:50 EDT, motion-disabled
 
 Ships the route-1 cap changes from `docs/phase2-route1-predeclared-20260830.md`

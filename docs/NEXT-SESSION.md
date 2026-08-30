@@ -4,6 +4,26 @@
 
 ⚠️ **Everything BELOW this section is historical.** Reverify before acting on it.
 
+🚀 **beta88 DEPLOYED, 19:08-19:12 EDT, motion-disabled** — ships
+`docs/phase2-route1-step-extension-predeclared-20260830.md`'s cap changes
+(`step_ms` schema ceiling 5000→**7000** ms, `_STEP_RESPONSE_MAX_TOTAL_MS`
+14000→**16000** ms) plus the `reason`-field fix (commit `af5f547f`). Full
+verification tail passed, confirmed live in deployed bytes via a dry run
+(`step_ms=7000`, `phases.total_ms=15000` both accepted). Record:
+`docs/deploy-runbook-p0.md` → beta88. **Authorizes no run.** ⚠️ The
+`reason`-field fix is still unexercised on hardware — no real run has
+dispatched against beta88 yet, so the next real run is also this fix's first
+hardware test.
+
+**Next, if pursuing the step-extension run:** re-scan the corridor fresh at
+the mower's live position (10.0 m square needed — the maximum verified in
+"Backyard Right", essentially no margin per the predeclaration §6; if the
+live scan shows anything less, reposition rather than shrinking the square),
+dock and charge first (battery has been in the low-to-mid 40s% and draining
+all session), a dry run showing 15/15 gates, then explicit per-run
+authorization. A pass authorizes repeating at +180 with the same step length
+and nothing more; a fail on 2a again weakens the onset-lag hypothesis.
+
 🔑 **ROUTE 1 RUN 1 REPEATED (n=2), 18:42 EDT — SETTLE PASSES, STEP STILL
 FAILS AND WORSE.** Read `docs/evidence-route1-run1-repeat-fail-20260830.md`
 (raw: `docs/evidence-route1-run1-repeat-fail-20260830.json`), and run 1's own

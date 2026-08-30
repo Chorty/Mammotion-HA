@@ -44,7 +44,28 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: beta87; PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
+## Current build: beta88; PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
+
+🚀 **beta88 DEPLOYED, 2026-08-30 19:08-19:12 EDT, motion-disabled.** Ships the
+step-extension cap changes from
+`docs/phase2-route1-step-extension-predeclared-20260830.md` — another SAFETY
+BOUND raise, stated plainly: `step_ms`'s schema ceiling goes 5000 → **7000**
+ms and `_STEP_RESPONSE_MAX_TOTAL_MS` goes 14000 → **16000** ms, so a
+`baseline 3000 / step 7000 / settle 5000` window (15000 ms) is now
+admissible. `settle_ms`/`baseline_ms` stay unchanged; `max_travel_m`'s
+ceiling stays at the already-authorized 4.5 (using it, not raising it again).
+The already-committed `reason`-field fix (commit `af5f547f`) ships in the
+same release but is **unexercised on hardware** — no real run has dispatched
+against beta88 yet. Full verification tail passed: 47/47 files
+byte-identical, card md5 equal at both serving paths, Lovelace resource
+re-read as `?v=0.6.4-beta88&build=d4d0f519`, and a dry run of
+`raw_pymammotion_step_response_probe` with `step_ms=7000` and phases summing
+to 15000 ms was **accepted by the schema** on the deployed bytes
+(`would_send: false`, nothing dispatched). Record:
+`docs/deploy-runbook-p0.md` → beta88. **This raises the exposure bound
+only — it authorizes no run.** The step-extension run itself needs a fresh
+corridor scan (10.0 m square, the maximum verified, essentially no margin —
+see the predeclaration §6) and explicit per-run operator authorization.
 
 🔑 **ROUTE 1 RUN 1 REPEATED (n=2), 2026-08-30 — SETTLE PASSES, STEP STILL
 FAILS, AND WORSE.** Read `docs/evidence-route1-run1-repeat-fail-20260830.md`
