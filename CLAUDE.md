@@ -44,7 +44,47 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: beta88; PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
+## Current build: beta92; PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
+
+🚨 **ACCOUNT RATE-LIMIT INCIDENT, 2026-08-31 — `matt.joslin@me.com`'s cloud
+token is dead, not a code bug.** Read `docs/deploy-runbook-p0.md` → "beta88 ->
+beta92". Mammotion's own servers are rejecting the account's refresh token
+after heavy failed-login volume (confirmed: the app logs into
+`matt.joslin@me.com` **and** `thejoslincrew@gmail.com` fine; only the API
+rejects). Matches mikey0000/PyMammotion#134's maintainer advice: disable the
+integration and wait ~24h for it to clear on its own, then reauth once. **Do
+not attempt more login/reauth cycles in the meantime** — each failed attempt
+plausibly extends the block.
+
+✅ **What DID get fixed, same incident: four separate uncaught-exception bugs
+across coordinator.py that were taking the ENTIRE integration down (not just
+cloud features) whenever a one-time device-info read hit dead cloud auth
+with nothing to catch it** — `MammotionDeviceVersionUpdateCoordinator`'s OTA
+check, `MammotionRTKCoordinator`'s lora/properties/status fetch and its own
+OTA check (narrower `ReLoginRequiredError`-only catch missed the bare
+`AuthError` actually raised), and a raw `AttributeError` from pymammotion's
+BLE layer normally masked by MQTT fallback (also dead tonight). All four now
+degrade gracefully — `has_cloud_account` means credentials are configured,
+not that the session is live, and a dead token must never block core BLE
+functionality over an optional HTTP read. **The config entry now reaches and
+stays at `loaded` under total cloud outage** — confirmed on hardware.
+
+🔑 **Also shipped, unrelated to the incident:** a `CloudConnectivityMonitor`
+watchdog (ported from mikey0000/Mammotion-HA `f4428d47`) that self-heals a
+stuck-but-registered cloud transport, and diagnostic logging in every
+previously-silent login-failure branch across all three `config_flow.py`
+paths (setup/reconfigure/reauth) — the next login failure will show its exact
+exception type in the log instead of nothing.
+
+⚠️ **Not chased further tonight, per the standing rule against patching live
+indefinitely under adversarial conditions:** entities were still
+`unavailable` at session end because BLE also had its own separate,
+apparently transient hiccup the same night — expected to clear on its own.
+`MammotionSpinoCoordinator`'s own instance of this bug class is untouched (no
+pool cleaner registered here). A full proactive sweep of every remaining
+cloud-only call across all coordinators (only 2 of ~7 coordinator classes
+were fully audited — the rest were fixed reactively as they fired) would be
+more thorough than this incident-driven pass.
 
 🗑️ **CORRECTION, SAME DAY — BOTH STEP-EXTENSION VERDICTS BELOW ARE QUALIFIED,
 NOT REVERSED.** Read

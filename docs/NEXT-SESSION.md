@@ -1,8 +1,28 @@
 # Claude handoff: finish Mammotion-HA P0 beta
 
-## §0 Live state — 2026-08-30, end of session
+## §0 Live state — 2026-08-31, end of session
 
 ⚠️ **Everything BELOW this section is historical.** Reverify before acting on it.
+
+🚨 **HOST IS BETA92 — READ `docs/deploy-runbook-p0.md` → "beta88 -> beta92"
+BEFORE ANYTHING ELSE.** `matt.joslin@me.com`'s cloud token is rate-limited by
+Mammotion's own servers (not a code bug — confirmed via the app logging in
+fine on both this account and `thejoslincrew@gmail.com`, only the API
+rejects). Matches mikey0000/PyMammotion#134: disable and wait ~24h, don't
+retry reauth in the meantime. **Do not attempt reauth again until at least
+2026-09-01 evening**, and check with the operator first regardless.
+
+✅ Fixed the SAME night: four separate uncaught-exception bugs in
+coordinator.py that were taking the whole integration down (not just cloud
+features) on any restart while cloud is fully dead — confirmed fixed, the
+config entry now reaches and **stays** at `loaded`. Also shipped: a
+`CloudConnectivityMonitor` watchdog and diagnostic logging in every
+previously-silent config_flow.py login-failure branch.
+
+⚠️ Entities were still `unavailable` at session end — BLE had its own
+separate, apparently transient hiccup the same night, unrelated to the fixes,
+expected to clear on its own. **Recheck live entity state before assuming
+anything is still broken** — this may well have already resolved.
 
 🗑️ **CORRECTION — READ THIS BEFORE TRUSTING EITHER STEP-EXTENSION VERDICT
 BELOW.** `docs/vio-crosscheck-reframes-route1-step-verdicts-20260830.md`.

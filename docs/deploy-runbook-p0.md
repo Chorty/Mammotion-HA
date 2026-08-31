@@ -8,6 +8,76 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta88 -> beta92 — 2026-08-31, motion-disabled — account rate-limit incident
+
+**Context:** `matt.joslin@me.com`'s cloud refresh token was rejected by
+Mammotion's own servers after heavy failed-login volume during same-day
+diagnosis (see `docs/vio-crosscheck-...` era work, unrelated) — confirmed via
+the app logging into both `matt.joslin@me.com` and `thejoslincrew@gmail.com`
+successfully while the API kept rejecting both. Matches
+mikey0000/PyMammotion#134's maintainer response to an identical symptom:
+"mammotion will unblock the account eventually, turn off the integration for
+24 hours." **Not a code bug — the fix is to stop retrying and wait it out.**
+
+Shipped alongside, unrelated to the incident itself:
+- **`CloudConnectivityMonitor`** (`connectivity.py`, new file): watchdog that
+  reconnects a stuck-but-registered cloud transport in place, rate-limited to
+  once per 15 min, and warns once (rather than silently dropping every send)
+  when a transport is detached entirely. Ported the connectivity half of
+  mikey0000/Mammotion-HA commit `f4428d47`; the Spino pool-cleaner half was
+  skipped (not a registered device type here).
+- **Diagnostic logging** in all three `config_flow.py` login paths
+  (setup/reconfigure/reauth): every previously-silent failure branch
+  (rate-limited, credential rejected, cloud setup error, a "successful" call
+  that returns no `login_info`) now logs the account and exception type.
+
+**What the incident itself exposed and fixed, beta89→beta92 in one evening —
+each restart under total cloud outage surfaced the next uncaught exception in
+a one-time device-info read that only cloud usually serves, normally masked
+by BLE or cloud individually working:**
+
+| build | fixed |
+| --- | --- |
+| beta89 | (baseline: caps + connectivity watchdog, not yet incident-related) |
+| beta90 | `MammotionDeviceVersionUpdateCoordinator`'s OTA check (`_async_setup` + `_async_update_data`) raised a bare `AuthError` with nothing to catch it |
+| beta91 | `MammotionRTKCoordinator._async_setup`'s `fetch_rtk_lora_info`/`fetch_rtk_properties`/`get_device_status` block, uncaught — actually raised `FailedRequestException`, not `AuthError` |
+| beta92 | `MammotionRTKCoordinator._async_update_data`'s OTA check only caught the narrower `ReLoginRequiredError` (a subclass), not the bare `AuthError` actually raised; and the mower's own `_async_setup` command loop hit a raw `AttributeError` from pymammotion's BLE `_write_payload` when its transport object was caught mid-disconnect — normally masked by falling back to MQTT, which was also fully dead tonight |
+
+🔑 **Every fix follows the same principle:** `has_cloud_account` only means
+credentials are configured, not that the session is currently live. A dead
+token must never block core BLE functionality over an optional,
+best-effort HTTP read — matching the philosophy the sibling `checks` loops in
+the same methods already used for `DeviceOfflineException`. Each fix degrades
+that one read gracefully instead of raising, using this project's own
+established broad exception tuple (from the camera stream's best-effort
+cloud calls) where the failure mode wasn't already narrowly diagnosed.
+
+**Result:** the config entry now reaches and **stays** at `loaded` under
+total cloud outage — no more crash/retry loop. Entities were still
+`unavailable` at the end of this session because BLE *also* had its own
+separate, apparently transient connectivity hiccup the same night (real
+radio/proxy issue, unrelated to these fixes) — expected to clear on its own;
+not chased further once the crash-loop itself was confirmed fixed, per the
+standing rule against continuing to patch live indefinitely under unusually
+adversarial conditions (both transports degraded at once).
+
+| | beta92 (final of this incident) |
+| --- | --- |
+| tag | `v0.6.4-beta92` |
+| quartet | `0.6.4-beta92` / `0.6.4b92` |
+| card md5 | `39a332c31c0543fc2e7c6df5e69294aa`, equal at both serving paths |
+| Lovelace resource | re-read as `?v=0.6.4-beta92&build=39a332c3` (bumped directly from beta88 — beta89-91's card cache key was never bumped mid-incident) |
+| backend | PyMammotion `0.8.12.post3` (unchanged throughout) |
+| file verification | 48 of 48 byte-identical at every step (beta89 through beta92) |
+| gate after | `enabled: false`, `real_motion_allowed: false`, verified live API **and** RAW `[false]` |
+
+⚠️ **Not fixed and not chased tonight:** `MammotionSpinoCoordinator`'s own
+instance of this same bug class (no pool cleaner registered on this account,
+so out of scope), and the RTK/error coordinators' `_async_update_data`
+methods weren't audited beyond what actually fired in this incident — a
+future full sweep of every cloud-only call across all coordinators would be
+more thorough than this incident-driven, restart-and-discover pass.
+
 ### beta87 -> beta88 — 2026-08-30 19:08-19:12 EDT, motion-disabled
 
 Ships the step-extension cap changes from
