@@ -241,7 +241,7 @@ const NIGHT_GO_PROFILE = Object.freeze({
 });
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
-const CARD_VERSION = "0.6.4-beta93";
+const CARD_VERSION = "0.6.4-beta94";
 
 // The exact bounded execution profile that passed supervised LUBA acceptance
 // Gate 4 re-pass on 2026-08-05 (three-write zero stop, bounded straight segment,
