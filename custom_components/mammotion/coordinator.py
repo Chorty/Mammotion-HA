@@ -2912,12 +2912,27 @@ class MammotionDeviceVersionUpdateCoordinator(
         if handle is not None and self.has_cloud_account:
             http = self.manager.mammotion_http
             if http is not None:
-                ota_info = await http.get_device_ota_firmware([handle.iot_id])
-                LOGGER.debug("OTA info: %s", ota_info.data)
-                if check_versions := ota_info.data:
-                    for check_version in check_versions:
-                        if check_version.device_id == handle.iot_id:
-                            device.apply_version_check(check_version)
+                try:
+                    ota_info = await http.get_device_ota_firmware([handle.iot_id])
+                except AuthError as err:
+                    # has_cloud_account only means credentials are configured,
+                    # not that the cloud session is currently live -- a dead
+                    # refresh token must not block core (BLE) functionality
+                    # over an optional version-check, same as the checks loop
+                    # above treats DeviceOfflineException as non-fatal.
+                    LOGGER.debug(
+                        "%s: OTA firmware check skipped, cloud auth unavailable: %s",
+                        self.device_name,
+                        err,
+                    )
+                except DeviceOfflineException, GatewayTimeoutException:
+                    pass
+                else:
+                    LOGGER.debug("OTA info: %s", ota_info.data)
+                    if check_versions := ota_info.data:
+                        for check_version in check_versions:
+                            if check_version.device_id == handle.iot_id:
+                                device.apply_version_check(check_version)
 
         if device.mower_state.model_id != "":
             self.update_interval = DEVICE_VERSION_INTERVAL
@@ -2970,12 +2985,27 @@ class MammotionDeviceVersionUpdateCoordinator(
             if handle is not None and self.has_cloud_account:
                 http = self.manager.mammotion_http
                 if http is not None:
-                    ota_info = await http.get_device_ota_firmware([handle.iot_id])
-                    device = self.manager.get_device_by_name(self.device_name)
-                    if device is not None and (check_versions := ota_info.data):
-                        for check_version in check_versions:
-                            if check_version.device_id == handle.iot_id:
-                                device.apply_version_check(check_version)
+                    try:
+                        ota_info = await http.get_device_ota_firmware([handle.iot_id])
+                    except AuthError as err:
+                        # has_cloud_account only means credentials are
+                        # configured, not that the cloud session is currently
+                        # live -- a dead refresh token must not block core
+                        # (BLE) setup over an optional version-check.
+                        LOGGER.debug(
+                            "%s: OTA firmware check skipped during setup, "
+                            "cloud auth unavailable: %s",
+                            self.device_name,
+                            err,
+                        )
+                    except DeviceOfflineException, GatewayTimeoutException:
+                        pass
+                    else:
+                        device = self.manager.get_device_by_name(self.device_name)
+                        if device is not None and (check_versions := ota_info.data):
+                            for check_version in check_versions:
+                                if check_version.device_id == handle.iot_id:
+                                    device.apply_version_check(check_version)
 
             self.async_set_updated_data(self.data)
         except DeviceOfflineException:
