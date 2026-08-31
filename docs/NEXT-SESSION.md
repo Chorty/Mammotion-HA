@@ -4,24 +4,27 @@
 
 ⚠️ **Everything BELOW this section is historical.** Reverify before acting on it.
 
-🚨 **HOST IS BETA93. LOGIN IS BROKEN FOR BOTH KNOWN ACCOUNTS, SAME ERROR TEXT,
-TWO DIFFERENT CODE PATHS — THE SINGLE-ACCOUNT RATE-LIMIT THEORY BELOW IS NOW
-QUALIFIED, NOT CONFIRMED, NOT REPLACED.** After the operator deleted and
-re-added the integration, `thejoslincrew@gmail.com` (previously confirmed
-working) was ALSO rejected: `Login failed for account 'thejoslincrew@gmail.com':
-Client id or secret error`, from `pymammotion/client.py:1161`
-(`login_v2`) — not the Aliyun-bind path `matt.joslin@me.com` fails on.
-**Two accounts, two call sites, identical error text** points at something
-shared (candidate: the library's own `MAMMOTION_OAUTH2_CLIENT_ID`/
-`MAMMOTION_OAUTH2_CLIENT_SECRET` constants being rejected server-side,
-`pymammotion/http/http.py:911,920-921,981-989`) rather than a single account's
-block — **not confirmed**, root-cause investigation handed to a fresh session.
-**Integration currently has no working config entry.** Read the top of
-`CLAUDE.md` → "Current build" for the full write-up before touching login
-again on either account.
+🏁 **HOST IS BETA94 (backend `0.8.12.post4`). THE LOGIN OUTAGE IS ROOT-CAUSED
+AND FIXED, DEPLOYED, NOT YET EXERCISED.** The "Client id or secret error" on
+both accounts was the Chorty fork wheels shipping BLANK
+`MAMMOTION_OAUTH2_CLIENT_ID`/`_SECRET` (upstream injects them at build time
+from GitHub secrets, which do not propagate to forks; every post1–post3 wheel
+verified blank by download; the upstream PyPI 0.8.12 wheel verified
+non-blank). Not a rate limit — waiting could never have fixed it. post4
+rebuilds the same tree with credentials injected; deployed 2026-08-31, full
+verification tail passed, and the deployed container reads credential lengths
+15/30/8/32 (post3 read 0/0 for the OAuth2 pair). **Next step: ONE deliberate
+reauth (or re-add) with either account — expected to succeed now.** A
+BLE-sourced config entry exists (operator re-added it); 132 entities up. Read
+`CLAUDE.md` → "Current build" and `docs/deploy-runbook-p0.md` → beta94.
+
+🗑️ *(Superseded by the root cause above, kept for the record:)* the
+single-account rate-limit theory and its "wait ~24h" advice, and the
+"two accounts, two call sites" open question — both resolved: the shared
+factor was the blank client credentials in the fork build.
 
 🔐 **`scripts/ha_ssh.exp` leaked the HA host's own SSH password into command
-output tonight (unrelated bug, fixed in the tree, uncommitted) — confirm
+output tonight (fixed and now committed, `82419592`) — confirm
 `HA_SSH_PASS` was actually rotated on the host and in `.env` before trusting
 any `ha_ssh.exp` output.** Full detail in `CLAUDE.md` → "Current build".
 

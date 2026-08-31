@@ -44,7 +44,7 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: beta93; PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
+## Current build: beta94 (backend post4 — login credential fix, DEPLOYED); PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
 
 🏁 **LOGIN ROOT CAUSE FOUND AND FIXED, 2026-08-31 — THE FORK WHEELS SHIPPED
 BLANK OAUTH2 CLIENT CREDENTIALS. NOT A RATE LIMIT.** Upstream
@@ -71,13 +71,24 @@ non-empty, published at tag `chorty-0.8.12.post4`, wheel SHA-256
 Credentials live only in the built artifacts (as upstream ships them), never
 in the fork repo's source. All four pin sites updated (`manifest.json`,
 `requirements_test.txt`, `pyproject.toml`, `uv.lock`).
+🚀 **DEPLOYED as beta94, 2026-08-31 18:26–18:45 EDT, motion-disabled.** Full
+verification tail passed — 48/48 files byte-identical, card md5 `cba762a5` at
+both serving paths, Lovelace `?v=0.6.4-beta94&build=cba762a5`, backend reads
+`0.8.12.post4` from inside the container, and the decisive check:
+`pymammotion.const` credential lengths read **15/30/8/32 — non-empty** on the
+deployed bytes (post3 read 0/0 for the OAuth2 pair). Gate disarmed before and
+after. Record: `docs/deploy-runbook-p0.md` → beta94.
+⚠️ **Deployed but UNEXERCISED** — no password grant has run against post4 yet.
+The test is ONE deliberate reauth/re-add; a config entry exists again
+(BLE-sourced, operator re-added it).
 🗑️ **The "wait ~24h for the rate limit to clear" advice below is WITHDRAWN as
 a remedy** — with blank credentials no amount of waiting could ever make a
 login succeed. (Whether heavy failed-login volume *also* tripped some server
 state is unknown; irrelevant until real credentials are deployed.) One
 deliberate reauth after deploying post4 is the test.
-⚠️ **Integration is currently NOT set up** — the delete-and-re-add left no
-working config entry; re-add it after the post4 deploy.
+⚠️ **Integration config entry exists again** — the operator re-added it after
+the delete; the entry is up with 132 entities. Cloud login still needs its
+first post-post4 reauth to be confirmed working.
 
 🚨 *(superseded by the entry above, kept for the record)* **LOGIN FAILED FOR
 BOTH ACCOUNTS WITH AN IDENTICAL ERROR, 2026-08-31.**

@@ -8,6 +8,43 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta93 -> beta94 — 2026-08-31, motion-disabled — BACKEND CHANGE: post4 fixes the blank-credential login outage
+
+The only functional change is the pymammotion pin: `chorty-0.8.12.post3` →
+`chorty-0.8.12.post4`. Root cause of the 2026-08-31 "Client id or secret
+error" outage on BOTH accounts: every Chorty fork wheel (post1–post3) shipped
+`MAMMOTION_OAUTH2_CLIENT_ID`/`_SECRET` as empty strings, because upstream
+blanks them in source and injects them at build time from GitHub secrets,
+which do not propagate to forks. `login_v2`/`refresh_token_v2` signed every
+account's request with a blank secret, which the server rejects
+deterministically. **Not a rate limit** — the wait-24h advice is withdrawn.
+post4 is the same source tree rebuilt after `scripts/update_credentials.py`
+with the values recovered from the upstream PyPI `pymammotion==0.8.12` wheel
+(wheel SHA-256 `61d8a6f6eae067034ee7aa4159e0f5f9d755f85ea6d6a5d0dfa1c5af5cdb880a`).
+
+✅ **The decisive readback**: inside the container after restart,
+`pymammotion.const` reports credential lengths **15 / 30 / 8 / 32** — all
+non-empty — where post3 read 0 / 0 for the OAuth2 pair. Backend version reads
+`0.8.12.post4` from inside the container.
+
+| | beta94 |
+| --- | --- |
+| tag | `v0.6.4-beta94` |
+| card md5 | `cba762a58bb775a6d3d86c22884fce2b`, equal at both serving paths and local |
+| Lovelace resource | re-read as `?v=0.6.4-beta94&build=cba762a5` |
+| backend | PyMammotion `0.8.12.post4`, read from inside the container; OAuth2 creds non-empty (15/30 chars) |
+| archive | SHA-256 `e134d658257e56fd9cc1b8c66204e9867049b069e0ff309a25c02ccf9dec0eda`, identical local and host, 0 `._*` entries |
+| file verification | 48 of 48 byte-identical |
+| restart | API up 51 s, 132 mammotion entities at 156 s |
+| gate after | `enabled: false`, `real_motion_allowed: false`, no active session |
+| backup | `/config/mammotion-backup-20260831-1826-pre-beta94.tgz` |
+
+⚠️ A config entry exists again (BLE-sourced; the operator re-added after the
+delete). **The login fix is deployed but UNEXERCISED** — no password grant has
+run against post4 yet. The test is one deliberate reauth/re-add with either
+account; under the root-cause diagnosis it should now succeed. Browser card
+verification (footer reads `0.6.4-beta94`) also pending operator.
+
 ### beta92 -> beta93 — 2026-08-31, motion-disabled
 
 Cosmetic only: the config-flow "wifi" step's title said "Connect to Wi-Fi"
