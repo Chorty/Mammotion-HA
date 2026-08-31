@@ -46,6 +46,34 @@ this file every time.
 
 ## Current build: beta88; PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
 
+🚨 **ROUTE 1 RUN 2 (+180) FAILS — THE +120 PASS DOES NOT GENERALIZE,
+2026-08-30.** Read `docs/evidence-route1-run2-plus180-fail-20260830.md` (raw:
+`docs/evidence-route1-run2-plus180-fail-20260830.json`). Same phases as the
+passing +120 run (baseline 3000 / step 7000 / settle 5000, `max_travel_m=
+4.5`, 10.0 m corridor), only `step_angular_speed=180`. Criterion 2a fails
+badly — **5.64°/s apart on the last two step rates**, the largest single-run
+margin of any run today, up from 0.11°/s at +120. The step-rate sequence
+oscillates across the whole phase (`-3.366 → -11.885 → -10.765 → -15.094 →
+-8.246 → -13.886 °/s`) with no convergent trend, unlike +120's clean
+climb-then-flatten. `omega_step_deg_per_s` scaled roughly as expected in
+magnitude (-6.12 → -10.65), but that is a directional read on noisy data, not
+a fitted law.
+
+🔑 **Settle converges cleanly a third time in a row** (0.77°/s, comparable to
+1.44°/s and 0.26°/s on the other two step-response runs today) — 5000 ms
+settle looks solid regardless of what the step phase does. **2a, not 2b, is
+where the open question now sits**, and it does not simply scale with
+commanded angular speed.
+
+✅ **The `reason`-field fix confirmed correct a second time** on real
+hardware (`"window_complete"`, matching raw evidence unprompted).
+
+🔑 **This run authorizes nothing further on its own terms.** The
+predeclaration's authorization chain for this pair of runs (+120 pass → +180
+repeat) is exhausted; any next step (a longer step at +180, investigating
+whether the oscillation is real or a one-off, etc.) is a separate,
+deliberately-written decision.
+
 🏁 **ROUTE 1 STEP EXTENSION PASSED — ALL SIX CRITERIA, 2026-08-30.** First
 full pass anywhere in the route-1 effort. Read
 `docs/evidence-route1-step-extension-pass-20260830.md` (raw:

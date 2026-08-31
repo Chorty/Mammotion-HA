@@ -4,6 +4,25 @@
 
 ⚠️ **Everything BELOW this section is historical.** Reverify before acting on it.
 
+🔋 **BATTERY AT 31% AND STILL DRAINING, END OF SESSION — DOCK AND CHARGE
+BEFORE ANY FURTHER PHYSICAL WORK.** Started today at 61%; five real motion
+dispatches (two step-response runs, three repositioning drives) have used
+roughly half the charge. Not charging, off dock.
+
+🚨 **ROUTE 1 RUN 2 (+180) FAILS, 20:14 EDT — THE +120 PASS DOES NOT
+GENERALIZE.** Read `docs/evidence-route1-run2-plus180-fail-20260830.md`
+(raw: `docs/evidence-route1-run2-plus180-fail-20260830.json`). Same phases as
+the passing +120 run (baseline 3000/step 7000/settle 5000, `max_travel_m=
+4.5`), only `step_angular_speed=180`. **2a fails badly — 5.64°/s apart**, the
+largest margin of any run today, up from 0.11°/s at +120: the step-rate
+sequence oscillates (`-3.366→-11.885→-10.765→-15.094→-8.246→-13.886°/s`) with
+no convergent trend. **2b (settle) passes a third time in a row** (0.77°/s) —
+settle at 5000 ms looks solid regardless of the step phase. The reason-field
+fix confirmed correct again (`"window_complete"`, second hardware
+confirmation). **This exhausts the predeclaration's authorization chain for
+this run pair** — nothing further is authorized without a new, deliberately
+written decision.
+
 🏁 **ROUTE 1 STEP EXTENSION PASSED, 19:47 EDT — FIRST FULL PASS OF THE ROUTE-1
 EFFORT.** Read `docs/evidence-route1-step-extension-pass-20260830.md` (raw:
 `docs/evidence-route1-step-extension-pass-20260830.json`). Extended

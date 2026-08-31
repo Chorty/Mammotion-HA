@@ -1,0 +1,298 @@
+{
+  "what": "Route 1, run 2 (+180): the same 7000 ms step length that passed cleanly at +120 FAILS criterion 2a badly at +180 (5.64 deg/s apart on the last two step rates, vs 0.11 at +120). The step-rate sequence oscillates rather than climbing-then-flattening. 2b still passes. This means convergence at 7000 ms is angular-speed-dependent, not a fixed constant that generalizes across commands.",
+  "when": "2026-08-30",
+  "build": "0.6.4-beta88",
+  "backend": "0.8.12.post3",
+  "predeclaration": "docs/phase2-route1-step-extension-predeclared-20260830.md section 7 (a pass at +120 authorizes exactly this repeat at +180, same step length)",
+  "prior_run": "docs/evidence-route1-step-extension-pass-20260830.json (the +120 PASS this repeats)",
+  "verdict": "FAIL. Criterion 2a fails badly. tau_actuator_s=2.162s must NOT be quoted as settled -- the step phase never reached a stable rate.",
+  "run": {
+    "label": "baseline 3000 / step 7000 / settle 5000, +180, max_travel_m=4.5 -- identical phases to the passing +120 run, only step_angular_speed changed",
+    "route_start": {
+      "x": 6.0038,
+      "y": -5.3077
+    },
+    "corridor_polygon": [
+      {
+        "x": 1.0038,
+        "y": -10.3077
+      },
+      {
+        "x": 11.0038,
+        "y": -10.3077
+      },
+      {
+        "x": 11.0038,
+        "y": -0.3077
+      },
+      {
+        "x": 1.0038,
+        "y": -0.3077
+      }
+    ],
+    "phases": {
+      "baseline_ms": 3000,
+      "step_ms": 7000,
+      "settle_ms": 5000,
+      "total_ms": 15000
+    },
+    "linear_speed": 400,
+    "step_angular_speed": 180,
+    "reported_reason": "window_complete",
+    "reason_field_confirmed_correct": "Second real-hardware confirmation of the fix in commit af5f547f, agreeing with the raw evidence (aborted_early=False, 0/148 tripped, full 15001.6 ms of 15000 ms window) with no manual correction needed.",
+    "stop_confirmed": true,
+    "report_stream_ready": true,
+    "informative_intervals": {
+      "baseline": 2,
+      "step": 7,
+      "settle": 4
+    },
+    "analysis_raw": {
+      "informative_intervals": {
+        "baseline": 2,
+        "step": 7,
+        "settle": 4
+      },
+      "omega_step_deg_per_s": -10.6527,
+      "rotation_after_zero_deg": -23.0309,
+      "tau_actuator_s": 2.162,
+      "interpretation": "tau_actuator_s = |rotation after commanding angular 0| / steady rate during the step. Compare it against the ~1 s decision period: well below means the dead time is dominated by the OBSERVER and damping cannot fix it; comparable or above means real actuator carryover.",
+      "caveats": "n is small by construction at ~1 Hz. Do NOT fit a turn-rate law to this, and do NOT reuse omega as a calibration constant -- the 2026-08-26 guarded-turn measurement showed a 2.6x spread on identical stationary parameters."
+    },
+    "analysis_caveat": "tau_actuator_s=2.162s and omega_step_deg_per_s=-10.6527 do not meet criterion 2a and must not be quoted as a clean measurement.",
+    "course_series": [
+      {
+        "from_elapsed_ms": 73.621,
+        "to_elapsed_ms": 1082.622,
+        "midpoint_elapsed_ms": 578.122,
+        "phase": "baseline",
+        "chord_m": 0.075207,
+        "informative": false,
+        "course_degrees": null
+      },
+      {
+        "from_elapsed_ms": 1082.622,
+        "to_elapsed_ms": 2097.078,
+        "midpoint_elapsed_ms": 1589.85,
+        "phase": "baseline",
+        "chord_m": 0.22626,
+        "informative": true,
+        "course_degrees": 59.2751
+      },
+      {
+        "from_elapsed_ms": 2097.078,
+        "to_elapsed_ms": 3114.349,
+        "midpoint_elapsed_ms": 2605.713,
+        "phase": "baseline",
+        "chord_m": 0.221192,
+        "informative": true,
+        "course_degrees": 60.3868
+      },
+      {
+        "from_elapsed_ms": 3114.349,
+        "to_elapsed_ms": 4042.172,
+        "midpoint_elapsed_ms": 3578.261,
+        "phase": "step",
+        "chord_m": 0.242225,
+        "informative": true,
+        "course_degrees": 58.3507
+      },
+      {
+        "from_elapsed_ms": 4042.172,
+        "to_elapsed_ms": 4952.842,
+        "midpoint_elapsed_ms": 4497.507,
+        "phase": "step",
+        "chord_m": 0.230739,
+        "informative": true,
+        "course_degrees": 55.2562
+      },
+      {
+        "from_elapsed_ms": 4952.842,
+        "to_elapsed_ms": 6067.666,
+        "midpoint_elapsed_ms": 5510.254,
+        "phase": "step",
+        "chord_m": 0.222988,
+        "informative": true,
+        "course_degrees": 43.2192
+      },
+      {
+        "from_elapsed_ms": 6067.666,
+        "to_elapsed_ms": 6978.337,
+        "midpoint_elapsed_ms": 6523.002,
+        "phase": "step",
+        "chord_m": 0.22802,
+        "informative": true,
+        "course_degrees": 32.317
+      },
+      {
+        "from_elapsed_ms": 6978.337,
+        "to_elapsed_ms": 8091.427,
+        "midpoint_elapsed_ms": 7534.882,
+        "phase": "step",
+        "chord_m": 0.222785,
+        "informative": true,
+        "course_degrees": 17.0441
+      },
+      {
+        "from_elapsed_ms": 8091.427,
+        "to_elapsed_ms": 9005.027,
+        "midpoint_elapsed_ms": 8548.227,
+        "phase": "step",
+        "chord_m": 0.217799,
+        "informative": true,
+        "course_degrees": 8.6882
+      },
+      {
+        "from_elapsed_ms": 9005.027,
+        "to_elapsed_ms": 10121.151,
+        "midpoint_elapsed_ms": 9563.089,
+        "phase": "step",
+        "chord_m": 0.230424,
+        "informative": true,
+        "course_degrees": -5.4038
+      },
+      {
+        "from_elapsed_ms": 10121.151,
+        "to_elapsed_ms": 11049.71,
+        "midpoint_elapsed_ms": 10585.43,
+        "phase": "settle",
+        "chord_m": 0.22566,
+        "informative": true,
+        "course_degrees": -16.2907
+      },
+      {
+        "from_elapsed_ms": 11049.71,
+        "to_elapsed_ms": 12063.183,
+        "midpoint_elapsed_ms": 11556.447,
+        "phase": "settle",
+        "chord_m": 0.223085,
+        "informative": true,
+        "course_degrees": -28.9548
+      },
+      {
+        "from_elapsed_ms": 12063.183,
+        "to_elapsed_ms": 12990.505,
+        "midpoint_elapsed_ms": 12526.844,
+        "phase": "settle",
+        "chord_m": 0.233555,
+        "informative": true,
+        "course_degrees": -28.3207
+      },
+      {
+        "from_elapsed_ms": 12990.505,
+        "to_elapsed_ms": 14013.9,
+        "midpoint_elapsed_ms": 13502.202,
+        "phase": "settle",
+        "chord_m": 0.228916,
+        "informative": true,
+        "course_degrees": -28.4347
+      }
+    ],
+    "phase_transitions": [
+      {
+        "phase": "baseline",
+        "angular_speed": 0,
+        "elapsed_ms": 73.715
+      },
+      {
+        "phase": "step",
+        "angular_speed": 180,
+        "elapsed_ms": 3000.716
+      },
+      {
+        "phase": "settle",
+        "angular_speed": 0,
+        "elapsed_ms": 10000.616
+      }
+    ],
+    "stop_result": {
+      "attempted": true,
+      "ok": true,
+      "error": null,
+      "coordinator_method": "async_stop_manual_motion",
+      "use_wifi": false,
+      "transport_preference": "ble_preferred",
+      "ack": {
+        "movement_ok": true
+      },
+      "duration_ms": 72.588
+    },
+    "cumulative_travel_m_final": 2.9536,
+    "max_travel_m_budget": 4.5
+  },
+  "criteria_scoring": {
+    "1_report_stream_ready": {
+      "result": "PASS",
+      "evidence": "started/continuous_started true, ready true, no readiness_reason."
+    },
+    "2_step_reaches_steady_rotation_2a": {
+      "result": "FAIL",
+      "requirement": ">=3 informative intervals AND last two step rates agree within 1.5 deg/s",
+      "informative_intervals": 7,
+      "step_rates_deg_per_s": [
+        -3.366,
+        -11.885,
+        -10.765,
+        -15.094,
+        -8.246,
+        -13.886
+      ],
+      "last_two_diff_deg_per_s": 5.64,
+      "note": "No climb-then-flatten shape like the +120 pass. The sequence oscillates across the whole step phase (roughly -8 to -15 deg/s with no convergent trend), the largest single-run failure margin of any run today."
+    },
+    "3_settle_goes_flat_2b": {
+      "result": "PASS",
+      "requirement": ">=3 informative intervals AND last two settle rates agree within 1.5 deg/s",
+      "informative_intervals": 4,
+      "settle_rates_deg_per_s_including_carryover_from_step": [
+        -10.649,
+        -13.042,
+        0.653,
+        -0.117
+      ],
+      "last_two_diff_deg_per_s": 0.77,
+      "note": "Settle converges cleanly again, as in both prior settle-passing runs, despite the step phase never settling. The settle mechanism appears robust regardless of the step's own convergence."
+    },
+    "4_containment_and_stop": {
+      "result": "PASS",
+      "evidence": "0 of 148 samples outside the 10.0 m corridor. stop_result.ok=true, ack.movement_ok=true."
+    },
+    "5_travel_guard_does_not_trip": {
+      "result": "PASS",
+      "evidence": "0 of 148 samples carry travel_guard_tripped:true; motion_refresh.aborted_early=False; cumulative_travel_m 2.9536 of the 4.5 m budget. reason field correctly read 'window_complete' -- second real-hardware confirmation of the fix."
+    },
+    "6_gate_disarmed_after_verified": {
+      "result": "PASS",
+      "evidence": "enabled:false, real_motion_allowed:false, no active session, verified from both the live API and RAW core.config_entries after the documented ~15s propagation delay."
+    }
+  },
+  "what_this_establishes": {
+    "convergence_is_angular_speed_dependent": "The 7000 ms step length that let the +120 run converge cleanly (0.11 deg/s residual) does NOT generalize to +180 (5.64 deg/s residual, no convergent trend visible). Whatever combination of onset lag, mechanical response, and telemetry noise the +120 pass overcame, it did not simply scale with the +50% larger commanded angular speed.",
+    "magnitude_scales_roughly_as_expected": "omega_step_deg_per_s went -6.12 (+120) -> -10.65 (+180), a larger magnitude at the larger command, qualitatively consistent with prior findings that rotation rate increases with commanded angular speed in this band -- but this is a directional observation, not a fitted law, and the underlying step-rate sequence at +180 is too noisy to trust for any quantitative scaling claim.",
+    "settle_is_robust": "This is the third run today where the settle phase converged cleanly (0.26, 1.44, and now 0.77 deg/s residuals) regardless of what happened in the step phase before it -- settle at 5000 ms looks solid across all three attempts."
+  },
+  "caveats": {
+    "n_equals_1": "Single run at +180 with this step length. The oscillating step-rate sequence could in principle be one noisy run rather than a repeatable property of +180 -- but note it looks qualitatively different from chord noise (a real, large-amplitude oscillation, not small perturbations around a trend), unlike anything the +120 pass showed.",
+    "what_is_NOT_authorized": "Per the step-extension predeclaration, a pass at +120 authorized exactly this one repeat at +180. Neither a pass nor a fail here authorizes anything further -- not a second step_ms increase for +180 specifically, not Phase 2 steering, not the feed-forward design document."
+  },
+  "safety": {
+    "gates_before_dispatch": "15 of 15, blockers: []",
+    "corridor": "10.0 m square, re-scanned and re-verified at the mower's live position (6.0038, -5.3077) after a supervised repositioning drive -- see repositioning_drive below.",
+    "boundary_clearance_at_dispatch_m": 5.904,
+    "operator_confirmation": "explicit go/no-go confirmation taken immediately before dispatch (on-site, supervising, area clear, blades off)",
+    "gate_disarmed_after": true
+  },
+  "repositioning_drive": {
+    "why": "The mower (moved by the operator between runs) sat at (3.8728, -7.4005), where the worst-case clearance was only 3.841 m against the 5.0 m required disk (0.77x) -- insufficient for a fresh 10.0 m corridor.",
+    "method": "raw_pymammotion_execute_vector_segment, the accepted closed-loop reach profile (docs/accepted-profile.json), verified key-by-key identical before real dispatch.",
+    "outcome": "Single call, 4 turn commands and 12 linear commands, target_reached at 0.073 m from (5.98, -5.24) -- the tightest landing of any repositioning drive today.",
+    "final_position": {
+      "x": 6.0038,
+      "y": -5.3077
+    },
+    "distance_to_intended_target_m": 0.0731751323879906
+  },
+  "motion_commanded": true,
+  "supervised": true,
+  "operator_authorized": true
+}
