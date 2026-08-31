@@ -4,6 +4,19 @@
 
 ⚠️ **Everything BELOW this section is historical.** Reverify before acting on it.
 
+🗑️ **CORRECTION — READ THIS BEFORE TRUSTING EITHER STEP-EXTENSION VERDICT
+BELOW.** `docs/vio-crosscheck-reframes-route1-step-verdicts-20260830.md`.
+Checking VIO's own heading track against each run's RTK-position-chord
+course measurement shows the two instruments disagree about which run
+converged, in the OPPOSITE direction from what got published: by VIO, the
+published **+120 PASS is actually 1.96°/s apart (would FAIL)**, and the
+published **+180 FAIL is actually 0.38°/s apart (a clean PASS)**. Neither
+document below is wrong about what its own instrument recorded — but treat
+neither "first full PASS" nor "the pass does not generalize" as settled
+physics. **Do not touch criterion 2a, switch measurement channels, or
+re-dispatch either config to resolve this without a new, deliberately
+written decision first.**
+
 🔋 **BATTERY AT 31% AND STILL DRAINING, END OF SESSION — DOCK AND CHARGE
 BEFORE ANY FURTHER PHYSICAL WORK.** Started today at 61%; five real motion
 dispatches (two step-response runs, three repositioning drives) have used

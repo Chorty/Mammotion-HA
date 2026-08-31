@@ -1,5 +1,14 @@
 # Route 1, step extension — the first full PASS
 
+⚠️ **QUALIFIED THE SAME DAY — read
+`docs/vio-crosscheck-reframes-route1-step-verdicts-20260830.md` alongside
+this.** VIO's own independent heading track disagrees with this run's own
+RTK-chord measurement: it shows the last two step-phase rates 1.96°/s apart
+(the same 1.5°/s bound this document's 2a criterion uses would FAIL that
+reading), against the 0.11°/s this document reports. The PASS below is
+correct as a reading of the probe's registered instrument — it is not an
+unambiguous physical fact independent of which channel is asked.
+
 **2026-08-30, beta88.** One supervised, operator-authorized run of
 `raw_pymammotion_step_response_probe` against
 `docs/phase2-route1-step-extension-predeclared-20260830.md`: baseline 3000 /

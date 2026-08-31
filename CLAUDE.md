@@ -46,6 +46,22 @@ this file every time.
 
 ## Current build: beta88; PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
 
+🗑️ **CORRECTION, SAME DAY — BOTH STEP-EXTENSION VERDICTS BELOW ARE QUALIFIED,
+NOT REVERSED.** Read
+`docs/vio-crosscheck-reframes-route1-step-verdicts-20260830.md`. Prompted by
+the operator asking whether run 2 failed due to VIO — it did not (VIO read
+`state: 2`/live throughout both runs) — but checking VIO's own independent
+heading track against each run's own RTK-position-chord course measurement
+surfaced something bigger: **the two instruments disagree about which run
+converged, in the OPPOSITE direction from what was published.** By VIO's own
+last-two-step-rate reading: **+120 (the published PASS) is 1.96°/s apart —
+FAILS the same 1.5°/s bound**; **+180 (the published FAIL) is 0.38°/s apart —
+PASSES cleanly.** Neither published verdict is wrong as a reading of its
+registered instrument (RTK-position chords) — but neither should be read as
+an unambiguous physical fact anymore. This does not authorize touching
+criterion 2a, switching instruments, or re-running either config to settle
+which is right — that is a separate, deliberately-written decision.
+
 🚨 **ROUTE 1 RUN 2 (+180) FAILS — THE +120 PASS DOES NOT GENERALIZE,
 2026-08-30.** Read `docs/evidence-route1-run2-plus180-fail-20260830.md` (raw:
 `docs/evidence-route1-run2-plus180-fail-20260830.json`). Same phases as the

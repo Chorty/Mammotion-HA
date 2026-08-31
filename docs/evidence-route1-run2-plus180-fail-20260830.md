@@ -1,5 +1,16 @@
 # Route 1, run 2 (+180) — FAIL, the pass does not generalize
 
+⚠️ **QUALIFIED THE SAME DAY — read
+`docs/vio-crosscheck-reframes-route1-step-verdicts-20260830.md` alongside
+this.** VIO's own independent heading track disagrees with this run's own
+RTK-chord measurement: it shows the last two step-phase rates only 0.38°/s
+apart — a clean PASS by the same 1.5°/s bound this document's 2a criterion
+uses, against the 5.64°/s FAIL this document reports. The FAIL below is
+correct as a reading of the probe's registered instrument — it is not an
+unambiguous physical fact independent of which channel is asked, and "the
++120 pass does not generalize" (this document's title) is itself now in
+question.
+
 **2026-08-30, beta88.** The repeat authorized by
 `docs/phase2-route1-step-extension-predeclared-20260830.md` §7: same phases
 that passed at +120 (baseline 3000 / step 7000 / settle 5000, `max_travel_m=
