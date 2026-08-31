@@ -8,6 +8,38 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta92 -> beta93 — 2026-08-31, motion-disabled
+
+Cosmetic only: the config-flow "wifi" step's title said "Connect to Wi-Fi"
+even though it asks for the Mammotion account email/password (the
+description text underneath was already correct). Confirmed inherited
+verbatim from mikey0000/Mammotion-HA upstream — their own `strings.json` has
+the identical mismatched title. Retitled to "Mammotion Account" in
+`strings.json` and all 12 `translations/*.json` files, each in its own
+language. No behavior change; `step_id="wifi"` (an internal identifier) is
+untouched.
+
+✅ **Also serves as a second confirmation that beta88→beta92's coordinator
+fixes hold on a routine restart, not just the incident restart they were
+built for.** Same graceful-degradation pattern observed again in the logs
+(`fetch_rtk_lora_info`/`fetch_rtk_properties` auth failures logged as
+warnings, zero crashes) and the config entry reached `loaded` again.
+
+| | beta93 |
+| --- | --- |
+| tag | `v0.6.4-beta93` |
+| card md5 | `f288a1abbd5ab1453156a02c124ac24c`, equal at both serving paths |
+| Lovelace resource | re-read as `?v=0.6.4-beta93&build=f288a1ab` |
+| backend | PyMammotion `0.8.12.post3` (unchanged) |
+| file verification | 48 of 48 byte-identical |
+| gate after | `enabled: false`, `real_motion_allowed: false`, verified live API **and** RAW `[false]` |
+
+⚠️ Entities were still `unavailable` a few minutes post-restart, same as the
+beta92 restart — BLE just needed more time to reconnect; not treated as a
+regression given the actual fix under test (the entry staying `loaded`
+without crashing) is confirmed. `matt.joslin@me.com`'s cloud token is still
+rate-limited; see beta92's entry below for the full incident record.
+
 ### beta88 -> beta92 — 2026-08-31, motion-disabled — account rate-limit incident
 
 **Context:** `matt.joslin@me.com`'s cloud refresh token was rejected by

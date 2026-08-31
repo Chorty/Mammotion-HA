@@ -44,7 +44,17 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: beta92; PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
+## Current build: beta93; PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
+
+✅ **beta93 — cosmetic title fix, also re-confirms beta92's fixes on a second,
+routine restart.** The config-flow "wifi" step's title wrongly said "Connect
+to Wi-Fi" (inherited verbatim from mikey0000/Mammotion-HA upstream, which has
+the identical mismatch) when it actually asks for the Mammotion account
+login. Retitled "Mammotion Account" in `strings.json` and all 12
+`translations/*.json` files. No behavior change. The same restart also
+showed the beta88→beta92 coordinator fixes holding cleanly again (graceful
+warnings, zero crashes, entry reached `loaded`) — see `docs/deploy-runbook-p0.md`
+→ "beta92 -> beta93".
 
 🚨 **ACCOUNT RATE-LIMIT INCIDENT, 2026-08-31 — `matt.joslin@me.com`'s cloud
 token is dead, not a code bug.** Read `docs/deploy-runbook-p0.md` → "beta88 ->
