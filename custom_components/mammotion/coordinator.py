@@ -85,6 +85,7 @@ from webrtc_models import RTCIceServer
 
 from .agora_api import SERVICE_IDS, AgoraAPIClient, AgoraResponse
 from .config import MammotionConfigStore
+from .connectivity import CloudConnectivityMonitor, WatchdogAction
 from .const import (
     CONF_ACCOUNTNAME,
     CONF_CONNECT_DATA,
@@ -204,6 +205,7 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         self.map_offset_lon: float = 0.0
         self._bluetooth_enabled: bool = True
         self._cloud_enabled: bool = True
+        self._connectivity_monitor = CloudConnectivityMonitor()
         self.last_map_sync: datetime.datetime | None = None
         #: ``bol_hash`` the last map-sync attempt was made against.  Used to
         #: back off a sync that is not converging — see ``_should_start_map_sync``.
@@ -490,6 +492,15 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         ):
             if ble.is_usable:
                 return True
+        if (
+            self.has_cloud_account
+            and self._cloud_enabled
+            and handle.cloud_transport() is None
+        ):
+            # The cloud transport was detached (failed unbound migration) and
+            # BLE can't cover the device: every send would raise, so report
+            # offline honestly instead of pretending the device is reachable.
+            return False
         return bool(not handle.availability.mqtt_reported_offline)
 
     @property
@@ -742,6 +753,86 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
             raise ConfigEntryAuthFailed(
                 f"Re-authentication required for Mammotion account: {err}"
             ) from err
+
+    async def _async_connectivity_watchdog(self) -> None:
+        """Detect a stuck cloud transport and attempt in-place recovery.
+
+        Backstop for the push-driven recovery path: when the cloud transport
+        stays disconnected across consecutive report ticks (and BLE can't
+        cover the device), reconnect it in place.  A cloud transport that is
+        missing entirely (detached by pymammotion after a failed unbound
+        migration) cannot be re-attached from here — warn once so the state
+        is visible instead of silently dropping every send.
+        """
+        if (
+            self.hass.is_stopping
+            or not self.has_cloud_account
+            or not self._cloud_enabled
+        ):
+            return
+        device = self.manager.get_device_by_name(self.device_name)
+        if device is None or not device.enabled:
+            return
+        handle = self.manager.mower(self.device_name)
+        if handle is None:
+            return
+
+        ble = handle.get_transport(TransportType.BLE)
+        ble_usable = bool(ble is not None and ble.is_usable and self._bluetooth_enabled)
+        cloud_tt = handle.cloud_transport()
+        cloud_transport = (
+            handle.get_transport(cloud_tt) if cloud_tt is not None else None
+        )
+        auth_locked = bool(
+            cloud_transport is not None
+            and cloud_transport.is_unrecoverable_auth_failure
+        )
+
+        action = self._connectivity_monitor.tick(
+            ble_usable=ble_usable,
+            cloud_registered=cloud_tt is not None,
+            cloud_connected=self.mqtt_transport_connected,
+            auth_locked=auth_locked,
+        )
+
+        if self._connectivity_monitor.detached_warning_pending:
+            self._connectivity_monitor.record_detached_warning()
+            LOGGER.warning(
+                "%s: cloud transport is no longer attached and cannot be "
+                "restored in place — commands will fail until the Mammotion "
+                "config entry is reloaded",
+                self.device_name,
+            )
+            return
+
+        if action is WatchdogAction.RECONNECT and cloud_tt is not None:
+            LOGGER.warning(
+                "%s: cloud transport %s disconnected across multiple update "
+                "cycles — attempting reconnect",
+                self.device_name,
+                cloud_tt.value,
+            )
+            self._connectivity_monitor.record_reconnect_attempted()
+            await self._async_reconnect_cloud(cloud_tt)
+
+    async def _async_reconnect_cloud(self, transport_type: TransportType) -> None:
+        """Reconnect the registered cloud transport in place.
+
+        Issues no MQTT sends: ``connect_transport`` is a socket connect and
+        ``restart_keep_alive`` re-arms pymammotion's own self-pacing loops.
+        """
+        handle = self.manager.mower(self.device_name)
+        if handle is None:
+            return
+        try:
+            await handle.connect_transport(transport_type)
+            await handle.restart_keep_alive()
+        except EXPIRED_CREDENTIAL_EXCEPTIONS as exc:
+            await self.async_refresh_login(exc)
+        except (TimeoutError, OSError, HomeAssistantError) as exc:
+            LOGGER.debug(
+                "%s: cloud reconnect attempt failed: %s", self.device_name, exc
+            )
 
     async def async_send_and_wait(
         self,
@@ -1896,6 +1987,24 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
     def clear_update_failures(self) -> None:
         """Clear update failures and reconnect transports if needed."""
         self.update_failures = 0
+        handle = self.manager.mower(self.device_name)
+        if handle is None or not self._cloud_enabled:
+            return
+        cloud_tt = handle.cloud_transport()
+        if cloud_tt is not None and not handle.is_transport_connected(cloud_tt):
+            self.hass.async_create_task(self._async_reconnect_cloud_task(cloud_tt))
+
+    async def _async_reconnect_cloud_task(self, transport_type: TransportType) -> None:
+        """Run a cloud reconnect from a detached task.
+
+        ``ConfigEntryAuthFailed`` only triggers reauth when raised inside the
+        coordinator's update method — from a task it would just be an
+        unhandled exception, so start the reauth flow explicitly instead.
+        """
+        try:
+            await self._async_reconnect_cloud(transport_type)
+        except ConfigEntryAuthFailed:
+            self.config_entry.async_start_reauth(self.hass)
 
     @property
     def operation_settings(self) -> OperationSettings:
@@ -2413,6 +2522,12 @@ class MammotionReportUpdateCoordinator(MammotionBaseUpdateCoordinator[MowingDevi
 
     async def _async_update_data(self) -> MowingDevice:
         """Get data from the device."""
+        # Runs before _async_short_circuit_update's early-returns: the
+        # watchdog must see every tick — a device with a detached or
+        # disconnected cloud transport and no BLE is exactly the one
+        # is_online() (and so the short-circuit) would skip.
+        await self._async_connectivity_watchdog()
+
         if (data := await self._async_short_circuit_update()) is not None:
             return data
 
