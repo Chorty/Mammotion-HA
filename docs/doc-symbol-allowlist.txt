@@ -60,3 +60,6 @@ include_raw_samples                              # the sequence-probe flag that 
 # --- names that live only in scripts/ha_ssh.exp, a .exp file the checker's scan patterns don't cover ---
 HA_SSH_PASS                                      # the env var scripts/ha_ssh.exp reads for the HA host's SSH password; the checker scans .py/.js trees only, so a real .exp symbol can never resolve
 exp_continue                                     # the Tcl/expect builtin used in scripts/ha_ssh.exp's password-prompt loop; same .exp scan-coverage gap as HA_SSH_PASS above
+
+# --- paths that live in the sibling Chorty/PyMammotion fork repo, not this tree ---
+scripts/update_credentials.py                    # upstream PyMammotion's build-time credential injector, cited by CLAUDE.md's 2026-08-31 login root-cause entry. It exists in the PyMammotion fork checkout, never in Mammotion-HA
