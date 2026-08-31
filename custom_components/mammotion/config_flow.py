@@ -262,14 +262,25 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
                                 **temp_client.to_cache(),
                             },
                         )
-                except TooManyRequestsException:
+                except TooManyRequestsException as err:
+                    LOGGER.warning(
+                        "Mammotion login rate-limited for account %s during setup: %s",
+                        account,
+                        err,
+                    )
                     return self.async_abort(reason="api_limit_exceeded")
                 except data_entry_flow.AbortFlow:
                     raise
                 except CloudSetupError as err:
                     LOGGER.error("Aliyun cloud setup failed during login: %s", err)
                     errors["base"] = "cannot_connect"
-                except LoginFailedError, ReLoginRequiredError:
+                except (LoginFailedError, ReLoginRequiredError) as err:
+                    LOGGER.warning(
+                        "Mammotion login rejected for account %s during setup (%s): %s",
+                        account,
+                        type(err).__name__,
+                        err,
+                    )
                     errors["base"] = "login_failed"
                 except (ClientError, HTTPException, TimeoutError) as err:
                     LOGGER.error("Unexpected error during login: %s", err)
@@ -353,12 +364,30 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
                         has_cloud_account = True
                         account_id = temp_client.mammotion_http.login_info.userInformation.userAccount
                     else:
+                        LOGGER.warning(
+                            "Mammotion login for account %s during reconfigure "
+                            "returned no login_info (no exception raised)",
+                            account,
+                        )
                         errors["base"] = "login_failed"
-                except TooManyRequestsException:
+                except TooManyRequestsException as err:
+                    LOGGER.warning(
+                        "Mammotion login rate-limited for account %s during "
+                        "reconfigure: %s",
+                        account,
+                        err,
+                    )
                     return self.async_abort(reason="api_limit_exceeded")
                 except data_entry_flow.AbortFlow:
                     raise
-                except LoginFailedError, ReLoginRequiredError:
+                except (LoginFailedError, ReLoginRequiredError) as err:
+                    LOGGER.warning(
+                        "Mammotion login rejected for account %s during "
+                        "reconfigure (%s): %s",
+                        account,
+                        type(err).__name__,
+                        err,
+                    )
                     errors["base"] = "login_failed"
                 except (
                     CloudSetupError,
@@ -442,6 +471,11 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
                     else None
                 )
                 if login_info is None:
+                    LOGGER.warning(
+                        "Mammotion login for account %s during reauth returned "
+                        "no login_info (no exception raised)",
+                        account,
+                    )
                     errors["base"] = "login_failed"
                 else:
                     account_id = str(login_info.userInformation.userAccount)
@@ -465,11 +499,29 @@ class MammotionConfigFlow(ConfigFlow, domain=DOMAIN):
                             },
                             reason="reauth_successful",
                         )
-            except TooManyRequestsException:
+            except TooManyRequestsException as err:
+                LOGGER.warning(
+                    "Mammotion login rate-limited for account %s during reauth: %s",
+                    account,
+                    err,
+                )
                 errors["base"] = "api_limit_exceeded"
-            except LoginFailedError, ReLoginRequiredError:
+            except (LoginFailedError, ReLoginRequiredError) as err:
+                LOGGER.warning(
+                    "Mammotion login rejected for account %s during reauth (%s): %s",
+                    account,
+                    type(err).__name__,
+                    err,
+                )
                 errors["base"] = "login_failed"
-            except CloudSetupError, HTTPException:
+            except (CloudSetupError, HTTPException) as err:
+                LOGGER.warning(
+                    "Mammotion cloud setup failed for account %s during reauth "
+                    "(%s): %s",
+                    account,
+                    type(err).__name__,
+                    err,
+                )
                 errors["base"] = "cannot_connect"
             except Exception:  # noqa: BLE001 - library/cloud parse errors
                 LOGGER.exception("Unexpected Mammotion error during reauth")
