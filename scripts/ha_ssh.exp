@@ -14,9 +14,20 @@ if {![info exists env(HA_SSH_PASS)]} {
 }
 set pw $env(HA_SSH_PASS)
 set cmd [lindex $argv 0]
+set authenticated 0
 spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2224 root@192.168.1.106 $cmd
 expect {
-    -re "(P|p)assword:" { send -- "$pw\r"; log_user 1; exp_continue }
+    -re "(P|p)assword:" {
+        # exp_continue re-arms this pattern for the rest of the session, so remote
+        # output merely containing "password:" (a docstring, a log line) would
+        # otherwise re-trigger this branch and resend the real secret mid-stream.
+        if {$authenticated == 0} {
+            send -- "$pw\r"
+            set authenticated 1
+            log_user 1
+        }
+        exp_continue
+    }
     "Are you sure you want to continue connecting" { send -- "yes\r"; exp_continue }
     eof
 }
