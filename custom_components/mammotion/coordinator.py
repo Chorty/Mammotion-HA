@@ -2646,6 +2646,17 @@ class MammotionReportUpdateCoordinator(MammotionBaseUpdateCoordinator[MowingDevi
                 BLEUnavailableError,
             ) as exc:
                 LOGGER.debug(f"Command {command_name} failed with exception: {exc}")
+            except AttributeError as exc:
+                # Narrow, deliberate: pymammotion's BLE transport can be
+                # caught mid-disconnect with its client object already torn
+                # down, so _write_payload's own `self._client.is_connected`
+                # check raises a raw AttributeError instead of one of the
+                # exceptions above -- observed 2026-08-31 during a genuine
+                # BLE reconnect cycle. Scoped to this one-time, optional
+                # device-info loop; do not widen this catch elsewhere.
+                LOGGER.debug(
+                    f"Command {command_name} failed with a BLE transport race: {exc}"
+                )
 
         # Watch sys_status changes so we can refresh the full status when the
         # device transitions states.  Skipped when the BLE polling loop is
@@ -3436,9 +3447,23 @@ class MammotionRTKCoordinator(MammotionBaseUpdateCoordinator[RTKBaseStationDevic
                             if check_version.device_id == cast(Any, self.device).iot_id:
                                 self.data.apply_version_check(check_version)
                 except ReLoginRequiredError as err:
+                    # A full re-login has already been tried and failed --
+                    # this is the definitive, escalate-to-the-user case.
                     raise ConfigEntryAuthFailed(
                         f"Re-authentication required for Mammotion account: {err}"
                     ) from err
+                except AuthError as err:
+                    # ReLoginRequiredError is a subclass of AuthError, so this
+                    # only catches the broader/less certain case (e.g. a bare
+                    # AuthError from _require_login_info when login_info is
+                    # None) -- has_cloud_account only means credentials are
+                    # configured, not that the session is currently live, and
+                    # this poll is best-effort.
+                    LOGGER.debug(
+                        "%s: RTK OTA check skipped, cloud auth unavailable: %s",
+                        self.device_name,
+                        err,
+                    )
                 except DeviceOfflineException, GatewayTimeoutException:
                     pass
 
