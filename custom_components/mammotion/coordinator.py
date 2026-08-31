@@ -3286,7 +3286,10 @@ class MammotionDeviceErrorUpdateCoordinator(
             if not device.errors.error_codes and self.has_cloud_account:
                 http = self.manager.mammotion_http
                 if http is not None:
-                    device.errors.error_codes = await http.get_all_error_codes()
+                    try:
+                        device.errors.error_codes = await http.get_all_error_codes()
+                    except AuthError, FailedRequestException, GatewayTimeoutException:
+                        pass
         except DeviceOfflineException:
             return device
 
@@ -3335,7 +3338,13 @@ class MammotionDeviceErrorUpdateCoordinator(
             if not device.errors.error_codes and self.has_cloud_account:
                 http = self.manager.mammotion_http
                 if http is not None:
-                    device.errors.error_codes = await http.get_all_error_codes()
+                    # has_cloud_account only means credentials are
+                    # configured, not that the cloud session is currently
+                    # live -- error-code lookup is best-effort.
+                    try:
+                        device.errors.error_codes = await http.get_all_error_codes()
+                    except AuthError, FailedRequestException, GatewayTimeoutException:
+                        pass
 
             self.async_set_updated_data(self.data)
         except DeviceOfflineException:
@@ -3456,14 +3465,37 @@ class MammotionRTKCoordinator(MammotionBaseUpdateCoordinator[RTKBaseStationDevic
             return
 
         if self.has_cloud_account:
-            # Fetch lora version — only available via HTTP, not MQTT/protobuf.
-            await self.manager.fetch_rtk_lora_info(self.device_name)
+            # has_cloud_account only means credentials are configured, not
+            # that the cloud session is currently live -- these HTTP-only
+            # reads are best-effort and must not block setup on a dead
+            # refresh token, same broad "safe to swallow" set already used
+            # for the camera stream's own best-effort cloud calls above.
+            try:
+                # Fetch lora version — only available via HTTP, not MQTT/protobuf.
+                await self.manager.fetch_rtk_lora_info(self.device_name)
 
-            if (
-                gateway := self.manager.cloud_gateway
-            ) and DeviceType.is_aliyun_product_key(self.data.product_key):
-                await self.manager.fetch_rtk_properties(self.device_name)
-                await gateway.get_device_status(cast(Any, self.device).iot_id)
+                if (
+                    gateway := self.manager.cloud_gateway
+                ) and DeviceType.is_aliyun_product_key(self.data.product_key):
+                    await self.manager.fetch_rtk_properties(self.device_name)
+                    await gateway.get_device_status(cast(Any, self.device).iot_id)
+            except (
+                AuthError,
+                ClientError,
+                CommandTimeoutError,
+                ConcurrentRequestError,
+                DeviceOfflineException,
+                FailedRequestException,
+                GatewayTimeoutException,
+                HomeAssistantError,
+                NoTransportAvailableError,
+                TimeoutError,
+            ) as err:
+                LOGGER.debug(
+                    "%s: RTK cloud data fetch skipped during setup: %s",
+                    self.device_name,
+                    type(err).__name__,
+                )
         await self.async_send_command("send_todev_ble_sync", sync_type=3)
         await self.async_request_report_snapshot()
         await self.async_send_and_wait("basestation_info", "to_app")
