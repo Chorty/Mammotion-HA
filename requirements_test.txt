@@ -11,7 +11,7 @@ mypy==2.1.0
 # byte-identical to custom_components/mammotion/manifest.json: the backend
 # capability probes assert against whatever is installed, so a drift here would
 # test a different backend than the one shipped.
-pymammotion@https://github.com/Chorty/PyMammotion/releases/download/chorty-0.8.12.post3/pymammotion-0.8.12.post3-py3-none-any.whl
+pymammotion@https://github.com/Chorty/PyMammotion/releases/download/chorty-0.8.12.post4/pymammotion-0.8.12.post4-py3-none-any.whl
 websockets==16.0
 sdp-transform==1.1.0
 autotyping==24.9.0

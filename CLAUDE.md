@@ -46,6 +46,75 @@ this file every time.
 
 ## Current build: beta93; PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
 
+🏁 **LOGIN ROOT CAUSE FOUND AND FIXED, 2026-08-31 — THE FORK WHEELS SHIPPED
+BLANK OAUTH2 CLIENT CREDENTIALS. NOT A RATE LIMIT.** Upstream
+mikey0000/PyMammotion blanks `MAMMOTION_OAUTH2_CLIENT_ID`/`_SECRET` in source
+and injects them at build time via `scripts/update_credentials.py` from GitHub
+secrets (`.github/workflows/release.yml`). **GitHub secrets do not propagate
+to forks**, so every Chorty wheel (post1/post2/post3 — all three verified by
+downloading and reading their `const.py`) shipped those constants as `""`.
+`login_v2` and `refresh_token_v2` send that blank `client_id` and sign with
+the blank secret → the server deterministically answers **"Client id or
+secret error" for EVERY account** — which is why two accounts failed
+identically on two code paths while the vendor app (real credentials) logged
+both in fine. The upstream **PyPI** `pymammotion==0.8.12` wheel has the
+injected (XOR-obfuscated, non-empty) values — verified by download; the
+manifest pinned that PyPI wheel before the Jul 29 switch to post1, and the
+Aliyun path's hardcoded `APP_KEY`/`APP_SECRET` fallbacks kept cached-token
+sessions alive for a month, masking the defect until a full password re-login
+was forced (iotToken death on one account; delete-and-re-add on the other).
+✅ **Fixed as `chorty-0.8.12.post4`** (same source tree as post3; the fix is
+in the BUILD): credentials recovered from the upstream PyPI wheel's own
+`_r()` block, injected via `update_credentials.py`, wheel built and verified
+non-empty, published at tag `chorty-0.8.12.post4`, wheel SHA-256
+`61d8a6f6eae067034ee7aa4159e0f5f9d755f85ea6d6a5d0dfa1c5af5cdb880a`.
+Credentials live only in the built artifacts (as upstream ships them), never
+in the fork repo's source. All four pin sites updated (`manifest.json`,
+`requirements_test.txt`, `pyproject.toml`, `uv.lock`).
+🗑️ **The "wait ~24h for the rate limit to clear" advice below is WITHDRAWN as
+a remedy** — with blank credentials no amount of waiting could ever make a
+login succeed. (Whether heavy failed-login volume *also* tripped some server
+state is unknown; irrelevant until real credentials are deployed.) One
+deliberate reauth after deploying post4 is the test.
+⚠️ **Integration is currently NOT set up** — the delete-and-re-add left no
+working config entry; re-add it after the post4 deploy.
+
+🚨 *(superseded by the entry above, kept for the record)* **LOGIN FAILED FOR
+BOTH ACCOUNTS WITH AN IDENTICAL ERROR, 2026-08-31.**
+The operator deleted and re-added the integration. Login with
+`thejoslincrew@gmail.com` (confirmed working in the app, and the account this
+project's rate-limit diagnosis said should be usable) was rejected:
+`custom_components.mammotion` logged `Mammotion login rejected for account
+thejoslincrew@gmail.com during reconfigure (LoginFailedError): Login failed
+for account 'thejoslincrew@gmail.com': Client id or secret error`, from
+`pymammotion/client.py:1161` (`login_and_initiate_cloud` → `login_v2`, not the
+Aliyun-bind path `matt.joslin@me.com` was failing on). **That is the same
+error TEXT `matt.joslin@me.com` has been failing with all night**, but from a
+different account and a different call site.
+🔑 **Two accounts failing identically on two different code paths points at
+something shared, not a single account's block** — most plausibly the
+library's own `MAMMOTION_OAUTH2_CLIENT_ID`/`MAMMOTION_OAUTH2_CLIENT_SECRET`
+constants (`pymammotion/http/http.py:911,920-921,981-989`), which every
+account's login request signs with, being rejected server-side. *(This
+hypothesis was CONFIRMED the same day — see the entry above; the constants
+were not rejected server-side, they were empty in the fork build.)*
+
+🔐 **SSH-PASSWORD EXPOSURE IN `scripts/ha_ssh.exp`, FOUND AND FIXED THE SAME
+NIGHT — UNRELATED TO THE LOGIN ISSUE ABOVE, DO NOT CONFLATE.** The script's
+`expect` block sent `HA_SSH_PASS` on the first `"password:"` match, then left
+that same pattern armed via `exp_continue` for the rest of the session. Any
+later remote output merely containing a "password:"-like substring (a
+docstring, a log line) re-triggered the branch and re-sent the real password
+into the SSH stream, mid-command. It fired twice tonight while grepping
+`pymammotion` source over SSH, corrupting command output with the live SSH
+password for the Home Assistant host. **Fixed**: an `authenticated` guard now
+allows exactly one send per invocation; later matches of the same pattern are
+a no-op. Fix is in the tree, **uncommitted** as of this entry.
+🚨 **The exposed credential was `HA_SSH_PASS` (the Home Assistant host's own
+SSH password), not a Mammotion account password.** Confirm this has actually
+been rotated on the host and in `.env` before trusting any `ha_ssh.exp`
+output as clean — as of this entry that confirmation was still outstanding.
+
 ✅ **beta93 — cosmetic title fix, also re-confirms beta92's fixes on a second,
 routine restart.** The config-flow "wifi" step's title wrongly said "Connect
 to Wi-Fi" (inherited verbatim from mikey0000/Mammotion-HA upstream, which has
@@ -56,7 +125,10 @@ showed the beta88→beta92 coordinator fixes holding cleanly again (graceful
 warnings, zero crashes, entry reached `loaded`) — see `docs/deploy-runbook-p0.md`
 → "beta92 -> beta93".
 
-🚨 **ACCOUNT RATE-LIMIT INCIDENT, 2026-08-31 — `matt.joslin@me.com`'s cloud
+🚨 *(diagnosis superseded 2026-08-31 — the rejections were the fork wheel's
+blank OAuth2 client credentials, see the root-cause entry above; kept because
+the coordinator fixes it motivated are real and shipped)* **ACCOUNT
+RATE-LIMIT INCIDENT, 2026-08-31 — `matt.joslin@me.com`'s cloud
 token is dead, not a code bug.** Read `docs/deploy-runbook-p0.md` → "beta88 ->
 beta92". Mammotion's own servers are rejecting the account's refresh token
 after heavy failed-login volume (confirmed: the app logs into

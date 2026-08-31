@@ -4,13 +4,35 @@
 
 ⚠️ **Everything BELOW this section is historical.** Reverify before acting on it.
 
-🚨 **HOST IS BETA92 — READ `docs/deploy-runbook-p0.md` → "beta88 -> beta92"
-BEFORE ANYTHING ELSE.** `matt.joslin@me.com`'s cloud token is rate-limited by
-Mammotion's own servers (not a code bug — confirmed via the app logging in
-fine on both this account and `thejoslincrew@gmail.com`, only the API
-rejects). Matches mikey0000/PyMammotion#134: disable and wait ~24h, don't
-retry reauth in the meantime. **Do not attempt reauth again until at least
-2026-09-01 evening**, and check with the operator first regardless.
+🚨 **HOST IS BETA93. LOGIN IS BROKEN FOR BOTH KNOWN ACCOUNTS, SAME ERROR TEXT,
+TWO DIFFERENT CODE PATHS — THE SINGLE-ACCOUNT RATE-LIMIT THEORY BELOW IS NOW
+QUALIFIED, NOT CONFIRMED, NOT REPLACED.** After the operator deleted and
+re-added the integration, `thejoslincrew@gmail.com` (previously confirmed
+working) was ALSO rejected: `Login failed for account 'thejoslincrew@gmail.com':
+Client id or secret error`, from `pymammotion/client.py:1161`
+(`login_v2`) — not the Aliyun-bind path `matt.joslin@me.com` fails on.
+**Two accounts, two call sites, identical error text** points at something
+shared (candidate: the library's own `MAMMOTION_OAUTH2_CLIENT_ID`/
+`MAMMOTION_OAUTH2_CLIENT_SECRET` constants being rejected server-side,
+`pymammotion/http/http.py:911,920-921,981-989`) rather than a single account's
+block — **not confirmed**, root-cause investigation handed to a fresh session.
+**Integration currently has no working config entry.** Read the top of
+`CLAUDE.md` → "Current build" for the full write-up before touching login
+again on either account.
+
+🔐 **`scripts/ha_ssh.exp` leaked the HA host's own SSH password into command
+output tonight (unrelated bug, fixed in the tree, uncommitted) — confirm
+`HA_SSH_PASS` was actually rotated on the host and in `.env` before trusting
+any `ha_ssh.exp` output.** Full detail in `CLAUDE.md` → "Current build".
+
+🚨 *(Prior diagnosis, now qualified above, kept for its own evidence:)*
+`matt.joslin@me.com`'s cloud token was rate-limited by Mammotion's own
+servers (not a code bug — confirmed via the app logging in fine on both this
+account and `thejoslincrew@gmail.com` at the time, only the API rejected).
+Matches mikey0000/PyMammotion#134: disable and wait ~24h, don't retry reauth
+in the meantime. That advice no longer looks sufficient on its own now that
+`thejoslincrew@gmail.com` fails too — do not resume reauth attempts on either
+account without re-reading the qualification above first.
 
 ✅ Fixed the SAME night: four separate uncaught-exception bugs in
 coordinator.py that were taking the whole integration down (not just cloud
