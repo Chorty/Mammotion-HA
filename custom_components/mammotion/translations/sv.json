@@ -45,7 +45,7 @@
           "account_name": "E-post eller kontonummer för Mammotion",
           "password": "Lösenord för Mammotion-konto"
         },
-        "title": "Anslut till Wi-Fi",
+        "title": "Mammotion-konto",
         "description": "Ange din e-postadress eller kontonummer samt lösenord för ditt Mammotion-konto"
       }
     }

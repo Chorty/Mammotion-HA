@@ -45,7 +45,7 @@
           "account_name": "Mammotion-ID oder E-Mail-Adresse",
           "password": "Mammotion-Kennwort"
         },
-        "title": "Mit WLAN verbinden",
+        "title": "Mammotion-Konto",
         "description": "Geben Sie Ihre Mammotion-ID oder E-Mail-Adresse und das dazugehörige Kennwort ein."
       }
     }

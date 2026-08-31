@@ -45,7 +45,7 @@
           "account_name": "Mammotion e-mail eller kontonummer",
           "password": "Mammotion adgangskode"
         },
-        "title": "Opret forbindelse til Wi-Fi",
+        "title": "Mammotion-konto",
         "description": "Indtast din Mammotion e-mail eller -id og adgangskode"
       }
     }

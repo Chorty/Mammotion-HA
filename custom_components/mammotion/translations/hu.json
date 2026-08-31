@@ -45,7 +45,7 @@
           "account_name": "Mammotion e-mail vagy fiókszám",
           "password": "Mammotion fiók jelszava"
         },
-        "title": "Csatlakozás Wi-Fi-hez",
+        "title": "Mammotion fiók",
         "description": "Add meg a Mammotion fiók e-mail-címét vagy azonosítóját és a jelszót"
       }
     }

@@ -45,7 +45,7 @@
           "account_name": "Email o numero di conto Mammotion",
           "password": "Password dell'account Mammotion"
         },
-        "title": "Connetti al Wi-Fi",
+        "title": "Account Mammotion",
         "description": "Inserisci l'email o l'id del tuo account Mammotion e la password"
       }
     }

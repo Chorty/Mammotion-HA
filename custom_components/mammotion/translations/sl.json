@@ -45,7 +45,7 @@
           "account_name": "E-poštni naslov Mammotion ali številka računa",
           "password": "Geslo Mammotion računa"
         },
-        "title": "Poveži Wi-fi",
+        "title": "Mammotion račun",
         "description": "Vnesite e-poštni naslov Mammotion računa ali številko računa in geslo"
       }
     }
