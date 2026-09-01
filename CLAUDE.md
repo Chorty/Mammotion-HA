@@ -203,6 +203,26 @@ an unambiguous physical fact anymore. This does not authorize touching
 criterion 2a, switching instruments, or re-running either config to settle
 which is right — that is a separate, deliberately-written decision.
 
+🚩 **FLAGGED AND PARKED BY THE OPERATOR, 2026-08-31 — do NOT pick this up as
+the obvious next task.** It blocks nothing that works: stop-measure-go
+click-to-path never consults criterion 2a or the step-response probe. It
+gates only the route-1 dead-time line, which is itself downstream of Phase 2
+steering (parked, standing decision 5). ⚠️ **The framing was sharpened the
+same day and the sharpened version is the one to read** — see the "FLAGGED
+FOR LATER" section at the end of that doc. Short version, re-verified against
+`chorty-0.8.12.post4`: `vision_info` ships **inside the same
+`sys.toapp_report_data` payload as `locations[0]`**, and `last_report_data_at`
+is still absent — so the two "instruments" are two fields of ONE ~1 Hz
+bundle, not independently-timed channels. **The disagreement therefore cannot
+be a freshness, sampling-lag or transport artifact**, and no connectivity fix
+can touch it (checked against upstream `f4428d47`, already ported here and
+unrelated). The real question is narrower: a geometric proxy derived across
+two payloads (RTK chord bearing) versus a direct sensor reading within one
+(VIO heading). 🔑 **Whenever this resumes, the first step is FREE and needs no
+mower**: every sample of all four route-1 runs banked both `position` and
+`vio`, so any proposed scoring rule can be re-scored offline against existing
+evidence before anything is dispatched.
+
 🚨 **ROUTE 1 RUN 2 (+180) FAILS — THE +120 PASS DOES NOT GENERALIZE,
 2026-08-30.** Read `docs/evidence-route1-run2-plus180-fail-20260830.md` (raw:
 `docs/evidence-route1-run2-plus180-fail-20260830.json`). Same phases as the

@@ -84,3 +84,64 @@ Which channel (or a fusion of both) should criterion 2a actually be scored
 against, and whether n=1 per configuration was ever enough to distinguish
 "converged" from "one favorable noise draw" on either channel. Not answered
 here on purpose.
+
+---
+
+## 🚩 FLAGGED FOR LATER — parked deliberately, 2026-08-31
+
+**Operator decision: this is flagged, not being worked.** Nobody should pick
+it up reflexively as "the obvious next task". It blocks nothing that
+currently works — click-to-path via stop-measure-go is unaffected, since it
+never consults criterion 2a or the step-response probe at all. What it gates
+is the route-1 dead-time line of work, which is itself downstream of Phase 2
+continuous steering, parked on value grounds by standing decision 5.
+
+### The framing is sharper than it was when this doc was written
+
+Re-checked against the pinned backend on 2026-08-31 (`chorty-0.8.12.post4`):
+
+* `vision_info` exists only in `pymammotion/data/model/report_info.py` — VIO
+  heading arrives **inside the same `sys.toapp_report_data` payload as
+  `locations[0]`**, corroborating `docs/the-1hz-bundle-is-the-ceiling-20260822.md`
+  (position, `toward` and VIO heading change on exactly the same instants).
+* `last_report_data_at` is **still absent** from post4, so there is still no
+  per-report-type arrival stamp.
+
+🔑 **Consequence: the two "instruments" are not independently-timed channels.
+They are two fields of one ~1 Hz bundle.** So the disagreement cannot be a
+freshness, sampling-lag or transport artifact, and no connectivity/transport
+fix can address it (checked explicitly against upstream `f4428d47`, which is
+already ported here and is unrelated).
+
+That reduces the open question to something better posed than "which channel
+is right":
+
+> RTK-chord bearing is a **geometric proxy derived across two payloads**;
+> VIO heading is a **direct sensor reading within one payload**. Which is the
+> better estimator of rotation rate — particularly at higher curvature, where
+> the chord proxy degrades because more heading change is compressed into the
+> same ~1 s chord?
+
+⚠️ **That framing argues against the status quo but does not settle it.** VIO
+has its own documented weaknesses — light-dependence, a live calibration
+offset per run, and discrete ~1 Hz latching — so "switch to VIO" is not
+obviously correct either. The dual-channel-agreement option (require both to
+show convergence) remains the conservative middle, at the cost of making 2a
+materially harder to pass.
+
+### What resuming this would need, in order
+
+1. A written decision on what 2a is scored against — RTK chord, VIO heading,
+   or agreement between both — made **before** any new capture, per the rule
+   in "What this does NOT authorize" above.
+2. Only then, code changes to `_step_response_course_series` /
+   `_step_response_analysis`, with the existing runs re-scored offline from
+   their banked raw samples first (both are fully recorded — no new motion is
+   needed to re-score them).
+3. Only then, and only if re-scoring leaves it genuinely ambiguous, new
+   physical runs.
+
+🔑 **Step 2 is free and needs no mower.** Every sample from all four route-1
+runs carries both `position` and `vio`, so any proposed scoring rule can be
+tested against banked evidence before anything is dispatched. That is the
+cheapest possible next step whenever this is picked back up.
