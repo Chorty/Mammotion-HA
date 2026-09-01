@@ -46,8 +46,8 @@ populates on a dry run (same caveat as beta84's sequence instrumentation).
 Byte parity plus the four banked-run regression tests are the verification;
 the first real, separately-authorized daylight step-response run will be the
 first hardware exercise. A night run is UNSCOREABLE under this rule on
-purpose. 🚨 **Not yet browser-verified** — operator check of the card footer
-pending.
+purpose. ✅ **Browser-verified by the operator, 2026-09-01: the card reads
+`0.6.4-beta95`.** The deploy is fully verified end to end.
 
 ### beta93 -> beta94 — 2026-08-31, motion-disabled — BACKEND CHANGE: post4 fixes the blank-credential login outage
 

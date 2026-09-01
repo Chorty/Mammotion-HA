@@ -69,7 +69,8 @@ paths, Lovelace `?v=0.6.4-beta95&build=32818ee1`, gate disarmed before and
 after (live API + RAW), dry run `would_send: false` 15/15 gates. ⚠️ **The
 E-VIO scoring is UNEXERCISED on hardware** — dry runs return before sampling,
 so `vio_analysis` first populates on the next real, separately-authorized
-daylight run. 🚨 **Not yet browser-verified.** Record:
+daylight run. ✅ **Browser-verified 2026-09-01: the card reads `0.6.4-beta95`**
+— the deploy is fully verified end to end. Record:
 `docs/deploy-runbook-p0.md` → beta95. Standing decision 5 is unaffected —
 this repairs a parked instrument, it does not resume the parked work.
 
