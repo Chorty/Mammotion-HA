@@ -8,6 +8,47 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta94 -> beta95 — 2026-09-01 15:26-15:45 EDT, motion-disabled — E-VIO scoring for the step-response probe
+
+Ships the operator-adopted E-VIO scoring rule
+(`docs/findings-rtk-vio-course-rate-scoring-20260831.md`, predeclared in
+`docs/predeclared-rtk-vio-course-rate-scoring-20260831.md`): the probe now
+emits `vio_analysis` scoring 2a via half-phase mean-rate agreement and 2b via
+last-two settle rates, both on VIO heading; omega/tau come from the same
+channel and tau exists only when 2a passes; dark VIO (`vio_state != 2` on any
+sample) refuses to score with `vio_not_live_throughout`. The RTK
+`course_series`/`analysis` stay emitted unchanged as diagnostics. All four
+banked route-1 runs are pinned as fixtures, including the two verdict flips
+(SX 2a PASS→FAIL, tau=2.038s demoted; R2 2a FAIL→PASS, VIO tau 0.80 s, n=1).
+Also folds in the stale `1.06 m` → `1.34 m` blind-disk prose fix in
+`strings.json`/`en.json`, owed since beta82. Backend pin unchanged (post4).
+
+| | beta95 |
+| --- | --- |
+| tag | `v0.6.4-beta95` (release commit `38cadc37`) |
+| quartet | manifest / pyproject / `CARD_VERSION` `0.6.4-beta95`, uv.lock `0.6.4b95` |
+| card md5 | `32818ee19161107f9f5112b0a3bdbedf`, equal at both serving paths and local |
+| Lovelace resource | re-read as `?v=0.6.4-beta95&build=32818ee1` |
+| backend | PyMammotion `0.8.12.post4`, read from inside the container (unchanged) |
+| archive | SHA-256 `4245b3433a00b41b62c9a788b3366999e4aca658a8c1cb52653089c326e58f55`, identical local and host, 0 `._*` entries |
+| file verification | 48 of 48 byte-identical |
+| restart | API up 31 s, 132 mammotion entities at 153 s |
+| gate before/after | `enabled: false`, `real_motion_allowed: false`, no active session; RAW `core.config_entries` reads `"enable_experimental_motion":false` |
+| gate suite | 995 pytest, 91/91 frontend, ruff + format + mypy clean, 0 failed hooks |
+| backup | `/config/mammotion-backup-20260901-1526-pre-beta95.tgz` |
+
+✅ **Dry run on the deployed bytes**: `raw_pymammotion_step_response_probe`
+with `baseline 3000 / step 7000 / settle 5000, max_travel_m 4.5` returned
+`would_send: false`, `command_result.attempted: false`, 15/15 gates, phases
+echoed. ⚠️ **The E-VIO scoring is deployed but UNEXERCISED on hardware** —
+`dry_run` returns before any samples are captured, so `vio_analysis` never
+populates on a dry run (same caveat as beta84's sequence instrumentation).
+Byte parity plus the four banked-run regression tests are the verification;
+the first real, separately-authorized daylight step-response run will be the
+first hardware exercise. A night run is UNSCOREABLE under this rule on
+purpose. 🚨 **Not yet browser-verified** — operator check of the card footer
+pending.
+
 ### beta93 -> beta94 — 2026-08-31, motion-disabled — BACKEND CHANGE: post4 fixes the blank-credential login outage
 
 The only functional change is the pymammotion pin: `chorty-0.8.12.post3` →

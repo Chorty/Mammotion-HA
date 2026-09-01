@@ -44,7 +44,34 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: beta94 (backend post4 — login credential fix, DEPLOYED); PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
+## Current build: beta95 (E-VIO step-response scoring, DEPLOYED 2026-09-01; backend post4 unchanged); PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
+
+🆕 **beta95 — THE STEP-RESPONSE PROBE'S 2a/2b ARE NOW SCORED FROM VIO (rule
+E-VIO), operator-adopted 2026-09-01.** The offline research
+(`docs/findings-rtk-vio-course-rate-scoring-20260831.md`, predeclared before
+any verdict was computed) measured the status-quo RTK chord last-two-diff
+statistic at ~2.7 °/s of 1σ noise against its own 1.5 °/s bound — its
+verdicts were draws — while VIO resolves the bound at ~11σ under half-phase
+mean-rate agreement. The probe now emits `vio_analysis`: 2a = half-phase
+agreement on the step, 2b = last-two settle rates with carryover, both on
+VIO heading between consecutive distinct readings; ω/τ come from the same
+channel and τ exists only when 2a passes; **dark VIO refuses to score**
+(`vio_not_live_throughout`) rather than falling back to RTK — a night
+step-response run is UNSCOREABLE on purpose. RTK `course_series`/`analysis`
+stay emitted as diagnostics. All four banked route-1 runs are pinned as
+regression fixtures (`tests/components/mammotion/test_step_response_vio_scoring.py`),
+**including the two verdict flips: SX (+120/7000) 2a PASS→FAIL — τ = 2.038 s
+is DEMOTED to not-settled — and R2 (+180/7000) 2a FAIL→PASS with VIO
+τ = 0.80 s (pinned, not blessed — n=1).** Also fixed: the stale 1.06 m
+blind-disk prose in `strings.json`/`en.json` (owed since beta82) now reads
+1.34 m. Deploy verified: 48/48 byte-identical, card md5 `32818ee1` at both
+paths, Lovelace `?v=0.6.4-beta95&build=32818ee1`, gate disarmed before and
+after (live API + RAW), dry run `would_send: false` 15/15 gates. ⚠️ **The
+E-VIO scoring is UNEXERCISED on hardware** — dry runs return before sampling,
+so `vio_analysis` first populates on the next real, separately-authorized
+daylight run. 🚨 **Not yet browser-verified.** Record:
+`docs/deploy-runbook-p0.md` → beta95. Standing decision 5 is unaffected —
+this repairs a parked instrument, it does not resume the parked work.
 
 🏁 **LOGIN ROOT CAUSE FOUND AND FIXED, 2026-08-31 — THE FORK WHEELS SHIPPED
 BLANK OAUTH2 CLIENT CREDENTIALS. NOT A RATE LIMIT.** Upstream
