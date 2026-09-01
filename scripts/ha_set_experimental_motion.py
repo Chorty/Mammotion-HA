@@ -28,8 +28,14 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from typing import Any
 
-ENTRY_ID = "01KVM3JVYBWRKM25ZR8T7FKKJ3"
+# ⚠️ Do NOT hardcode the config entry id. Deleting and re-adding the integration
+# mints a new one, and the stale constant fails the options flow with a bare
+# HTTP 500 whose only detail (`UnknownEntry`) is in the HA container log, not in
+# the reply. That cost a live session on 2026-09-01, mid-run-preparation, and it
+# reads exactly like a BLE fault because arming is what surfaces it.
+DOMAIN = "mammotion"
 ENTITY_ID = "lawn_mower.back_yard_clip_skywalker"
 
 # The options-flow field is `prefer_ble_over_wifi`, NOT the `prefer_ble` used
@@ -42,7 +48,7 @@ FLOW_FIELDS = (
 )
 
 
-def _api(path: str, payload: dict | None = None) -> dict:
+def _api(path: str, payload: dict | None = None) -> Any:
     """Call the HA REST API, surfacing the error body rather than a bare code."""
     request = urllib.request.Request(
         os.environ["HA_URL"].rstrip("/") + path,
@@ -60,6 +66,18 @@ def _api(path: str, payload: dict | None = None) -> dict:
         raise SystemExit(
             f"HTTP {err.code} on {path}: {err.read().decode()[:400]}"
         ) from err
+
+
+def _entry_id() -> str:
+    """Resolve the live mammotion config entry id, never a hardcoded constant."""
+    entries = _api("/api/config/config_entries/entry")
+    matches = [e for e in entries if e.get("domain") == DOMAIN]
+    if not matches:
+        raise SystemExit(f"No {DOMAIN} config entry found on this Home Assistant.")
+    if len(matches) > 1:
+        found = ", ".join(f"{e['entry_id']} ({e.get('title')})" for e in matches)
+        raise SystemExit(f"Multiple {DOMAIN} entries; disambiguate manually: {found}")
+    return str(matches[0]["entry_id"])
 
 
 def report() -> bool:
@@ -108,7 +126,7 @@ def main() -> int:
             print("Aborted; gate unchanged.")
             return 1
 
-    flow = _api("/api/config/config_entries/options/flow", {"handler": ENTRY_ID})
+    flow = _api("/api/config/config_entries/options/flow", {"handler": _entry_id()})
 
     # Carry every other option through unchanged: the flow replaces the whole
     # options dict, so an omitted field is silently reset to its default.
