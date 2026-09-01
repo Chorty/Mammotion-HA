@@ -46,6 +46,26 @@ this file every time.
 
 ## Current build: beta95 (E-VIO step-response scoring, DEPLOYED 2026-09-01; backend post4 unchanged); PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
 
+🔑 **AND THE SPLIT IS EXPLAINED, SAME DAY, OFFLINE — IT IS THE ONSET INTERVAL'S
+SAMPLING PHASE, NOT THE PLANT.** Read
+`docs/findings-plus180-split-is-onset-sampling-phase-20260901.md`. Both +180/7000
+runs scored through the same shipped E-VIO code: **intervals 2-7 agree to
+0.195 °/s** (means -12.233 vs -12.038) and the published second-half means to
+**0.424 °/s**, while **interval 1 — the one straddling the step onset — differs
+by 4.33 °/s** (-5.68 vs -1.35). That single interval drags the first-half mean
+and flips 2a. **The mower did the same thing both times: ~-11.5 to -12 °/s at
++180.** 🗑️ **So a third +180/7000 run resolves NOTHING** — it re-samples where the
+~1 Hz VIO boundary lands relative to the command, and would be misread as
+evidence about the machine. ⚠️ **Do NOT "just exclude the onset interval"
+either:** re-splitting the remaining six 3/3 flips both verdicts the OTHER way
+(banked **1.727 FAIL**, repeat **0.503 PASS**) — picking that rule now, knowing
+what it flips, is the exact failure the 2026-08-23 mirror-criterion review
+rejected. 🔑 **The only lever that addresses this is a LONGER step**, shrinking
+the onset interval's share — and it is blocked on purpose: `step_ms` is
+schema-capped at 7000 and `_STEP_RESPONSE_MAX_TOTAL_MS` at 16000, so it needs a
+code change, a release, a deploy, **and it is a safety-bound raise** (more open
+loop travel on an uncorrected curve). Not a quick follow-up.
+
 🚨 **THE +180 E-VIO FLIP DOES NOT REPRODUCE — REPEAT RUN FAILS 2a, 2026-09-01.**
 Read `docs/evidence-route1-plus180-repeat-2a-fail-20260901.md` (raw:
 `docs/raw-samples/raw-route1-run2repeat-plus180-step7000-20260901.json`),
