@@ -63,3 +63,9 @@ exp_continue                                     # the Tcl/expect builtin used i
 
 # --- paths that live in the sibling Chorty/PyMammotion fork repo, not this tree ---
 scripts/update_credentials.py                    # upstream PyMammotion's build-time credential injector, cited by CLAUDE.md's 2026-08-31 login root-cause entry. It exists in the PyMammotion fork checkout, never in Mammotion-HA
+# Home Assistant entity ids that live on the host, not in this tree. Recorded
+# 2026-09-01 after the master_bedroom_proxy outage blocked an authorized run;
+# they are the discriminator for "BLE cannot connect", so the prose needs them.
+bermuda_global_active_proxy_count
+master_bedroom_proxy_
+master_bedroom_proxy

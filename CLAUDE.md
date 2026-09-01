@@ -46,6 +46,54 @@ this file every time.
 
 ## Current build: beta95 (E-VIO step-response scoring, DEPLOYED 2026-09-01; backend post4 unchanged); PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
 
+🚨 **THE +180 E-VIO FLIP DOES NOT REPRODUCE — REPEAT RUN FAILS 2a, 2026-09-01.**
+Read `docs/evidence-route1-plus180-repeat-2a-fail-20260901.md` (raw:
+`docs/raw-samples/raw-route1-run2repeat-plus180-step7000-20260901.json`),
+predeclared in `docs/phase2-route1-plus180-repeat-predeclared-20260901.md`
+before any capture existed. 🏁 **E-VIO ran on hardware for the first time and
+returned `scoreable: true`** — all 147 in-window samples carried `vio_state: 2`,
+so the `vio_not_live_throughout` refusal never fired. **And 2a FAILS at
+`half_diff` 3.4049 °/s against the 1.5 °/s bound — 26x the banked run's 0.130
+and 2.27x the bound.** 2b passes (1.2547). 🗑️ **`tau = 0.80 s` MUST NOT BE
+QUOTED**: it was pinned "not blessed, n=1" and at n=2 the config does not
+reproduce a steady step, so the programme has **no VIO-derived time constant at
+all**. ✅ **The rule's construction is vindicated** — `tau_actuator_s` and
+`omega_step_deg_per_s` both came back **null** because 2a failed, exactly the
+guard that would have prevented the discarded `tau = 7.28 s` of 2026-08-30.
+⚠️ **n = 2, one each way — do not fit anything to two points**, and this run
+cannot separate "7000 ms is too short at +180" from "the step is not repeatably
+steady". Under E-VIO **no route-1 config now has a reproduced 2a pass.** Safety:
+15/15 gates, `window_complete` (no guard trip), travel 3.9830 m of the 4.5 m
+budget (**89% — closer to the guard than any prior step run**), stop confirmed,
+gate disarmed and verified live API **and** RAW. **Authorizes nothing further;
+standing decision 5 untouched.**
+
+🐛 **FOUND THE SAME DAY, and it is not in the motion path:
+`scripts/ha_set_experimental_motion.py` hardcoded a DEAD config entry id.**
+Arming failed with a bare **HTTP 500** whose only detail
+(`config_entries.UnknownEntry: 01KVM3JVYBWRKM25ZR8T7FKKJ3`) reached the HA
+container log and never the reply. That id predated the 2026-08-31
+delete-and-re-add; the live entry is **`01M1CVFWHYWW527S9BM5M2BDP3`**. It
+surfaces ONLY when arming, so it reads exactly like a gate or BLE fault. Fixed
+in `fa40dd7b` — resolved at runtime from `/api/config/config_entries/entry`,
+refusing ambiguity rather than guessing. ⚠️ **Any doc quoting the old entry id
+(including the 2026-08-24 reload entry below) is stale.**
+
+🔌 **BLE dropped mid-preparation and the cause was INFRASTRUCTURE, not code.**
+The `master_bedroom_proxy` ESPHome device — the proxy near the mower — went
+`unavailable` at 15:34 EDT; the link survived on an already-open connection
+until ~18:06, then could not re-establish (`never seen by any scanner`,
+`BleakOutOfConnectionSlotsError`). ⚠️ **Every cheap indicator lied**: `ble_rssi`
+read **-60** the whole time (self-reported and stale) and
+`sensor.bermuda_global_active_proxy_count` read **3** — the other three proxies,
+none near the yard. 🔑 **Check `master_bedroom_proxy_*` for `unavailable` BEFORE
+reaching for a config-entry reload, an HA restart, or a mower wake.**
+⚠️ A **97.07°** VIO-vs-mirror orientation disagreement appeared while BLE was
+down (`trustworthy: false`, `heading_sources_disagree`) and **resolved to 0.678°
+after the repositioning drive** — `toward` had simply latched and re-derives from
+real travel. It did not affect scoring: E-VIO reads *rates* between consecutive
+VIO headings, so a shifted absolute frame cancels.
+
 🆕 **beta95 — THE STEP-RESPONSE PROBE'S 2a/2b ARE NOW SCORED FROM VIO (rule
 E-VIO), operator-adopted 2026-09-01.** The offline research
 (`docs/findings-rtk-vio-course-rate-scoring-20260831.md`, predeclared before
