@@ -4,18 +4,20 @@
 
 ⚠️ **Everything BELOW this section is historical.** Reverify before acting on it.
 
-🏁 **HOST IS BETA94 (backend `0.8.12.post4`). THE LOGIN OUTAGE IS ROOT-CAUSED
-AND FIXED, DEPLOYED, NOT YET EXERCISED.** The "Client id or secret error" on
-both accounts was the Chorty fork wheels shipping BLANK
+🏁 **HOST IS BETA94 (backend `0.8.12.post4`). THE LOGIN OUTAGE IS ROOT-CAUSED,
+FIXED, DEPLOYED — AND CONFIRMED WORKING (operator logged in ≈ 19:00 EDT;
+Aliyun + Mammotion devices registered, `mqtt_status: reported_online`, zero
+"Client id or secret error" since the deploy).** The outage was the Chorty
+fork wheels shipping BLANK
 `MAMMOTION_OAUTH2_CLIENT_ID`/`_SECRET` (upstream injects them at build time
 from GitHub secrets, which do not propagate to forks; every post1–post3 wheel
 verified blank by download; the upstream PyPI 0.8.12 wheel verified
 non-blank). Not a rate limit — waiting could never have fixed it. post4
 rebuilds the same tree with credentials injected; deployed 2026-08-31, full
 verification tail passed, and the deployed container reads credential lengths
-15/30/8/32 (post3 read 0/0 for the OAuth2 pair). **Next step: ONE deliberate
-reauth (or re-add) with either account — expected to succeed now.** A
-BLE-sourced config entry exists (operator re-added it); 132 entities up. Read
+15/30/8/32 (post3 read 0/0 for the OAuth2 pair). **The reauth test PASSED**:
+devices registered through the cloud, entity platforms set up, 143 entities
+with 116 available. Read
 `CLAUDE.md` → "Current build" and `docs/deploy-runbook-p0.md` → beta94.
 
 🗑️ *(Superseded by the root cause above, kept for the record:)* the

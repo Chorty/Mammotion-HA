@@ -78,17 +78,23 @@ both serving paths, Lovelace `?v=0.6.4-beta94&build=cba762a5`, backend reads
 `pymammotion.const` credential lengths read **15/30/8/32 — non-empty** on the
 deployed bytes (post3 read 0/0 for the OAuth2 pair). Gate disarmed before and
 after. Record: `docs/deploy-runbook-p0.md` → beta94.
-⚠️ **Deployed but UNEXERCISED** — no password grant has run against post4 yet.
-The test is ONE deliberate reauth/re-add; a config entry exists again
-(BLE-sourced, operator re-added it).
+✅ **EXERCISED AND CONFIRMED, same day ≈ 19:00 EDT: the operator logged in
+through post4 and it WORKED.** `pymammotion.client` logged `Aliyun device
+registered: RTKBNA235279309` and `Mammotion device registered: Luba-VSPLV397`
+(both possible only after a successful cloud login), all entity platforms set
+up, `mqtt_status: reported_online`, `ble_link_live: on`, 143 entities with 116
+available — and **zero `Client id or secret error` lines since the deploy**
+(every remaining occurrence in the log predates 18:26). The root cause is
+closed. Known-benign: `last_cloud_login_success` reads `unknown` because the
+login preceded sensor registration; a `mow_path_fetch` saga timed out once at
+19:44 (device-side no-response, unrelated to auth).
 🗑️ **The "wait ~24h for the rate limit to clear" advice below is WITHDRAWN as
 a remedy** — with blank credentials no amount of waiting could ever make a
 login succeed. (Whether heavy failed-login volume *also* tripped some server
 state is unknown; irrelevant until real credentials are deployed.) One
 deliberate reauth after deploying post4 is the test.
-⚠️ **Integration config entry exists again** — the operator re-added it after
-the delete; the entry is up with 132 entities. Cloud login still needs its
-first post-post4 reauth to be confirmed working.
+⚠️ **Integration is set up and its cloud login is CONFIRMED WORKING on post4**
+— see the exercised entry above.
 
 🚨 *(superseded by the entry above, kept for the record)* **LOGIN FAILED FOR
 BOTH ACCOUNTS WITH AN IDENTICAL ERROR, 2026-08-31.**

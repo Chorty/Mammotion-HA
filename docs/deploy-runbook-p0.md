@@ -39,11 +39,16 @@ non-empty — where post3 read 0 / 0 for the OAuth2 pair. Backend version reads
 | gate after | `enabled: false`, `real_motion_allowed: false`, no active session |
 | backup | `/config/mammotion-backup-20260831-1826-pre-beta94.tgz` |
 
-⚠️ A config entry exists again (BLE-sourced; the operator re-added after the
-delete). **The login fix is deployed but UNEXERCISED** — no password grant has
-run against post4 yet. The test is one deliberate reauth/re-add with either
-account; under the root-cause diagnosis it should now succeed. Browser card
-verification (footer reads `0.6.4-beta94`) also pending operator.
+✅ **The login fix is EXERCISED AND CONFIRMED** (≈ 19:00 EDT, same day): the
+operator logged in through post4 — `pymammotion.client` logged both `Aliyun
+device registered: RTKBNA235279309` and `Mammotion device registered:
+Luba-VSPLV397`, all entity platforms set up, `mqtt_status: reported_online`,
+`ble_link_live: on`, 143 entities / 116 available, and zero `Client id or
+secret error` lines since the deploy (all remaining occurrences predate
+18:26). Known-benign: `last_cloud_login_success` reads `unknown` (the login
+preceded sensor registration); one `mow_path_fetch` saga timeout at 19:44 is
+a device no-response, not auth. Browser card verification (footer
+`0.6.4-beta94`) still pending operator.
 
 ### beta92 -> beta93 — 2026-08-31, motion-disabled
 
