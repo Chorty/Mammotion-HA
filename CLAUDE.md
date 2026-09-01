@@ -77,7 +77,9 @@ both serving paths, Lovelace `?v=0.6.4-beta94&build=cba762a5`, backend reads
 `0.8.12.post4` from inside the container, and the decisive check:
 `pymammotion.const` credential lengths read **15/30/8/32 — non-empty** on the
 deployed bytes (post3 read 0/0 for the OAuth2 pair). Gate disarmed before and
-after. Record: `docs/deploy-runbook-p0.md` → beta94.
+after. ✅ **Browser-verified: the card footer reads `card v0.6.4-beta94`**
+(operator, same evening) — the deploy is fully verified end to end. Record:
+`docs/deploy-runbook-p0.md` → beta94.
 ✅ **EXERCISED AND CONFIRMED, same day ≈ 19:00 EDT: the operator logged in
 through post4 and it WORKED.** `pymammotion.client` logged `Aliyun device
 registered: RTKBNA235279309` and `Mammotion device registered: Luba-VSPLV397`

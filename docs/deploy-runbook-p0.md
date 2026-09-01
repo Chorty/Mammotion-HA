@@ -47,8 +47,9 @@ Luba-VSPLV397`, all entity platforms set up, `mqtt_status: reported_online`,
 secret error` lines since the deploy (all remaining occurrences predate
 18:26). Known-benign: `last_cloud_login_success` reads `unknown` (the login
 preceded sensor registration); one `mow_path_fetch` saga timeout at 19:44 is
-a device no-response, not auth. Browser card verification (footer
-`0.6.4-beta94`) still pending operator.
+a device no-response, not auth. ✅ **Browser-verified by the operator, same
+evening: the card footer reads `card v0.6.4-beta94`.** The deploy is fully
+verified end to end.
 
 ### beta92 -> beta93 — 2026-08-31, motion-disabled
 
