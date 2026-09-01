@@ -1,0 +1,5976 @@
+{
+  "service": "raw_pymammotion_step_response_probe",
+  "mode": "real_step_response_probe",
+  "dry_run": false,
+  "purpose": "Open-loop dead-time measurement for Q1/Q2 of docs/phase2-dead-time-step-test-design-20260828.md. No controller, no route, no steering law.",
+  "route_start": {
+    "x": 5.9265,
+    "y": -5.253
+  },
+  "corridor_polygon": [
+    {
+      "x": 0.9264999999999999,
+      "y": -10.253
+    },
+    {
+      "x": 10.9265,
+      "y": -10.253
+    },
+    {
+      "x": 10.9265,
+      "y": -0.2530000000000001
+    },
+    {
+      "x": 0.9264999999999999,
+      "y": -0.2530000000000001
+    }
+  ],
+  "phases": {
+    "baseline_ms": 3000,
+    "step_ms": 7000,
+    "settle_ms": 5000,
+    "total_ms": 15000
+  },
+  "linear_speed": 400,
+  "step_angular_speed": 180,
+  "motion_refresh_interval_ms": 200,
+  "sample_interval_ms": 100,
+  "max_travel_m": 4.5,
+  "safety_gates": [
+    {
+      "name": "stop_primitive_available",
+      "passed": true,
+      "detail": "Coordinator must expose async_stop_manual_motion()."
+    },
+    {
+      "name": "ble_transport_required",
+      "passed": true,
+      "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+    },
+    {
+      "name": "ble_link_live",
+      "passed": true,
+      "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+      "diagnostics": {
+        "live": true,
+        "reason": null,
+        "is_connected": true,
+        "is_usable": true,
+        "cooldown_active": false,
+        "cooldown_remaining_seconds": 0.0,
+        "last_send_age_seconds": 1.0,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false,
+        "stall_threshold_seconds": 15.0,
+        "queue_depth_limit": 0
+      }
+    },
+    {
+      "name": "operator_confirmed_blades_off",
+      "passed": true,
+      "detail": "Real pulse requires confirm_blades_off=true."
+    },
+    {
+      "name": "operator_confirmed_clear_area",
+      "passed": true,
+      "detail": "Real pulse requires confirm_clear_area=true."
+    },
+    {
+      "name": "mower_reports_blades_off",
+      "passed": true,
+      "detail": "Real pulse requires blade state and cutter mode off. A nonzero latched RPM register is discounted only after three samples prove the position feed live and the RPM constant.",
+      "diagnostics": {
+        "blade": {
+          "reported_state": 0,
+          "reported_state_label": "OFF",
+          "knife_status": null,
+          "current_cutter_mode": 0,
+          "current_cutter_rpm": 0,
+          "blade_safe_for_motion": true,
+          "safety_blockers": [],
+          "blade_rpm_looks_latched": false,
+          "blade_rpm_stale_register": false
+        },
+        "rpm_stale_verdict": {
+          "stale_register": false,
+          "reasons": [
+            "rpm_not_consistently_nonzero"
+          ],
+          "samples": 3,
+          "rpm_values": [
+            0,
+            0,
+            0
+          ],
+          "feed_proven_live": true
+        }
+      }
+    },
+    {
+      "name": "mower_ready",
+      "passed": true,
+      "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+    },
+    {
+      "name": "not_docked_or_charging",
+      "passed": true,
+      "detail": "Real pulse requires the mower to be off the dock and not charging."
+    },
+    {
+      "name": "live_map_position_available",
+      "passed": true,
+      "detail": "Real pulse requires live map-local mower position."
+    },
+    {
+      "name": "position_area_inside",
+      "passed": true,
+      "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+    },
+    {
+      "name": "map_position_nonzero",
+      "passed": true,
+      "detail": "Real pulse requires nonzero map-local x/y coordinates."
+    },
+    {
+      "name": "corridor_polygon_valid",
+      "passed": true,
+      "detail": "The frozen corridor must be a real polygon, >= 3 vertices."
+    },
+    {
+      "name": "frozen_start_inside_corridor",
+      "passed": true,
+      "detail": "The frozen start must be inside the frozen corridor."
+    },
+    {
+      "name": "start_drift_within_bound",
+      "passed": true,
+      "detail": "Live position must be within 0.3 m of the frozen start. The start is never re-derived from live position -- this gate aborts instead.",
+      "diagnostics": {
+        "drift_m": 0.0
+      }
+    },
+    {
+      "name": "step_path_contained",
+      "passed": true,
+      "detail": "The probe steers open loop on a curved path whose shape is the unknown under test, so EVERY possible ray must fit the frozen corridor: 4.5 m of commanded travel plus 0.5 m stopping/guard overshoot = 5.0 m.",
+      "diagnostics": {
+        "required_radius_m": 5.0,
+        "boundary_clearance_m": 5.0,
+        "live_position_inside": true,
+        "commanded_travel_m": 4.5,
+        "stop_overshoot_m": 0.5
+      }
+    }
+  ],
+  "blockers": [],
+  "would_send": true,
+  "command_result": {
+    "attempted": true,
+    "ok": true,
+    "error": null,
+    "duration_ms": 185.88
+  },
+  "stop_result": {
+    "attempted": true,
+    "ok": true,
+    "error": null,
+    "coordinator_method": "async_stop_manual_motion",
+    "use_wifi": false,
+    "transport_preference": "ble_preferred",
+    "ack": {
+      "movement_ok": true
+    },
+    "duration_ms": 103.748
+  },
+  "phase_transitions": [
+    {
+      "phase": "baseline",
+      "angular_speed": 0,
+      "elapsed_ms": 186.61
+    },
+    {
+      "phase": "step",
+      "angular_speed": 180,
+      "elapsed_ms": 3000.24
+    },
+    {
+      "phase": "settle",
+      "angular_speed": 0,
+      "elapsed_ms": 10001.085
+    }
+  ],
+  "samples": [
+    {
+      "index": 0,
+      "elapsed_ms": 186.341,
+      "captured_at": "2026-09-01T22:32:25.314230+00:00",
+      "last_report_at_monotonic": 5033198.932409817,
+      "position_sequence": 473,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.9265,
+        "y": -5.253,
+        "toward": 154.4221,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.61422821288978,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 1,
+      "elapsed_ms": 287.848,
+      "captured_at": "2026-09-01T22:32:25.415741+00:00",
+      "last_report_at_monotonic": 5033198.932409817,
+      "position_sequence": 473,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.9265,
+        "y": -5.253,
+        "toward": 154.4221,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.61422821288978,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 2,
+      "elapsed_ms": 388.838,
+      "captured_at": "2026-09-01T22:32:25.516725+00:00",
+      "last_report_at_monotonic": 5033198.932409817,
+      "position_sequence": 473,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.9265,
+        "y": -5.253,
+        "toward": 154.4221,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.61422821288978,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 3,
+      "elapsed_ms": 490.273,
+      "captured_at": "2026-09-01T22:32:25.618159+00:00",
+      "last_report_at_monotonic": 5033198.932409817,
+      "position_sequence": 473,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.9265,
+        "y": -5.253,
+        "toward": 154.4221,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.61422821288978,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 4,
+      "elapsed_ms": 593.133,
+      "captured_at": "2026-09-01T22:32:25.721032+00:00",
+      "last_report_at_monotonic": 5033199.443183408,
+      "position_sequence": 473,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.9265,
+        "y": -5.253,
+        "toward": 154.4221,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.61422821288978,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 5,
+      "elapsed_ms": 694.49,
+      "captured_at": "2026-09-01T22:32:25.822378+00:00",
+      "last_report_at_monotonic": 5033199.443183408,
+      "position_sequence": 473,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.9265,
+        "y": -5.253,
+        "toward": 154.4221,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.61422821288978,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 6,
+      "elapsed_ms": 795.131,
+      "captured_at": "2026-09-01T22:32:25.923019+00:00",
+      "last_report_at_monotonic": 5033199.443183408,
+      "position_sequence": 473,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.9265,
+        "y": -5.253,
+        "toward": 154.4221,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.61422821288978,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 7,
+      "elapsed_ms": 896.535,
+      "captured_at": "2026-09-01T22:32:26.024421+00:00",
+      "last_report_at_monotonic": 5033199.443183408,
+      "position_sequence": 473,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.9265,
+        "y": -5.253,
+        "toward": 154.4221,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.61422821288978,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 8,
+      "elapsed_ms": 998.006,
+      "captured_at": "2026-09-01T22:32:26.125893+00:00",
+      "last_report_at_monotonic": 5033199.443183408,
+      "position_sequence": 473,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.9265,
+        "y": -5.253,
+        "toward": 154.4221,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.61422821288978,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 9,
+      "elapsed_ms": 1098.867,
+      "captured_at": "2026-09-01T22:32:26.226764+00:00",
+      "last_report_at_monotonic": 5033199.954711284,
+      "position_sequence": 474,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.983,
+        "y": -5.3473,
+        "toward": 154.4221,
+        "pos_type": 1,
+        "zone_hash": 1343645155037768237
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.958670082035994,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      },
+      "cumulative_travel_m": 0.0
+    },
+    {
+      "index": 10,
+      "elapsed_ms": 1200.04,
+      "captured_at": "2026-09-01T22:32:26.327931+00:00",
+      "last_report_at_monotonic": 5033199.954711284,
+      "position_sequence": 474,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.983,
+        "y": -5.3473,
+        "toward": 154.4221,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.958670082035994,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 11,
+      "elapsed_ms": 1301.14,
+      "captured_at": "2026-09-01T22:32:26.429029+00:00",
+      "last_report_at_monotonic": 5033199.954711284,
+      "position_sequence": 474,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.983,
+        "y": -5.3473,
+        "toward": 154.4221,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.958670082035994,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 12,
+      "elapsed_ms": 1402.27,
+      "captured_at": "2026-09-01T22:32:26.530159+00:00",
+      "last_report_at_monotonic": 5033199.954711284,
+      "position_sequence": 474,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.983,
+        "y": -5.3473,
+        "toward": 154.4221,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.958670082035994,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 13,
+      "elapsed_ms": 1503.246,
+      "captured_at": "2026-09-01T22:32:26.631135+00:00",
+      "last_report_at_monotonic": 5033199.954711284,
+      "position_sequence": 474,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.983,
+        "y": -5.3473,
+        "toward": 154.4221,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.958670082035994,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 14,
+      "elapsed_ms": 1603.783,
+      "captured_at": "2026-09-01T22:32:26.731669+00:00",
+      "last_report_at_monotonic": 5033200.455171631,
+      "position_sequence": 474,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.983,
+        "y": -5.3473,
+        "toward": 154.4221,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.958670082035994,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 15,
+      "elapsed_ms": 1704.844,
+      "captured_at": "2026-09-01T22:32:26.832733+00:00",
+      "last_report_at_monotonic": 5033200.455171631,
+      "position_sequence": 474,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.983,
+        "y": -5.3473,
+        "toward": 154.4221,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.958670082035994,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 16,
+      "elapsed_ms": 1807.206,
+      "captured_at": "2026-09-01T22:32:26.935093+00:00",
+      "last_report_at_monotonic": 5033200.455171631,
+      "position_sequence": 474,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.983,
+        "y": -5.3473,
+        "toward": 154.4221,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.958670082035994,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 17,
+      "elapsed_ms": 1908.123,
+      "captured_at": "2026-09-01T22:32:27.036011+00:00",
+      "last_report_at_monotonic": 5033200.455171631,
+      "position_sequence": 474,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.983,
+        "y": -5.3473,
+        "toward": 154.4221,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.958670082035994,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 18,
+      "elapsed_ms": 2009.601,
+      "captured_at": "2026-09-01T22:32:27.137488+00:00",
+      "last_report_at_monotonic": 5033200.455171631,
+      "position_sequence": 474,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.983,
+        "y": -5.3473,
+        "toward": 154.4221,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.958670082035994,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 19,
+      "elapsed_ms": 2111.163,
+      "captured_at": "2026-09-01T22:32:27.239052+00:00",
+      "last_report_at_monotonic": 5033200.988852474,
+      "position_sequence": 475,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.1196,
+        "y": -5.6211,
+        "toward": 153.0611,
+        "pos_type": 1,
+        "zone_hash": 1343645155037768237
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.218226384206545,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      },
+      "cumulative_travel_m": 0.306
+    },
+    {
+      "index": 20,
+      "elapsed_ms": 2212.261,
+      "captured_at": "2026-09-01T22:32:27.340149+00:00",
+      "last_report_at_monotonic": 5033200.988852474,
+      "position_sequence": 475,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.1196,
+        "y": -5.6211,
+        "toward": 153.0611,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.218226384206545,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 21,
+      "elapsed_ms": 2313.561,
+      "captured_at": "2026-09-01T22:32:27.441448+00:00",
+      "last_report_at_monotonic": 5033200.988852474,
+      "position_sequence": 475,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.1196,
+        "y": -5.6211,
+        "toward": 153.0611,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.218226384206545,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 22,
+      "elapsed_ms": 2414.677,
+      "captured_at": "2026-09-01T22:32:27.542564+00:00",
+      "last_report_at_monotonic": 5033200.988852474,
+      "position_sequence": 475,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.1196,
+        "y": -5.6211,
+        "toward": 153.0611,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.218226384206545,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 23,
+      "elapsed_ms": 2516.086,
+      "captured_at": "2026-09-01T22:32:27.643983+00:00",
+      "last_report_at_monotonic": 5033201.39020023,
+      "position_sequence": 475,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.1196,
+        "y": -5.6211,
+        "toward": 153.0611,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.218226384206545,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 24,
+      "elapsed_ms": 2618.026,
+      "captured_at": "2026-09-01T22:32:27.745928+00:00",
+      "last_report_at_monotonic": 5033201.39020023,
+      "position_sequence": 475,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.1196,
+        "y": -5.6211,
+        "toward": 153.0611,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.218226384206545,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 25,
+      "elapsed_ms": 2720.322,
+      "captured_at": "2026-09-01T22:32:27.848211+00:00",
+      "last_report_at_monotonic": 5033201.39020023,
+      "position_sequence": 475,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.1196,
+        "y": -5.6211,
+        "toward": 153.0611,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.218226384206545,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 26,
+      "elapsed_ms": 2821.059,
+      "captured_at": "2026-09-01T22:32:27.948948+00:00",
+      "last_report_at_monotonic": 5033201.39020023,
+      "position_sequence": 475,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.1196,
+        "y": -5.6211,
+        "toward": 153.0611,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.218226384206545,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 27,
+      "elapsed_ms": 2922.256,
+      "captured_at": "2026-09-01T22:32:28.050142+00:00",
+      "last_report_at_monotonic": 5033201.39020023,
+      "position_sequence": 475,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.1196,
+        "y": -5.6211,
+        "toward": 153.0611,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -63.218226384206545,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 28,
+      "elapsed_ms": 3023.761,
+      "captured_at": "2026-09-01T22:32:28.151648+00:00",
+      "last_report_at_monotonic": 5033201.903079767,
+      "position_sequence": 476,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2571,
+        "y": -5.8944,
+        "toward": 151.8375,
+        "pos_type": 1,
+        "zone_hash": 1343645155037768237
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -62.430160040011245,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      },
+      "cumulative_travel_m": 0.6119
+    },
+    {
+      "index": 29,
+      "elapsed_ms": 3125.128,
+      "captured_at": "2026-09-01T22:32:28.253024+00:00",
+      "last_report_at_monotonic": 5033201.903079767,
+      "position_sequence": 476,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2571,
+        "y": -5.8944,
+        "toward": 151.8375,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -62.430160040011245,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 30,
+      "elapsed_ms": 3226.751,
+      "captured_at": "2026-09-01T22:32:28.354637+00:00",
+      "last_report_at_monotonic": 5033201.903079767,
+      "position_sequence": 476,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2571,
+        "y": -5.8944,
+        "toward": 151.8375,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -62.430160040011245,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 31,
+      "elapsed_ms": 3328.006,
+      "captured_at": "2026-09-01T22:32:28.455900+00:00",
+      "last_report_at_monotonic": 5033201.903079767,
+      "position_sequence": 476,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2571,
+        "y": -5.8944,
+        "toward": 151.8375,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -62.430160040011245,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 32,
+      "elapsed_ms": 3429.07,
+      "captured_at": "2026-09-01T22:32:28.556958+00:00",
+      "last_report_at_monotonic": 5033201.903079767,
+      "position_sequence": 476,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2571,
+        "y": -5.8944,
+        "toward": 151.8375,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -62.430160040011245,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 33,
+      "elapsed_ms": 3530.197,
+      "captured_at": "2026-09-01T22:32:28.658084+00:00",
+      "last_report_at_monotonic": 5033202.407506129,
+      "position_sequence": 476,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2571,
+        "y": -5.8944,
+        "toward": 151.8375,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -62.430160040011245,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 34,
+      "elapsed_ms": 3631.323,
+      "captured_at": "2026-09-01T22:32:28.759211+00:00",
+      "last_report_at_monotonic": 5033202.407506129,
+      "position_sequence": 476,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2571,
+        "y": -5.8944,
+        "toward": 151.8375,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -62.430160040011245,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 35,
+      "elapsed_ms": 3732.38,
+      "captured_at": "2026-09-01T22:32:28.860269+00:00",
+      "last_report_at_monotonic": 5033202.407506129,
+      "position_sequence": 476,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2571,
+        "y": -5.8944,
+        "toward": 151.8375,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -62.430160040011245,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 36,
+      "elapsed_ms": 3833.341,
+      "captured_at": "2026-09-01T22:32:28.961230+00:00",
+      "last_report_at_monotonic": 5033202.407506129,
+      "position_sequence": 476,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2571,
+        "y": -5.8944,
+        "toward": 151.8375,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -62.430160040011245,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 37,
+      "elapsed_ms": 3934.369,
+      "captured_at": "2026-09-01T22:32:29.062257+00:00",
+      "last_report_at_monotonic": 5033202.407506129,
+      "position_sequence": 476,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2571,
+        "y": -5.8944,
+        "toward": 151.8375,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -62.430160040011245,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 38,
+      "elapsed_ms": 4035.056,
+      "captured_at": "2026-09-01T22:32:29.162943+00:00",
+      "last_report_at_monotonic": 5033202.407506129,
+      "position_sequence": 476,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2571,
+        "y": -5.8944,
+        "toward": 151.8375,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -62.430160040011245,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 39,
+      "elapsed_ms": 4135.859,
+      "captured_at": "2026-09-01T22:32:29.263751+00:00",
+      "last_report_at_monotonic": 5033202.407506129,
+      "position_sequence": 476,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2571,
+        "y": -5.8944,
+        "toward": 151.8375,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -62.430160040011245,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 40,
+      "elapsed_ms": 4236.353,
+      "captured_at": "2026-09-01T22:32:29.364239+00:00",
+      "last_report_at_monotonic": 5033202.407506129,
+      "position_sequence": 476,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2571,
+        "y": -5.8944,
+        "toward": 151.8375,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -62.430160040011245,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 41,
+      "elapsed_ms": 4340.237,
+      "captured_at": "2026-09-01T22:32:29.468124+00:00",
+      "last_report_at_monotonic": 5033203.268526889,
+      "position_sequence": 477,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.4161,
+        "y": -6.1699,
+        "toward": 155.6574,
+        "pos_type": 1,
+        "zone_hash": 1343645155037768237
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -64.20973996444022,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      },
+      "cumulative_travel_m": 0.93
+    },
+    {
+      "index": 42,
+      "elapsed_ms": 4441.706,
+      "captured_at": "2026-09-01T22:32:29.569592+00:00",
+      "last_report_at_monotonic": 5033203.268526889,
+      "position_sequence": 477,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.4161,
+        "y": -6.1699,
+        "toward": 155.6574,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -64.20973996444022,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 43,
+      "elapsed_ms": 4542.847,
+      "captured_at": "2026-09-01T22:32:29.670736+00:00",
+      "last_report_at_monotonic": 5033203.430730723,
+      "position_sequence": 477,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.4161,
+        "y": -6.1699,
+        "toward": 155.6574,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -64.20973996444022,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 44,
+      "elapsed_ms": 4645.22,
+      "captured_at": "2026-09-01T22:32:29.773107+00:00",
+      "last_report_at_monotonic": 5033203.430730723,
+      "position_sequence": 477,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.4161,
+        "y": -6.1699,
+        "toward": 155.6574,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -64.20973996444022,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 45,
+      "elapsed_ms": 4746.547,
+      "captured_at": "2026-09-01T22:32:29.874434+00:00",
+      "last_report_at_monotonic": 5033203.430730723,
+      "position_sequence": 477,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.4161,
+        "y": -6.1699,
+        "toward": 155.6574,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -64.20973996444022,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 46,
+      "elapsed_ms": 4847.624,
+      "captured_at": "2026-09-01T22:32:29.975518+00:00",
+      "last_report_at_monotonic": 5033203.430730723,
+      "position_sequence": 477,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.4161,
+        "y": -6.1699,
+        "toward": 155.6574,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -64.20973996444022,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 47,
+      "elapsed_ms": 4949.461,
+      "captured_at": "2026-09-01T22:32:30.077359+00:00",
+      "last_report_at_monotonic": 5033203.430730723,
+      "position_sequence": 477,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.4161,
+        "y": -6.1699,
+        "toward": 155.6574,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -64.20973996444022,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 48,
+      "elapsed_ms": 5050.993,
+      "captured_at": "2026-09-01T22:32:30.178884+00:00",
+      "last_report_at_monotonic": 5033203.960607875,
+      "position_sequence": 478,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.5372,
+        "y": -6.4322,
+        "toward": 165.9385,
+        "pos_type": 1,
+        "zone_hash": 1343645155037768237
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -74.4057828402109,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      },
+      "cumulative_travel_m": 1.2189
+    },
+    {
+      "index": 49,
+      "elapsed_ms": 5152.649,
+      "captured_at": "2026-09-01T22:32:30.280545+00:00",
+      "last_report_at_monotonic": 5033203.960607875,
+      "position_sequence": 478,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.5372,
+        "y": -6.4322,
+        "toward": 165.9385,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -74.4057828402109,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 50,
+      "elapsed_ms": 5253.417,
+      "captured_at": "2026-09-01T22:32:30.381303+00:00",
+      "last_report_at_monotonic": 5033203.960607875,
+      "position_sequence": 478,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.5372,
+        "y": -6.4322,
+        "toward": 165.9385,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -74.4057828402109,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 51,
+      "elapsed_ms": 5354.316,
+      "captured_at": "2026-09-01T22:32:30.482203+00:00",
+      "last_report_at_monotonic": 5033203.960607875,
+      "position_sequence": 478,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.5372,
+        "y": -6.4322,
+        "toward": 165.9385,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -74.4057828402109,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 52,
+      "elapsed_ms": 5455.461,
+      "captured_at": "2026-09-01T22:32:30.583349+00:00",
+      "last_report_at_monotonic": 5033203.960607875,
+      "position_sequence": 478,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.5372,
+        "y": -6.4322,
+        "toward": 165.9385,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -74.4057828402109,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 53,
+      "elapsed_ms": 5556.448,
+      "captured_at": "2026-09-01T22:32:30.684334+00:00",
+      "last_report_at_monotonic": 5033204.461083357,
+      "position_sequence": 478,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.5372,
+        "y": -6.4322,
+        "toward": 165.9385,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -74.4057828402109,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 54,
+      "elapsed_ms": 5657.488,
+      "captured_at": "2026-09-01T22:32:30.785377+00:00",
+      "last_report_at_monotonic": 5033204.461083357,
+      "position_sequence": 478,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.5372,
+        "y": -6.4322,
+        "toward": 165.9385,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -74.4057828402109,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 55,
+      "elapsed_ms": 5758.991,
+      "captured_at": "2026-09-01T22:32:30.886879+00:00",
+      "last_report_at_monotonic": 5033204.461083357,
+      "position_sequence": 478,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.5372,
+        "y": -6.4322,
+        "toward": 165.9385,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -74.4057828402109,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 56,
+      "elapsed_ms": 5859.527,
+      "captured_at": "2026-09-01T22:32:30.987413+00:00",
+      "last_report_at_monotonic": 5033204.461083357,
+      "position_sequence": 478,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.5372,
+        "y": -6.4322,
+        "toward": 165.9385,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -74.4057828402109,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 57,
+      "elapsed_ms": 5961.22,
+      "captured_at": "2026-09-01T22:32:31.089126+00:00",
+      "last_report_at_monotonic": 5033204.461083357,
+      "position_sequence": 478,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.5372,
+        "y": -6.4322,
+        "toward": 165.9385,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -74.4057828402109,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 58,
+      "elapsed_ms": 6062.826,
+      "captured_at": "2026-09-01T22:32:31.190714+00:00",
+      "last_report_at_monotonic": 5033204.461083357,
+      "position_sequence": 478,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.5372,
+        "y": -6.4322,
+        "toward": 165.9385,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -74.4057828402109,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 59,
+      "elapsed_ms": 6164.709,
+      "captured_at": "2026-09-01T22:32:31.292596+00:00",
+      "last_report_at_monotonic": 5033205.090396679,
+      "position_sequence": 479,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.605,
+        "y": -6.7091,
+        "toward": 176.7787,
+        "pos_type": 1,
+        "zone_hash": 1343645155037768237
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -85.00668661925717,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      },
+      "cumulative_travel_m": 1.504
+    },
+    {
+      "index": 60,
+      "elapsed_ms": 6265.927,
+      "captured_at": "2026-09-01T22:32:31.393818+00:00",
+      "last_report_at_monotonic": 5033205.090396679,
+      "position_sequence": 479,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.605,
+        "y": -6.7091,
+        "toward": 176.7787,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -85.00668661925717,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 61,
+      "elapsed_ms": 6366.619,
+      "captured_at": "2026-09-01T22:32:31.494509+00:00",
+      "last_report_at_monotonic": 5033205.090396679,
+      "position_sequence": 479,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.605,
+        "y": -6.7091,
+        "toward": 176.7787,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -85.00668661925717,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 62,
+      "elapsed_ms": 6468.055,
+      "captured_at": "2026-09-01T22:32:31.595943+00:00",
+      "last_report_at_monotonic": 5033205.383012422,
+      "position_sequence": 479,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.605,
+        "y": -6.7091,
+        "toward": 176.7787,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -85.00668661925717,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 63,
+      "elapsed_ms": 6569.308,
+      "captured_at": "2026-09-01T22:32:31.697196+00:00",
+      "last_report_at_monotonic": 5033205.383012422,
+      "position_sequence": 479,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.605,
+        "y": -6.7091,
+        "toward": 176.7787,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -85.00668661925717,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 64,
+      "elapsed_ms": 6670.433,
+      "captured_at": "2026-09-01T22:32:31.798321+00:00",
+      "last_report_at_monotonic": 5033205.383012422,
+      "position_sequence": 479,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.605,
+        "y": -6.7091,
+        "toward": 176.7787,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -85.00668661925717,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 65,
+      "elapsed_ms": 6771.401,
+      "captured_at": "2026-09-01T22:32:31.899288+00:00",
+      "last_report_at_monotonic": 5033205.383012422,
+      "position_sequence": 479,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.605,
+        "y": -6.7091,
+        "toward": 176.7787,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -85.00668661925717,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 66,
+      "elapsed_ms": 6873.079,
+      "captured_at": "2026-09-01T22:32:32.000972+00:00",
+      "last_report_at_monotonic": 5033205.383012422,
+      "position_sequence": 479,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.605,
+        "y": -6.7091,
+        "toward": 176.7787,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -85.00668661925717,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 67,
+      "elapsed_ms": 6974.191,
+      "captured_at": "2026-09-01T22:32:32.102079+00:00",
+      "last_report_at_monotonic": 5033205.888517833,
+      "position_sequence": 480,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.6121,
+        "y": -6.9959,
+        "toward": -172.6776,
+        "pos_type": 1,
+        "zone_hash": 1343645155037768237
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -95.53031411934073,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      },
+      "cumulative_travel_m": 1.7909
+    },
+    {
+      "index": 68,
+      "elapsed_ms": 7076.172,
+      "captured_at": "2026-09-01T22:32:32.204059+00:00",
+      "last_report_at_monotonic": 5033205.888517833,
+      "position_sequence": 480,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.6121,
+        "y": -6.9959,
+        "toward": -172.6776,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -95.53031411934073,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 69,
+      "elapsed_ms": 7176.711,
+      "captured_at": "2026-09-01T22:32:32.304596+00:00",
+      "last_report_at_monotonic": 5033205.888517833,
+      "position_sequence": 480,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.6121,
+        "y": -6.9959,
+        "toward": -172.6776,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -95.53031411934073,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 70,
+      "elapsed_ms": 7277.651,
+      "captured_at": "2026-09-01T22:32:32.405543+00:00",
+      "last_report_at_monotonic": 5033205.888517833,
+      "position_sequence": 480,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.6121,
+        "y": -6.9959,
+        "toward": -172.6776,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -95.53031411934073,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 71,
+      "elapsed_ms": 7378.506,
+      "captured_at": "2026-09-01T22:32:32.506393+00:00",
+      "last_report_at_monotonic": 5033205.888517833,
+      "position_sequence": 480,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.6121,
+        "y": -6.9959,
+        "toward": -172.6776,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -95.53031411934073,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 72,
+      "elapsed_ms": 7479.954,
+      "captured_at": "2026-09-01T22:32:32.607842+00:00",
+      "last_report_at_monotonic": 5033206.406434026,
+      "position_sequence": 480,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.6121,
+        "y": -6.9959,
+        "toward": -172.6776,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -95.53031411934073,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 73,
+      "elapsed_ms": 7580.686,
+      "captured_at": "2026-09-01T22:32:32.708575+00:00",
+      "last_report_at_monotonic": 5033206.406434026,
+      "position_sequence": 480,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.6121,
+        "y": -6.9959,
+        "toward": -172.6776,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -95.53031411934073,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 74,
+      "elapsed_ms": 7681.847,
+      "captured_at": "2026-09-01T22:32:32.809735+00:00",
+      "last_report_at_monotonic": 5033206.406434026,
+      "position_sequence": 480,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.6121,
+        "y": -6.9959,
+        "toward": -172.6776,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -95.53031411934073,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 75,
+      "elapsed_ms": 7783.322,
+      "captured_at": "2026-09-01T22:32:32.911209+00:00",
+      "last_report_at_monotonic": 5033206.406434026,
+      "position_sequence": 480,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.6121,
+        "y": -6.9959,
+        "toward": -172.6776,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -95.53031411934073,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 76,
+      "elapsed_ms": 7883.965,
+      "captured_at": "2026-09-01T22:32:33.011854+00:00",
+      "last_report_at_monotonic": 5033206.406434026,
+      "position_sequence": 480,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.6121,
+        "y": -6.9959,
+        "toward": -172.6776,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -95.53031411934073,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 77,
+      "elapsed_ms": 7988.78,
+      "captured_at": "2026-09-01T22:32:33.116661+00:00",
+      "last_report_at_monotonic": 5033206.911650659,
+      "position_sequence": 481,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.5618,
+        "y": -7.2822,
+        "toward": -159.8108,
+        "pos_type": 1,
+        "zone_hash": 1343645155037768237
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -108.09007026326822,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      },
+      "cumulative_travel_m": 2.0816
+    },
+    {
+      "index": 78,
+      "elapsed_ms": 8090.828,
+      "captured_at": "2026-09-01T22:32:33.218714+00:00",
+      "last_report_at_monotonic": 5033206.911650659,
+      "position_sequence": 481,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.5618,
+        "y": -7.2822,
+        "toward": -159.8108,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -108.09007026326822,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 79,
+      "elapsed_ms": 8192.771,
+      "captured_at": "2026-09-01T22:32:33.320657+00:00",
+      "last_report_at_monotonic": 5033206.911650659,
+      "position_sequence": 481,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.5618,
+        "y": -7.2822,
+        "toward": -159.8108,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -108.09007026326822,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 80,
+      "elapsed_ms": 8294.151,
+      "captured_at": "2026-09-01T22:32:33.422038+00:00",
+      "last_report_at_monotonic": 5033206.911650659,
+      "position_sequence": 481,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.5618,
+        "y": -7.2822,
+        "toward": -159.8108,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -108.09007026326822,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 81,
+      "elapsed_ms": 8395.057,
+      "captured_at": "2026-09-01T22:32:33.522946+00:00",
+      "last_report_at_monotonic": 5033206.911650659,
+      "position_sequence": 481,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.5618,
+        "y": -7.2822,
+        "toward": -159.8108,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -108.09007026326822,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 82,
+      "elapsed_ms": 8495.915,
+      "captured_at": "2026-09-01T22:32:33.623803+00:00",
+      "last_report_at_monotonic": 5033207.428750236,
+      "position_sequence": 481,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.5618,
+        "y": -7.2822,
+        "toward": -159.8108,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -108.09007026326822,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 83,
+      "elapsed_ms": 8596.994,
+      "captured_at": "2026-09-01T22:32:33.724879+00:00",
+      "last_report_at_monotonic": 5033207.428750236,
+      "position_sequence": 481,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.5618,
+        "y": -7.2822,
+        "toward": -159.8108,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -108.09007026326822,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 84,
+      "elapsed_ms": 8697.681,
+      "captured_at": "2026-09-01T22:32:33.825564+00:00",
+      "last_report_at_monotonic": 5033207.428750236,
+      "position_sequence": 481,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.5618,
+        "y": -7.2822,
+        "toward": -159.8108,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -108.09007026326822,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 85,
+      "elapsed_ms": 8799.263,
+      "captured_at": "2026-09-01T22:32:33.927149+00:00",
+      "last_report_at_monotonic": 5033207.428750236,
+      "position_sequence": 481,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.5618,
+        "y": -7.2822,
+        "toward": -159.8108,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -108.09007026326822,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 86,
+      "elapsed_ms": 8901.282,
+      "captured_at": "2026-09-01T22:32:34.029171+00:00",
+      "last_report_at_monotonic": 5033207.428750236,
+      "position_sequence": 481,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.5618,
+        "y": -7.2822,
+        "toward": -159.8108,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -108.09007026326822,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 87,
+      "elapsed_ms": 9012.018,
+      "captured_at": "2026-09-01T22:32:34.139902+00:00",
+      "last_report_at_monotonic": 5033207.936360519,
+      "position_sequence": 482,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.4502,
+        "y": -7.5548,
+        "toward": -148.501,
+        "pos_type": 1,
+        "zone_hash": 1343645155037768237
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -119.2971503704877,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      },
+      "cumulative_travel_m": 2.3761
+    },
+    {
+      "index": 88,
+      "elapsed_ms": 9113.34,
+      "captured_at": "2026-09-01T22:32:34.241232+00:00",
+      "last_report_at_monotonic": 5033207.936360519,
+      "position_sequence": 482,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.4502,
+        "y": -7.5548,
+        "toward": -148.501,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -119.2971503704877,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 89,
+      "elapsed_ms": 9214.212,
+      "captured_at": "2026-09-01T22:32:34.342097+00:00",
+      "last_report_at_monotonic": 5033207.936360519,
+      "position_sequence": 482,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.4502,
+        "y": -7.5548,
+        "toward": -148.501,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -119.2971503704877,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 90,
+      "elapsed_ms": 9315.13,
+      "captured_at": "2026-09-01T22:32:34.443026+00:00",
+      "last_report_at_monotonic": 5033207.936360519,
+      "position_sequence": 482,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.4502,
+        "y": -7.5548,
+        "toward": -148.501,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -119.2971503704877,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 91,
+      "elapsed_ms": 9417.835,
+      "captured_at": "2026-09-01T22:32:34.545723+00:00",
+      "last_report_at_monotonic": 5033207.936360519,
+      "position_sequence": 482,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.4502,
+        "y": -7.5548,
+        "toward": -148.501,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -119.2971503704877,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 92,
+      "elapsed_ms": 9519.836,
+      "captured_at": "2026-09-01T22:32:34.647723+00:00",
+      "last_report_at_monotonic": 5033208.449417548,
+      "position_sequence": 482,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.4502,
+        "y": -7.5548,
+        "toward": -148.501,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -119.2971503704877,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 93,
+      "elapsed_ms": 9621.082,
+      "captured_at": "2026-09-01T22:32:34.748969+00:00",
+      "last_report_at_monotonic": 5033208.449417548,
+      "position_sequence": 482,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.4502,
+        "y": -7.5548,
+        "toward": -148.501,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -119.2971503704877,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 94,
+      "elapsed_ms": 9721.883,
+      "captured_at": "2026-09-01T22:32:34.849770+00:00",
+      "last_report_at_monotonic": 5033208.449417548,
+      "position_sequence": 482,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.4502,
+        "y": -7.5548,
+        "toward": -148.501,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -119.2971503704877,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 95,
+      "elapsed_ms": 9822.616,
+      "captured_at": "2026-09-01T22:32:34.950502+00:00",
+      "last_report_at_monotonic": 5033208.449417548,
+      "position_sequence": 482,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.4502,
+        "y": -7.5548,
+        "toward": -148.501,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -119.2971503704877,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 96,
+      "elapsed_ms": 9923.268,
+      "captured_at": "2026-09-01T22:32:35.051157+00:00",
+      "last_report_at_monotonic": 5033208.449417548,
+      "position_sequence": 482,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.4502,
+        "y": -7.5548,
+        "toward": -148.501,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -119.2971503704877,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 180
+        }
+      }
+    },
+    {
+      "index": 97,
+      "elapsed_ms": 10033.773,
+      "captured_at": "2026-09-01T22:32:35.161652+00:00",
+      "last_report_at_monotonic": 5033208.958291471,
+      "position_sequence": 483,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2955,
+        "y": -7.8101,
+        "toward": -136.0601,
+        "pos_type": 1,
+        "zone_hash": 1343645155037768237
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -131.58389359706683,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      },
+      "cumulative_travel_m": 2.6746
+    },
+    {
+      "index": 98,
+      "elapsed_ms": 10134.416,
+      "captured_at": "2026-09-01T22:32:35.262306+00:00",
+      "last_report_at_monotonic": 5033208.958291471,
+      "position_sequence": 483,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2955,
+        "y": -7.8101,
+        "toward": -136.0601,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -131.58389359706683,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 99,
+      "elapsed_ms": 10235.547,
+      "captured_at": "2026-09-01T22:32:35.363435+00:00",
+      "last_report_at_monotonic": 5033208.958291471,
+      "position_sequence": 483,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2955,
+        "y": -7.8101,
+        "toward": -136.0601,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -131.58389359706683,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 100,
+      "elapsed_ms": 10337.019,
+      "captured_at": "2026-09-01T22:32:35.464906+00:00",
+      "last_report_at_monotonic": 5033208.958291471,
+      "position_sequence": 483,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2955,
+        "y": -7.8101,
+        "toward": -136.0601,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -131.58389359706683,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 101,
+      "elapsed_ms": 10438.466,
+      "captured_at": "2026-09-01T22:32:35.566352+00:00",
+      "last_report_at_monotonic": 5033208.958291471,
+      "position_sequence": 483,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2955,
+        "y": -7.8101,
+        "toward": -136.0601,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -131.58389359706683,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 102,
+      "elapsed_ms": 10539.166,
+      "captured_at": "2026-09-01T22:32:35.667064+00:00",
+      "last_report_at_monotonic": 5033209.396750632,
+      "position_sequence": 483,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2955,
+        "y": -7.8101,
+        "toward": -136.0601,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -131.58389359706683,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 103,
+      "elapsed_ms": 10641.035,
+      "captured_at": "2026-09-01T22:32:35.768922+00:00",
+      "last_report_at_monotonic": 5033209.396750632,
+      "position_sequence": 483,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2955,
+        "y": -7.8101,
+        "toward": -136.0601,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -131.58389359706683,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 104,
+      "elapsed_ms": 10742.444,
+      "captured_at": "2026-09-01T22:32:35.870331+00:00",
+      "last_report_at_monotonic": 5033209.396750632,
+      "position_sequence": 483,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2955,
+        "y": -7.8101,
+        "toward": -136.0601,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -131.58389359706683,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 105,
+      "elapsed_ms": 10843.861,
+      "captured_at": "2026-09-01T22:32:35.971748+00:00",
+      "last_report_at_monotonic": 5033209.396750632,
+      "position_sequence": 483,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2955,
+        "y": -7.8101,
+        "toward": -136.0601,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -131.58389359706683,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 106,
+      "elapsed_ms": 10946.567,
+      "captured_at": "2026-09-01T22:32:36.074454+00:00",
+      "last_report_at_monotonic": 5033209.396750632,
+      "position_sequence": 483,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2955,
+        "y": -7.8101,
+        "toward": -136.0601,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -131.58389359706683,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 107,
+      "elapsed_ms": 11047.982,
+      "captured_at": "2026-09-01T22:32:36.175871+00:00",
+      "last_report_at_monotonic": 5033209.396750632,
+      "position_sequence": 483,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.2955,
+        "y": -7.8101,
+        "toward": -136.0601,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -131.58389359706683,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 108,
+      "elapsed_ms": 11149.442,
+      "captured_at": "2026-09-01T22:32:36.277333+00:00",
+      "last_report_at_monotonic": 5033210.033276444,
+      "position_sequence": 484,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.0881,
+        "y": -8.0069,
+        "toward": -132.0913,
+        "pos_type": 1,
+        "zone_hash": 1343645155037768237
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -138.32929106573397,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      },
+      "cumulative_travel_m": 2.9606
+    },
+    {
+      "index": 109,
+      "elapsed_ms": 11250.137,
+      "captured_at": "2026-09-01T22:32:36.378024+00:00",
+      "last_report_at_monotonic": 5033210.033276444,
+      "position_sequence": 484,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.0881,
+        "y": -8.0069,
+        "toward": -132.0913,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -138.32929106573397,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 110,
+      "elapsed_ms": 11351.536,
+      "captured_at": "2026-09-01T22:32:36.479425+00:00",
+      "last_report_at_monotonic": 5033210.033276444,
+      "position_sequence": 484,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.0881,
+        "y": -8.0069,
+        "toward": -132.0913,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -138.32929106573397,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 111,
+      "elapsed_ms": 11452.806,
+      "captured_at": "2026-09-01T22:32:36.580814+00:00",
+      "last_report_at_monotonic": 5033210.38876197,
+      "position_sequence": 484,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.0881,
+        "y": -8.0069,
+        "toward": -132.0913,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -138.32929106573397,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 112,
+      "elapsed_ms": 11554.299,
+      "captured_at": "2026-09-01T22:32:36.682192+00:00",
+      "last_report_at_monotonic": 5033210.38876197,
+      "position_sequence": 484,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.0881,
+        "y": -8.0069,
+        "toward": -132.0913,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -138.32929106573397,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 113,
+      "elapsed_ms": 11655.137,
+      "captured_at": "2026-09-01T22:32:36.783027+00:00",
+      "last_report_at_monotonic": 5033210.38876197,
+      "position_sequence": 484,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.0881,
+        "y": -8.0069,
+        "toward": -132.0913,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -138.32929106573397,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 114,
+      "elapsed_ms": 11755.85,
+      "captured_at": "2026-09-01T22:32:36.883736+00:00",
+      "last_report_at_monotonic": 5033210.38876197,
+      "position_sequence": 484,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.0881,
+        "y": -8.0069,
+        "toward": -132.0913,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -138.32929106573397,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 115,
+      "elapsed_ms": 11856.944,
+      "captured_at": "2026-09-01T22:32:36.984831+00:00",
+      "last_report_at_monotonic": 5033210.38876197,
+      "position_sequence": 484,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 6.0881,
+        "y": -8.0069,
+        "toward": -132.0913,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -138.32929106573397,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 116,
+      "elapsed_ms": 11973.185,
+      "captured_at": "2026-09-01T22:32:37.101072+00:00",
+      "last_report_at_monotonic": 5033210.905721976,
+      "position_sequence": 485,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.8586,
+        "y": -8.2031,
+        "toward": -132.0913,
+        "pos_type": 1,
+        "zone_hash": 1343645155037768237
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -138.6725772975522,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      },
+      "cumulative_travel_m": 3.2625
+    },
+    {
+      "index": 117,
+      "elapsed_ms": 12075.031,
+      "captured_at": "2026-09-01T22:32:37.202922+00:00",
+      "last_report_at_monotonic": 5033210.905721976,
+      "position_sequence": 485,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.8586,
+        "y": -8.2031,
+        "toward": -132.0913,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -138.6725772975522,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 118,
+      "elapsed_ms": 12177.824,
+      "captured_at": "2026-09-01T22:32:37.305711+00:00",
+      "last_report_at_monotonic": 5033210.905721976,
+      "position_sequence": 485,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.8586,
+        "y": -8.2031,
+        "toward": -132.0913,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -138.6725772975522,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 119,
+      "elapsed_ms": 12278.929,
+      "captured_at": "2026-09-01T22:32:37.406832+00:00",
+      "last_report_at_monotonic": 5033210.905721976,
+      "position_sequence": 485,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.8586,
+        "y": -8.2031,
+        "toward": -132.0913,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -138.6725772975522,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 120,
+      "elapsed_ms": 12380.478,
+      "captured_at": "2026-09-01T22:32:37.508365+00:00",
+      "last_report_at_monotonic": 5033210.905721976,
+      "position_sequence": 485,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.8586,
+        "y": -8.2031,
+        "toward": -132.0913,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -138.6725772975522,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 121,
+      "elapsed_ms": 12481.656,
+      "captured_at": "2026-09-01T22:32:37.609543+00:00",
+      "last_report_at_monotonic": 5033211.418494859,
+      "position_sequence": 485,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.8586,
+        "y": -8.2031,
+        "toward": -132.0913,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -138.6725772975522,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 122,
+      "elapsed_ms": 12584.06,
+      "captured_at": "2026-09-01T22:32:37.711947+00:00",
+      "last_report_at_monotonic": 5033211.418494859,
+      "position_sequence": 485,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.8586,
+        "y": -8.2031,
+        "toward": -132.0913,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -138.6725772975522,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 123,
+      "elapsed_ms": 12685.896,
+      "captured_at": "2026-09-01T22:32:37.813792+00:00",
+      "last_report_at_monotonic": 5033211.418494859,
+      "position_sequence": 485,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.8586,
+        "y": -8.2031,
+        "toward": -132.0913,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -138.6725772975522,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 124,
+      "elapsed_ms": 12787.211,
+      "captured_at": "2026-09-01T22:32:37.915100+00:00",
+      "last_report_at_monotonic": 5033211.418494859,
+      "position_sequence": 485,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.8586,
+        "y": -8.2031,
+        "toward": -132.0913,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -138.6725772975522,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 125,
+      "elapsed_ms": 12888.2,
+      "captured_at": "2026-09-01T22:32:38.016088+00:00",
+      "last_report_at_monotonic": 5033211.418494859,
+      "position_sequence": 485,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.8586,
+        "y": -8.2031,
+        "toward": -132.0913,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -138.6725772975522,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 126,
+      "elapsed_ms": 12998.419,
+      "captured_at": "2026-09-01T22:32:38.126300+00:00",
+      "last_report_at_monotonic": 5033211.931714449,
+      "position_sequence": 486,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.6349,
+        "y": -8.4076,
+        "toward": -130.3422,
+        "pos_type": 1,
+        "zone_hash": 1343645155037768237
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -139.70492309299127,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      },
+      "cumulative_travel_m": 3.5656
+    },
+    {
+      "index": 127,
+      "elapsed_ms": 13098.96,
+      "captured_at": "2026-09-01T22:32:38.226847+00:00",
+      "last_report_at_monotonic": 5033211.931714449,
+      "position_sequence": 486,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.6349,
+        "y": -8.4076,
+        "toward": -130.3422,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -139.70492309299127,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 128,
+      "elapsed_ms": 13199.898,
+      "captured_at": "2026-09-01T22:32:38.327785+00:00",
+      "last_report_at_monotonic": 5033211.931714449,
+      "position_sequence": 486,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.6349,
+        "y": -8.4076,
+        "toward": -130.3422,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -139.70492309299127,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 129,
+      "elapsed_ms": 13301.058,
+      "captured_at": "2026-09-01T22:32:38.428949+00:00",
+      "last_report_at_monotonic": 5033211.931714449,
+      "position_sequence": 486,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.6349,
+        "y": -8.4076,
+        "toward": -130.3422,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -139.70492309299127,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 130,
+      "elapsed_ms": 13401.638,
+      "captured_at": "2026-09-01T22:32:38.529525+00:00",
+      "last_report_at_monotonic": 5033211.931714449,
+      "position_sequence": 486,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.6349,
+        "y": -8.4076,
+        "toward": -130.3422,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -139.70492309299127,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 131,
+      "elapsed_ms": 13502.537,
+      "captured_at": "2026-09-01T22:32:38.630422+00:00",
+      "last_report_at_monotonic": 5033212.435614543,
+      "position_sequence": 486,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.6349,
+        "y": -8.4076,
+        "toward": -130.3422,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -139.70492309299127,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 132,
+      "elapsed_ms": 13605.18,
+      "captured_at": "2026-09-01T22:32:38.733084+00:00",
+      "last_report_at_monotonic": 5033212.435614543,
+      "position_sequence": 486,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.6349,
+        "y": -8.4076,
+        "toward": -130.3422,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -139.70492309299127,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 133,
+      "elapsed_ms": 13706.576,
+      "captured_at": "2026-09-01T22:32:38.834465+00:00",
+      "last_report_at_monotonic": 5033212.435614543,
+      "position_sequence": 486,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.6349,
+        "y": -8.4076,
+        "toward": -130.3422,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -139.70492309299127,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 134,
+      "elapsed_ms": 13807.193,
+      "captured_at": "2026-09-01T22:32:38.935078+00:00",
+      "last_report_at_monotonic": 5033212.435614543,
+      "position_sequence": 486,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.6349,
+        "y": -8.4076,
+        "toward": -130.3422,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -139.70492309299127,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 135,
+      "elapsed_ms": 13909.18,
+      "captured_at": "2026-09-01T22:32:39.037066+00:00",
+      "last_report_at_monotonic": 5033212.435614543,
+      "position_sequence": 486,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.6349,
+        "y": -8.4076,
+        "toward": -130.3422,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -139.70492309299127,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 136,
+      "elapsed_ms": 14025.456,
+      "captured_at": "2026-09-01T22:32:39.153343+00:00",
+      "last_report_at_monotonic": 5033212.951251894,
+      "position_sequence": 487,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.3971,
+        "y": -8.6025,
+        "toward": -130.3422,
+        "pos_type": 1,
+        "zone_hash": 1343645155037768237
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 1,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -139.4504138970411,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      },
+      "cumulative_travel_m": 3.873
+    },
+    {
+      "index": 137,
+      "elapsed_ms": 14126.474,
+      "captured_at": "2026-09-01T22:32:39.254363+00:00",
+      "last_report_at_monotonic": 5033212.951251894,
+      "position_sequence": 487,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.3971,
+        "y": -8.6025,
+        "toward": -130.3422,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -139.4504138970411,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 138,
+      "elapsed_ms": 14234.607,
+      "captured_at": "2026-09-01T22:32:39.362494+00:00",
+      "last_report_at_monotonic": 5033212.951251894,
+      "position_sequence": 487,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.3971,
+        "y": -8.6025,
+        "toward": -130.3422,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -139.4504138970411,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 139,
+      "elapsed_ms": 14335.331,
+      "captured_at": "2026-09-01T22:32:39.463217+00:00",
+      "last_report_at_monotonic": 5033212.951251894,
+      "position_sequence": 487,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.3971,
+        "y": -8.6025,
+        "toward": -130.3422,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -139.4504138970411,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 140,
+      "elapsed_ms": 14435.83,
+      "captured_at": "2026-09-01T22:32:39.563717+00:00",
+      "last_report_at_monotonic": 5033212.951251894,
+      "position_sequence": 487,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.3971,
+        "y": -8.6025,
+        "toward": -130.3422,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -139.4504138970411,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 141,
+      "elapsed_ms": 14537.529,
+      "captured_at": "2026-09-01T22:32:39.665428+00:00",
+      "last_report_at_monotonic": 5033213.45909926,
+      "position_sequence": 487,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.3971,
+        "y": -8.6025,
+        "toward": -130.3422,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -139.4504138970411,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 142,
+      "elapsed_ms": 14638.53,
+      "captured_at": "2026-09-01T22:32:39.766419+00:00",
+      "last_report_at_monotonic": 5033213.45909926,
+      "position_sequence": 487,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.3971,
+        "y": -8.6025,
+        "toward": -130.3422,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -139.4504138970411,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 143,
+      "elapsed_ms": 14740.077,
+      "captured_at": "2026-09-01T22:32:39.867967+00:00",
+      "last_report_at_monotonic": 5033213.45909926,
+      "position_sequence": 487,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.3971,
+        "y": -8.6025,
+        "toward": -130.3422,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -139.4504138970411,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 144,
+      "elapsed_ms": 14841.093,
+      "captured_at": "2026-09-01T22:32:39.968979+00:00",
+      "last_report_at_monotonic": 5033213.45909926,
+      "position_sequence": 487,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.3971,
+        "y": -8.6025,
+        "toward": -130.3422,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -139.4504138970411,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 145,
+      "elapsed_ms": 14941.733,
+      "captured_at": "2026-09-01T22:32:40.069619+00:00",
+      "last_report_at_monotonic": 5033213.45909926,
+      "position_sequence": 487,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.3971,
+        "y": -8.6025,
+        "toward": -130.3422,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 0,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -139.4504138970411,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    },
+    {
+      "index": 146,
+      "elapsed_ms": 15002.715,
+      "captured_at": "2026-09-01T22:32:40.130601+00:00",
+      "last_report_at_monotonic": 5033213.45909926,
+      "position_sequence": 487,
+      "position_epoch": 3,
+      "position": {
+        "source": "report_data.locations[0]",
+        "x": 5.3971,
+        "y": -8.6025,
+        "toward": -130.3422,
+        "pos_type": 1,
+        "zone_hash": "1343645155037768237"
+      },
+      "ble": {
+        "is_connected": true,
+        "queue_depth": 1,
+        "queue_dispatch_paused": false,
+        "saga_active": false
+      },
+      "vio": {
+        "heading": -139.4504138970411,
+        "state": 2
+      },
+      "active_command": {
+        "command": "send_movement",
+        "kwargs": {
+          "linear_speed": 400,
+          "angular_speed": 0
+        }
+      }
+    }
+  ],
+  "course_series": [
+    {
+      "from_elapsed_ms": 186.341,
+      "to_elapsed_ms": 1098.867,
+      "midpoint_elapsed_ms": 642.604,
+      "phase": "baseline",
+      "chord_m": 0.109931,
+      "informative": false,
+      "course_degrees": null
+    },
+    {
+      "from_elapsed_ms": 1098.867,
+      "to_elapsed_ms": 2111.163,
+      "midpoint_elapsed_ms": 1605.015,
+      "phase": "baseline",
+      "chord_m": 0.305984,
+      "informative": true,
+      "course_degrees": -63.4852
+    },
+    {
+      "from_elapsed_ms": 2111.163,
+      "to_elapsed_ms": 3023.761,
+      "midpoint_elapsed_ms": 2567.462,
+      "phase": "baseline",
+      "chord_m": 0.30594,
+      "informative": true,
+      "course_degrees": -63.2926
+    },
+    {
+      "from_elapsed_ms": 3023.761,
+      "to_elapsed_ms": 4340.237,
+      "midpoint_elapsed_ms": 3681.999,
+      "phase": "step",
+      "chord_m": 0.31809,
+      "informative": true,
+      "course_degrees": -60.0094
+    },
+    {
+      "from_elapsed_ms": 4340.237,
+      "to_elapsed_ms": 5050.993,
+      "midpoint_elapsed_ms": 4695.615,
+      "phase": "step",
+      "chord_m": 0.288906,
+      "informative": true,
+      "course_degrees": -65.2179
+    },
+    {
+      "from_elapsed_ms": 5050.993,
+      "to_elapsed_ms": 6164.709,
+      "midpoint_elapsed_ms": 5607.851,
+      "phase": "step",
+      "chord_m": 0.28508,
+      "informative": true,
+      "course_degrees": -76.2416
+    },
+    {
+      "from_elapsed_ms": 6164.709,
+      "to_elapsed_ms": 6974.191,
+      "midpoint_elapsed_ms": 6569.45,
+      "phase": "step",
+      "chord_m": 0.286888,
+      "informative": true,
+      "course_degrees": -88.5819
+    },
+    {
+      "from_elapsed_ms": 6974.191,
+      "to_elapsed_ms": 7988.78,
+      "midpoint_elapsed_ms": 7481.485,
+      "phase": "step",
+      "chord_m": 0.290685,
+      "informative": true,
+      "course_degrees": -99.9646
+    },
+    {
+      "from_elapsed_ms": 7988.78,
+      "to_elapsed_ms": 9012.018,
+      "midpoint_elapsed_ms": 8500.399,
+      "phase": "step",
+      "chord_m": 0.29456,
+      "informative": true,
+      "course_degrees": -112.2638
+    },
+    {
+      "from_elapsed_ms": 9012.018,
+      "to_elapsed_ms": 10033.773,
+      "midpoint_elapsed_ms": 9522.895,
+      "phase": "step",
+      "chord_m": 0.298513,
+      "informative": true,
+      "course_degrees": -121.2139
+    },
+    {
+      "from_elapsed_ms": 10033.773,
+      "to_elapsed_ms": 11149.442,
+      "midpoint_elapsed_ms": 10591.607,
+      "phase": "settle",
+      "chord_m": 0.285911,
+      "informative": true,
+      "course_degrees": -136.5022
+    },
+    {
+      "from_elapsed_ms": 11149.442,
+      "to_elapsed_ms": 11973.185,
+      "midpoint_elapsed_ms": 11561.314,
+      "phase": "settle",
+      "chord_m": 0.301935,
+      "informative": true,
+      "course_degrees": -139.4728
+    },
+    {
+      "from_elapsed_ms": 11973.185,
+      "to_elapsed_ms": 12998.419,
+      "midpoint_elapsed_ms": 12485.802,
+      "phase": "settle",
+      "chord_m": 0.303087,
+      "informative": true,
+      "course_degrees": -137.5674
+    },
+    {
+      "from_elapsed_ms": 12998.419,
+      "to_elapsed_ms": 14025.456,
+      "midpoint_elapsed_ms": 13511.938,
+      "phase": "settle",
+      "chord_m": 0.307465,
+      "informative": true,
+      "course_degrees": -140.6621
+    }
+  ],
+  "analysis": {
+    "informative_intervals": {
+      "baseline": 2,
+      "step": 7,
+      "settle": 4
+    },
+    "omega_step_deg_per_s": -10.4786,
+    "rotation_after_zero_deg": -19.4482,
+    "tau_actuator_s": 1.856,
+    "interpretation": "tau_actuator_s = |rotation after commanding angular 0| / steady rate during the step. Compare it against the ~1 s decision period: well below means the dead time is dominated by the OBSERVER and damping cannot fix it; comparable or above means real actuator carryover.",
+    "caveats": "n is small by construction at ~1 Hz. Do NOT fit a turn-rate law to this, and do NOT reuse omega as a calibration constant -- the 2026-08-26 guarded-turn measurement showed a 2.6x spread on identical stationary parameters."
+  },
+  "report_lease": {
+    "held": true
+  },
+  "report_stream": {
+    "attempted": true,
+    "started": true,
+    "continuous_started": true,
+    "error": null,
+    "saga_active_before_request": false,
+    "subscription_generation": {
+      "owner": "raw_pymammotion_step_response_probe",
+      "lease_id": 1,
+      "generation": 1,
+      "baseline_position_sequence": 471,
+      "baseline_position_epoch": 3
+    },
+    "queue_settle": {
+      "live": true,
+      "reason": null,
+      "is_connected": true,
+      "is_usable": true,
+      "cooldown_active": false,
+      "cooldown_remaining_seconds": 0.0,
+      "last_send_age_seconds": 0.0,
+      "queue_depth": 0,
+      "queue_dispatch_paused": false,
+      "saga_active": false,
+      "stall_threshold_seconds": 15.0,
+      "queue_depth_limit": 0
+    },
+    "subscription_command_flushed_at_monotonic": 5033198.757521128,
+    "readiness_reason": null,
+    "ready": true,
+    "origin_position_sequence": 473,
+    "origin_position_epoch": 3,
+    "stopped": true
+  },
+  "motion_refresh": {
+    "refresh_interval_ms": 200,
+    "refresh_commands_sent": 75,
+    "refresh_write_durations_ms": [
+      124.268,
+      91.722,
+      96.656,
+      221.999,
+      107.577,
+      122.863,
+      116.522,
+      226.354,
+      231.319,
+      163.392,
+      101.152,
+      139.989,
+      254.988,
+      218.791,
+      184.067,
+      103.82,
+      163.619,
+      383.806,
+      354.618,
+      343.51,
+      94.445,
+      254.154,
+      167.078,
+      108.77,
+      200.369,
+      207.979,
+      102.559,
+      93.44,
+      247.074,
+      267.56,
+      209.418,
+      98.792,
+      102.0,
+      113.751,
+      140.145,
+      254.659,
+      94.352,
+      261.343,
+      126.745,
+      163.489,
+      68.651,
+      179.604,
+      179.879,
+      211.038,
+      289.098,
+      91.087,
+      99.492,
+      98.661,
+      232.397,
+      179.261,
+      205.733,
+      98.39,
+      121.352,
+      299.093,
+      136.335,
+      103.06,
+      242.765,
+      106.509,
+      255.277,
+      201.823,
+      132.213,
+      66.975,
+      271.557,
+      217.415,
+      291.735,
+      102.998,
+      210.324,
+      95.965,
+      99.97,
+      80.782,
+      103.997,
+      107.576,
+      113.565,
+      120.661,
+      223.864
+    ],
+    "refresh_write_completions_elapsed_ms": [
+      325.104,
+      492.482,
+      697.23,
+      1022.459,
+      1131.18,
+      1323.089,
+      1517.087,
+      1826.736,
+      2058.075,
+      2221.494,
+      2322.663,
+      2542.822,
+      2855.204,
+      3074.013,
+      3258.112,
+      3362.35,
+      3564.15,
+      3985.022,
+      4339.66,
+      4685.294,
+      4779.76,
+      5033.931,
+      5201.171,
+      5309.964,
+      5510.351,
+      5718.348,
+      5820.927,
+      5914.385,
+      6161.48,
+      6430.615,
+      6640.058,
+      6738.867,
+      6840.901,
+      6954.686,
+      7140.43,
+      7454.902,
+      7550.053,
+      7861.663,
+      7988.428,
+      8163.749,
+      8269.362,
+      8580.026,
+      8780.141,
+      9011.656,
+      9301.433,
+      9392.554,
+      9500.047,
+      9699.398,
+      10033.47,
+      10213.254,
+      10419.015,
+      10517.439,
+      10721.95,
+      11099.704,
+      11237.143,
+      11340.225,
+      11643.755,
+      11750.329,
+      12055.553,
+      12257.407,
+      12389.657,
+      12467.805,
+      12871.951,
+      13090.465,
+      13382.227,
+      13485.247,
+      13695.596,
+      13791.794,
+      13901.937,
+      14105.235,
+      14304.594,
+      14508.567,
+      14715.514,
+      14920.889,
+      15225.803
+    ],
+    "commands_by_refresh": [
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 180
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      },
+      {
+        "linear_speed": 400,
+        "angular_speed": 0
+      }
+    ],
+    "refresh_error": null,
+    "aborted_early": false,
+    "elapsed_ms": 15225.814
+  },
+  "vio_analysis": {
+    "scoreable": true,
+    "rule": "E-VIO: 2a = half-phase mean-rate agreement (step), 2b = last-two settle rates with carryover; bound 1.5 deg/s, >=3 intervals per phase; VIO heading between consecutive distinct readings.",
+    "intervals": [
+      {
+        "from_elapsed_ms": 186.341,
+        "to_elapsed_ms": 1098.867,
+        "midpoint_elapsed_ms": 642.604,
+        "phase": "baseline",
+        "from_heading_degrees": -63.61422821288978,
+        "to_heading_degrees": -63.958670082035994,
+        "rate_deg_per_s": -0.3775
+      },
+      {
+        "from_elapsed_ms": 1098.867,
+        "to_elapsed_ms": 2111.163,
+        "midpoint_elapsed_ms": 1605.015,
+        "phase": "baseline",
+        "from_heading_degrees": -63.958670082035994,
+        "to_heading_degrees": -63.218226384206545,
+        "rate_deg_per_s": 0.7314
+      },
+      {
+        "from_elapsed_ms": 2111.163,
+        "to_elapsed_ms": 3023.761,
+        "midpoint_elapsed_ms": 2567.462,
+        "phase": "baseline",
+        "from_heading_degrees": -63.218226384206545,
+        "to_heading_degrees": -62.430160040011245,
+        "rate_deg_per_s": 0.8635
+      },
+      {
+        "from_elapsed_ms": 3023.761,
+        "to_elapsed_ms": 4340.237,
+        "midpoint_elapsed_ms": 3681.999,
+        "phase": "step",
+        "from_heading_degrees": -62.430160040011245,
+        "to_heading_degrees": -64.20973996444022,
+        "rate_deg_per_s": -1.3518
+      },
+      {
+        "from_elapsed_ms": 4340.237,
+        "to_elapsed_ms": 5050.993,
+        "midpoint_elapsed_ms": 4695.615,
+        "phase": "step",
+        "from_heading_degrees": -64.20973996444022,
+        "to_heading_degrees": -74.4057828402109,
+        "rate_deg_per_s": -14.3453
+      },
+      {
+        "from_elapsed_ms": 5050.993,
+        "to_elapsed_ms": 6164.709,
+        "midpoint_elapsed_ms": 5607.851,
+        "phase": "step",
+        "from_heading_degrees": -74.4057828402109,
+        "to_heading_degrees": -85.00668661925717,
+        "rate_deg_per_s": -9.5185
+      },
+      {
+        "from_elapsed_ms": 6164.709,
+        "to_elapsed_ms": 6974.191,
+        "midpoint_elapsed_ms": 6569.45,
+        "phase": "step",
+        "from_heading_degrees": -85.00668661925717,
+        "to_heading_degrees": -95.53031411934073,
+        "rate_deg_per_s": -13.0004
+      },
+      {
+        "from_elapsed_ms": 6974.191,
+        "to_elapsed_ms": 7988.78,
+        "midpoint_elapsed_ms": 7481.485,
+        "phase": "step",
+        "from_heading_degrees": -95.53031411934073,
+        "to_heading_degrees": -108.09007026326822,
+        "rate_deg_per_s": -12.3792
+      },
+      {
+        "from_elapsed_ms": 7988.78,
+        "to_elapsed_ms": 9012.018,
+        "midpoint_elapsed_ms": 8500.399,
+        "phase": "step",
+        "from_heading_degrees": -108.09007026326822,
+        "to_heading_degrees": -119.2971503704877,
+        "rate_deg_per_s": -10.9526
+      },
+      {
+        "from_elapsed_ms": 9012.018,
+        "to_elapsed_ms": 10033.773,
+        "midpoint_elapsed_ms": 9522.895,
+        "phase": "step",
+        "from_heading_degrees": -119.2971503704877,
+        "to_heading_degrees": -131.58389359706683,
+        "rate_deg_per_s": -12.0251
+      },
+      {
+        "from_elapsed_ms": 10033.773,
+        "to_elapsed_ms": 11149.442,
+        "midpoint_elapsed_ms": 10591.607,
+        "phase": "settle",
+        "from_heading_degrees": -131.58389359706683,
+        "to_heading_degrees": -138.32929106573397,
+        "rate_deg_per_s": -6.0461
+      },
+      {
+        "from_elapsed_ms": 11149.442,
+        "to_elapsed_ms": 11973.185,
+        "midpoint_elapsed_ms": 11561.314,
+        "phase": "settle",
+        "from_heading_degrees": -138.32929106573397,
+        "to_heading_degrees": -138.6725772975522,
+        "rate_deg_per_s": -0.4167
+      },
+      {
+        "from_elapsed_ms": 11973.185,
+        "to_elapsed_ms": 12998.419,
+        "midpoint_elapsed_ms": 12485.802,
+        "phase": "settle",
+        "from_heading_degrees": -138.6725772975522,
+        "to_heading_degrees": -139.70492309299127,
+        "rate_deg_per_s": -1.0069
+      },
+      {
+        "from_elapsed_ms": 12998.419,
+        "to_elapsed_ms": 14025.456,
+        "midpoint_elapsed_ms": 13511.938,
+        "phase": "settle",
+        "from_heading_degrees": -139.70492309299127,
+        "to_heading_degrees": -139.4504138970411,
+        "rate_deg_per_s": 0.2478
+      }
+    ],
+    "informative_intervals": {
+      "baseline": 3,
+      "step": 7,
+      "settle": 4
+    },
+    "step_steady_rotation_2a": {
+      "informative_intervals": 7,
+      "half_rates_deg_per_s": [
+        -8.3789,
+        -11.7838
+      ],
+      "half_diff_deg_per_s": 3.4049,
+      "passed": false
+    },
+    "settle_flat_2b": {
+      "informative_intervals": 4,
+      "rates_deg_per_s_including_carryover_from_step": [
+        -12.0251,
+        -6.0461,
+        -0.4167,
+        -1.0069,
+        0.2478
+      ],
+      "last_two_diff_deg_per_s": 1.2547,
+      "passed": true
+    },
+    "omega_step_deg_per_s": null,
+    "rotation_after_zero_deg": -7.8665,
+    "tau_actuator_s": null,
+    "interpretation": "tau_actuator_s exists only when 2a passes, so omega is never sampled off a ramp. omega is the step's second-half mean rate on the same VIO channel that certified steadiness. The RTK course_series/analysis alongside are diagnostics, not the 2a/2b instrument -- their last-two-diff statistic carries ~2.7 deg/s of 1-sigma chord noise against the 1.5 deg/s bound."
+  },
+  "reason": "window_complete",
+  "after": {
+    "online": true,
+    "work_mode": 11,
+    "work_mode_label": "MODE_READY",
+    "charge_state": 0,
+    "charge_state_label": "not_charging",
+    "position": {
+      "x": 5.159,
+      "y": -8.8048,
+      "toward": -130.3422,
+      "source": "report_data.locations[0]",
+      "pos_level": 1,
+      "pos_level_label": "SINGLE",
+      "rtk_status": 4,
+      "rtk_status_label": "Fix",
+      "pos_type": 1,
+      "pos_type_label": "AREA_INSIDE",
+      "zone_hash": "1343645155037768237",
+      "map_bol_hash": "5126959670531450704",
+      "area_name": "Backyard Right",
+      "valid_for_motion": true
+    },
+    "position_candidates": [
+      {
+        "source": "mowing_state",
+        "x": 0.0,
+        "y": 0.0,
+        "toward": 0.0,
+        "pos_level": 0,
+        "pos_level_label": "FIX",
+        "rtk_status": 0,
+        "rtk_status_label": "None",
+        "pos_type": 0,
+        "pos_type_label": "AREA_OUT",
+        "zone_hash": 0,
+        "area_name": null,
+        "stale_zero_area_out": true,
+        "valid_for_motion": false
+      },
+      {
+        "source": "report_data.locations[0]",
+        "x": 5.159,
+        "y": -8.8048,
+        "toward": -130.3422,
+        "pos_level": null,
+        "pos_level_label": null,
+        "rtk_status": null,
+        "rtk_status_label": null,
+        "pos_type": 1,
+        "pos_type_label": "AREA_INSIDE",
+        "zone_hash": null,
+        "area_name": null,
+        "stale_zero_area_out": false,
+        "valid_for_motion": false
+      },
+      {
+        "source": "location_metadata",
+        "x": null,
+        "y": null,
+        "toward": -130,
+        "pos_level": null,
+        "pos_level_label": null,
+        "rtk_status": null,
+        "rtk_status_label": null,
+        "pos_type": 1,
+        "pos_type_label": "AREA_INSIDE",
+        "zone_hash": "1343645155037768237",
+        "area_name": "Backyard Right",
+        "stale_zero_area_out": false,
+        "valid_for_motion": false
+      },
+      {
+        "source": "report_data.rtk",
+        "x": null,
+        "y": null,
+        "toward": null,
+        "pos_level": 1,
+        "pos_level_label": "SINGLE",
+        "rtk_status": 4,
+        "rtk_status_label": "Fix",
+        "pos_type": null,
+        "pos_type_label": null,
+        "zone_hash": null,
+        "area_name": null,
+        "stale_zero_area_out": false,
+        "valid_for_motion": false
+      }
+    ],
+    "blade": {
+      "reported_state": 0,
+      "reported_state_label": "OFF",
+      "knife_status": null,
+      "current_cutter_mode": 0,
+      "current_cutter_rpm": 0
+    },
+    "transport": {
+      "ble_rssi": -74,
+      "wifi_rssi": -55,
+      "wifi_connect_status": null,
+      "iot_connect_status": null,
+      "connection_label": "WIFI/BLE"
+    }
+  }
+}
