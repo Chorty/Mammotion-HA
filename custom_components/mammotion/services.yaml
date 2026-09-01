@@ -866,14 +866,22 @@ raw_pymammotion_step_response_probe:
       selector:
         object:
     linear_speed:
+      name: Linear speed
+      description: >-
+        400 or 300. 300 became admissible with rule E-VIO, which reads VIO
+        heading between consecutive distinct readings and imposes no travel
+        floor -- unlike the old RTK course statistic, which needed a 0.15 m
+        chord and ruled 300 out. Driving slower is what lets a long step phase
+        fit inside max_travel_m and the corridor. Measured, and NOT linear:
+        400 is ~0.26 m/s, 300 is ~0.12 m/s.
       required: false
       default: 400
       example: 400
       selector:
-        number:
-          min: 400
-          max: 400
-          step: 1
+        select:
+          options:
+            - "300"
+            - "400"
     step_angular_speed:
       required: false
       default: 120
@@ -895,13 +903,21 @@ raw_pymammotion_step_response_probe:
           max: 5000
           step: 100
     step_ms:
+      name: Step duration
+      description: >-
+        Up to 15000 ms. Criterion 2a splits the step phase in half and compares
+        mean rates, so the one interval straddling the command onset carries
+        ~1/k of the first half's weight; a longer step shrinks that share. This
+        raises the CLOCK only -- max_travel_m is unchanged, and a step_ms that
+        cannot fit it at the chosen linear_speed is refused before dispatch with
+        step_window_travel_exceeds_budget.
       required: false
       default: 3000
       example: 3000
       selector:
         number:
           min: 1000
-          max: 7000
+          max: 15000
           step: 100
     settle_ms:
       required: false

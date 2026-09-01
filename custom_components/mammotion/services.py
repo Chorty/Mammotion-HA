@@ -976,8 +976,15 @@ STEP_RESPONSE_PROBE_SCHEMA = vol.Schema(
         vol.Required(ATTR_ENTITY_ID): cv.entity_id,
         vol.Required("route_start"): _CONTINUOUS_MOTION_POINT_SCHEMA,
         vol.Required("corridor_polygon"): [_CONTINUOUS_MOTION_POINT_SCHEMA],
+        # 300 became admissible with rule E-VIO. It was eliminated on
+        # 2026-08-30 because a 0.116 m/s mower covers less than the 0.15 m
+        # chord the RTK-course statistic needed -- but E-VIO reads VIO heading
+        # between consecutive DISTINCT readings and imposes no travel floor at
+        # all, so the objection does not transfer. Driving slower is what lets a
+        # long step phase fit the yard: see
+        # docs/findings-plus180-split-is-onset-sampling-phase-20260901.md.
         vol.Optional("linear_speed", default=400): vol.All(
-            vol.Coerce(int), vol.In([400])
+            vol.Coerce(int), vol.In([300, 400])
         ),
         # 🚨 MEASURED VALUES ONLY, both signs. The turn rate is characterised
         # across angular 120-180; anything smaller is unmeasured rather than
@@ -990,8 +997,15 @@ STEP_RESPONSE_PROBE_SCHEMA = vol.Schema(
         vol.Optional("baseline_ms", default=3000): vol.All(
             vol.Coerce(int), vol.Range(min=1000, max=5000)
         ),
+        # Raised 7000 -> 15000 on 2026-09-01. 2a's half-phase split gives the
+        # single onset-contaminated interval ~1/k of the first half's weight, so
+        # half_diff ~= |steady - onset| / k. At the worst observed contamination
+        # (10.43 deg/s) the bound needs k >= 7, i.e. ~14 informative step
+        # intervals at the ~1 Hz VIO cadence. ⚠️ This buys TIME, not distance:
+        # `max_travel_m` is unchanged and a window that cannot fit it is refused
+        # up front by `step_window_travel_exceeds_budget`.
         vol.Optional("step_ms", default=3000): vol.All(
-            vol.Coerce(int), vol.Range(min=1000, max=7000)
+            vol.Coerce(int), vol.Range(min=1000, max=15000)
         ),
         # The settle phase IS the experiment: it must outlast the carryover it
         # is measuring, or tau is censored rather than measured.
@@ -9511,7 +9525,17 @@ async def _heading_acquisition_window(
 # ⚠️ `stop_overshoot_m` is 0.50 m and attempt 5 measured 0.4544 m of post-stop
 # creep (docs/evidence-phase2-steering-attempt5-20260828.json) -- a 9% margin.
 # Budget the full constant and do not raise `linear_speed`.
-_STEP_RESPONSE_MAX_TOTAL_MS = 16000
+_STEP_RESPONSE_MAX_TOTAL_MS = 23000
+# LOWER-bound m/s for each admissible step-probe `linear_speed`. ⚠️ Rounded DOWN
+# on purpose, and that direction is the whole point: this table refuses only a
+# window that overruns `max_travel_m` even at the slowest speed the mower has
+# ever shown, so a merely MARGINAL config still dispatches and only an
+# impossible one is refused. Sizing a corridor needs the opposite rounding --
+# use `_PROBE_SPEED_PER_LINEAR_UNIT_MS` for that, never this.
+# 🚨 MEASURED, and the relation is NOT linear: a 25% command cut produced a 39%
+# speed cut on 2026-08-30 (400 -> 0.191 m/s, 300 -> 0.116 m/s in 4 s averages
+# including ramp; 400 measured 0.2616 m/s over a full 15 s window 2026-09-01).
+_STEP_RESPONSE_MIN_SPEED_BY_LINEAR: dict[int, float] = {300: 0.10, 400: 0.24}
 # Matches the readiness budget the beta77 stationary work derived: the maximum
 # healthy stationary publication interval measured 2910.1 ms across n=1434, so
 # 3.5 s carries a 1.20x margin. It is a conservative stationary default, never
@@ -10067,6 +10091,19 @@ async def _step_response_probe_impl(  # noqa: C901, PLR0913
         blockers.append("step_response_run_not_confirmed")
     if total_ms > _STEP_RESPONSE_MAX_TOTAL_MS:
         blockers.append("step_window_too_long")
+    # A long window at the FAST speed overruns the distance guard mid-run, which
+    # aborts the window and censors the measurement -- a wasted supervised run
+    # rather than an unsafe one. Refuse that pairing before dispatch. The bound
+    # is a LOWER one, so this fires only when the window cannot fit even at the
+    # slowest speed measured; a marginal config is left to the guard, which is
+    # what actually carries the safety.
+    floor_travel_m = (
+        _STEP_RESPONSE_MIN_SPEED_BY_LINEAR.get(int(linear_speed), 0.24)
+        * total_ms
+        / 1000.0
+    )
+    if floor_travel_m > max_travel_m:
+        blockers.append("step_window_travel_exceeds_budget")
 
     config = ContinuousControllerConfig()
     result: dict[str, Any] = {

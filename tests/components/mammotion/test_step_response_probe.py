@@ -119,29 +119,37 @@ def test_schema_cannot_relax_the_travel_guard_above_four_point_five_metres() -> 
         _validated(max_travel_m=4.51)
 
 
-def test_schema_cannot_relax_the_step_phase_above_seven_seconds() -> None:
-    """A caller may shorten the step phase but never relax it past 7000 ms.
+def test_schema_cannot_relax_the_step_phase_above_fifteen_seconds() -> None:
+    """A caller may shorten the step phase but never relax it past 15000 ms.
 
-    Raised from 5000 ms by
-    docs/phase2-route1-step-extension-predeclared-20260830.md -- a deliberate
-    safety-bound increase to test whether the step phase simply needs more
-    time to clear onset lag, not a tightening.
+    5000 -> 7000 by docs/phase2-route1-step-extension-predeclared-20260830.md.
+    Then 7000 -> 15000 on 2026-09-01: criterion 2a's half-phase split gives the
+    single onset-contaminated interval ~1/k of the first half's weight, so
+    half_diff ~= |steady - onset| / k, and the worst observed contamination
+    (10.43 deg/s) needs k >= 7 -- about 14 informative step intervals at the
+    ~1 Hz VIO cadence. See
+    docs/findings-plus180-split-is-onset-sampling-phase-20260901.md.
+
+    ⚠️ This raises the CLOCK, not the distance: `max_travel_m` is untouched and
+    the pairing that would overrun it is refused before dispatch.
     """
     assert _validated(step_ms=1000)["step_ms"] == 1000
+    assert _validated(step_ms=15000)["step_ms"] == 15000
     with pytest.raises(vol.Invalid):
-        _validated(step_ms=7001)
+        _validated(step_ms=15001)
 
 
-def test_max_total_window_is_pinned_at_sixteen_seconds() -> None:
+def test_max_total_window_is_pinned_at_twenty_three_seconds() -> None:
     """Pin the raised total-window cap so a future edit cannot drift it silently.
 
     docs/phase2-route1-predeclared-20260830.md moved this 12000 -> 14000 ms so
     baseline 3000 + step 5000 + settle 5000 = 13000 ms fits. Then
     docs/phase2-route1-step-extension-predeclared-20260830.md moved it
-    14000 -> 16000 ms so baseline 3000 + step 7000 + settle 5000 = 15000 ms
-    fits, with the same 1000 ms margin the first raise used.
+    14000 -> 16000 ms for baseline 3000 + step 7000 + settle 5000 = 15000 ms.
+    Then 2026-09-01 moved it 16000 -> 23000 ms so baseline 3000 + step 15000 +
+    settle 5000 = 23000 ms fits.
     """
-    assert _STEP_RESPONSE_MAX_TOTAL_MS == 16000
+    assert _STEP_RESPONSE_MAX_TOTAL_MS == 23000
 
 
 # --- gates --------------------------------------------------------------------
@@ -238,7 +246,7 @@ async def test_total_window_is_capped_even_when_every_phase_is_legal() -> None:
         route_start=START,
         corridor_polygon=WIDE_CORRIDOR,
         baseline_ms=5000,
-        step_ms=7000,
+        step_ms=15000,
         settle_ms=6000,
         dry_run=False,
         confirm_blades_off=True,
@@ -718,3 +726,88 @@ def test_no_position_stream_is_opened_one_deep() -> None:
     source = Path(services.__file__).read_text(encoding="utf-8").replace(" ", "")
     assert "open_position_stream(maxsize=1)" not in source
     assert "open_position_sample_stream(maxsize=1)" not in source
+
+
+# --- the 2026-09-01 long-step / slow-speed change ------------------------------
+
+
+def test_linear_speed_300_is_admissible_and_400_stays_the_default() -> None:
+    """E-VIO imposes no travel floor, so the slow speed is back on the menu.
+
+    300 was eliminated on 2026-08-30 because the RTK course statistic needed a
+    0.15 m chord and a 0.116 m/s mower does not produce one. E-VIO reads VIO
+    heading between consecutive DISTINCT readings instead, so that objection
+    does not transfer -- and driving slower is what lets a long step phase fit
+    inside an unchanged `max_travel_m`.
+    """
+    assert _validated()["linear_speed"] == 400
+    assert _validated(linear_speed=300)["linear_speed"] == 300
+    for rejected in (0, 200, 350, 500):
+        with pytest.raises(vol.Invalid):
+            _validated(linear_speed=rejected)
+
+
+def test_step_ms_reaches_15000_and_refuses_more() -> None:
+    """2a needs ~14 informative step intervals at the worst observed onset."""
+    assert _validated(step_ms=15000)["step_ms"] == 15000
+    with pytest.raises(vol.Invalid):
+        _validated(step_ms=15100)
+
+
+async def test_a_long_window_at_the_FAST_speed_is_refused_before_dispatch() -> None:
+    """The pairing that would trip the travel guard mid-run is refused up front.
+
+    A 23 s window at linear 400 covers ~6.4 m against a 4.5 m budget. Letting it
+    dispatch would abort the window on the guard and censor the measurement --
+    a wasted supervised run. `max_travel_m` itself is NOT relaxed.
+    """
+    result = await _step_response_probe(
+        _FakeCoordinator(),
+        route_start=START,
+        corridor_polygon=WIDE_CORRIDOR,
+        linear_speed=400,
+        baseline_ms=3000,
+        step_ms=15000,
+        settle_ms=5000,
+        max_travel_m=4.5,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        confirm_step_response_run=True,
+    )
+    assert result["would_send"] is False
+    assert "step_window_travel_exceeds_budget" in result["blockers"]
+
+
+async def test_the_same_long_window_at_linear_300_fits_the_unchanged_budget() -> None:
+    """Slower driving is what makes the long step admissible at all."""
+    result = await _step_response_probe(
+        _FakeCoordinator(),
+        route_start=START,
+        corridor_polygon=WIDE_CORRIDOR,
+        linear_speed=300,
+        baseline_ms=3000,
+        step_ms=15000,
+        settle_ms=5000,
+        max_travel_m=4.5,
+        dry_run=True,
+    )
+    assert "step_window_travel_exceeds_budget" not in result["blockers"]
+
+
+async def test_the_travel_refusal_does_not_tighten_the_existing_defaults() -> None:
+    """A MARGINAL config still dispatches; only an impossible one is refused.
+
+    Regression. The first version of this gate used a rounded-UP speed and so
+    refused the schema's own defaults (10 s at 0.28 m/s = 2.8 m against the
+    2.50 m default budget) -- tightening long-standing behaviour as a side
+    effect of raising the step ceiling. The bound is a LOWER one precisely so
+    that the travel guard, not a projection, keeps carrying the safety.
+    """
+    result = await _step_response_probe(
+        _FakeCoordinator(),
+        route_start=START,
+        corridor_polygon=WIDE_CORRIDOR,
+        dry_run=True,
+    )
+    assert "step_window_travel_exceeds_budget" not in result["blockers"]
