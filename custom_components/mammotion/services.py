@@ -9518,6 +9518,20 @@ _STEP_RESPONSE_MAX_TOTAL_MS = 16000
 # a proven distribution and never motion validation.
 _STEP_RESPONSE_READINESS_TIMEOUT_S = 3.5
 _STEP_RESPONSE_DEFAULT_TRAVEL_M = 2.50
+# Criterion 2a/2b agreement bound and interval floor, unchanged from
+# docs/phase2-route1-predeclared-20260830.md §5. What changed on 2026-09-01 is
+# the SIGNAL and the STATISTIC for 2a, not the numbers: scored from VIO heading
+# via half-phase mean-rate agreement (rule E-VIO), adopted per
+# docs/findings-rtk-vio-course-rate-scoring-20260831.md. The RTK chord rule's
+# last-two-diff statistic carries ~2.7 deg/s of 1-sigma position noise against
+# this 1.5 deg/s bound, so its verdicts were draws; VIO resolves the bound at
+# ~11 sigma with this statistic.
+_STEP_RESPONSE_RATE_AGREEMENT_BOUND_DEG_PER_S = 1.5
+_STEP_RESPONSE_MIN_INFORMATIVE_INTERVALS = 3
+# `vio_state == 2` is the only value ever observed while VIO was corroborated
+# live (state: 2 across all 549 banked route-1 samples). Anything else refuses
+# to score — never fall back silently to the noise-bound RTK chord rule.
+_STEP_RESPONSE_VIO_STATE_LIVE = 2
 
 
 def _step_response_gates(
@@ -9808,6 +9822,210 @@ def _step_response_analysis(
     }
 
 
+def _step_response_vio_intervals(
+    samples: list[dict[str, Any]], *, baseline_ms: int, step_ms: int
+) -> list[dict[str, Any]]:
+    """Per-interval VIO heading rates between consecutive DISTINCT readings.
+
+    VIO latches, holding one value across several 100 ms samples, so naive
+    per-sample differencing yields spurious zeros. A reading exists at the
+    first sample whose heading differs from the previous distinct value; its
+    timestamp is that sample's ``elapsed_ms``. Phase assignment matches the
+    RTK series: interval midpoint against the nominal boundaries.
+    """
+    track: list[tuple[float, float]] = []
+    for sample in samples:
+        vio = sample.get("vio") or {}
+        heading = vio.get("heading")
+        elapsed_ms = sample.get("elapsed_ms")
+        if not isinstance(heading, (int, float)) or not isinstance(
+            elapsed_ms, (int, float)
+        ):
+            continue
+        if track and track[-1][1] == float(heading):
+            continue
+        track.append((float(elapsed_ms), float(heading)))
+
+    intervals: list[dict[str, Any]] = []
+    for (t0, h0), (t1, h1) in zip(track, track[1:], strict=False):
+        dt_s = (t1 - t0) / 1000
+        if dt_s <= 0:
+            continue
+        midpoint_ms = (t0 + t1) / 2
+        phase = (
+            "baseline"
+            if midpoint_ms < baseline_ms
+            else "step"
+            if midpoint_ms < baseline_ms + step_ms
+            else "settle"
+        )
+        intervals.append(
+            {
+                "from_elapsed_ms": t0,
+                "to_elapsed_ms": t1,
+                "midpoint_elapsed_ms": round(midpoint_ms, 3),
+                "phase": phase,
+                "from_heading_degrees": h0,
+                "to_heading_degrees": h1,
+                "rate_deg_per_s": round(normalize_degrees(h1 - h0) / dt_s, 4),
+            }
+        )
+    return intervals
+
+
+def _step_response_half_phase_agreement(
+    intervals: list[dict[str, Any]], phase: str
+) -> dict[str, Any]:
+    """Rule E: mean rate of the phase's first half vs its second half.
+
+    Endpoint differences over each half average the per-reading noise down
+    while still catching a ramp -- a still-accelerating phase has a faster
+    second half. The last-two-diff statistic cannot do this on a low-noise
+    channel: a smooth ramp has adjacent rates nearly equal long before it
+    converges, which is exactly how VIO last-two wrongly passed run 1
+    (docs/findings-rtk-vio-course-rate-scoring-20260831.md §3). Odd reading
+    counts put the extra reading in the first half; the boundary reading ends
+    the first half and starts the second.
+    """
+    seq = [iv for iv in intervals if iv["phase"] == phase]
+    verdict: dict[str, Any] = {
+        "informative_intervals": len(seq),
+        "half_rates_deg_per_s": None,
+        "half_diff_deg_per_s": None,
+        "passed": False,
+    }
+    if len(seq) < _STEP_RESPONSE_MIN_INFORMATIVE_INTERVALS:
+        return verdict
+    readings: list[tuple[float, float]] = [
+        (seq[0]["from_elapsed_ms"], seq[0]["from_heading_degrees"])
+    ]
+    readings.extend((iv["to_elapsed_ms"], iv["to_heading_degrees"]) for iv in seq)
+    boundary = len(readings) // 2
+    half_rates: list[float] = []
+    for half in (readings[: boundary + 1], readings[boundary:]):
+        (t0, a0), (t1, a1) = half[0], half[-1]
+        dt_s = (t1 - t0) / 1000
+        if dt_s <= 0:
+            return verdict
+        half_rates.append(round(normalize_degrees(a1 - a0) / dt_s, 4))
+    diff = round(abs(half_rates[1] - half_rates[0]), 4)
+    verdict["half_rates_deg_per_s"] = half_rates
+    verdict["half_diff_deg_per_s"] = diff
+    verdict["passed"] = diff <= _STEP_RESPONSE_RATE_AGREEMENT_BOUND_DEG_PER_S
+    return verdict
+
+
+def _step_response_vio_analysis(  # noqa: C901
+    samples: list[dict[str, Any]], *, baseline_ms: int, step_ms: int
+) -> dict[str, Any]:
+    """Score criteria 2a/2b from VIO heading (rule E-VIO), failing closed.
+
+    Adopted 2026-09-01 per docs/findings-rtk-vio-course-rate-scoring-20260831.md:
+    2a is half-phase mean-rate agreement over the step; 2b keeps its published
+    last-two-rates semantics ("goes flat at the END") but on the VIO channel --
+    half-phase agreement cannot apply to settle, whose first half contains the
+    decay transient by construction. The RTK ``course_series``/``analysis``
+    stay emitted unchanged as the cross-check diagnostic; they are no longer
+    the 2a instrument.
+
+    🔑 omega and tau come from the SAME channel that certifies steadiness, and
+    tau exists only when 2a passes -- a ramp-sampled omega is the exact failure
+    2a exists to prevent. Dark or degraded VIO (any sample with
+    ``vio_state != 2``) refuses to score rather than silently falling back to
+    the noise-bound RTK chord rule; RTK chords remain the only night-capable
+    course source, and a night run is UNSCOREABLE under this rule on purpose.
+    """
+    if not samples:
+        return {"scoreable": False, "unscoreable_reason": "no_samples"}
+    states = [(sample.get("vio") or {}).get("state") for sample in samples]
+    if any(state != _STEP_RESPONSE_VIO_STATE_LIVE for state in states):
+        return {
+            "scoreable": False,
+            "unscoreable_reason": "vio_not_live_throughout",
+            "vio_states_observed": sorted({str(state) for state in states}),
+        }
+
+    intervals = _step_response_vio_intervals(
+        samples, baseline_ms=baseline_ms, step_ms=step_ms
+    )
+    if len(intervals) < 2:
+        return {
+            "scoreable": False,
+            "unscoreable_reason": "vio_track_insufficient",
+            "distinct_reading_intervals": len(intervals),
+        }
+
+    step_2a = _step_response_half_phase_agreement(intervals, "step")
+
+    # 2b: last-two settle rates within the bound, with the carryover pair
+    # (the prior phase's final interval prepended) -- the published convention,
+    # channel-switched to VIO.
+    settle_seq = [iv for iv in intervals if iv["phase"] == "settle"]
+    step_seq = [iv for iv in intervals if iv["phase"] == "step"]
+    settle_rates = [iv["rate_deg_per_s"] for iv in settle_seq]
+    if step_seq:
+        settle_rates = [step_seq[-1]["rate_deg_per_s"], *settle_rates]
+    settle_diff = (
+        round(abs(settle_rates[-1] - settle_rates[-2]), 4)
+        if len(settle_rates) >= 2
+        else None
+    )
+    settle_2b = {
+        "informative_intervals": len(settle_seq),
+        "rates_deg_per_s_including_carryover_from_step": settle_rates,
+        "last_two_diff_deg_per_s": settle_diff,
+        "passed": (
+            len(settle_seq) >= _STEP_RESPONSE_MIN_INFORMATIVE_INTERVALS
+            and settle_diff is not None
+            and settle_diff <= _STEP_RESPONSE_RATE_AGREEMENT_BOUND_DEG_PER_S
+        ),
+    }
+
+    # Steady omega is the step's SECOND half -- the part 2a certifies steady.
+    half_rates = step_2a["half_rates_deg_per_s"]
+    omega_step = half_rates[1] if step_2a["passed"] and half_rates else None
+    rotation_after_zero: float | None = None
+    if step_seq and settle_seq:
+        rotation_after_zero = round(
+            normalize_degrees(
+                settle_seq[-1]["to_heading_degrees"]
+                - step_seq[-1]["to_heading_degrees"]
+            ),
+            4,
+        )
+    tau: float | None = None
+    if rotation_after_zero is not None and omega_step:
+        tau = round(abs(rotation_after_zero / omega_step), 4)
+
+    return {
+        "scoreable": True,
+        "rule": (
+            "E-VIO: 2a = half-phase mean-rate agreement (step), 2b = last-two "
+            "settle rates with carryover; bound 1.5 deg/s, >=3 intervals per "
+            "phase; VIO heading between consecutive distinct readings."
+        ),
+        "intervals": intervals,
+        "informative_intervals": {
+            "baseline": sum(1 for iv in intervals if iv["phase"] == "baseline"),
+            "step": len(step_seq),
+            "settle": len(settle_seq),
+        },
+        "step_steady_rotation_2a": step_2a,
+        "settle_flat_2b": settle_2b,
+        "omega_step_deg_per_s": omega_step,
+        "rotation_after_zero_deg": rotation_after_zero,
+        "tau_actuator_s": tau,
+        "interpretation": (
+            "tau_actuator_s exists only when 2a passes, so omega is never "
+            "sampled off a ramp. omega is the step's second-half mean rate on "
+            "the same VIO channel that certified steadiness. The RTK "
+            "course_series/analysis alongside are diagnostics, not the 2a/2b "
+            "instrument -- their last-two-diff statistic carries ~2.7 deg/s of "
+            "1-sigma chord noise against the 1.5 deg/s bound."
+        ),
+    }
+
+
 async def _step_response_probe_impl(  # noqa: C901, PLR0913
     coordinator: MammotionReportUpdateCoordinator,
     *,
@@ -10093,6 +10311,9 @@ async def _step_response_probe_impl(  # noqa: C901, PLR0913
     )
     result["analysis"] = _step_response_analysis(
         result["course_series"], baseline_ms=baseline_ms, step_ms=step_ms
+    )
+    result["vio_analysis"] = _step_response_vio_analysis(
+        result["samples"], baseline_ms=baseline_ms, step_ms=step_ms
     )
     result["reason"] = _step_response_completion_reason(result["motion_refresh"])
     result["after"] = _custom_path_telemetry_snapshot(coordinator)
