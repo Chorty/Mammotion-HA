@@ -1,0 +1,491 @@
+{
+ "results": [
+  {
+   "name": "R1 (+120, step 5000)",
+   "series_mismatches": [],
+   "repro_issues": [],
+   "published_2a": "FAIL",
+   "published_2b": "FAIL",
+   "rule_a_2a": {
+    "informative_intervals": 5,
+    "rates": [
+     -0.339,
+     -8.002,
+     -5.686,
+     -8.179
+    ],
+    "last_two_diff": 2.493,
+    "pass": false
+   },
+   "rule_a_2b": {
+    "informative_intervals": 5,
+    "rates": [
+     -8.404,
+     -3.404,
+     -1.556,
+     1.929,
+     -0.136
+    ],
+    "last_two_diff": 2.065,
+    "pass": false
+   },
+   "rule_b_2a": {
+    "informative_intervals": 5,
+    "rates": [
+     -2.191,
+     -5.678,
+     -6.699,
+     -6.666,
+     -7.383
+    ],
+    "last_two_diff": 0.717,
+    "pass": true
+   },
+   "rule_b_2b": {
+    "informative_intervals": 5,
+    "rates": [
+     -7.383,
+     -4.273,
+     -0.068,
+     0.422,
+     0.208,
+     -0.144
+    ],
+    "last_two_diff": 0.352,
+    "pass": true
+   },
+   "rule_c_2a": {
+    "pass": false
+   },
+   "rule_c_2b": {
+    "pass": false
+   },
+   "rule_d_rtk_sigma_last_two_step": 2.735,
+   "rule_d_rtk_sigma_half_diff_step": 1.35,
+   "vio_final_step_interval": {
+    "from_ms": 7076.659,
+    "to_ms": 7993.256,
+    "rate": -7.383
+   },
+   "vio_baseline_rates": [
+    0.316,
+    0.416,
+    0.186
+   ],
+   "vio_settle_tail_rates": [
+    0.208,
+    -0.144
+   ],
+   "rule_e_rtk_2a": {
+    "informative_intervals": 5,
+    "half_rates": [
+     -4.163,
+     -6.9
+    ],
+    "diff": 2.737,
+    "pass": false
+   },
+   "rule_e_vio_2a": {
+    "informative_intervals": 5,
+    "half_rates": [
+     -4.849,
+     -7.005
+    ],
+    "diff": 2.156,
+    "pass": false
+   },
+   "diag_rms_step": {
+    "rms": 1.447,
+    "n": 4
+   },
+   "diag_rms_settle": {
+    "rms": 2.026,
+    "n": 4
+   },
+   "diag_short_vio_intervals": [],
+   "diag_step_chords_m": [
+    0.233262,
+    0.227691,
+    0.225779,
+    0.227901,
+    0.221776
+   ],
+   "diag_vio_interval_dts_step": [
+    1.027,
+    1.017,
+    1.02,
+    1.02,
+    0.917
+   ]
+  },
+  {
+   "name": "R1r (+120, step 5000)",
+   "series_mismatches": [],
+   "repro_issues": [],
+   "published_2a": "FAIL",
+   "published_2b": "PASS",
+   "rule_a_2a": {
+    "informative_intervals": 5,
+    "rates": [
+     -0.573,
+     -9.865,
+     -3.828,
+     -11.108
+    ],
+    "last_two_diff": 7.28,
+    "pass": false
+   },
+   "rule_a_2b": {
+    "informative_intervals": 5,
+    "rates": [
+     -7.055,
+     -6.376,
+     -1.514,
+     0.164,
+     -0.099
+    ],
+    "last_two_diff": 0.263,
+    "pass": true
+   },
+   "rule_b_2a": {
+    "informative_intervals": 5,
+    "rates": [
+     -1.594,
+     -6.226,
+     -6.726,
+     -9.45,
+     -7.849
+    ],
+    "last_two_diff": 1.601,
+    "pass": false
+   },
+   "rule_b_2b": {
+    "informative_intervals": 5,
+    "rates": [
+     -7.849,
+     -7.081,
+     -0.851,
+     -0.439,
+     0.078,
+     -0.273
+    ],
+    "last_two_diff": 0.351,
+    "pass": true
+   },
+   "rule_c_2a": {
+    "pass": false
+   },
+   "rule_c_2b": {
+    "pass": true
+   },
+   "rule_d_rtk_sigma_last_two_step": 2.572,
+   "rule_d_rtk_sigma_half_diff_step": 1.314,
+   "vio_final_step_interval": {
+    "from_ms": 6978.203,
+    "to_ms": 8092.479,
+    "rate": -7.849
+   },
+   "vio_baseline_rates": [
+    -0.192,
+    -0.284,
+    0.283
+   ],
+   "vio_settle_tail_rates": [
+    0.078,
+    -0.273
+   ],
+   "rule_e_rtk_2a": {
+    "informative_intervals": 5,
+    "half_rates": [
+     -5.33,
+     -7.469
+    ],
+    "diff": 2.139,
+    "pass": false
+   },
+   "rule_e_vio_2a": {
+    "informative_intervals": 5,
+    "half_rates": [
+     -4.908,
+     -8.572
+    ],
+    "diff": 3.664,
+    "pass": false
+   },
+   "diag_rms_step": {
+    "rms": 2.735,
+    "n": 4
+   },
+   "diag_rms_settle": {
+    "rms": 2.816,
+    "n": 4
+   },
+   "diag_short_vio_intervals": [],
+   "diag_step_chords_m": [
+    0.228749,
+    0.226417,
+    0.225215,
+    0.237528,
+    0.238849
+   ],
+   "diag_vio_interval_dts_step": [
+    1.014,
+    1.013,
+    1.114,
+    0.917,
+    1.114
+   ]
+  },
+  {
+   "name": "SX (+120, step 7000)",
+   "series_mismatches": [],
+   "repro_issues": [],
+   "published_2a": "PASS",
+   "published_2b": "PASS",
+   "rule_a_2a": {
+    "informative_intervals": 7,
+    "rates": [
+     -1.718,
+     -3.428,
+     -9.026,
+     -6.127,
+     -8.241,
+     -8.353
+    ],
+    "last_two_diff": 0.112,
+    "pass": true
+   },
+   "rule_a_2b": {
+    "informative_intervals": 4,
+    "rates": [
+     -10.675,
+     -3.004,
+     -0.576,
+     0.863
+    ],
+    "last_two_diff": 1.439,
+    "pass": true
+   },
+   "rule_b_2a": {
+    "informative_intervals": 7,
+    "rates": [
+     -1.247,
+     -6.014,
+     -6.597,
+     -7.001,
+     -6.542,
+     -6.99,
+     -8.952
+    ],
+    "last_two_diff": 1.962,
+    "pass": false
+   },
+   "rule_b_2b": {
+    "informative_intervals": 4,
+    "rates": [
+     -8.952,
+     -3.554,
+     -0.662,
+     0.175,
+     -0.588
+    ],
+    "last_two_diff": 0.763,
+    "pass": true
+   },
+   "rule_c_2a": {
+    "pass": false
+   },
+   "rule_c_2b": {
+    "pass": true
+   },
+   "rule_d_rtk_sigma_last_two_step": 2.792,
+   "rule_d_rtk_sigma_half_diff_step": 0.899,
+   "vio_final_step_interval": {
+    "from_ms": 9207.74,
+    "to_ms": 10130.187,
+    "rate": -8.952
+   },
+   "vio_baseline_rates": [
+    0.397,
+    -0.05,
+    0.356
+   ],
+   "vio_settle_tail_rates": [
+    -0.588
+   ],
+   "rule_e_rtk_2a": {
+    "informative_intervals": 7,
+    "half_rates": [
+     -4.693,
+     -7.539
+    ],
+    "diff": 2.846,
+    "pass": false
+   },
+   "rule_e_vio_2a": {
+    "informative_intervals": 7,
+    "half_rates": [
+     -5.128,
+     -7.447
+    ],
+    "diff": 2.319,
+    "pass": false
+   },
+   "diag_rms_step": {
+    "rms": 1.659,
+    "n": 6
+   },
+   "diag_rms_settle": {
+    "rms": 1.591,
+    "n": 3
+   },
+   "diag_short_vio_intervals": [],
+   "diag_step_chords_m": [
+    0.230759,
+    0.231509,
+    0.224047,
+    0.223941,
+    0.218713,
+    0.222929,
+    0.220022
+   ],
+   "diag_vio_interval_dts_step": [
+    1.115,
+    1.016,
+    0.912,
+    1.114,
+    1.02,
+    1.018,
+    0.922
+   ]
+  },
+  {
+   "name": "R2 (+180, step 7000)",
+   "series_mismatches": [],
+   "repro_issues": [],
+   "published_2a": "FAIL",
+   "published_2b": "PASS",
+   "rule_a_2a": {
+    "informative_intervals": 7,
+    "rates": [
+     -3.366,
+     -11.885,
+     -10.765,
+     -15.094,
+     -8.246,
+     -13.886
+    ],
+    "last_two_diff": 5.64,
+    "pass": false
+   },
+   "rule_a_2b": {
+    "informative_intervals": 4,
+    "rates": [
+     -10.649,
+     -13.042,
+     0.653,
+     -0.117
+    ],
+    "last_two_diff": 0.77,
+    "pass": true
+   },
+   "rule_b_2a": {
+    "informative_intervals": 7,
+    "rates": [
+     -5.675,
+     -13.563,
+     -11.443,
+     -14.293,
+     -11.402,
+     -11.545,
+     -11.165
+    ],
+    "last_two_diff": 0.38,
+    "pass": true
+   },
+   "rule_b_2b": {
+    "informative_intervals": 4,
+    "rates": [
+     -11.165,
+     -9.322,
+     -0.607,
+     -0.277,
+     0.436
+    ],
+    "last_two_diff": 0.713,
+    "pass": true
+   },
+   "rule_c_2a": {
+    "pass": false
+   },
+   "rule_c_2b": {
+    "pass": true
+   },
+   "rule_d_rtk_sigma_last_two_step": 2.751,
+   "rule_d_rtk_sigma_half_diff_step": 0.892,
+   "vio_final_step_interval": {
+    "from_ms": 9005.027,
+    "to_ms": 10121.151,
+    "rate": -11.165
+   },
+   "vio_baseline_rates": [
+    0.075,
+    -0.447,
+    -0.166
+   ],
+   "vio_settle_tail_rates": [
+    0.436
+   ],
+   "rule_e_rtk_2a": {
+    "informative_intervals": 7,
+    "half_rates": [
+     -8.841,
+     -12.408
+    ],
+    "diff": 3.567,
+    "pass": false
+   },
+   "rule_e_vio_2a": {
+    "informative_intervals": 7,
+    "half_rates": [
+     -11.229,
+     -11.359
+    ],
+    "diff": 0.13,
+    "pass": true
+   },
+   "diag_rms_step": {
+    "rms": 2.482,
+    "n": 6
+   },
+   "diag_rms_settle": {
+    "rms": 7.223,
+    "n": 3
+   },
+   "diag_short_vio_intervals": [],
+   "diag_step_chords_m": [
+    0.242225,
+    0.230739,
+    0.222988,
+    0.22802,
+    0.222785,
+    0.217799,
+    0.230424
+   ],
+   "diag_vio_interval_dts_step": [
+    0.928,
+    0.911,
+    1.115,
+    0.911,
+    1.113,
+    0.914,
+    1.116
+   ]
+  }
+ ],
+ "pooled_vio": {
+  "baseline_std": 0.207,
+  "settle_tail_std": 0.203,
+  "sigma_last_two": 0.293
+ }
+}
