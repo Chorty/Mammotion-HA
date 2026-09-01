@@ -24,7 +24,7 @@ python3 scripts/mammotion_agora_audio_probe.py camera.your_mower_camera
 The script reads `HA_URL` and `HA_TOKEN` from the environment, or from a local
 `.env` file if present. It calls `mammotion.refresh_stream`, calls
 `mammotion.get_tokens`, and opens `agora_test.html` with the live Agora
-credentials in the URL fragment. The page /stthen connects in SDK mode and
+credentials in the URL fragment. The page then connects in SDK mode and
 publishes a one-second quiet tone automatically.
 
 Options:
