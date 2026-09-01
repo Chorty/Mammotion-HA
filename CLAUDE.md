@@ -219,9 +219,16 @@ can touch it (checked against upstream `f4428d47`, already ported here and
 unrelated). The real question is narrower: a geometric proxy derived across
 two payloads (RTK chord bearing) versus a direct sensor reading within one
 (VIO heading). 🔑 **Whenever this resumes, the first step is FREE and needs no
-mower**: every sample of all four route-1 runs banked both `position` and
-`vio`, so any proposed scoring rule can be re-scored offline against existing
-evidence before anything is dispatched.
+mower**: any proposed scoring rule can be re-scored offline before anything is
+dispatched.
+🗑️ **CORRECTED 2026-08-31 — that was NOT true when first written, and the near
+miss is worth recording.** The `docs/evidence-route1-*.json` files carry only
+the derived `course_series` (RTK-chord course, **no VIO field**); the
+per-sample records were sitting in ephemeral `/tmp` and had never been
+committed, so clearing them would have cost **new physical runs** to recover.
+✅ Now preserved at `docs/raw-samples/` — **549 samples across all four runs,
+every one carrying both `position` and `vio`** — with provenance and the
+`reason`-field caveat in that directory's README.
 
 🚨 **ROUTE 1 RUN 2 (+180) FAILS — THE +120 PASS DOES NOT GENERALIZE,
 2026-08-30.** Read `docs/evidence-route1-run2-plus180-fail-20260830.md` (raw:

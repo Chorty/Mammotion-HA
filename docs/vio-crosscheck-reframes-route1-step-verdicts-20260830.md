@@ -141,7 +141,19 @@ materially harder to pass.
 3. Only then, and only if re-scoring leaves it genuinely ambiguous, new
    physical runs.
 
-🔑 **Step 2 is free and needs no mower.** Every sample from all four route-1
-runs carries both `position` and `vio`, so any proposed scoring rule can be
-tested against banked evidence before anything is dispatched. That is the
-cheapest possible next step whenever this is picked back up.
+🔑 **Step 2 is free and needs no mower** — but only because the raw data was
+rescued on 2026-08-31. See `docs/raw-samples/README.md`.
+
+🗑️ **CORRECTION, 2026-08-31.** This section originally said every route-1
+sample was already banked and re-scorable for free. **That was wrong.** The
+four `docs/evidence-route1-*.json` files contain only the derived
+`course_series` (13–14 rows each, RTK-chord course only, **no VIO field at
+all**). The per-sample records — the only place VIO heading was ever
+written — existed solely in ephemeral `/tmp` session files and had never been
+committed. Had they been cleared, this question would have required **new
+physical runs** to answer.
+
+✅ They are now preserved at `docs/raw-samples/raw-route1-*-20260830.json`:
+**549 samples across all four runs, every one carrying both `position` and
+`vio`.** With those in the tree the "free offline re-scoring" claim is true
+as written — it simply was not true when first written.
