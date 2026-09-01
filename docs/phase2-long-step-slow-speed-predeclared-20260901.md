@@ -92,3 +92,63 @@ configuration in §4, with explicit per-run operator authorization, daylight, a
 docked-and-charged battery, a fresh corridor scan at the live position, and the
 gate disarmed and verified from the live API and RAW afterwards. **Standing
 decision 5 is untouched — Phase 2 continuous steering remains parked.**
+
+---
+
+## 6. CORRECTIONS to this document, made BEFORE any run at this configuration
+
+Found by re-deriving the numbers and by an adversarial review of the change
+(2026-09-01, same evening). **Both corrections are to my own reasoning above.
+The predeclaration is corrected in place rather than quietly restated later.**
+
+### 6.1 §2's travel figure was wrong: ~2.5 m should read ~3.7 m
+
+§2 sized the run with **0.116 m/s**, which is a **4 s average INCLUDING ramp and
+stop** (2026-08-30), not a sustained speed. At linear 400 the same ramp-inclusive
+figure (0.191 m/s) understates the sustained 15 s measurement (0.2616 m/s) by
+**1.37x**. Applying that factor to 300 gives **~0.159 m/s sustained**:
+
+| | claimed in §2 | corrected |
+| --- | --- | --- |
+| sustained speed at linear 300 | 0.116 m/s | **~0.159 m/s** |
+| travel over a 23 s window | ~2.5 m | **~3.65-3.7 m** |
+| share of the 4.5 m budget | ~56% | **~81-82%** |
+
+Derived twice independently (by hand and by the review) to 3.65 vs 3.7 m.
+
+⚠️ **Additional risk the review surfaced and this document had not considered:**
+the guard sums **per-sample |chord|**, so ~23 samples each carrying 2-4 cm of
+position noise inflate `cumulative_travel_m` above true displacement. A longer
+window accumulates more of that phantom travel, pushing the effective figure
+higher still.
+
+🚨 **There is NO sustained-speed measurement at linear 300 anywhere in the
+record.** Every number above is an extrapolation from a single 4 s ramp-inclusive
+average. **A travel-guard trip on this run is a live possibility, and a guard trip
+is a FAIL, not a smaller number.**
+
+### 6.2 §1's "k >= 7, hence a 14 s step" clears the bound only at typical cadence
+
+Pooled VIO update cadence across all five banked runs is **991.1 ms** (n = 68,
+median 1014.8, max 1316.5).
+
+| cadence | intervals in a 15 s step | k | worst-case `half_diff` | verdict |
+| --- | --- | --- | --- | --- |
+| pooled mean 991 ms | 15.13 | 7.57 | **1.378** | passes by **8.1%** |
+| slowest observed 1316 ms | 11.39 | 5.70 | **1.831** | **FAILS** |
+
+🔑 **So 15000 ms is necessary but NOT sufficient.** §1 and §3 read as though the
+longer step fixes 2a; it does not. It clears the bound at typical cadence and
+fails if the feed runs slow — and cadence is the device's choice, not ours
+(`docs/the-1hz-bundle-is-the-ceiling-20260822.md`).
+
+**Consequence for §4's outcome table: a 2a FAIL on this run must NOT be read as
+"the plant is not steady".** It is equally consistent with the cadence having run
+slow. Report the realised interval count and cadence alongside any verdict.
+
+### 6.3 What does not change
+
+`max_travel_m` stays 4.5, the containment gate still requires 5.0 m of clearance
+in every direction, and the travel guard still fails closed. These corrections
+narrow the expected MARGIN and weaken the expected VERDICT; they do not weaken a
+safety bound.
