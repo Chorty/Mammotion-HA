@@ -899,7 +899,7 @@
     },
     "continuous_motion_window": {
       "name": "Continuous motion window",
-      "description": "Phase 2 executor. Runs or simulates one continuous straight-line steering window. Heading comes only from fresh position chords of at least 0.15 m; toward is diagnostic only. The corridor must provide at least 1.06 m of boundary clearance around the live start. Experimental v1 is fixed at linear 400 / angular bound 180. Real commands require explicit confirmations.",
+      "description": "Phase 2 executor. Runs or simulates one continuous straight-line steering window. Heading comes only from fresh position chords of at least 0.15 m; toward is diagnostic only. The corridor must provide at least 1.34 m of boundary clearance around the live start. Experimental v1 is fixed at linear 400 / angular bound 180. Real commands require explicit confirmations.",
       "fields": {
         "entity_id": {
           "name": "Entity",
@@ -985,7 +985,7 @@
         },
         "corridor_polygon": {
           "name": "Corridor polygon",
-          "description": "Pre-scanned polygon that must contain the complete 1.06 m acquisition disk."
+          "description": "Pre-scanned polygon that must contain the complete 1.34 m acquisition disk."
         },
         "prefer_ble": {
           "name": "Prefer BLE",
