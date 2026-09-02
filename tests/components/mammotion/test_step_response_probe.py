@@ -17,6 +17,8 @@ here: no coordinator I/O, no BLE, no mower command. `would_send` must never be
 from __future__ import annotations
 
 import asyncio
+import json
+import math
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -28,6 +30,7 @@ import voluptuous as vol
 from custom_components.mammotion import services
 from custom_components.mammotion.services import (
     _STEP_RESPONSE_MAX_TOTAL_MS,
+    _STEP_RESPONSE_MIN_SPEED_BY_LINEAR,
     STEP_RESPONSE_PROBE_SCHEMA,
     _in_window_ble_snapshot,
     _in_window_telemetry_sample,
@@ -754,12 +757,19 @@ def test_step_ms_reaches_15000_and_refuses_more() -> None:
         _validated(step_ms=15100)
 
 
-async def test_a_long_window_at_the_FAST_speed_is_refused_before_dispatch() -> None:
-    """The pairing that would trip the travel guard mid-run is refused up front.
+async def test_a_long_window_at_the_FAST_speed_is_flagged_but_not_refused() -> None:
+    """A LIKELY guard trip is surfaced, not blocked -- the bound refuses only the impossible.
 
-    A 23 s window at linear 400 covers ~6.4 m against a 4.5 m budget. Letting it
-    dispatch would abort the window on the guard and censor the measurement --
-    a wasted supervised run. `max_travel_m` itself is NOT relaxed.
+    ⚠️ Corrected 2026-09-01. This test originally asserted a refusal, which only
+    held because the table's 400 entry was 0.24 -- above four of the five banked
+    observations, i.e. an upper bound mislabelled as a lower one. With the
+    corrected 0.17 floor, 0.17 x 23 = 3.91 m clears the 4.5 m budget, so the
+    refusal correctly does NOT fire: at the slowest speed the mower has shown,
+    this window genuinely fits.
+
+    The risk is real but probabilistic (typical 0.216 m/s x 23 s = 4.97 m would
+    trip), so it is reported rather than enforced. Over-refusing feasible
+    configurations is the failure this replaced.
     """
     result = await _step_response_probe(
         _FakeCoordinator(),
@@ -770,13 +780,29 @@ async def test_a_long_window_at_the_FAST_speed_is_refused_before_dispatch() -> N
         step_ms=15000,
         settle_ms=5000,
         max_travel_m=4.5,
-        dry_run=False,
-        confirm_blades_off=True,
-        confirm_clear_area=True,
-        confirm_step_response_run=True,
+        dry_run=True,
     )
-    assert result["would_send"] is False
-    assert "step_window_travel_exceeds_budget" in result["blockers"]
+    assert "step_window_travel_exceeds_budget" not in result["blockers"]
+    projection = result["travel_projection"]
+    assert projection["likely_guard_trip"] is True
+    assert projection["floor_travel_m"] < 4.5 < projection["typical_travel_m"]
+
+
+async def test_the_intended_slow_long_run_is_not_flagged_as_a_likely_trip() -> None:
+    """Linear 300 over 23 s projects ~3.7 m -- inside the budget on both figures."""
+    result = await _step_response_probe(
+        _FakeCoordinator(),
+        route_start=START,
+        corridor_polygon=WIDE_CORRIDOR,
+        linear_speed=300,
+        baseline_ms=3000,
+        step_ms=15000,
+        settle_ms=5000,
+        max_travel_m=4.5,
+        dry_run=True,
+    )
+    assert "step_window_travel_exceeds_budget" not in result["blockers"]
+    assert result["travel_projection"]["likely_guard_trip"] is False
 
 
 async def test_the_same_long_window_at_linear_300_fits_the_unchanged_budget() -> None:
@@ -808,6 +834,68 @@ async def test_the_travel_refusal_does_not_tighten_the_existing_defaults() -> No
         _FakeCoordinator(),
         route_start=START,
         corridor_polygon=WIDE_CORRIDOR,
+        dry_run=True,
+    )
+    assert "step_window_travel_exceeds_budget" not in result["blockers"]
+
+
+def test_min_speed_table_is_below_every_banked_full_window_rate() -> None:
+    """The table must be a LOWER bound, checked against real runs, not asserted.
+
+    Regression, 2026-09-01. The 400 entry shipped as 0.24 -- taken from the single
+    FASTEST banked run while its own comment called it the slowest -- so it sat
+    above four of the five banked observations and over-refused. A replay of
+    banked route-1 run 1 (3000/5000/5000 at max_travel_m 3.0) was refused
+    pre-dispatch although both banked runs of it travelled 2.71 m and 2.77 m.
+
+    Pinning it at the single default point (as the first version of this suite
+    did) cannot catch that. This measures the invariant against the evidence.
+    """
+
+    raw_dir = Path(__file__).resolve().parents[3] / "docs" / "raw-samples"
+    rates = []
+    for path in sorted(raw_dir.glob("*.json")):
+        payload = json.loads(path.read_text())
+        if payload.get("linear_speed") != 400:
+            continue
+        points: list[tuple[float, float]] = []
+        for sample in payload["samples"]:
+            position = sample.get("position") or {}
+            if position.get("x") is None:
+                continue
+            point = (position["x"], position["y"])
+            if not points or point != points[-1]:
+                points.append(point)
+        travel = sum(
+            math.hypot(b[0] - a[0], b[1] - a[1])
+            for a, b in zip(points, points[1:], strict=False)
+        )
+        rates.append(travel / (payload["motion_refresh"]["elapsed_ms"] / 1000))
+
+    assert rates, "no banked linear-400 runs found to check the bound against"
+    assert _STEP_RESPONSE_MIN_SPEED_BY_LINEAR[400] < min(rates), (
+        f"table entry {_STEP_RESPONSE_MIN_SPEED_BY_LINEAR[400]} is not "
+        f"below the slowest banked run ({min(rates):.4f} m/s) -- it would "
+        "over-refuse feasible configurations"
+    )
+
+
+async def test_replaying_a_banked_config_is_not_refused_by_the_travel_gate() -> None:
+    """The exact banked route-1 run-1 config must still be dispatchable.
+
+    Both banked runs of 3000/5000/5000 at linear 400 travelled 2.71 m and 2.77 m,
+    so a tightened max_travel_m of 3.0 genuinely fits. The pre-dispatch gate must
+    not refuse a configuration the mower has already completed.
+    """
+    result = await _step_response_probe(
+        _FakeCoordinator(),
+        route_start=START,
+        corridor_polygon=WIDE_CORRIDOR,
+        linear_speed=400,
+        baseline_ms=3000,
+        step_ms=5000,
+        settle_ms=5000,
+        max_travel_m=3.0,
         dry_run=True,
     )
     assert "step_window_travel_exceeds_budget" not in result["blockers"]

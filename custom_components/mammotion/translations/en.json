@@ -2509,7 +2509,7 @@
         },
         "linear_speed": {
           "name": "Linear speed",
-          "description": "Forward command. Fixed at the measured value 400."
+          "description": "Forward command: 400 or 300. 300 is admissible under rule E-VIO, which reads VIO heading and imposes no travel floor, and it is what lets a long step phase fit the travel budget. Measured and not linear: 400 is about 0.26 m/s, 300 about 0.16 m/s."
         },
         "step_angular_speed": {
           "name": "Step angular speed",
@@ -2521,7 +2521,7 @@
         },
         "step_ms": {
           "name": "Step duration",
-          "description": "Phase holding the step angular command, used to measure the steady rotation rate."
+          "description": "Phase holding the step angular command, used to measure the steady rotation rate. Up to 15000 ms; a longer step shrinks the share of the interval that straddles the command onset. A duration that cannot fit the travel budget at the chosen linear speed is refused before dispatch."
         },
         "settle_ms": {
           "name": "Settle duration",

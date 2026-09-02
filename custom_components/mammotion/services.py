@@ -9532,10 +9532,32 @@ _STEP_RESPONSE_MAX_TOTAL_MS = 23000
 # ever shown, so a merely MARGINAL config still dispatches and only an
 # impossible one is refused. Sizing a corridor needs the opposite rounding --
 # use `_PROBE_SPEED_PER_LINEAR_UNIT_MS` for that, never this.
-# 🚨 MEASURED, and the relation is NOT linear: a 25% command cut produced a 39%
-# speed cut on 2026-08-30 (400 -> 0.191 m/s, 300 -> 0.116 m/s in 4 s averages
-# including ramp; 400 measured 0.2616 m/s over a full 15 s window 2026-09-01).
-_STEP_RESPONSE_MIN_SPEED_BY_LINEAR: dict[int, float] = {300: 0.10, 400: 0.24}
+#
+# 🚨 CORRECTED 2026-09-01, hours after this table was introduced. The 400 entry
+# shipped as 0.24, taken from the single FASTEST banked run, while calling itself
+# the slowest -- so it was roughly the population maximum wearing a lower-bound
+# label. Cumulative PATH travel (the guard's own metric) over the full window of
+# every banked linear-400 run:
+#     0.1936  0.2000  0.2121  0.2124  0.2616 m/s   (min 0.1936, mean 0.2159)
+# 0.24 sat ABOVE FOUR OF THE FIVE. The consequence was over-refusal, not danger:
+# a replay of banked route-1 run 1 (3000/5000/5000 at max_travel_m 3.0) was
+# refused pre-dispatch although both banked runs of it travelled 2.71 and 2.77 m.
+# 400 is now 0.17, below the measured minimum with margin.
+#
+# The relation to the command is NOT linear: a 25% command cut produced a 39%
+# speed cut on 2026-08-30 (4 s ramp-inclusive averages, 400 -> 0.191,
+# 300 -> 0.116 m/s). ⚠️ There is NO sustained-speed measurement at 300 at all;
+# 0.10 is a deliberately pessimistic floor under an extrapolated ~0.16 m/s.
+_STEP_RESPONSE_MIN_SPEED_BY_LINEAR: dict[int, float] = {300: 0.10, 400: 0.17}
+# TYPICAL m/s, for a non-blocking projection only. A true lower bound refuses
+# only the impossible, so it cannot flag a window that is merely LIKELY to trip
+# the guard -- a 23 s window at linear 400 projects 4.97 m against a 4.5 m budget
+# on these figures, yet 0.17 x 23 = 3.91 clears the refusal. Rather than corrupt
+# the bound to catch it, the probe reports both numbers and lets the operator
+# see the risk. 400 is the mean of the five banked full-window rates; 300 is
+# extrapolated (0.116 ramp-inclusive x the 1.37 sustained/average ratio measured
+# at 400) and has NO sustained measurement behind it.
+_STEP_RESPONSE_TYPICAL_SPEED_BY_LINEAR: dict[int, float] = {300: 0.16, 400: 0.216}
 # Matches the readiness budget the beta77 stationary work derived: the maximum
 # healthy stationary publication interval measured 2910.1 ms across n=1434, so
 # 3.5 s carries a 1.20x margin. It is a conservative stationary default, never
@@ -10097,13 +10119,35 @@ async def _step_response_probe_impl(  # noqa: C901, PLR0913
     # is a LOWER one, so this fires only when the window cannot fit even at the
     # slowest speed measured; a marginal config is left to the guard, which is
     # what actually carries the safety.
+    window_s = total_ms / 1000.0
     floor_travel_m = (
-        _STEP_RESPONSE_MIN_SPEED_BY_LINEAR.get(int(linear_speed), 0.24)
-        * total_ms
-        / 1000.0
+        _STEP_RESPONSE_MIN_SPEED_BY_LINEAR.get(int(linear_speed), 0.10) * window_s
+    )
+    typical_travel_m = (
+        _STEP_RESPONSE_TYPICAL_SPEED_BY_LINEAR.get(int(linear_speed), 0.216) * window_s
     )
     if floor_travel_m > max_travel_m:
         blockers.append("step_window_travel_exceeds_budget")
+    # Non-blocking: a window the floor clears but the TYPICAL speed does not is
+    # likely to end on the guard, which censors the measurement. Surfaced so the
+    # operator can retune before spending a supervised run, never enforced --
+    # over-refusing feasible configurations is the failure this replaced.
+    travel_projection = {
+        "window_s": round(window_s, 3),
+        "floor_speed_m_s": _STEP_RESPONSE_MIN_SPEED_BY_LINEAR.get(int(linear_speed)),
+        "floor_travel_m": round(floor_travel_m, 4),
+        "typical_speed_m_s": _STEP_RESPONSE_TYPICAL_SPEED_BY_LINEAR.get(
+            int(linear_speed)
+        ),
+        "typical_travel_m": round(typical_travel_m, 4),
+        "max_travel_m": max_travel_m,
+        "likely_guard_trip": typical_travel_m > max_travel_m,
+        "caveat": (
+            "typical_speed_m_s at linear 300 is EXTRAPOLATED -- no sustained "
+            "speed has ever been measured at 300. Treat any 300 projection as "
+            "an estimate, not a measurement."
+        ),
+    }
 
     config = ContinuousControllerConfig()
     result: dict[str, Any] = {
@@ -10128,6 +10172,7 @@ async def _step_response_probe_impl(  # noqa: C901, PLR0913
         "motion_refresh_interval_ms": motion_refresh_interval_ms,
         "sample_interval_ms": sample_interval_ms,
         "max_travel_m": max_travel_m,
+        "travel_projection": travel_projection,
         "safety_gates": gates,
         "blockers": blockers,
         "would_send": not dry_run and not blockers,
