@@ -872,11 +872,16 @@ raw_pymammotion_step_response_probe:
         heading between consecutive distinct readings and imposes no travel
         floor -- unlike the old RTK course statistic, which needed a 0.15 m
         chord and ruled 300 out. Driving slower is what lets a long step phase
-        fit inside max_travel_m and the corridor. Measured, and NOT linear:
-        400 is ~0.26 m/s, 300 is ~0.12 m/s.
+        fit inside max_travel_m and the corridor.
+        400 sustains ~0.216 m/s (mean of five banked full-window runs, range
+        0.194-0.262). 300 is ESTIMATED at ~0.16 m/s and has never been measured
+        sustained -- it is one 4 s ramp-inclusive sample (0.116 m/s) scaled by
+        the 1.37x sustained/average ratio observed at 400. Treat any 300 figure
+        as an estimate, not a measurement. The command/speed relation is NOT
+        linear: a 25% command cut gave a 39% speed cut.
       required: false
-      default: 400
-      example: 400
+      default: "400"
+      example: "400"
       selector:
         select:
           options:
@@ -884,8 +889,8 @@ raw_pymammotion_step_response_probe:
             - "400"
     step_angular_speed:
       required: false
-      default: 120
-      example: 120
+      default: "120"
+      example: "120"
       selector:
         select:
           options:
@@ -911,6 +916,10 @@ raw_pymammotion_step_response_probe:
         raises the CLOCK only -- max_travel_m is unchanged, and a step_ms that
         cannot fit it at the chosen linear_speed is refused before dispatch with
         step_window_travel_exceeds_budget.
+        ⚠️ baseline_ms + step_ms + settle_ms must also total 23000 ms or less, or
+        the run is refused with step_window_too_long. The three selectors each
+        permit their own maximum, so 5000 + 15000 + 6000 validates per-field and
+        is still refused on the sum.
       required: false
       default: 3000
       example: 3000

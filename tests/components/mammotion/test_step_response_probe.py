@@ -26,6 +26,7 @@ from typing import Any
 
 import pytest
 import voluptuous as vol
+import yaml
 
 from custom_components.mammotion import services
 from custom_components.mammotion.services import (
@@ -899,3 +900,57 @@ async def test_replaying_a_banked_config_is_not_refused_by_the_travel_gate() -> 
         dry_run=True,
     )
     assert "step_window_travel_exceeds_budget" not in result["blockers"]
+
+
+def test_services_yaml_and_strings_agree_with_the_schema_and_the_code() -> None:
+    """services.yaml, strings.json and the schema must not drift apart.
+
+    Every sibling service has a parity test of this shape and this one did not,
+    so on 2026-09-01 a fix to strings.json left services.yaml behind: the same
+    field quoted 0.16 m/s in one file and 0.12 m/s in the other, and 0.26 m/s
+    for linear 400 where the code's own table says 0.216. All 1003 tests were
+    green throughout, because nothing read the two files together.
+    """
+    root = Path(__file__).resolve().parents[3] / "custom_components" / "mammotion"
+    fields = yaml.safe_load((root / "services.yaml").read_text())[
+        "raw_pymammotion_step_response_probe"
+    ]["fields"]
+    strings = json.loads((root / "strings.json").read_text())["services"][
+        "raw_pymammotion_step_response_probe"
+    ]["fields"]
+
+    # Same field set in both files.
+    assert set(fields) == set(strings), (
+        f"services.yaml and strings.json disagree on fields: "
+        f"{set(fields) ^ set(strings)}"
+    )
+
+    # A select selector's default must be the SAME TYPE as its options, or the
+    # HA dropdown matches nothing and renders with no preselected value.
+    for name, spec in fields.items():
+        select = (spec.get("selector") or {}).get("select")
+        if not select or "default" not in spec:
+            continue
+        assert spec["default"] in select["options"], (
+            f"{name}: default {spec['default']!r} is not among its select "
+            f"options {select['options']!r}"
+        )
+
+    # Numeric bounds in the YAML must match the voluptuous schema's real limits.
+    validated = STEP_RESPONSE_PROBE_SCHEMA(
+        {
+            "entity_id": ENTITY,
+            "route_start": START,
+            "corridor_polygon": WIDE_CORRIDOR,
+            "step_ms": fields["step_ms"]["selector"]["number"]["max"],
+        }
+    )
+    assert validated["step_ms"] == fields["step_ms"]["selector"]["number"]["max"]
+
+    # No speed figure may be quoted in one file and contradicted in the other.
+    for name in ("linear_speed", "step_ms"):
+        assert strings[name]["description"], f"{name} has no strings.json description"
+    assert "0.12" not in fields["linear_speed"]["description"], (
+        "services.yaml quotes a ramp-inclusive 0.12 m/s for linear 300 while "
+        "strings.json and _STEP_RESPONSE_TYPICAL_SPEED_BY_LINEAR use ~0.16"
+    )

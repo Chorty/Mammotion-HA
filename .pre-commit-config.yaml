@@ -43,7 +43,10 @@ repos:
           # are part of the argument, so the whole skip list was inert and
           # matched nothing. The two HTML files are standalone browser dev
           # tools, not shipped with the integration.
-          - --skip=.*,*.csv,*.json,*.ambr,uv.lock,svg_map_aligner.html,agora_test.html
+          # docs/review-journals/ holds VERBATIM adversarial-review agent output,
+          # preserved as evidence. Correcting spelling inside it would falsify a
+          # record, so the directory is skipped rather than edited.
+          - --skip=.*,*.csv,*.json,*.jsonl,*.ambr,uv.lock,svg_map_aligner.html,agora_test.html,docs/review-journals/*
           - --quiet-level=2
         exclude_types: [csv, json]
   - repo: https://github.com/pre-commit/pre-commit-hooks

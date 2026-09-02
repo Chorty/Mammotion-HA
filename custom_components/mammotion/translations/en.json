@@ -2509,7 +2509,7 @@
         },
         "linear_speed": {
           "name": "Linear speed",
-          "description": "Forward command: 400 or 300. 300 is admissible under rule E-VIO, which reads VIO heading and imposes no travel floor, and it is what lets a long step phase fit the travel budget. Measured and not linear: 400 is about 0.26 m/s, 300 about 0.16 m/s."
+          "description": "Forward command: 400 or 300. 300 is admissible under rule E-VIO, which reads VIO heading and imposes no travel floor, and it is what lets a long step phase fit the travel budget. 400 sustains about 0.216 m/s, measured across five banked runs. 300 is ESTIMATED at about 0.16 m/s and has never been measured sustained - treat it as an estimate, not a measurement. The command to speed relation is not linear: a 25 percent command cut gave a 39 percent speed cut."
         },
         "step_angular_speed": {
           "name": "Step angular speed",
@@ -2521,7 +2521,7 @@
         },
         "step_ms": {
           "name": "Step duration",
-          "description": "Phase holding the step angular command, used to measure the steady rotation rate. Up to 15000 ms; a longer step shrinks the share of the interval that straddles the command onset. A duration that cannot fit the travel budget at the chosen linear speed is refused before dispatch."
+          "description": "Phase holding the step angular command, used to measure the steady rotation rate. Up to 15000 ms; a longer step shrinks the share of the interval that straddles the command onset. A duration that cannot fit the travel budget at the chosen linear speed is refused before dispatch. Baseline plus step plus settle must also total 23000 ms or less, or the run is refused with step_window_too_long - each phase can be at its own maximum and the sum still rejected."
         },
         "settle_ms": {
           "name": "Settle duration",
