@@ -789,8 +789,19 @@ async def test_a_long_window_at_the_FAST_speed_is_flagged_but_not_refused() -> N
     assert projection["floor_travel_m"] < 4.5 < projection["typical_travel_m"]
 
 
-async def test_the_intended_slow_long_run_is_not_flagged_as_a_likely_trip() -> None:
-    """Linear 300 over 23 s projects ~3.7 m -- inside the budget on both figures."""
+async def test_the_proposed_long_slow_run_IS_flagged_as_a_likely_trip() -> None:
+    """The long/slow window does NOT fit, and the projection now says so.
+
+    ⚠️ INVERTED 2026-09-03 by measurement. This previously asserted the opposite,
+    because the projection used an EXTRAPOLATED 0.16 m/s for linear 300. Phase A
+    measured the SUSTAINED speed at 0.223 m/s -- 39% higher -- so a 23 s window
+    projects 5.13 m against a 4.5 m budget rather than the 3.7 m once claimed,
+    and the 28 s window the cap-raise proposal wanted projects 5.9 m.
+
+    The flag stays non-blocking by design: the lower bound still clears, so
+    nothing is refused and the travel guard keeps carrying the safety. What
+    changed is that the operator is now WARNED instead of reassured.
+    """
     result = await _step_response_probe(
         _FakeCoordinator(),
         route_start=START,
@@ -802,8 +813,10 @@ async def test_the_intended_slow_long_run_is_not_flagged_as_a_likely_trip() -> N
         max_travel_m=4.5,
         dry_run=True,
     )
+    projection = result["travel_projection"]
+    assert projection["typical_travel_m"] == pytest.approx(5.129, abs=0.01)
+    assert projection["likely_guard_trip"] is True
     assert "step_window_travel_exceeds_budget" not in result["blockers"]
-    assert result["travel_projection"]["likely_guard_trip"] is False
 
 
 async def test_the_same_long_window_at_linear_300_fits_the_unchanged_budget() -> None:
@@ -969,7 +982,7 @@ def test_containment_uses_the_WORST_of_travel_budget_and_wall_clock() -> None:
     `raw_pymammotion_motion_probe` was corrected for this on 2026-08-23; this
     probe was missed for four cap raises. Found by adversarial review 2026-09-02.
     """
-    # 23 s at linear 400: clock bound 0.28 * 23 = 6.44 m beats 4.5 + 0.5 = 5.0 m.
+    # 23 s at linear 400: clock bound 0.30 * 23 = 6.90 m beats 4.5 + 0.5 = 5.0 m.
     gates = _step_response_gates(
         _FakeCoordinator(),
         {"position": {"x": 0.0, "y": 0.0}},
@@ -983,9 +996,9 @@ def test_containment_uses_the_WORST_of_travel_budget_and_wall_clock() -> None:
         confirm_clear_area=True,
     )
     diagnostics = _gate(gates, "step_path_contained")["diagnostics"]
-    assert diagnostics["clock_bound_m"] == pytest.approx(6.44, abs=0.01)
+    assert diagnostics["clock_bound_m"] == pytest.approx(6.90, abs=0.01)
     assert diagnostics["travel_budget_bound_m"] == pytest.approx(5.0)
-    assert diagnostics["required_radius_m"] == pytest.approx(6.44, abs=0.01)
+    assert diagnostics["required_radius_m"] == pytest.approx(6.90, abs=0.01)
     assert diagnostics["bound_that_binds"] == "clock"
 
 
@@ -1004,7 +1017,7 @@ def test_short_windows_still_bind_on_the_travel_budget() -> None:
         confirm_clear_area=True,
     )
     diagnostics = _gate(gates, "step_path_contained")["diagnostics"]
-    # Phase A: clock bound 0.21 * 8 = 1.68 m, under the 3.0 m travel bound.
-    assert diagnostics["clock_bound_m"] == pytest.approx(1.68, abs=0.01)
+    # Phase A: clock bound 0.225 * 8 = 1.80 m, under the 3.0 m travel bound.
+    assert diagnostics["clock_bound_m"] == pytest.approx(1.80, abs=0.01)
     assert diagnostics["required_radius_m"] == pytest.approx(3.0)
     assert diagnostics["bound_that_binds"] == "travel_budget"

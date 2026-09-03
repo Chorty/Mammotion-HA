@@ -186,10 +186,12 @@ def test_the_response_states_the_real_bound_not_the_requested_one(
     assert guard["expected_overshoot_m"] == pytest.approx(
         _PROBE_TRAVEL_GUARD_OVERSHOOT_M
     )
-    # Whichever bound is larger. At 8 s and linear 400 the clock bound (2.24 m)
+    # Whichever bound is larger. At 8 s and linear 400 the clock bound (2.40 m)
     # exceeds guard-plus-overshoot (2.00 m), and the corridor must cover the
     # case where the guard does nothing.
-    assert guard["clock_bound_m"] == pytest.approx(2.24, abs=0.01)
+    assert guard["clock_bound_m"] == pytest.approx(
+        2.40, abs=0.01
+    )  # 7.5e-4 x 400 x 8 s; was 2.24 at the pre-2026-09-03 constant
     assert guard["corridor_must_cover_m"] == pytest.approx(
         max(1.5 + _PROBE_TRAVEL_GUARD_OVERSHOOT_M, guard["clock_bound_m"])
     )
@@ -450,8 +452,10 @@ def test_corridor_must_cover_reports_the_clock_bound_when_it_is_larger(
     )["travel_guard"]
 
     # 12 s at the rounded-up speed for linear 400 dwarfs 0.10 + 0.50.
-    assert guard["clock_bound_m"] == pytest.approx(3.36, abs=0.01)
-    assert guard["corridor_must_cover_m"] == pytest.approx(3.36, abs=0.01)
+    assert guard["clock_bound_m"] == pytest.approx(
+        3.60, abs=0.01
+    )  # 7.5e-4 x 400 x 12 s; was 3.36 at the pre-2026-09-03 constant
+    assert guard["corridor_must_cover_m"] == pytest.approx(3.60, abs=0.01)
     assert (
         guard["corridor_must_cover_m"]
         > guard["max_travel_m"] + guard["expected_overshoot_m"]

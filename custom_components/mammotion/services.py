@@ -897,11 +897,24 @@ _PROBE_TRAVEL_GUARD_OVERSHOOT_M = 0.50
 # reading a dead feed measures zero travel forever. Matches the Phase 1
 # analyzer's own 2000 ms position-arrival gap limit.
 _PROBE_FEED_STALE_ABORT_MS = 2000.0
-# Metres per second per unit of `linear_speed`, for sizing the clock-bound
-# fallback only. Measured 6.204299e-04 (0.2482 m/s at 400) over 16 steady-state
-# in-window steps across three straight captures on 2026-08-22, then rounded UP,
-# because this number exists to make a corridor big enough rather than accurate.
-_PROBE_SPEED_PER_LINEAR_UNIT_MS = 7.0e-04
+# Metres per second per unit of `linear_speed`, for sizing clock-bound corridor
+# clearance. It exists to make a corridor big enough, NOT to be accurate, so it
+# is always rounded UP -- too low is the unsafe direction.
+#
+# 🚨 RAISED 7.0e-04 -> 7.5e-04 on 2026-09-03. The old value was fitted to
+# ramp-INCLUSIVE window averages and understated SUSTAINED travel, which is what
+# a long window actually accumulates. Post-ramp speeds, measured directly:
+#     linear 300 -> 0.223 m/s  (Phase A, 2026-09-03)  => 7.43e-04
+#     linear 400 -> 0.295 m/s  (2026-09-01 run)       => 7.38e-04
+# and 0.295 independently matches the 0.280-0.293 m/s measured during arcs on
+# 2026-08-12. At 7.0e-04 the constant sat ~6% BELOW the measured value at 300.
+#
+# 🔑 Those two points also show the command/speed relation is essentially LINEAR
+# in the sustained regime: 0.223/0.295 = 0.756 against a command ratio of 0.750.
+# ⚠️ The long-standing "a 25% command cut gave a 39% speed cut" was an artifact
+# of comparing 4 s ramp-inclusive averages, where the slower run spends a larger
+# fraction of its window ramping. Do not quote it as a property of the drivetrain.
+_PROBE_SPEED_PER_LINEAR_UNIT_MS = 7.5e-04
 
 RAW_PYMAMMOTION_MOTION_PROBE_SCHEMA = vol.Schema(
     {
@@ -9546,18 +9559,27 @@ _STEP_RESPONSE_MAX_TOTAL_MS = 23000
 #
 # The relation to the command is NOT linear: a 25% command cut produced a 39%
 # speed cut on 2026-08-30 (4 s ramp-inclusive averages, 400 -> 0.191,
-# 300 -> 0.116 m/s). ⚠️ There is NO sustained-speed measurement at 300 at all;
-# 0.10 is a deliberately pessimistic floor under an extrapolated ~0.16 m/s.
+# 300 -> 0.116 m/s). 🗑️ That non-linearity is now REFUTED as a ramp artifact --
+# see `_PROBE_SPEED_PER_LINEAR_UNIT_MS`; sustained speeds scale essentially
+# linearly with the command.
+# ⚠️ These stay LOW on purpose. They are the floor a WHOLE window averages,
+# including ramp-up from standstill, so they must sit under the shortest windows
+# too: Phase A measured 0.157 m/s whole-window at 300 over 8 s against 0.223
+# sustained, and a 3 s window averages far less again.
 _STEP_RESPONSE_MIN_SPEED_BY_LINEAR: dict[int, float] = {300: 0.10, 400: 0.17}
-# TYPICAL m/s, for a non-blocking projection only. A true lower bound refuses
-# only the impossible, so it cannot flag a window that is merely LIKELY to trip
-# the guard -- a 23 s window at linear 400 projects 4.97 m against a 4.5 m budget
-# on these figures, yet 0.17 x 23 = 3.91 clears the refusal. Rather than corrupt
-# the bound to catch it, the probe reports both numbers and lets the operator
-# see the risk. 400 is the mean of the five banked full-window rates; 300 is
-# extrapolated (0.116 ramp-inclusive x the 1.37 sustained/average ratio measured
-# at 400) and has NO sustained measurement behind it.
-_STEP_RESPONSE_TYPICAL_SPEED_BY_LINEAR: dict[int, float] = {300: 0.16, 400: 0.216}
+# SUSTAINED (post-ramp) m/s, for a non-blocking projection only. A true lower
+# bound refuses only the impossible, so it cannot flag a window that is merely
+# LIKELY to trip the guard; the probe reports both numbers and lets the operator
+# see the risk.
+#
+# 🚨 CORRECTED 2026-09-03 from ramp-INCLUSIVE window averages to SUSTAINED speeds,
+# measured directly: 300 -> 0.223 (Phase A), 400 -> 0.295 (2026-09-01 run, and
+# independently 0.280-0.293 during the 2026-08-12 arcs). The old {300: 0.16,
+# 400: 0.216} understated a long window badly -- 0.16 at 300 was 39% low, and
+# sizing a 28 s Phase B window with it predicted 4.5 m where the measured figure
+# gives 5.9 m. Using sustained speed with no ramp credit slightly OVER-states
+# travel on short windows; that is the safe direction for a warning.
+_STEP_RESPONSE_TYPICAL_SPEED_BY_LINEAR: dict[int, float] = {300: 0.223, 400: 0.295}
 # Matches the readiness budget the beta77 stationary work derived: the maximum
 # healthy stationary publication interval measured 2910.1 ms across n=1434, so
 # 3.5 s carries a 1.20x margin. It is a conservative stationary default, never
