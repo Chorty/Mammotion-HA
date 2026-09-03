@@ -46,6 +46,28 @@ this file every time.
 
 ## Current build: beta95 (E-VIO step-response scoring, DEPLOYED 2026-09-01; backend post4 unchanged); PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
 
+🛑 **DO NOT QUOTE A CRITERION 2a VERDICT AS FACT. THE SHIPPED INSTRUMENT HAS A
+MEASURED BIAS.** Read `docs/findings-2a-replacement-20260903.md` (predeclared at
+`88b7fddb`). 2a's statistic is depressed by the interval straddling the command
+onset by `2·Δ·dt/T` — **~2.9 °/s at a 7 s step, 1.36 at 15 s**, against a 1.5 °/s
+bound. 🗑️ **"2a is noise-dominated" is WRONG and was my phrase**: the shipped
+endpoint-difference statistic is *admissible* (2σ **1.145** at 7 s). **2a fails on
+BIAS, not variance**, and bias and noise both scale as 1/T so a longer step cannot
+change their ratio.
+🔑 **A five-rule predeclared study picked a replacement — Rule D, the
+settle-anchored plateau (final 3 s vs prior 3 s)** — anchor-clean, admissible at
+2σ 1.336, ignores the onset by construction, and scores the two +180 runs the
+SAME way where the shipped rule splits them. ⚠️ **It is NOT adopted and shipped
+code is unchanged**, because it unblocks nothing (2a gates τ → dead time →
+Phase 2, parked), its noise margin is *thinner* than the status quo's, and it
+redefines ω so τ would change meaning. **Adopt it only alongside an
+out-of-sample run** — it was chosen against five runs it could see.
+🚨 **The study's own cautionary result: the rule I predeclared as my expected
+winner (a fixed 2000 ms onset window) PASSED BOTH known-ramping anchors and was
+rejected.** Excluding a fixed window from a short step strips the ramp it must
+detect. **Any onset allowance must scale with step length.** Had it been chosen
+after seeing verdicts it would have shipped.
+
 🔑 **AND THE SPLIT IS EXPLAINED, SAME DAY, OFFLINE — IT IS THE ONSET INTERVAL'S
 SAMPLING PHASE, NOT THE PLANT.** Read
 `docs/findings-plus180-split-is-onset-sampling-phase-20260901.md`. Both +180/7000
