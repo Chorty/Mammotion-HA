@@ -126,15 +126,17 @@ in `fa40dd7b` — resolved at runtime from `/api/config/config_entries/entry`,
 refusing ambiguity rather than guessing. ⚠️ **Any doc quoting the old entry id
 (including the 2026-08-24 reload entry below) is stale.**
 
-🔌 **BLE dropped mid-preparation and the cause was INFRASTRUCTURE, not code.**
-The `master_bedroom_proxy` ESPHome device — the proxy near the mower — went
-`unavailable` at 15:34 EDT; the link survived on an already-open connection
+🔌 **BLE dropped mid-preparation.** 🗑️ **CORRECTED 2026-09-03: the cause was NOT
+`master_bedroom_proxy`.** The operator states the mower is not paired to it; that
+device merely has "mammotion" in its BUTTON NAMES, which is naming, not topology,
+and the inference was never verified. The link genuinely failed — the link survived on an already-open connection
 until ~18:06, then could not re-establish (`never seen by any scanner`,
 `BleakOutOfConnectionSlotsError`). ⚠️ **Every cheap indicator lied**: `ble_rssi`
 read **-60** the whole time (self-reported and stale) and
 `sensor.bermuda_global_active_proxy_count` read **3** — the other three proxies,
-none near the yard. 🔑 **Check `master_bedroom_proxy_*` for `unavailable` BEFORE
-reaching for a config-entry reload, an HA restart, or a mower wake.**
+none near the yard. 🔑 **Diagnose BLE from `report_stream_probe`'s `queue_settle` and the HA
+container log, NOT from that proxy's state.** ⚠️ `ble_rssi 0` DOES mean the mower
+has dozed — a mower restart cleared exactly that on 2026-09-03.
 ⚠️ A **97.07°** VIO-vs-mirror orientation disagreement appeared while BLE was
 down (`trustworthy: false`, `heading_sources_disagree`) and **resolved to 0.678°
 after the repositioning drive** — `toward` had simply latched and re-derives from
