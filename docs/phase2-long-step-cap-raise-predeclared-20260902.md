@@ -177,3 +177,36 @@ sizing constant `0.0007 × linear_speed` for containment, which is deliberately
 conservative, but the *travel guard* still compares against real measured travel —
 and the sustained speed at 300 remains unmeasured. Nothing here removes that
 dependency.
+
+---
+
+## 8. 🗑️ WITHDRAWN 2026-09-03 — Phase A measured the speed and this proposal does not survive it
+
+**Phase A ran and the number came back 39% above the extrapolation this proposal
+was sized with.** Read
+`docs/evidence-phaseA-linear300-sustained-speed-20260903.md`.
+
+| | assumed here | measured |
+| --- | --- | --- |
+| sustained speed at linear 300 | 0.16 m/s | **0.223 m/s** |
+| travel over the proposed 28 s window | ~4.5 m | **5.90 m** |
+| against `max_travel_m` 4.5 | fits | **DOES NOT FIT** |
+
+The largest window that fits at `max_travel_m` 4.5 is **21.7 s**, leaving a 14.7 s
+step at **50.5%** — worse than the 60.7% today's unchanged 15 s cap already
+delivers. 🔑 **So the cap raise buys nothing and is withdrawn**, exactly as §4 of
+the Phase A predeclaration registered in advance. **`max_travel_m` stays 4.5.**
+
+⚠️ **The specific trap, because it has now caught this project three times in
+eight days:** the whole-window speed Phase A measured (0.1574 m/s) agreed with the
+extrapolation to **1.6%** — and was still wrong for sizing, because both include
+ramp-up. **Separate the ramp before sizing any window.** A ramp-inclusive average
+is only valid for a window of the same length.
+
+**What survives:** §7.1's clock-bound containment fix is real, shipped, and
+independent of this — it was a genuine gap regardless. The convergence table in
+§1 also stands as a description of the statistic; what fails is the belief that a
+long enough step is reachable here.
+
+**What remains open, unchanged:** criterion 2a needs a different statistic, not a
+longer window. Offline work, no mower.
