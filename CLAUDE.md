@@ -54,14 +54,16 @@ bound. 🗑️ **"2a is noise-dominated" is WRONG and was my phrase**: the shipp
 endpoint-difference statistic is *admissible* (2σ **1.145** at 7 s). **2a fails on
 BIAS, not variance**, and bias and noise both scale as 1/T so a longer step cannot
 change their ratio.
-🔑 **A five-rule predeclared study picked a replacement — Rule D, the
-settle-anchored plateau (final 3 s vs prior 3 s)** — anchor-clean, admissible at
-2σ 1.336, ignores the onset by construction, and scores the two +180 runs the
-SAME way where the shipped rule splits them. ⚠️ **It is NOT adopted and shipped
-code is unchanged**, because it unblocks nothing (2a gates τ → dead time →
-Phase 2, parked), its noise margin is *thinner* than the status quo's, and it
-redefines ω so τ would change meaning. **Adopt it only alongside an
-out-of-sample run** — it was chosen against five runs it could see.
+🛑 **A five-rule predeclared study picked Rule D (settle-anchored plateau, final
+3 s vs prior 3 s) and the operator DENIED it, 2026-09-03. Shipped scoring is
+UNCHANGED; 2a still uses Rule A.** The asymmetry decided it: D is **more
+permissive by construction** (excluding the onset makes any run likelier to
+pass — it flips two banked FAILs to PASSes), its 2σ is **1.336 against the
+status quo's 1.145**, and it had one round of in-sample selection with no
+out-of-sample test — to gain a τ that nothing needs while Phase 2 is parked.
+⚠️ **Do not re-propose D as an easy win.** The reversal condition is written
+down: if Phase 2 resumes and τ is actually needed, adopt D **together with** an
+out-of-sample validation run, and resolve the ω/τ redefinition first.
 🚨 **The study's own cautionary result: the rule I predeclared as my expected
 winner (a fixed 2000 ms onset window) PASSED BOTH known-ramping anchors and was
 rejected.** Excluding a fixed window from a short step strips the ramp it must
