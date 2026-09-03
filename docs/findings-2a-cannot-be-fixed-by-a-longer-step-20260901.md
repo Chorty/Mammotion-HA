@@ -108,3 +108,51 @@ framing of a longer step, are withdrawn. A longer step is **not** a dead end —
 it is capped by schema values that are ours to move deliberately.
 
 **Superseded by** `docs/phase2-long-step-cap-raise-predeclared-20260902.md`.
+
+---
+
+## 5. 🗑️ CORRECTION 2026-09-03 — §1's table was computed on the WRONG STATISTIC
+
+§1 modelled `half_diff = onset/k + noise`, with `noise ~ sd·sqrt(2/k)`. That
+assumes each half rate is a **simple mean of interval rates**. It is not. The
+shipped `_step_response_half_phase_agreement` computes a **time-weighted ENDPOINT
+difference per half**, sharing the boundary reading:
+
+```python
+(t0, a0), (t1, a1) = half[0], half[-1]
+half_rates.append(normalize_degrees(a1 - a0) / ((t1 - t0) / 1000))
+```
+
+🔑 **The difference is structural, not cosmetic.** An endpoint difference depends
+only on the two end readings, so its noise scales as **1/T** (the half's
+duration) — it does **not** average down as `1/sqrt(k)` with more intervals. The
+old model therefore had both the wrong scaling and the wrong magnitude.
+
+**Re-derived by bootstrapping the SHIPPED function** over 12 real ex-onset step
+intervals and the real `dt` distribution (0.711–1.116 s), drawing both observed
+onset severities (−5.675 and −1.352 °/s), N = 4000 per point:
+
+| step | intervals | P(2a pass) — corrected | (§1 claimed) |
+| --- | --- | --- | --- |
+| 7 s | 7.1 | **34.4%** | 13.9% |
+| 15 s | 15.3 | **68.7%** | 60.7% |
+| 20 s | 20.4 | **81.4%** | 76.0% |
+| 25 s | 25.5 | **88.5%** | 89.1% |
+| **30 s** | 30.6 | **53.1%** ⚠️ | (not computed) |
+
+🚨 **THE CURVE IS NOT MONOTONIC, AND §1 MISSED IT ENTIRELY.** It peaks near 25 s
+and **collapses at 30 s**, because each half rate is an endpoint difference pushed
+through `normalize_degrees` (wrapping to [−180, 180)): at the measured 12.136 °/s
+a 15 s half accumulates **182°** and silently aliases, flipping the half rate's
+sign. Aliasing onset is a **29.7 s step**. This independently reproduces the
+aliasing finding from the 2026-09-02 adversarial review of beta97.
+
+✅ **§2's and §3's conclusions are UNCHANGED.** 2a remains noise-dominated at
+every reachable step length, the yard/travel budget still caps the step well
+below the 25 s peak, and a replacement statistic is still the answer. The numbers
+move; the argument does not.
+
+⚠️ **Also corrected:** the ex-onset re-split figures. **1.625 / 0.107** are the
+shipped statistic; the **1.727 / 0.503** quoted in `CLAUDE.md` were a simple mean
+of interval rates. Both are internally correct — only the shipped pair describes
+the shipped rule.

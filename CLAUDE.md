@@ -58,7 +58,10 @@ and flips 2a. **The mower did the same thing both times: ~-11.5 to -12 °/s at
 ~1 Hz VIO boundary lands relative to the command, and would be misread as
 evidence about the machine. ⚠️ **Do NOT "just exclude the onset interval"
 either:** re-splitting the remaining six 3/3 flips both verdicts the OTHER way
-(banked **1.727 FAIL**, repeat **0.503 PASS**) — picking that rule now, knowing
+(banked **1.625 FAIL**, repeat **0.107 PASS** — corrected 2026-09-03; the
+1.727/0.503 once quoted here were a simple mean of interval rates, where the
+shipped rule uses a time-weighted ENDPOINT difference per half) — picking that
+rule now, knowing
 what it flips, is the exact failure the 2026-08-23 mirror-criterion review
 rejected. 🔑 **The only lever that addresses this is a LONGER step**, shrinking
 the onset interval's share — and it is blocked on purpose: `step_ms` is

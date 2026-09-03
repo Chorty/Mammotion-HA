@@ -210,3 +210,25 @@ long enough step is reachable here.
 
 **What remains open, unchanged:** criterion 2a needs a different statistic, not a
 longer window. Offline work, no mower.
+
+---
+
+## 9. Numbers corrected 2026-09-03 (the withdrawal in §8 stands)
+
+§1's and §7's `P(2a pass)` figures were computed on a simple mean of interval
+rates; the shipped statistic is a time-weighted **endpoint difference**. Corrected
+by bootstrapping the shipped function — see
+`docs/findings-2a-cannot-be-fixed-by-a-longer-step-20260901.md` §5:
+
+| step | §1 claimed | corrected |
+| --- | --- | --- |
+| 15 s | 60.7% | **68.7%** |
+| 20 s | 76.0% | **81.4%** |
+| 25 s | 91.7% (as 27 s) | **88.5%** |
+| 30 s | — | **53.1%** — aliasing collapse |
+
+⚠️ **This does NOT revive the proposal.** §8 withdrew it because Phase A measured
+sustained speed at linear 300 as 0.223 m/s, so the 28 s window travels 5.90 m
+against a 4.5 m budget. That is a **travel** constraint and is untouched by any
+correction to the statistic. The corrected curve also adds a second reason the
+long end is unreachable: aliasing sets in at a **29.7 s step**.
