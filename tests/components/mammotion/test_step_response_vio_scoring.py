@@ -7,10 +7,16 @@ last-two-rates semantics on the VIO channel, omega/tau come from the same
 channel and tau exists only when 2a passes, and dark VIO refuses to score
 rather than falling back to the noise-bound RTK chord rule.
 
-The four banked route-1 runs in `docs/raw-samples/` are the regression
-fixtures — 549 real samples from supervised runs, including the two verdicts
-that FLIP versus the published RTK scoring. Pinning the flips is the point:
-nobody may quietly restore the old instrument without these failing.
+The banked runs in `docs/raw-samples/` are the regression fixtures — 775 real
+samples across six supervised runs, five of them scored here, including the two
+verdicts that FLIP versus the published RTK scoring AND the 2026-09-01 repeat
+that refutes one of those flips. Pinning them is the point: nobody may quietly
+restore the old instrument without these failing.
+
+⚠️ The roster is `BANKED_RUNS`, and
+`test_every_banked_run_is_pinned_or_explicitly_excused` enforces that every file
+on disk is either in it or excused with a reason — because the 2026-09-01 repeat
+sat unpinned for two days while this suite stayed green.
 """
 
 from __future__ import annotations
@@ -45,31 +51,47 @@ def _synthetic_samples(headings: list[float | None], *, state: int = 2) -> list[
 
 
 # ---------------------------------------------------------------------------
-# The four banked runs — including the two flips vs the published RTK verdicts
+# The banked runs — the two flips, and the repeat that refutes one of them
 # ---------------------------------------------------------------------------
 
 
+BANKED_RUNS = [
+    # Both 5000 ms runs were still accelerating when the step ended — the
+    # predeclared ground-truth anchors. Any rule passing them is broken.
+    ("raw-route1-run1-plus120-step5000-20260830.json", 5000, False, 2.156, True),
+    (
+        "raw-route1-run1repeat-plus120-step5000-20260830.json",
+        5000,
+        False,
+        3.664,
+        True,
+    ),
+    # 🚨 THE FLIP: the published RTK 2a PASS (0.11 deg/s, an 0.04-sigma
+    # margin on a noise-bound statistic) does not survive — VIO's second
+    # half is materially faster, so tau=2.038s stays demoted.
+    ("raw-route1-stepext-plus120-step7000-20260830.json", 7000, False, 2.319, True),
+    # 🚨 THE OTHER FLIP: the published RTK 2a FAIL (5.64 deg/s of chord
+    # noise on a steady -11.3 deg/s plateau) becomes a clean PASS.
+    ("raw-route1-run2-plus180-step7000-20260830.json", 7000, True, 0.130, True),
+    # 🚨 AND IT DOES NOT REPRODUCE. Same configuration as the row above, run
+    # 2026-09-01: 2a FAILS at 3.4049 -- 26x the banked run's margin. The two
+    # runs' PLANT agrees to 0.195 deg/s; the entire verdict split comes from
+    # the single interval straddling the command onset. See
+    # docs/findings-plus180-split-is-onset-sampling-phase-20260901.md.
+    # This run went unpinned for two days after the fact; that is why the
+    # roster below is now derived from the directory rather than typed.
+    (
+        "raw-route1-run2repeat-plus180-step7000-20260901.json",
+        7000,
+        False,
+        3.4049,
+        True,
+    ),
+]
+
+
 @pytest.mark.parametrize(
-    ("filename", "step_ms", "pass_2a", "half_diff", "pass_2b"),
-    [
-        # Both 5000 ms runs were still accelerating when the step ended — the
-        # predeclared ground-truth anchors. Any rule passing them is broken.
-        ("raw-route1-run1-plus120-step5000-20260830.json", 5000, False, 2.156, True),
-        (
-            "raw-route1-run1repeat-plus120-step5000-20260830.json",
-            5000,
-            False,
-            3.664,
-            True,
-        ),
-        # 🚨 THE FLIP: the published RTK 2a PASS (0.11 deg/s, an 0.04-sigma
-        # margin on a noise-bound statistic) does not survive — VIO's second
-        # half is materially faster, so tau=2.038s stays demoted.
-        ("raw-route1-stepext-plus120-step7000-20260830.json", 7000, False, 2.319, True),
-        # 🚨 THE OTHER FLIP: the published RTK 2a FAIL (5.64 deg/s of chord
-        # noise on a steady -11.3 deg/s plateau) becomes a clean PASS.
-        ("raw-route1-run2-plus180-step7000-20260830.json", 7000, True, 0.130, True),
-    ],
+    ("filename", "step_ms", "pass_2a", "half_diff", "pass_2b"), BANKED_RUNS
 )
 def test_banked_runs_score_as_the_findings_document_published(
     filename: str, step_ms: int, pass_2a: bool, half_diff: float, pass_2b: bool
@@ -176,3 +198,30 @@ def test_the_probe_attaches_vio_analysis_to_its_result() -> None:
     assert 'result["vio_analysis"] = _step_response_vio_analysis(' in source
     # The RTK diagnostic stays emitted — cross-checkability is the point.
     assert 'result["course_series"] = _step_response_course_series(' in source
+
+
+def test_every_banked_run_is_pinned_or_explicitly_excused() -> None:
+    """No banked run may sit unscored just because nobody typed it into the table.
+
+    🚨 Regression, 2026-09-03. `raw-route1-run2repeat-plus180-step7000-20260901.json`
+    -- the run whose 2a FAIL refuted the +180 flip -- was absent from the
+    parametrized roster for two days while the whole suite stayed green, because
+    the roster was a hand-typed literal. A file appearing in docs/raw-samples/
+    must now either be pinned above or be named here with a reason.
+
+    Precedent for globbing the directory rather than listing it:
+    tests/components/mammotion/test_step_response_probe.py.
+    """
+    pinned = {row[0] for row in BANKED_RUNS}
+    # Excused, with reasons. Not "forgotten".
+    excused = {
+        # Phase A: a 1000 ms step yields ~1 informative step interval against the
+        # rule's >=3, so 2a is unscoreable BY DESIGN. It measured speed, not 2a.
+        "raw-phaseA-linear300-speed-20260903.json",
+    }
+    on_disk = {p.name for p in RAW_SAMPLES.glob("*.json")}
+    unaccounted = on_disk - pinned - excused
+    assert not unaccounted, (
+        f"banked runs neither pinned nor excused: {sorted(unaccounted)} -- add "
+        "them to the parametrized roster, or excuse them here with a reason"
+    )
