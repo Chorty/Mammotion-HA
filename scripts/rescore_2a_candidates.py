@@ -23,10 +23,12 @@ Why this exists, and how it differs from `scripts/rescore_course_rate_rules.py`:
 3. **The roster is globbed**, not typed. A hand-typed roster is why the
    2026-09-01 repeat sat unscored for two days.
 
-⚠️ **This module ships with the STATUS QUO rule only.** Candidate rules are added
-in the predeclaration commit, never before — the whole point of the 2026-08-31
-discipline is that a rule's definition is registered before its verdicts are
-computed. See `docs/predeclared-rtk-vio-course-rate-scoring-20260831.md`.
+⚠️ **Every candidate rule here was registered by
+`docs/predeclared-2a-replacement-20260903.md` (commit `88b7fddb`) BEFORE any of
+its verdicts were computed.** That commit's git timestamp is the evidence. Adding
+a rule after seeing verdicts, or retuning a registered constant to improve one,
+defeats the entire method — see
+`docs/predeclared-rtk-vio-course-rate-scoring-20260831.md` for the precedent.
 
 Usage:
     .venv/bin/python scripts/rescore_2a_candidates.py
@@ -46,6 +48,9 @@ from typing import Any
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
+from custom_components.mammotion.continuous_controller import (  # noqa: E402
+    normalize_degrees,
+)
 from custom_components.mammotion.services import (  # noqa: E402
     _STEP_RESPONSE_MIN_INFORMATIVE_INTERVALS,
     _STEP_RESPONSE_RATE_AGREEMENT_BOUND_DEG_PER_S,
@@ -97,10 +102,134 @@ def rule_a_status_quo(step_intervals: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+# --- candidates, registered by docs/predeclared-2a-replacement-20260903.md ---
+# Commit 88b7fddb, BEFORE any verdict below was computed.
+
+ONSET_ALLOWANCE_MS = 2000.0
+"""Rule C's onset window. NOT tuned here -- it is this project's own measured
+onset lag (2026-08-29: rotation does not start for ~1-2 s). Declaring a physical
+TIME window rather than "the first interval" is what makes the rule independent
+of where sample boundaries fall, which is the defect that split the two +180
+runs."""
+
+PLATEAU_WINDOW_MS = 3000.0
+"""Rule D's comparison window."""
+
+SLOPE_BOUND_DEG_PER_S2 = 0.30
+"""Rule E's bound: 1.5 deg/s of drift across a nominal 5 s of post-onset step."""
+
+
+def _endpoint_rate(intervals: list[dict[str, Any]]) -> float | None:
+    """Time-weighted endpoint rate across a run of intervals, as Rule A defines it."""
+    if len(intervals) < 1:
+        return None
+    t0 = intervals[0]["from_elapsed_ms"]
+    t1 = intervals[-1]["to_elapsed_ms"]
+    if t1 <= t0:
+        return None
+    h0 = intervals[0]["from_heading_degrees"]
+    h1 = intervals[-1]["to_heading_degrees"]
+    return normalize_degrees(h1 - h0) / ((t1 - t0) / 1000.0)
+
+
+def _after_onset(
+    step_intervals: list[dict[str, Any]], allowance_ms: float
+) -> list[dict[str, Any]]:
+    """Intervals whose MIDPOINT clears the onset window, measured from step start."""
+    if not step_intervals:
+        return []
+    start = step_intervals[0]["from_elapsed_ms"]
+    return [
+        iv
+        for iv in step_intervals
+        if (iv["from_elapsed_ms"] + iv["to_elapsed_ms"]) / 2 - start >= allowance_ms
+    ]
+
+
+def rule_b_drop_first(step_intervals: list[dict[str, Any]]) -> dict[str, Any]:
+    """Rule B -- drop step_intervals[0], then Rule A unchanged."""
+    kept = step_intervals[1:]
+    verdict = _step_response_half_phase_agreement(kept, "step")
+    return {
+        "statistic": verdict["half_diff_deg_per_s"],
+        "passed": verdict["passed"],
+        "half_rates": verdict["half_rates_deg_per_s"],
+        "n": verdict["informative_intervals"],
+    }
+
+
+def rule_c_onset_window(step_intervals: list[dict[str, Any]]) -> dict[str, Any]:
+    """Rule C -- exclude a declared 2000 ms onset window, then Rule A."""
+    kept = _after_onset(step_intervals, ONSET_ALLOWANCE_MS)
+    verdict = _step_response_half_phase_agreement(kept, "step")
+    return {
+        "statistic": verdict["half_diff_deg_per_s"],
+        "passed": verdict["passed"],
+        "half_rates": verdict["half_rates_deg_per_s"],
+        "n": verdict["informative_intervals"],
+        "excluded": len(step_intervals) - len(kept),
+    }
+
+
+def rule_d_plateau(step_intervals: list[dict[str, Any]]) -> dict[str, Any]:
+    """Rule D -- final 3000 ms of the step vs the 3000 ms before it."""
+    if not step_intervals:
+        return {"statistic": None, "passed": False, "n": 0}
+    end = step_intervals[-1]["to_elapsed_ms"]
+    late = [
+        iv for iv in step_intervals if iv["from_elapsed_ms"] >= end - PLATEAU_WINDOW_MS
+    ]
+    early = [
+        iv
+        for iv in step_intervals
+        if end - 2 * PLATEAU_WINDOW_MS
+        <= iv["from_elapsed_ms"]
+        < end - PLATEAU_WINDOW_MS
+    ]
+    r_late, r_early = _endpoint_rate(late), _endpoint_rate(early)
+    if r_late is None or r_early is None:
+        return {
+            "statistic": None,
+            "passed": False,
+            "n": len(late) + len(early),
+            "note": "a window held fewer than 2 distinct readings",
+        }
+    diff = round(abs(r_late - r_early), 4)
+    return {
+        "statistic": diff,
+        "passed": diff <= _STEP_RESPONSE_RATE_AGREEMENT_BOUND_DEG_PER_S,
+        "window_rates": [round(r_early, 4), round(r_late, 4)],
+        "n": len(late) + len(early),
+    }
+
+
+def rule_e_slope(step_intervals: list[dict[str, Any]]) -> dict[str, Any]:
+    """Rule E -- least-squares slope of interval rate vs midpoint, ex onset window."""
+    kept = _after_onset(step_intervals, ONSET_ALLOWANCE_MS)
+    if len(kept) < _STEP_RESPONSE_MIN_INFORMATIVE_INTERVALS:
+        return {"statistic": None, "passed": False, "n": len(kept)}
+    xs = [iv["midpoint_elapsed_ms"] / 1000.0 for iv in kept]
+    ys = [iv["rate_deg_per_s"] for iv in kept]
+    mx = sum(xs) / len(xs)
+    my = sum(ys) / len(ys)
+    denom = sum((x - mx) ** 2 for x in xs)
+    if denom == 0:
+        return {"statistic": None, "passed": False, "n": len(kept)}
+    slope = sum((x - mx) * (y - my) for x, y in zip(xs, ys, strict=False)) / denom
+    return {
+        "statistic": round(abs(slope), 4),
+        "passed": abs(slope) <= SLOPE_BOUND_DEG_PER_S2,
+        "slope_deg_per_s2": round(slope, 4),
+        "n": len(kept),
+    }
+
+
 RULES: dict[str, Rule] = {
     "A (status quo, shipped)": rule_a_status_quo,
-    # Candidate rules are registered HERE by the predeclaration commit, and only
-    # by it. Adding one after seeing verdicts defeats the entire method.
+    "B (drop first interval)": rule_b_drop_first,
+    "C (2000 ms onset window)": rule_c_onset_window,
+    "D (plateau, last 3 s vs prior 3 s)": rule_d_plateau,
+    "E (residual slope)": rule_e_slope,
 }
 
 

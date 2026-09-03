@@ -1,0 +1,306 @@
+{
+  "bound_deg_per_s": 1.5,
+  "min_informative_intervals": 3,
+  "rules": [
+    "A (status quo, shipped)",
+    "B (drop first interval)",
+    "C (2000 ms onset window)",
+    "D (plateau, last 3 s vs prior 3 s)",
+    "E (residual slope)"
+  ],
+  "excused": {
+    "raw-phaseA-linear300-speed-20260903.json": "1000 ms step yields ~1 informative step interval against the rule's >=3, so 2a is unscoreable BY DESIGN. It measured speed, not 2a."
+  },
+  "reproduction_gate_passed": true,
+  "reproduction_gate_problems": [],
+  "runs": [
+    {
+      "file": "raw-route1-run1-plus120-step5000-20260830.json",
+      "sha256": "dfcea06ffd71b6d876b9cdf9ba443fb9991f602951bc568fdbc836de40108866",
+      "baseline_ms": 3000,
+      "step_ms": 5000,
+      "linear_speed": 400,
+      "step_angular_speed": 120,
+      "step_intervals": 5,
+      "aborted_early": false,
+      "shipped_vio_analysis": null,
+      "rules": {
+        "A (status quo, shipped)": {
+          "statistic": 2.1564,
+          "passed": false,
+          "half_rates": [
+            -4.849,
+            -7.0054
+          ],
+          "n": 5
+        },
+        "B (drop first interval)": {
+          "statistic": 0.816,
+          "passed": true,
+          "half_rates": [
+            -6.1894,
+            -7.0054
+          ],
+          "n": 4
+        },
+        "C (2000 ms onset window)": {
+          "statistic": 0.6999,
+          "passed": true,
+          "half_rates": [
+            -6.6829,
+            -7.3828
+          ],
+          "n": 3,
+          "excluded": 2
+        },
+        "D (plateau, last 3 s vs prior 3 s)": {
+          "statistic": 2.9738,
+          "passed": false,
+          "window_rates": [
+            -3.926,
+            -6.8998
+          ],
+          "n": 5
+        },
+        "E (residual slope)": {
+          "statistic": 0.3404,
+          "passed": false,
+          "slope_deg_per_s2": -0.3404,
+          "n": 3
+        }
+      }
+    },
+    {
+      "file": "raw-route1-run1repeat-plus120-step5000-20260830.json",
+      "sha256": "48e0de58d1cd59820f355a76b8ae73c334972fa23f99ae951bc3adfaa10f9107",
+      "baseline_ms": 3000,
+      "step_ms": 5000,
+      "linear_speed": 400,
+      "step_angular_speed": 120,
+      "step_intervals": 5,
+      "aborted_early": false,
+      "shipped_vio_analysis": null,
+      "rules": {
+        "A (status quo, shipped)": {
+          "statistic": 3.6639,
+          "passed": false,
+          "half_rates": [
+            -4.9077,
+            -8.5716
+          ],
+          "n": 5
+        },
+        "B (drop first interval)": {
+          "statistic": 2.0839,
+          "passed": false,
+          "half_rates": [
+            -6.4877,
+            -8.5716
+          ],
+          "n": 4
+        },
+        "C (2000 ms onset window)": {
+          "statistic": 0.1077,
+          "passed": true,
+          "half_rates": [
+            -7.9564,
+            -7.8487
+          ],
+          "n": 3,
+          "excluded": 2
+        },
+        "D (plateau, last 3 s vs prior 3 s)": {
+          "statistic": 3.6639,
+          "passed": false,
+          "window_rates": [
+            -4.9077,
+            -8.5716
+          ],
+          "n": 5
+        },
+        "E (residual slope)": {
+          "statistic": 0.5525,
+          "passed": false,
+          "slope_deg_per_s2": -0.5525,
+          "n": 3
+        }
+      }
+    },
+    {
+      "file": "raw-route1-run2-plus180-step7000-20260830.json",
+      "sha256": "2d2f1c07e85a26ea3480c711971752a5575be59d41e7fa2d4c47100e557f05c2",
+      "baseline_ms": 3000,
+      "step_ms": 7000,
+      "linear_speed": 400,
+      "step_angular_speed": 180,
+      "step_intervals": 7,
+      "aborted_early": false,
+      "shipped_vio_analysis": null,
+      "rules": {
+        "A (status quo, shipped)": {
+          "statistic": 0.1301,
+          "passed": true,
+          "half_rates": [
+            -11.2293,
+            -11.3594
+          ],
+          "n": 7
+        },
+        "B (drop first interval)": {
+          "statistic": 1.625,
+          "passed": false,
+          "half_rates": [
+            -12.9844,
+            -11.3594
+          ],
+          "n": 6
+        },
+        "C (2000 ms onset window)": {
+          "statistic": 0.9192,
+          "passed": true,
+          "half_rates": [
+            -12.2552,
+            -11.336
+          ],
+          "n": 5,
+          "excluded": 2
+        },
+        "D (plateau, last 3 s vs prior 3 s)": {
+          "statistic": 0.9192,
+          "passed": true,
+          "window_rates": [
+            -12.2552,
+            -11.336
+          ],
+          "n": 5
+        },
+        "E (residual slope)": {
+          "statistic": 0.326,
+          "passed": false,
+          "slope_deg_per_s2": 0.326,
+          "n": 5
+        }
+      }
+    },
+    {
+      "file": "raw-route1-run2repeat-plus180-step7000-20260901.json",
+      "sha256": "43f9e003c833007b4ab50f8e303e9e04039bb4069c9be1e9b1543f20168acb42",
+      "baseline_ms": 3000,
+      "step_ms": 7000,
+      "linear_speed": 400,
+      "step_angular_speed": 180,
+      "step_intervals": 7,
+      "aborted_early": false,
+      "shipped_vio_analysis": {
+        "informative_intervals": 7,
+        "half_rates_deg_per_s": [
+          -8.3789,
+          -11.7838
+        ],
+        "half_diff_deg_per_s": 3.4049,
+        "passed": false
+      },
+      "rules": {
+        "A (status quo, shipped)": {
+          "statistic": 3.4049,
+          "passed": false,
+          "half_rates": [
+            -8.3789,
+            -11.7838
+          ],
+          "n": 7
+        },
+        "B (drop first interval)": {
+          "statistic": 0.1073,
+          "passed": true,
+          "half_rates": [
+            -11.8911,
+            -11.7838
+          ],
+          "n": 6
+        },
+        "C (2000 ms onset window)": {
+          "statistic": 0.0226,
+          "passed": true,
+          "half_rates": [
+            -11.4659,
+            -11.4885
+          ],
+          "n": 5,
+          "excluded": 2
+        },
+        "D (plateau, last 3 s vs prior 3 s)": {
+          "statistic": 0.5383,
+          "passed": true,
+          "window_rates": [
+            -12.0268,
+            -11.4885
+          ],
+          "n": 6
+        },
+        "E (residual slope)": {
+          "statistic": 0.2977,
+          "passed": true,
+          "slope_deg_per_s2": -0.2977,
+          "n": 5
+        }
+      }
+    },
+    {
+      "file": "raw-route1-stepext-plus120-step7000-20260830.json",
+      "sha256": "a404e24df47978cc0a88f9164a54e5ddba302b3b11e98c8f7c14cf2db3542f32",
+      "baseline_ms": 3000,
+      "step_ms": 7000,
+      "linear_speed": 400,
+      "step_angular_speed": 120,
+      "step_intervals": 7,
+      "aborted_early": false,
+      "shipped_vio_analysis": null,
+      "rules": {
+        "A (status quo, shipped)": {
+          "statistic": 2.3195,
+          "passed": false,
+          "half_rates": [
+            -5.1277,
+            -7.4472
+          ],
+          "n": 7
+        },
+        "B (drop first interval)": {
+          "statistic": 0.8968,
+          "passed": true,
+          "half_rates": [
+            -6.5504,
+            -7.4472
+          ],
+          "n": 6
+        },
+        "C (2000 ms onset window)": {
+          "statistic": 1.1965,
+          "passed": true,
+          "half_rates": [
+            -6.7264,
+            -7.9229
+          ],
+          "n": 5,
+          "excluded": 2
+        },
+        "D (plateau, last 3 s vs prior 3 s)": {
+          "statistic": 0.6281,
+          "passed": true,
+          "window_rates": [
+            -6.8191,
+            -7.4472
+          ],
+          "n": 5
+        },
+        "E (residual slope)": {
+          "statistic": 0.4534,
+          "passed": false,
+          "slope_deg_per_s2": -0.4534,
+          "n": 5
+        }
+      }
+    }
+  ]
+}
