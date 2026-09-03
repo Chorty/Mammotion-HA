@@ -9587,6 +9587,8 @@ def _step_response_gates(
     route_start: dict[str, float],
     corridor_polygon: list[dict[str, float]],
     max_travel_m: float,
+    linear_speed: int = 400,
+    total_ms: int = 0,
     dry_run: bool,
     confirm_blades_off: bool,
     confirm_clear_area: bool,
@@ -9645,7 +9647,25 @@ def _step_response_gates(
     # bending this probe's budget into that shape would make the number look
     # like an acquisition disk when it is not one.
     stop_overshoot_m = ContinuousControllerConfig().stop_overshoot_m
-    required = round(max_travel_m + stop_overshoot_m, 6)
+    # 🚨 WORST CASE, not the nominal one. `max_travel_m + overshoot` assumes the
+    # distance guard WORKS -- and this project has a documented mode where it
+    # silently does not: position payloads keep arriving with an advancing
+    # sequence and a fresh timestamp while x/y stay latched (2026-08-28: 21
+    # bit-identical samples while the mower travelled 0.4375 m; attempt 3:
+    # 0.5097 m observed as 0.021 m). In that mode `cumulative_distance_m` stays
+    # ~0, nothing trips, and the window runs to the WALL CLOCK.
+    #
+    # `raw_pymammotion_motion_probe` was corrected for exactly this on
+    # 2026-08-23 (`corridor_must_cover_m`); this probe was missed, and it is the
+    # one whose window length keeps being raised. At the 23000 ms cap and linear
+    # 400 the clock bound is 6.44 m against a 5.00 m requirement -- a ~1.4 m
+    # breach of a corridor the operator was told holds the path.
+    clock_bound_m = (
+        _PROBE_SPEED_PER_LINEAR_UNIT_MS * abs(int(linear_speed)) * (total_ms / 1000.0)
+        if total_ms
+        else 0.0
+    )
+    required = round(max(max_travel_m + stop_overshoot_m, clock_bound_m), 6)
     live_point = (
         ContinuousPoint(float(live_x), float(live_y))
         if isinstance(live_x, (int, float)) and isinstance(live_y, (int, float))
@@ -9675,6 +9695,13 @@ def _step_response_gates(
             ),
             "diagnostics": {
                 "required_radius_m": required,
+                "travel_budget_bound_m": round(max_travel_m + stop_overshoot_m, 6),
+                "clock_bound_m": round(clock_bound_m, 6),
+                "bound_that_binds": (
+                    "clock"
+                    if clock_bound_m > max_travel_m + stop_overshoot_m
+                    else "travel_budget"
+                ),
                 "boundary_clearance_m": clearance,
                 "live_position_inside": live_inside,
                 "commanded_travel_m": max_travel_m,
@@ -10102,6 +10129,8 @@ async def _step_response_probe_impl(  # noqa: C901, PLR0913
         route_start=route_start,
         corridor_polygon=corridor_polygon,
         max_travel_m=max_travel_m,
+        linear_speed=linear_speed,
+        total_ms=total_ms,
         dry_run=dry_run,
         confirm_blades_off=confirm_blades_off,
         confirm_clear_area=confirm_clear_area,

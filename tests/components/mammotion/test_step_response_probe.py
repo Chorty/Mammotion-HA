@@ -954,3 +954,57 @@ def test_services_yaml_and_strings_agree_with_the_schema_and_the_code() -> None:
         "services.yaml quotes a ramp-inclusive 0.12 m/s for linear 300 while "
         "strings.json and _STEP_RESPONSE_TYPICAL_SPEED_BY_LINEAR use ~0.16"
     )
+
+
+def test_containment_uses_the_WORST_of_travel_budget_and_wall_clock() -> None:
+    """The corridor must hold the path even if the distance guard does nothing.
+
+    🚨 `max_travel_m + overshoot` assumes the guard WORKS. This project has a
+    documented mode where it silently does not: position payloads keep arriving
+    with an advancing sequence and a fresh timestamp while x/y stay latched
+    (2026-08-28, 21 bit-identical samples across 0.4375 m of real travel). Then
+    `cumulative_distance_m` stays ~0, nothing trips, and the window runs to the
+    wall clock.
+
+    `raw_pymammotion_motion_probe` was corrected for this on 2026-08-23; this
+    probe was missed for four cap raises. Found by adversarial review 2026-09-02.
+    """
+    # 23 s at linear 400: clock bound 0.28 * 23 = 6.44 m beats 4.5 + 0.5 = 5.0 m.
+    gates = _step_response_gates(
+        _FakeCoordinator(),
+        {"position": {"x": 0.0, "y": 0.0}},
+        route_start=START,
+        corridor_polygon=WIDE_CORRIDOR,
+        max_travel_m=4.5,
+        linear_speed=400,
+        total_ms=23000,
+        dry_run=True,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+    )
+    diagnostics = _gate(gates, "step_path_contained")["diagnostics"]
+    assert diagnostics["clock_bound_m"] == pytest.approx(6.44, abs=0.01)
+    assert diagnostics["travel_budget_bound_m"] == pytest.approx(5.0)
+    assert diagnostics["required_radius_m"] == pytest.approx(6.44, abs=0.01)
+    assert diagnostics["bound_that_binds"] == "clock"
+
+
+def test_short_windows_still_bind_on_the_travel_budget() -> None:
+    """The clock bound must not quietly inflate every ordinary run's corridor."""
+    gates = _step_response_gates(
+        _FakeCoordinator(),
+        {"position": {"x": 0.0, "y": 0.0}},
+        route_start=START,
+        corridor_polygon=WIDE_CORRIDOR,
+        max_travel_m=2.5,
+        linear_speed=300,
+        total_ms=8000,
+        dry_run=True,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+    )
+    diagnostics = _gate(gates, "step_path_contained")["diagnostics"]
+    # Phase A: clock bound 0.21 * 8 = 1.68 m, under the 3.0 m travel bound.
+    assert diagnostics["clock_bound_m"] == pytest.approx(1.68, abs=0.01)
+    assert diagnostics["required_radius_m"] == pytest.approx(3.0)
+    assert diagnostics["bound_that_binds"] == "travel_budget"
