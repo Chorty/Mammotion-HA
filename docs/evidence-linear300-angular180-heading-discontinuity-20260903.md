@@ -93,3 +93,52 @@ when the run began, and it jumped again mid-window.
 **Nothing further.** Not a 2a run, not a longer window, not Phase 2 — standing
 decision 5 untouched. The continuity-guard question is a separate, predeclared
 piece of work.
+
+---
+
+## 6. 🗑️ CORRECTION — the run could NEVER have measured rotation. My design error.
+
+**The operator observed the mower go straight**, which the data confirms and
+which corrects §3's framing.
+
+RTK course, the trustworthy channel here, per informative interval:
+
+```
+baseline  -3.28   step  +2.93   settle  -7.21  +2.34  -2.51  -0.53   deg/s
+```
+
+Signs alternate; total course change is **−5.99° across 6.91 s**. That is chord
+noise on a straight path, not rotation. ✅ **The operator's visual observation is
+independent corroboration that the −166° VIO jump was not physical.**
+
+🚨 **Why it went straight is a flaw in MY configuration, not a property of the
+mower.** The step phase was **1000 ms**. This project measured on 2026-08-29 that
+**rotation does not start for ~1–2 s** (onset lag). **A 1 s step ends before
+rotation begins**, so this run could not have produced rotation at *any* angular
+command.
+
+I copied `step_ms: 1000` from Phase A, where it was correct because Phase A
+measured **speed**. Carrying it into a run whose stated purpose was **rotation**
+made the primary measurement impossible before dispatch.
+
+⚠️ **§4 of the predeclaration is therefore unsound as written.** Its "barely
+rotates ⇒ deadband at (300, 180)" reading **must not be applied to this run** —
+absence of rotation here is fully explained by the step length. **There is no
+evidence of a deadband, and none against one.**
+
+**What survives unchanged:**
+- ✅ the sustained-speed result (§2), which is position-derived;
+- ✅ the heading-discontinuity defect (§1), which is independent of step length
+  and is now visually corroborated.
+
+**What a real rotation test at (300, 180) needs:** a step of at least ~5 s, so
+the phase outlasts the onset lag — the same arithmetic that drove the 5000 →
+7000 ms extension in 2026-08-30. That is a separate predeclared run, and it is
+**not** authorized here.
+
+🔑 **The transferable lesson: a phase length is part of the hypothesis.** Copying
+a duration from a run with a different purpose silently invalidated the
+measurement, and the predeclaration did not catch it because it reasoned about
+outcomes without checking the configuration could produce them. This is the same
+class as the 2026-08-28 standing check — *confirm each bound exceeds what the
+run needs to demonstrate its criterion* — which exists precisely for this.
