@@ -8,6 +8,51 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta97 -> beta98 — 2026-09-03 15:59-16:07 EDT, motion-disabled — the containment gap
+
+🚨 **Ships a real containment defect fix.** `step_path_contained` sized the
+corridor as `max_travel_m + 0.50`, which **assumes the travel guard works**.
+This project has a documented mode where it silently does not: position payloads
+keep arriving with an advancing sequence and a fresh timestamp while x/y stay
+latched (2026-08-28, 21 bit-identical samples across 0.4375 m of real travel).
+Then `cumulative_distance_m` stays ~0, nothing trips, and the window runs to the
+**wall clock**. `raw_pymammotion_motion_probe` was corrected for exactly this on
+2026-08-23; the step probe was missed and had its window raised four times since.
+
+Also carries `_PROBE_SPEED_PER_LINEAR_UNIT_MS` **7.0e-04 → 7.5e-04** — the old
+value was fitted to ramp-inclusive averages and sat **6% below** the measured
+sustained speed, which is the unsafe direction for a constant that sizes corridor
+clearance. **No safety bound was relaxed: `max_travel_m` stays 4.5.**
+
+| check | result |
+| --- | --- |
+| files byte-identical | **48/48** |
+| card md5, both serving paths + local | `f0dc1602` |
+| archive SHA-256 local == host | `693a533483709894ce8b44bbc99d9da8e46159a8bfb78af2ad1845f9c031c93e` |
+| AppleDouble `._*` files | 0 |
+| manifest on host | `0.6.4-beta98` |
+| backend in container | `pymammotion 0.8.12.post4` |
+| Lovelace resource | `?v=0.6.4-beta98&build=f0dc1602` |
+| API back / entities | 46 s / 133 Mammotion entities |
+| gate | `enabled: false` in live API **and** RAW `core.config_entries` |
+
+🔑 **The discriminating check — proving the FIX, not the version string.** A dry
+run at linear 400 / 23 000 ms / `max_travel_m` 4.5 now reports:
+
+```
+required_radius_m      6.9
+travel_budget_bound_m  5.0
+clock_bound_m          6.9
+bound_that_binds       clock
+```
+
+beta97 reported **no clock bound at all** and would have accepted a corridor
+holding only 5.00 m for a path that can reach 6.90 m. `would_send: false`;
+nothing dispatched.
+
+🚨 **Not browser-verified.** Ask the operator to confirm the card footer reads
+`0.6.4-beta98`. Backup: `/config/mammotion-backup-20260903-1559-pre-beta98.tgz`.
+
 ### beta96 -> beta97 — 2026-09-02 21:19-21:26 EDT, motion-disabled — the beta96 corrections
 
 🚨 **Read the beta96 entry below first: beta96 was NEVER fully deployed, and it
