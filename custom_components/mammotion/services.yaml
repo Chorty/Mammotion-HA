@@ -834,9 +834,13 @@ raw_pymammotion_step_response_probe:
     There is NO controller: no route, no aim point, no steering law. It answers
     whether the control lag is in the actuator or the observer, and how large it
     is (docs/phase2-dead-time-step-test-design-20260828.md). corridor_polygon
-    must be pre-scanned and margin-verified offline and must clear
-    max_travel_m plus 0.50 m of stopping overshoot in EVERY direction, because
-    the path curves and its shape is the unknown under test. dry_run defaults
+    must be pre-scanned and margin-verified offline and must clear, in EVERY
+    direction, the LARGER of (max_travel_m + 0.50 m stopping overshoot) and
+    (the wall-clock bound: 0.00075 x linear_speed x window seconds, plus the
+    same 0.50 m) -- because the path curves, its shape is the unknown under
+    test, and the distance guard cannot be assumed to work. The response
+    reports which bound binds as step_path_contained.bound_that_binds.
+    dry_run defaults
     true and sends nothing; a real run additionally requires
     confirm_step_response_run.
   fields:

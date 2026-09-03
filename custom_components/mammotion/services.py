@@ -897,6 +897,15 @@ _PROBE_TRAVEL_GUARD_OVERSHOOT_M = 0.50
 # reading a dead feed measures zero travel forever. Matches the Phase 1
 # analyzer's own 2000 ms position-arrival gap limit.
 _PROBE_FEED_STALE_ABORT_MS = 2000.0
+# Most position payloads the travel guard will consume in a single sampler poll.
+# The guard MUST drain rather than take one per poll, or `max_travel_m` goes soft
+# whenever payloads outpace polls -- but the drain must be BOUNDED, because an
+# unbounded loop hangs against any queue that never raises QueueEmpty (every
+# mocked stream, and a live feed that refilled faster than we drain). 64 matches
+# `_SAFETY_POSITION_STREAM_MAXSIZE`, so a full queue drains in one poll while the
+# ~1 Hz feed never produces more than ~1 payload per poll at any legal
+# `sample_interval_ms`.
+_PROBE_MAX_DRAIN_PER_POLL = 64
 # Metres per second per unit of `linear_speed`, for sizing clock-bound corridor
 # clearance. It exists to make a corridor big enough, NOT to be accurate, so it
 # is always rounded UP -- too low is the unsafe direction.
@@ -7768,15 +7777,48 @@ async def _capture_in_window_telemetry(  # noqa: C901
 
             if max_travel_m > 0:
                 assert position_stream is not None
-                position_sample = None
-                with contextlib.suppress(asyncio.QueueEmpty):
-                    position_sample = position_stream.queue.get_nowait()
-                tripped = _apply_travel_guard(
-                    sample,
-                    position_sample=position_sample,
-                    guard_state=guard_state,
-                    max_travel_m=max_travel_m,
-                )
+                # 🚨 DRAIN, do not take one. A single get_nowait() per poll makes
+                # the guard advance at the SAMPLER's cadence rather than the
+                # feed's, so `max_travel_m` goes silently soft whenever payloads
+                # outpace polls -- and there is no catch-up path, the backlog
+                # only grows. `sample_interval_ms` is schema-legal up to 1000 ms
+                # against a measured payload cadence of 0.991 s mean / 0.711 s
+                # minimum, so at 1000 ms a 23 s window can publish ~32 payloads
+                # and consume ~23: the guard would not reach 4.5 m until the
+                # mower had driven ~6.5-6.9 m. Draining makes the guard
+                # independent of poll cadence.
+                # ⚠️ BOUNDED. An unbounded `while True` here spins forever
+                # against any queue that does not raise QueueEmpty -- which is
+                # every mocked stream, and would also be a live hang if a feed
+                # ever refilled faster than we drain. The cap is far above the
+                # ~1 payload per poll the ~1 Hz feed can produce at any legal
+                # `sample_interval_ms`, so it never truncates a real backlog.
+                tripped = False
+                drained = 0
+                while drained < _PROBE_MAX_DRAIN_PER_POLL:
+                    position_sample = None
+                    with contextlib.suppress(asyncio.QueueEmpty):
+                        position_sample = position_stream.queue.get_nowait()
+                    if position_sample is None:
+                        # Still call the guard once per poll with no payload, so
+                        # the stale-feed detector keeps its own clock running.
+                        if drained == 0:
+                            tripped = _apply_travel_guard(
+                                sample,
+                                position_sample=None,
+                                guard_state=guard_state,
+                                max_travel_m=max_travel_m,
+                            )
+                        break
+                    drained += 1
+                    tripped = _apply_travel_guard(
+                        sample,
+                        position_sample=position_sample,
+                        guard_state=guard_state,
+                        max_travel_m=max_travel_m,
+                    )
+                    if tripped:
+                        break
                 if tripped:
                     if travel_abort is not None:
                         travel_abort.set()
@@ -9682,8 +9724,17 @@ def _step_response_gates(
     # one whose window length keeps being raised. At the 23000 ms cap and linear
     # 400 the clock bound is 6.44 m against a 5.00 m requirement -- a ~1.4 m
     # breach of a corridor the operator was told holds the path.
+    # ⚠️ The stop overshoot applies to BOTH branches. The mandatory stop is
+    # issued after the window ENDS, so the post-stop creep (measured 0.4544 m,
+    # attempt 5) sits outside whichever bound was reached -- including the clock
+    # bound, which exists precisely for the case where the guard no-ops and the
+    # window runs to the wall clock. Omitting it there left the corridor
+    # uncertified for the creep, protected only by unmodelled ramp and curvature
+    # margin this codebase elsewhere declines to credit. The sibling disk helper
+    # `continuous_controller.blind_acquisition_feasibility` has always added it.
     clock_bound_m = (
         _PROBE_SPEED_PER_LINEAR_UNIT_MS * abs(int(linear_speed)) * (total_ms / 1000.0)
+        + stop_overshoot_m
         if total_ms
         else 0.0
     )
@@ -10194,9 +10245,11 @@ async def _step_response_probe_impl(  # noqa: C901, PLR0913
         "max_travel_m": max_travel_m,
         "likely_guard_trip": typical_travel_m > max_travel_m,
         "caveat": (
-            "typical_speed_m_s at linear 300 is EXTRAPOLATED -- no sustained "
-            "speed has ever been measured at 300. Treat any 300 projection as "
-            "an estimate, not a measurement."
+            "typical_speed_m_s is the SUSTAINED (post-ramp) speed, measured: "
+            "linear 300 = 0.223 m/s (Phase A, 2026-09-03), linear 400 = 0.295. "
+            "A short window averages LESS, because it spends a larger fraction "
+            "of itself ramping, so this projection OVER-states travel there -- "
+            "the safe direction for a warning."
         ),
     }
 

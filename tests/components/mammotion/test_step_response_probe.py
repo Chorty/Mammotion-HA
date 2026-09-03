@@ -17,6 +17,7 @@ here: no coordinator I/O, no BLE, no mower command. `would_send` must never be
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import math
 import time
@@ -33,6 +34,8 @@ from custom_components.mammotion.services import (
     _STEP_RESPONSE_MAX_TOTAL_MS,
     _STEP_RESPONSE_MIN_SPEED_BY_LINEAR,
     STEP_RESPONSE_PROBE_SCHEMA,
+    _apply_travel_guard,
+    _capture_in_window_telemetry,
     _in_window_ble_snapshot,
     _in_window_telemetry_sample,
     _step_response_analysis,
@@ -982,7 +985,9 @@ def test_containment_uses_the_WORST_of_travel_budget_and_wall_clock() -> None:
     `raw_pymammotion_motion_probe` was corrected for this on 2026-08-23; this
     probe was missed for four cap raises. Found by adversarial review 2026-09-02.
     """
-    # 23 s at linear 400: clock bound 0.30 * 23 = 6.90 m beats 4.5 + 0.5 = 5.0 m.
+    # 23 s at linear 400: clock bound 0.30 * 23 + 0.50 stop = 7.40 m, beating
+    # the travel branch 4.5 + 0.5 = 5.0 m. BOTH branches carry the overshoot:
+    # the mandatory stop fires after the window ends either way.
     gates = _step_response_gates(
         _FakeCoordinator(),
         {"position": {"x": 0.0, "y": 0.0}},
@@ -996,9 +1001,9 @@ def test_containment_uses_the_WORST_of_travel_budget_and_wall_clock() -> None:
         confirm_clear_area=True,
     )
     diagnostics = _gate(gates, "step_path_contained")["diagnostics"]
-    assert diagnostics["clock_bound_m"] == pytest.approx(6.90, abs=0.01)
+    assert diagnostics["clock_bound_m"] == pytest.approx(7.40, abs=0.01)
     assert diagnostics["travel_budget_bound_m"] == pytest.approx(5.0)
-    assert diagnostics["required_radius_m"] == pytest.approx(6.90, abs=0.01)
+    assert diagnostics["required_radius_m"] == pytest.approx(7.40, abs=0.01)
     assert diagnostics["bound_that_binds"] == "clock"
 
 
@@ -1017,7 +1022,73 @@ def test_short_windows_still_bind_on_the_travel_budget() -> None:
         confirm_clear_area=True,
     )
     diagnostics = _gate(gates, "step_path_contained")["diagnostics"]
-    # Phase A: clock bound 0.225 * 8 = 1.80 m, under the 3.0 m travel bound.
-    assert diagnostics["clock_bound_m"] == pytest.approx(1.80, abs=0.01)
+    # Phase A: clock bound 0.225 * 8 + 0.50 = 2.30 m, under the 3.0 m travel bound.
+    assert diagnostics["clock_bound_m"] == pytest.approx(2.30, abs=0.01)
     assert diagnostics["required_radius_m"] == pytest.approx(3.0)
     assert diagnostics["bound_that_binds"] == "travel_budget"
+
+
+async def test_travel_guard_drains_the_queue_and_does_not_go_soft() -> None:
+    """The guard must see EVERY payload, not one per sampler poll.
+
+    🚨 Regression, 2026-09-03, found by adversarial review of beta98. The sampler
+    took a single `get_nowait()` per poll, so cumulative travel advanced at the
+    SAMPLER's cadence rather than the feed's -- and with no catch-up path the
+    backlog only grows. `sample_interval_ms` is schema-legal to 1000 ms against a
+    measured payload cadence of 0.991 s mean / 0.711 s minimum, so a 23 s window
+    could publish ~32 payloads and consume ~23: the guard would not reach 4.5 m
+    until the mower had driven ~6.5-6.9 m, well past the authorized bound.
+
+    Two assertions, because neither alone is sufficient: the behavioural one
+    shows the guard DOES trip once every queued payload is consumed, and the
+    source-level pin shows the SAMPLER is the thing consuming them. Without the
+    second, this test would only be exercising its own loop.
+    """
+    stream = _position_stream(
+        [(0.0, 0.0, 90.0), (1.0, 0.0, 90.0), (2.0, 0.0, 90.0), (3.0, 0.0, 90.0)]
+    )
+    guard_state: dict[str, Any] = {
+        "stream": stream,
+        "epoch": 1,
+        "sequence": 0,
+        "dropped_samples": 0,
+        "last_receipt_at": time.monotonic(),
+        "last_position": None,
+        "cumulative_distance_m": 0.0,
+    }
+    tripped_any = False
+    sample: dict[str, Any] = {}
+    # Seed the baseline from the first payload, then drain the rest in one pass.
+    while True:
+        try:
+            position_sample = stream.queue.get_nowait()
+        except asyncio.QueueEmpty:
+            break
+        if _apply_travel_guard(
+            sample,
+            position_sample=position_sample,
+            guard_state=guard_state,
+            max_travel_m=2.5,
+        ):
+            tripped_any = True
+            break
+    assert tripped_any, (
+        "three 1.0 m steps against a 2.5 m budget must trip the guard once every "
+        "queued payload is consumed"
+    )
+
+    # The production sampler must DRAIN, not take one per poll. A bare
+    # `position_sample = position_stream.queue.get_nowait()` guarded only by
+    # `contextlib.suppress` outside a loop is the defect; pin against it.
+    source = inspect.getsource(_capture_in_window_telemetry)
+    assert "while drained < _PROBE_MAX_DRAIN_PER_POLL" in source, (
+        "the sampler must drain the position queue each poll -- a single "
+        "get_nowait() lets max_travel_m go soft when payloads outpace polls -- "
+        "and the drain must be BOUNDED, or it hangs on a queue that never "
+        "raises QueueEmpty"
+    )
+    drain = source.split("while drained <", 1)[1]
+    assert "get_nowait()" in drain, (
+        "the drain loop must be the thing calling get_nowait(); a take outside "
+        "any loop is the defect this pins against"
+    )
