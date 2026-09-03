@@ -8,6 +8,50 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta96 -> beta97 — 2026-09-02 21:19-21:26 EDT, motion-disabled — the beta96 corrections
+
+🚨 **Read the beta96 entry below first: beta96 was NEVER fully deployed, and it
+still reached the running process.** Its files were extracted to `/config` on
+2026-09-01 and the restart was deliberately interrupted to run an adversarial
+review. HA then restarted on its own overnight and loaded them. Confirmed by a
+schema-only dry run on 2026-09-02: `step_ms=15000` was accepted (beta95 caps it
+at 7000) while `travel_projection` came back `null` and the Lovelace key was
+still `?v=0.6.4-beta95`. **A staged-but-unfinished deploy will eventually deploy
+itself — finish it or back it out, never leave it.**
+
+**beta97 ships the corrections to beta96**, both found by adversarial review:
+`_STEP_RESPONSE_MIN_SPEED_BY_LINEAR[400]` **0.24 -> 0.17** (0.24 came from the
+single FASTEST banked run while its comment called it the slowest, so it sat above
+four of five and **over-refused**), the new non-blocking `travel_projection`
+diagnostic, the three-way speed-figure contradiction across
+`services.yaml`/`strings.json`/the code, quoted `select` defaults, and the
+`services.yaml`↔`strings.json` parity test this service lacked while every sibling
+had one. **No safety bound moves: `max_travel_m` stays 4.5.**
+
+Verification tail, all measured:
+
+| check | result |
+| --- | --- |
+| files byte-identical | **48/48** |
+| card md5, both serving paths + local | `98ed5bbe` |
+| archive SHA-256 local == host | `4cf607fd6d57568687a171e5aa0c5f897215a34dc73a8f9d560feff55780d71e` |
+| AppleDouble `._*` files | 0 |
+| manifest on host | `0.6.4-beta97` |
+| backend in container | `pymammotion 0.8.12.post4` |
+| Lovelace resource | `?v=0.6.4-beta97&build=98ed5bbe` (was still **beta95**) |
+| API back / entities | 70 s / 132 Mammotion entities |
+| gate | `enabled: false`, `real_motion_allowed: false`, no session |
+
+🔑 **The deploy was proved by a DISCRIMINATING dry run, not by reading a version
+string**: a replay of banked route-1 run 1 (`3000/5000/5000`, linear 400) at
+`max_travel_m` 3.0 — a config the mower has completed twice at 2.71 m and 2.77 m —
+is **accepted** on beta97 where beta96's 0.24 bound refused it, and
+`travel_projection` returns `floor_speed_m_s: 0.17`. `would_send: false`; nothing
+was dispatched.
+
+🚨 **Not browser-verified.** Ask the operator to confirm the card footer reads
+`0.6.4-beta97`. Backup: `/config/mammotion-backup-20260902-2119-pre-beta97.tgz`.
+
 ### beta94 -> beta95 — 2026-09-01 15:26-15:45 EDT, motion-disabled — E-VIO scoring for the step-response probe
 
 Ships the operator-adopted E-VIO scoring rule
