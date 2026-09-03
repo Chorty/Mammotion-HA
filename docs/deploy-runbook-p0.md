@@ -8,6 +8,48 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta98 -> beta99 — 2026-09-03 19:06-19:10 EDT, motion-disabled — the guard drain + the other half of the overshoot
+
+Ships the two defects found by the beta98 adversarial review (5/5 agents, the
+first clean workflow run of that session):
+
+1. 🚨 **The travel guard had gone SOFT.** The in-window sampler took a single
+   `get_nowait()` per poll, so cumulative distance advanced at the SAMPLER's
+   cadence rather than the position feed's, with no catch-up path. At a
+   schema-legal `sample_interval_ms: 1000` a 23 s window can publish ~32 payloads
+   and consume ~23 — the guard would not reach 4.5 m until the mower had driven
+   **~6.5-6.9 m**. It now DRAINS, bounded by `_PROBE_MAX_DRAIN_PER_POLL = 64`.
+   ⚠️ The first attempt at that drain was an unbounded `while True`, which hung
+   the test suite: a mocked queue never raises `QueueEmpty`. The regression test
+   pins the BOUNDED form specifically.
+2. **Containment's clock branch omitted the stop overshoot.** The mandatory stop
+   fires after the window ends on either branch, so the measured 0.4544 m
+   post-stop creep sat outside the corridor on exactly the branch that exists for
+   the guard-no-op case. Both branches now carry it.
+
+| check | result |
+| --- | --- |
+| files byte-identical | **48/48** |
+| card md5, both paths + local | `e8e47948` |
+| archive SHA-256 local == host | `66621a3dd1cc4573e438a9f0e30dc5926f9d17f9d5571defc2fb111a140d7c3c` |
+| AppleDouble `._*` files | 0 |
+| Lovelace resource | `?v=0.6.4-beta99&build=e8e47948` |
+| API back / entities | 31 s / 133 Mammotion entities |
+| gate | `enabled: false` |
+
+🔑 **Discriminating check** (the FIX, not the version): a dry run at linear 400 /
+23 000 ms now reports `clock_bound_m 7.40`, `required_radius_m 7.40`,
+`bound_that_binds: "clock"` — beta98 gave **6.90**, i.e. the corridor was short
+by the full post-stop creep. `would_send: false`.
+
+🚨 **Not browser-verified.** Ask the operator to confirm the card footer reads
+`0.6.4-beta99`. Backup: `/config/mammotion-backup-20260903-1906-pre-beta99.tgz`.
+
+⚠️ **BLE dropped over the restart and did NOT return**: `ble_rssi 0` (the
+documented dozed-mower signature after ~5 h idle off-dock) with
+`master_bedroom_proxy` `unavailable`. No motion was attempted. **This deploy is
+verified by dry run only; nothing has exercised the drain on hardware.**
+
 ### beta97 -> beta98 — 2026-09-03 15:59-16:07 EDT, motion-disabled — the containment gap
 
 🚨 **Ships a real containment defect fix.** `step_path_contained` sized the
