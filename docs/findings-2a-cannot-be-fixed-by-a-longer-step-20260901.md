@@ -72,3 +72,39 @@ and the residual sd (1.445 °/s) come from +180/7000 runs at linear 400. The
 `(linear 300, angular ±180)` operating point has **never been exercised** —
 `grep '"linear_speed": 300'` finds nothing in `docs/` — so neither constant is
 known to transfer.
+
+---
+
+## 4. 🗑️ CORRECTION — §2's "the yard runs out first" is WRONG. The yard is fine.
+
+**The error: §2 sized the yard with the largest axis-aligned SQUARE, but the
+containment gate requires a DISK.** `step_path_contained` tests
+`max_travel_m + 0.50 m` of clearance in **every direction** — an inscribed
+circle, not a square. Searching for squares understated the usable space by the
+square/circle factor (√2), and the conclusion inverted.
+
+Exact maximum inscribed radius, measured from the live polygons (edge-sampled,
+keep-outs included):
+
+| region | inscribed radius | (largest square, for comparison) |
+| --- | --- | --- |
+| "Backyard Right" alone | **5.913 m** | 8.36 m |
+| "Backyard Right" + "Backyard Hill" | **7.007 m** | 9.91 m |
+
+✅ **Cross-check: 5.913 m matches the 5.9039 m clearance independently measured at
+the 2026-09-01 run's own start point.** The geometry is right.
+
+**So "Backyard Right" alone already holds a corridor for a ~26.8 s step, which
+reaches ~91.7%.** The yard was never the binding constraint.
+
+🔑 **What actually binds is three schema caps:** `max_travel_m` ≤ 4.5,
+`_STEP_RESPONSE_MAX_TOTAL_MS` = 23000, and `step_ms` ≤ 15000. Even at today's
+4.5 m travel budget the window could run ~28 s; `step_ms` holds the step at 15 s
+and therefore holds 2a at 60.7%.
+
+⚠️ **§1's convergence table and the ~60.7% figure at a 15 s step are UNAFFECTED
+and stand.** Only §2's geometric conclusion, and §3's "measured dead end"
+framing of a longer step, are withdrawn. A longer step is **not** a dead end —
+it is capped by schema values that are ours to move deliberately.
+
+**Superseded by** `docs/phase2-long-step-cap-raise-predeclared-20260902.md`.
