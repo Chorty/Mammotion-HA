@@ -139,3 +139,36 @@ coincidence of two runs.
 
 **Nothing here changes shipped code.** Adopting D is a separate decision with its
 own release, its own tests, and the ω/τ redefinition in §4 to resolve first.
+
+---
+
+## 6. DECISION — Rule D is DENIED (operator, 2026-09-03)
+
+**Rule D is not adopted. Shipped scoring is unchanged. Criterion 2a continues to
+use Rule A**, with its measured bias documented in `CLAUDE.md` so no verdict is
+quoted as fact.
+
+**The reasoning, recorded so it does not have to be re-derived:**
+
+🔑 **The asymmetry decided it.** Adopting D would add a **more permissive**,
+**noisier**, **unvalidated** rule in order to gain a number — τ — that nothing
+currently needs, because 2a → τ → dead time → Phase 2, and Phase 2 is parked
+(standing decision 5). Denying costs nothing today.
+
+- **D is more permissive BY CONSTRUCTION.** Excluding the onset makes any run
+  likelier to pass; here it turns two FAILs into PASSes, and it would do the same
+  on future runs. ⚠️ **A criterion becoming more permissive should face a higher
+  bar, not a lower one.**
+- **Its noise margin is worse than the rule it would replace** — 2σ 1.336 against
+  A's 1.145, because 3 s windows are shorter than 3.5 s halves.
+- **It has had exactly one round of in-sample selection and no out-of-sample
+  test.** This same study showed what that produces: Rule C was predeclared as
+  the expected winner and passed BOTH known-ramping anchors.
+
+**What denial does NOT mean.** The study stands, D remains the studied
+replacement, and the diagnosis in §0.1 of the predeclaration — that 2a fails on
+onset BIAS, not variance — is unaffected and is the durable result.
+
+**The condition that would reverse this:** if Phase 2 resumes and τ is actually
+needed, adopt D **together with** one out-of-sample validation run, and resolve
+the ω/τ redefinition in §4 before quoting any τ.
