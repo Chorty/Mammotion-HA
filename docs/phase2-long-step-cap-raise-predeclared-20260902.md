@@ -116,3 +116,64 @@ unscoreable by design), docked-and-charged battery, a fresh corridor scan at the
 live position, and the gate disarmed and verified from the live API **and** RAW
 afterwards. ⚠️ The host must first be returned to a known-good build — see
 `docs/SESSION-STATE-20260901-2000.md` §6.
+
+---
+
+## 7. AMENDED 2026-09-02 after adversarial review of beta97 — the numbers move, the recommendation does not
+
+Two findings from the beta97 review change this proposal's own arithmetic. ⚠️ Both
+were **unverified** (their verifiers died on a spend limit) and were confirmed by
+hand instead.
+
+### 7.1 The containment gate was understated, and it now binds the window
+
+`step_path_contained` computed `max_travel_m + 0.50` only, **assuming the distance
+guard works** — but a documented latched-position mode makes the guard a no-op and
+lets the window run to the wall clock. Fixed in `a659535d`: the requirement is now
+`max(travel bound, clock bound)` where `clock bound = 0.0007 × linear_speed ×
+window_s`. 🔑 **The clock bound is what limits the window now, not `max_travel_m`.**
+
+In "Backyard Right" (inscribed radius **5.913 m**):
+
+| linear | clock speed | max window | max step | k | P(2a) | aliases at |
+| --- | --- | --- | --- | --- | --- | --- |
+| **300** | 0.210 m/s | **28.2 s** | **21.2 s** | 11 | **81.5%** | ≥17.0 °/s |
+| 400 | 0.280 m/s | 21.1 s | 14.1 s | 7 | 50.5% | ≥25.5 °/s |
+
+🔑 **§2's 24 s and 27 s rows (85.8% / 91.7%) are WITHDRAWN — they do not fit.**
+🔑 **Linear 300 is not a preference any more, it is required**: at 400 the corridor
+caps the step at 14.1 s and 2a stays a coin flip.
+
+### 7.2 The E-VIO half rate aliases past 180° per half — a second, independent cap
+
+Each half rate is an endpoint difference through `normalize_degrees`, which wraps
+to [-180, 180), so a half accumulating ≥180° silently aliases and flips sign.
+
+⚠️ **The reviewer's claim that the shipped 15 s cap "sits 2-5% under" this is
+WRONG** — at 15 s the half is 7.5 s and aliasing needs ≥24 °/s against a measured
+~12 °/s, a 2x margin. **But it is a real cap on longer steps**: at the 21.2 s step
+above the threshold is 17.0 °/s, a 1.4x margin, and the withdrawn 27 s row sat at
+13.3 °/s — **inside measurement noise of the observed rate.** That row was unsafe
+for two independent reasons.
+
+### 7.3 Revised proposal
+
+| | from | to |
+| --- | --- | --- |
+| `step_ms` ceiling | 15000 | **22000** (unchanged from §2 — 21.2 s fits under it) |
+| `_STEP_RESPONSE_MAX_TOTAL_MS` | 23000 | **29000** (was 30000; 28.2 s is the real limit) |
+| `max_travel_m` ceiling | 4.5 | **4.5 — still UNCHANGED** |
+
+**The run is now fully specified: `baseline 3000 / step 21000 / settle 4000`
+(28000 ms) at `linear_speed` 300, `max_travel_m` 4.5, in a corridor with ≥5.88 m
+of clearance.** Expected P(2a pass) **81.5%**, aliasing margin 1.4x.
+
+🔑 **Three independent constraints — corridor geometry, VIO aliasing, and the
+noise floor — all land on ~21 s and ~81%.** That agreement is the strongest reason
+to believe the number.
+
+⚠️ **Phase A is unchanged and still comes first.** Every figure above uses the
+sizing constant `0.0007 × linear_speed` for containment, which is deliberately
+conservative, but the *travel guard* still compares against real measured travel —
+and the sustained speed at 300 remains unmeasured. Nothing here removes that
+dependency.
