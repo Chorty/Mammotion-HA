@@ -211,6 +211,27 @@ has repeatedly caught real errors before they reached hardware.
   fresh corridor scan against the map, daylight, gate verified disarmed after.
 - **A run that stops safely on a named refusal is a FAIL**, not a smaller number.
 
+### Credentials
+
+`.env` is gitignored and **has never been committed** — verified 2026-09-04. Keep
+it that way; it holds the HA host SSH password, the HA API token, and the
+Mammotion cloud account login.
+
+✅ **`HA_SSH_PASS` was ROTATED** by the operator (confirmed 2026-09-04), closing
+the exposure from the 2026-08-31 `scripts/ha_ssh.exp` defect, where an
+`exp_continue` left the password pattern armed and re-sent the real password into
+the SSH stream on any later output containing a "password:"-like substring. The
+script now allows exactly one send per invocation.
+
+🚨 **`MAMMOTION_PASSWORD` was exposed into a session transcript on 2026-09-04 by
+my own command** — `grep -o 'MAMMOTION[A-Z_]*=[^ ]*' .env`, run to find the HA
+API variable names. **Rotate it in the Mammotion app if that has not been done**;
+it is a live credential that controls the mower over the cloud path.
+🔑 **When you need to know which variables exist, print the NAMES only:**
+`grep -oE '^[A-Z_]+=' .env`. Never a pattern that captures the value. This
+applies to any file that holds secrets, and the transcript is as much an
+exposure surface as a commit.
+
 ⚠️ **Never `git add -A`.** The operator keeps an uncommitted edit in
 `docs/agora_outbound_audio_probe.md`; it has been swept into commits twice.
 **Stage by explicit path.**
