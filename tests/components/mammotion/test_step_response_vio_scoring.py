@@ -27,9 +27,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import voluptuous as vol
 
 from custom_components.mammotion import services
 from custom_components.mammotion.services import (
+    _STEP_RESPONSE_VIO_MAX_PLAUSIBLE_RATE_DEG_PER_S,
+    STEP_RESPONSE_PROBE_SCHEMA,
     _step_response_half_phase_agreement,
     _step_response_vio_analysis,
     _step_response_vio_intervals,
@@ -85,6 +88,25 @@ BANKED_RUNS = [
         7000,
         False,
         3.4049,
+        True,
+    ),
+    # The 2026-09-03 (linear 300) pair. Both were banked unpinned and caught by
+    # test_every_banked_run_is_pinned_or_explicitly_excused; see
+    # docs/predeclared-vio-heading-continuity-guard-20260903.md §8. Neither
+    # scores a 2a PASS -- a 5000 ms step is still ramping at both angular
+    # commands, exactly as the 400-series 5000 ms runs were.
+    (
+        "raw-linear300-angular120-step5000-20260903.json",
+        5000,
+        False,
+        2.8364,
+        True,
+    ),
+    (
+        "raw-linear300-angular180-step5000-20260903.json",
+        5000,
+        False,
+        4.3966,
         True,
     ),
 ]
@@ -218,6 +240,11 @@ def test_every_banked_run_is_pinned_or_explicitly_excused() -> None:
         # Phase A: a 1000 ms step yields ~1 informative step interval against the
         # rule's >=3, so 2a is unscoreable BY DESIGN. It measured speed, not 2a.
         "raw-phaseA-linear300-speed-20260903.json",
+        # 🚨 The heading-discontinuity run. It has no 2a/2b verdict to pin
+        # BECAUSE the continuity guard refuses it, which is the whole point --
+        # it is pinned instead by
+        # test_a_heading_frame_discontinuity_refuses_to_score_with_a_named_reason.
+        "raw-linear300-angular180-20260903.json",
     }
     on_disk = {p.name for p in RAW_SAMPLES.glob("*.json")}
     unaccounted = on_disk - pinned - excused
@@ -225,3 +252,131 @@ def test_every_banked_run_is_pinned_or_explicitly_excused() -> None:
         f"banked runs neither pinned nor excused: {sorted(unaccounted)} -- add "
         "them to the parametrized roster, or excuse them here with a reason"
     )
+
+
+# ---------------------------------------------------------------------------
+# The heading-continuity guard — predeclared in
+# docs/predeclared-vio-heading-continuity-guard-20260903.md
+# ---------------------------------------------------------------------------
+
+
+def test_a_heading_frame_discontinuity_refuses_to_score_with_a_named_reason() -> None:
+    """🚨 The 2026-09-03 defect, pinned as the fixture that must stay refused.
+
+    VIO heading jumped -166.47 deg in one report while the mower drove STRAIGHT
+    (operator-observed; RTK course moved ~6 deg across the whole window), and
+    `vio_state` stayed 2 for all 79 samples -- so the liveness guard never
+    fired and the run returned `scoreable: true` with a 2b PASS computed over a
+    discontinuous track.
+    """
+    analysis = _step_response_vio_analysis(
+        _load_samples("raw-linear300-angular180-20260903.json"),
+        baseline_ms=3000,
+        step_ms=1000,
+    )
+    assert analysis["scoreable"] is False
+    assert analysis["unscoreable_reason"] == "vio_heading_discontinuity"
+    # No verdict may survive alongside the refusal.
+    assert "step_steady_rotation_2a" not in analysis
+    assert "settle_flat_2b" not in analysis
+    # The refusal must NAME what tripped it -- never silent (criterion 3).
+    (offender,) = analysis["discontinuities"]
+    assert offender["rate_deg_per_s"] == pytest.approx(-149.7945, abs=0.01)
+    assert offender["from_heading_degrees"] == pytest.approx(89.769, abs=0.01)
+    assert offender["to_heading_degrees"] == pytest.approx(-76.705, abs=0.01)
+    assert offender["phase"] == "step"
+
+
+def test_the_guard_is_state_independent_because_vio_state_never_sees_it() -> None:
+    """The whole point: `vio_state` checks LIVENESS, not CONTINUITY.
+
+    Every sample in the defective run carried the live state, so a guard keyed
+    on state could never have caught this.
+    """
+    samples = _load_samples("raw-linear300-angular180-20260903.json")
+    assert {(s["vio"] or {}).get("state") for s in samples} == {2}
+
+
+def test_a_clean_fast_rotation_at_the_measured_envelope_still_scores() -> None:
+    """Criterion 4 — the guard must not refuse the plant working normally.
+
+    13.4 deg/s is the fastest steady rotation ever measured under an admissible
+    command (linear 300, angular 180). A guard that refuses it is useless.
+    """
+    headings = [round(-13.4 * i, 4) for i in range(8)]
+    analysis = _step_response_vio_analysis(
+        _synthetic_samples(headings), baseline_ms=0, step_ms=7000
+    )
+    assert analysis["scoreable"] is True
+    assert analysis["step_steady_rotation_2a"]["passed"] is True
+
+
+def test_the_guard_fires_in_any_phase_not_only_the_step() -> None:
+    """A frame jump anywhere shifts the origin for everything after it."""
+    for jump_at in (1, 5):
+        headings = [0.0, -11.0, -22.0, -33.0, -44.0, -55.0, -66.0]
+        headings[jump_at:] = [h - 120.0 for h in headings[jump_at:]]
+        analysis = _step_response_vio_analysis(
+            _synthetic_samples(headings), baseline_ms=2000, step_ms=2000
+        )
+        assert analysis["scoreable"] is False, jump_at
+        assert analysis["unscoreable_reason"] == "vio_heading_discontinuity"
+
+
+def test_the_guard_refuses_the_run_rather_than_dropping_the_bad_interval() -> None:
+    """Re-scoring the survivors is the move rejected on 2026-09-01.
+
+    Choosing which samples to discard after seeing which verdicts it flips is
+    the failure the 2026-08-23 mirror-criterion review registered against. A
+    track with 6 clean intervals around one jump is still unscoreable.
+    """
+    headings = [0.0, -11.0, -22.0, 140.0, 129.0, 118.0, 107.0, 96.0]
+    analysis = _step_response_vio_analysis(
+        _synthetic_samples(headings), baseline_ms=0, step_ms=8000
+    )
+    assert analysis["scoreable"] is False
+    assert analysis["unscoreable_reason"] == "vio_heading_discontinuity"
+
+
+def test_the_continuity_bound_is_tied_to_the_admissible_commands() -> None:
+    """🚨 Criterion 6 — widening the schema must force a re-derivation.
+
+    The 30 deg/s bound is a plausibility ceiling for THIS probe's command
+    envelope: linear 300/400, |angular| 120/180, always driving forward, where
+    the fastest steady rotation measured is 13.431 deg/s and the fastest clean
+    interval 15.35. Stationary pivots reach ~38 deg/s at angular 500 and would
+    trip it. If either set widens, re-derive the bound before shipping.
+    """
+    assert _STEP_RESPONSE_VIO_MAX_PLAUSIBLE_RATE_DEG_PER_S == 30.0
+    # ~2x the worst clean interval ever observed, 5x below the discontinuity.
+    assert _STEP_RESPONSE_VIO_MAX_PLAUSIBLE_RATE_DEG_PER_S > 2 * 13.431
+    assert _STEP_RESPONSE_VIO_MAX_PLAUSIBLE_RATE_DEG_PER_S < 149.79 / 3
+
+    base = {
+        "entity_id": "lawn_mower.mower",
+        "route_start": {"x": 0.0, "y": 0.0},
+        "corridor_polygon": [
+            {"x": -50.0, "y": -50.0},
+            {"x": 50.0, "y": -50.0},
+            {"x": 50.0, "y": 50.0},
+            {"x": -50.0, "y": 50.0},
+        ],
+    }
+
+    def _admits(**overrides: object) -> bool:
+        try:
+            STEP_RESPONSE_PROBE_SCHEMA({**base, **overrides})
+        except vol.Invalid:
+            return False
+        return True
+
+    assert {s for s in (200, 300, 400, 500, 600) if _admits(linear_speed=s)} == {
+        300,
+        400,
+    }
+    admitted_angular = {
+        a
+        for a in (60, 90, 120, 180, 240, 300, 500, -60, -120, -180, -500)
+        if _admits(step_angular_speed=a)
+    }
+    assert admitted_angular == {120, 180, -120, -180}

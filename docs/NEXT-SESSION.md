@@ -205,6 +205,15 @@ requirement conflicted; that is what this deploy fixes.
 m/s**, below the 0.15 m chord floor, so heading is unreadable. My extrapolation
 said 0.195 — a 25% command cut gave a 39% speed cut, not linear.
 
+> 🗑️ **BOTH HALVES OF THAT PARAGRAPH ARE REFUTED — annotated 2026-09-03, do not
+> act on it.** 0.116 was a 4 s **ramp-inclusive average**, not a speed: linear
+> 300 **sustains 0.223 m/s** and 400 sustains 0.295, so the relation is
+> essentially **linear** (0.756 against a command ratio of 0.750) and the "39%
+> cut" was an artifact of the slower run spending more of its window ramping.
+> 300 also clears the 0.15 m chord floor comfortably, and is admissible under
+> rule E-VIO in any case. See
+> `docs/evidence-phaseA-linear300-sustained-speed-20260903.md`.
+
 ✅ **DEPLOYED, beta87:** `maxsize=1` on two more position streams, the cause of
 a false `position_sequence_gap` that aborted a speed check at 413 ms.
 

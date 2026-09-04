@@ -1000,7 +1000,11 @@ STEP_RESPONSE_PROBE_SCHEMA = vol.Schema(
         vol.Required("corridor_polygon"): [_CONTINUOUS_MOTION_POINT_SCHEMA],
         # 300 became admissible with rule E-VIO. It was eliminated on
         # 2026-08-30 because a 0.116 m/s mower covers less than the 0.15 m
-        # chord the RTK-course statistic needed -- but E-VIO reads VIO heading
+        # chord the RTK-course statistic needed -- ⚠️ and that 0.116 was a 4 s
+        # ramp-inclusive average, not a speed: 300 SUSTAINS 0.223 m/s
+        # (2026-09-03), which clears the 0.15 m chord comfortably, so the
+        # original elimination was unsound on its own terms too. E-VIO reads
+        # VIO heading
         # between consecutive DISTINCT readings and imposes no travel floor at
         # all, so the objection does not transfer. Driving slower is what lets a
         # long step phase fit the yard: see
@@ -9599,11 +9603,15 @@ _STEP_RESPONSE_MAX_TOTAL_MS = 23000
 # refused pre-dispatch although both banked runs of it travelled 2.71 and 2.77 m.
 # 400 is now 0.17, below the measured minimum with margin.
 #
-# The relation to the command is NOT linear: a 25% command cut produced a 39%
-# speed cut on 2026-08-30 (4 s ramp-inclusive averages, 400 -> 0.191,
-# 300 -> 0.116 m/s). 🗑️ That non-linearity is now REFUTED as a ramp artifact --
-# see `_PROBE_SPEED_PER_LINEAR_UNIT_MS`; sustained speeds scale essentially
-# linearly with the command.
+# 🗑️ The command/speed relation IS essentially linear -- do not reintroduce the
+# old "a 25% command cut gives a 39% speed cut". That came from comparing 4 s
+# ramp-INCLUSIVE averages on 2026-08-30 (400 -> 0.191, 300 -> 0.116 m/s), where
+# the slower run spends a larger fraction of its window ramping. Sustained
+# speeds measured 2026-09-03 scale with the command to within 1%; see
+# `_PROBE_SPEED_PER_LINEAR_UNIT_MS`.
+# ⚠️ The entries BELOW are still not a linear function of the command, and that
+# is correct: they are whole-window floors, and a window's ramp fraction depends
+# on its length, not only on its speed.
 # ⚠️ These stay LOW on purpose. They are the floor a WHOLE window averages,
 # including ramp-up from standstill, so they must sit under the shortest windows
 # too: Phase A measured 0.157 m/s whole-window at 300 over 8 s against 0.223
@@ -9642,6 +9650,45 @@ _STEP_RESPONSE_MIN_INFORMATIVE_INTERVALS = 3
 # live (state: 2 across all 549 banked route-1 samples). Anything else refuses
 # to score — never fall back silently to the noise-bound RTK chord rule.
 _STEP_RESPONSE_VIO_STATE_LIVE = 2
+# 🚨 A PLAUSIBILITY CEILING on |VIO heading rate| between consecutive distinct
+# readings. Any interval above it, in ANY phase, refuses the whole run with
+# `vio_heading_discontinuity`. Predeclared in
+# docs/predeclared-vio-heading-continuity-guard-20260903.md.
+#
+# Why it exists: `vio_state` checks LIVENESS, not CONTINUITY. On 2026-09-03 a
+# run returned `scoreable: true` while the mower drove straight, because VIO
+# heading jumped -166.47 deg in one report (`toward` jumped +69.12 deg at the
+# same instant -- different magnitudes, so no rotation explains it) while
+# `vio_state` stayed 2 throughout. That jump was harmless only because the
+# 1000 ms step yielded 1 interval against the rule's >=3; at the 5000-7000 ms
+# steps the programme actually uses, the same jump lands INSIDE the half-phase
+# statistic and becomes a certified rotation rate.
+#
+# 🗑️ NOT the commanded angular rate, which is the shape that suggests itself and
+# is WRONG: commanded angular is ZERO in baseline and settle, yet rotation
+# persists past the command going to zero -- that decay is the whole subject of
+# the step-response programme (17 deg after zero, 2026-08-29). Measured across
+# the banked corpus, a command-scaled bound refuses every clean run on its
+# settle intervals alone (worst clean settle interval: 9.97 deg/s). The bound
+# must be the PLANT's envelope, not the instantaneous command.
+#
+# Derivation, measurement only:
+#     fastest steady rotation, any admissible command  13.431 deg/s  (300, 180)
+#     fastest single clean interval, 8 banked runs     15.35  deg/s
+#     the observed discontinuity                      149.79  deg/s
+# 30.0 is ~2.0x the worst clean interval and 5.0x below the discontinuity. The
+# ~10x clean/broken separation makes the value uncritical -- anything in roughly
+# 20-70 deg/s scores the entire banked corpus identically -- so it is placed
+# just above the physical envelope with a doubling of margin rather than tuned.
+#
+# ⚠️ NOT a claim about the plant. Do not quote it as a rotation capability and
+# do not fit anything to it.
+# 🚨 It is valid ONLY for this probe's admissible commands (linear 300/400,
+# |angular| 120/180, always driving forward). Stationary pivots reach ~38 deg/s
+# at angular 500 and would trip it. If the schema ever admits those, RE-DERIVE
+# this first: `test_the_continuity_bound_is_tied_to_the_admissible_commands`
+# fails when the schema widens without it.
+_STEP_RESPONSE_VIO_MAX_PLAUSIBLE_RATE_DEG_PER_S = 30.0
 
 
 def _step_response_gates(
@@ -10094,6 +10141,42 @@ def _step_response_vio_analysis(  # noqa: C901
     intervals = _step_response_vio_intervals(
         samples, baseline_ms=baseline_ms, step_ms=step_ms
     )
+
+    # 🚨 CONTINUITY, which `vio_state` does not check. A heading-frame jump
+    # (VIO re-referencing after a restart) presents as a live channel reporting
+    # an impossible rate, and the half-phase statistic converts it into a
+    # certified rotation. Refuse the RUN, never just the interval: after a frame
+    # jump every later heading is referenced to a shifted origin, so no
+    # statistic over the track is meaningful -- and dropping the offending
+    # interval and re-scoring the rest is the "just exclude the onset interval"
+    # move rejected on 2026-09-01, choosing samples after seeing the verdicts.
+    discontinuities = [
+        interval
+        for interval in intervals
+        if abs(interval["rate_deg_per_s"])
+        > _STEP_RESPONSE_VIO_MAX_PLAUSIBLE_RATE_DEG_PER_S
+    ]
+    if discontinuities:
+        return {
+            "scoreable": False,
+            "unscoreable_reason": "vio_heading_discontinuity",
+            "max_plausible_rate_deg_per_s": (
+                _STEP_RESPONSE_VIO_MAX_PLAUSIBLE_RATE_DEG_PER_S
+            ),
+            "discontinuities": discontinuities,
+            "interpretation": (
+                "VIO heading moved faster between two consecutive distinct "
+                "readings than the mower can rotate under any command this "
+                "probe admits, so the heading track is not one continuous "
+                "frame and no rate derived from it is a measurement. "
+                "vio_state checks liveness, not continuity, so this can occur "
+                "with vio_state 2 throughout. Cross-check the RTK "
+                "course_series: if it shows no matching rotation, the VIO "
+                "frame jumped (a mower restart re-references it). The run is "
+                "unscoreable; it cannot be repaired by dropping the interval."
+            ),
+        }
+
     if len(intervals) < 2:
         return {
             "scoreable": False,

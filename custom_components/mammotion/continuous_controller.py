@@ -183,6 +183,13 @@ class ContinuousControllerConfig:
     # captures on 2026-08-22 (`docs/frozen-prediction-constants-20260822.json`,
     # k_lin = 6.204299e-04). Was 0.28, a provisional Phase 0 guess that predates
     # the measurement.
+    # ⚠️ 2026-09-03: a DIRECT post-ramp measurement puts linear 400 at 0.295 m/s,
+    # so this 0.2482 -- derived from 4 s windows -- is ~16% low as a SUSTAINED
+    # speed. It is deliberately left alone: Phase 2 is parked (standing decision
+    # 5), this controller is unreachable from any shipped path, and the banked
+    # replays that validate it were scored against this value. If Phase 2 ever
+    # resumes, re-derive this from post-ramp samples BEFORE trusting a
+    # prediction, and re-run the replays rather than editing the number alone.
     nominal_speed_mps: float = 0.2482
     # 🚨 **The SECOND defect the 2026-08-24 run exposed** -- independent of the
     # sign inversion, and NOT fixed by it. That run opened its window 46.639 deg

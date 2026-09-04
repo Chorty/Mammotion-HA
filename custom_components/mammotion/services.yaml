@@ -877,12 +877,17 @@ raw_pymammotion_step_response_probe:
         floor -- unlike the old RTK course statistic, which needed a 0.15 m
         chord and ruled 300 out. Driving slower is what lets a long step phase
         fit inside max_travel_m and the corridor.
-        400 sustains ~0.216 m/s (mean of five banked full-window runs, range
-        0.194-0.262). 300 is ESTIMATED at ~0.16 m/s and has never been measured
-        sustained -- it is one 4 s ramp-inclusive sample (0.116 m/s) scaled by
-        the 1.37x sustained/average ratio observed at 400. Treat any 300 figure
-        as an estimate, not a measurement. The command/speed relation is NOT
-        linear: a 25% command cut gave a 39% speed cut.
+        SUSTAINED (post-ramp) speeds are now measured directly, 2026-09-03:
+        400 -> 0.295 m/s, 300 -> 0.223 m/s. The command/speed relation is
+        essentially LINEAR in that regime (0.223/0.295 = 0.756 against a command
+        ratio of 0.750). The older "a 25% command cut gives a 39% speed cut" is
+        REFUTED -- it compared 4 s ramp-inclusive averages, where the slower run
+        spends more of its window ramping.
+        WHOLE-WINDOW averages are lower and depend on window length, because
+        they include the ramp from standstill: 400 averaged 0.194-0.262 m/s
+        across five banked runs, and 300 averaged 0.157 m/s over 8 s. Size a
+        corridor from the sustained figure and a travel budget from the
+        whole-window one -- they are different numbers for different jobs.
       required: false
       default: "400"
       example: "400"

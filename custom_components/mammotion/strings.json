@@ -2509,7 +2509,7 @@
         },
         "linear_speed": {
           "name": "Linear speed",
-          "description": "Forward command: 400 or 300. 300 is admissible under rule E-VIO, which reads VIO heading and imposes no travel floor, and it is what lets a long step phase fit the travel budget. 400 sustains about 0.216 m/s, measured across five banked runs. 300 is ESTIMATED at about 0.16 m/s and has never been measured sustained - treat it as an estimate, not a measurement. The command to speed relation is not linear: a 25 percent command cut gave a 39 percent speed cut."
+          "description": "Forward command: 400 or 300. 300 is admissible under rule E-VIO, which reads VIO heading and imposes no travel floor, and it is what lets a long step phase fit the travel budget. SUSTAINED post-ramp speeds were measured directly on 2026-09-03: 400 gives 0.295 m/s and 300 gives 0.223 m/s, so the command to speed relation is essentially LINEAR. The older claim that a 25 percent command cut gives a 39 percent speed cut is REFUTED - it compared ramp-inclusive 4 second averages. Whole-window averages are lower and depend on window length because they include the ramp: 400 averaged 0.194 to 0.262 m/s across five banked runs, and 300 averaged 0.157 m/s over 8 seconds."
         },
         "step_angular_speed": {
           "name": "Step angular speed",

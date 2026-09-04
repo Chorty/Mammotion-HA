@@ -742,7 +742,10 @@ def test_linear_speed_300_is_admissible_and_400_stays_the_default() -> None:
     """E-VIO imposes no travel floor, so the slow speed is back on the menu.
 
     300 was eliminated on 2026-08-30 because the RTK course statistic needed a
-    0.15 m chord and a 0.116 m/s mower does not produce one. E-VIO reads VIO
+    0.15 m chord and a 0.116 m/s mower does not produce one. That 0.116 was a
+    ramp-inclusive 4 s average rather than a speed -- 300 SUSTAINS 0.223 m/s
+    (2026-09-03) and would have cleared the chord -- so the elimination was
+    doubly unsound. E-VIO reads VIO
     heading between consecutive DISTINCT readings instead, so that objection
     does not transfer -- and driving slower is what lets a long step phase fit
     inside an unchanged `max_travel_m`.
