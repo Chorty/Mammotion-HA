@@ -7988,6 +7988,17 @@ async def _raw_pymammotion_motion_probe_impl(  # noqa: C901
             # 3.31 m at the schema maximum. A corridor must cover whichever bound
             # is larger, so this now reports that. Speed uses the schema's
             # `linear_speed`, not the tested 400, because the schema allows 1000.
+            # 🚨 **THE OVERSHOOT APPLIES TO BOTH BRANCHES — corrected 2026-09-03.**
+            # The clock branch shipped with NO overshoot term at all. That is the
+            # same defect beta98 fixed in `step_path_contained`, which was never
+            # propagated back to this sibling. The mandatory stop is issued AFTER
+            # `_motion_refresh_window` returns, so when the guard no-ops (the
+            # documented latched-position mode) the window runs to the wall clock
+            # and the post-stop creep — measured 0.4544 m, attempt 5 — lands
+            # entirely outside the number the operator was told covers the path.
+            # It BINDS at the schema maximum: 12000 ms at linear 400 gives a
+            # 3.60 m clock bound against a 3.50 m guard bound, so the larger
+            # branch was the uncertified one. Both branches now carry it.
             "corridor_must_cover_m": (
                 round(
                     max(
@@ -7995,13 +8006,17 @@ async def _raw_pymammotion_motion_probe_impl(  # noqa: C901
                         _PROBE_SPEED_PER_LINEAR_UNIT_MS
                         * abs(linear_speed)
                         * duration_ms
-                        / 1000.0,
+                        / 1000.0
+                        + _PROBE_TRAVEL_GUARD_OVERSHOOT_M,
                     ),
                     3,
                 )
                 if max_travel_m > 0
                 else 0.0
             ),
+            # Reported WITHOUT the overshoot, deliberately: this is the distance
+            # the mower covers while driving, and `corridor_must_cover_m` above
+            # is the number to size a corridor from.
             "clock_bound_m": round(
                 _PROBE_SPEED_PER_LINEAR_UNIT_MS
                 * abs(linear_speed)

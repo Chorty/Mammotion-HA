@@ -192,8 +192,14 @@ def test_the_response_states_the_real_bound_not_the_requested_one(
     assert guard["clock_bound_m"] == pytest.approx(
         2.40, abs=0.01
     )  # 7.5e-4 x 400 x 8 s; was 2.24 at the pre-2026-09-03 constant
+    # 🚨 The clock branch carries the stop overshoot too (2026-09-03). The
+    # mandatory stop is issued AFTER the window ends, so the post-stop creep
+    # sits outside the clock bound just as it sits outside the guard bound.
     assert guard["corridor_must_cover_m"] == pytest.approx(
-        max(1.5 + _PROBE_TRAVEL_GUARD_OVERSHOOT_M, guard["clock_bound_m"])
+        max(
+            1.5 + _PROBE_TRAVEL_GUARD_OVERSHOOT_M,
+            guard["clock_bound_m"] + _PROBE_TRAVEL_GUARD_OVERSHOOT_M,
+        )
     )
     assert guard["tripped"] is False
 
@@ -455,11 +461,49 @@ def test_corridor_must_cover_reports_the_clock_bound_when_it_is_larger(
     assert guard["clock_bound_m"] == pytest.approx(
         3.60, abs=0.01
     )  # 7.5e-4 x 400 x 12 s; was 3.36 at the pre-2026-09-03 constant
-    assert guard["corridor_must_cover_m"] == pytest.approx(3.60, abs=0.01)
+    # 🚨 3.60 + 0.50, not 3.60. The clock branch shipped with NO overshoot
+    # term -- the same defect beta98 fixed in `step_path_contained` and never
+    # propagated back here. It BINDS at the schema maximum: the 3.60 m clock
+    # bound exceeds the 3.50 m guard bound, so the branch that was chosen was
+    # the one carrying no allowance for the post-window stop creep (0.4544 m
+    # measured, attempt 5).
+    assert guard["corridor_must_cover_m"] == pytest.approx(4.10, abs=0.01)
+    assert guard["corridor_must_cover_m"] == pytest.approx(
+        guard["clock_bound_m"] + _PROBE_TRAVEL_GUARD_OVERSHOOT_M, abs=0.01
+    )
     assert (
         guard["corridor_must_cover_m"]
         > guard["max_travel_m"] + guard["expected_overshoot_m"]
     )
+
+
+def test_both_corridor_branches_carry_the_stop_overshoot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """🚨 Regression, 2026-09-03. Neither branch may omit the creep.
+
+    The mandatory stop is dispatched after `_motion_refresh_window` returns, so
+    whichever bound ends the run, the creep lands beyond it. `step_path_contained`
+    was corrected for this in beta98; this sibling was missed, and its clock
+    branch is the LARGER one at the schema maximum.
+    """
+    for duration_ms, max_travel_m in ((12000, 0.10), (2000, 2.5)):
+        guard = _dry_run(
+            monkeypatch,
+            duration_ms=duration_ms,
+            motion_refresh_interval_ms=200,
+            in_window_sample_interval_ms=100,
+            max_travel_m=max_travel_m,
+        )["travel_guard"]
+        assert guard["corridor_must_cover_m"] == pytest.approx(
+            max(
+                max_travel_m + _PROBE_TRAVEL_GUARD_OVERSHOOT_M,
+                guard["clock_bound_m"] + _PROBE_TRAVEL_GUARD_OVERSHOOT_M,
+            ),
+            abs=0.01,
+        ), duration_ms
+        # Whichever branch wins, it always exceeds the raw driving distance.
+        assert guard["corridor_must_cover_m"] > guard["clock_bound_m"]
 
 
 def test_the_overshoot_constant_covers_a_whole_position_chord() -> None:
