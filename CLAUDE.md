@@ -44,15 +44,25 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: beta99 DEPLOYED; TREE IS AHEAD OF THE HOST (offline work, 2026-09-03 later session); PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
+## Current build: beta100 (DEPLOYED 2026-09-04; backend post4 unchanged); PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
 
-⚠️ **THE HOST RUNS beta99. THE TREE IS AHEAD OF IT AND NOT DEPLOYED.** Three
-commits of offline work sit on `main` past `b9d62007`: the E-VIO continuity
-guard, the motion-probe corridor fix, and the stale-speed sweep. **None of it is
-on the host.** All gates green offline (1018 pytest, ruff, mypy, frontend).
-🔐 **The deploy is deliberately NOT done: `HA_SSH_PASS` rotation is still
-unconfirmed since the 2026-08-31 exposure**, and deploying sends that credential
-to the host again. Confirm the rotation first.
+🚀 **beta100 DEPLOYED motion-disabled, 2026-09-04 02:39-02:52 UTC.** Full
+verification tail passed — **48/48 byte-identical**, card md5 `77971e3f` at both
+serving paths, Lovelace `?v=0.6.4-beta100&build=77971e3f`, backend `0.8.12.post4`
+read from inside the container, config entry `loaded`, gate disarmed and verified
+from the live API **and** RAW. **No motion was commanded.** Record:
+`docs/deploy-runbook-p0.md` → beta99 -> beta100.
+🔑 **The dry run was DISCRIMINATING:** `raw_pymammotion_motion_probe` at
+`duration_ms: 12000` / linear 400 returned **`corridor_must_cover_m: 4.1`** where
+beta99 reports **3.60** for the identical call. The E-VIO guard cannot be
+dry-run-exercised (dry runs return before sampling), so it was verified in the
+**deployed bytes**.
+🚨 **NOT browser-verified** — the card footer still needs an operator eye on
+`0.6.4-beta100`.
+🔐 The operator confirmed `HA_SSH_PASS` was rotated before this deploy.
+⚠️ **The E-VIO guard is DEPLOYED but UNEXERCISED on hardware** — it first
+populates on a real, separately-authorized daylight step-response run, and no
+such run is authorized or planned (the 2a line serves parked work).
 
 🛡️ **E-VIO NOW REFUSES A HEADING-FRAME DISCONTINUITY —
 `vio_heading_discontinuity`, predeclared at `36922533`, implemented at

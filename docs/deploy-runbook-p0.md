@@ -8,6 +8,65 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta99 -> beta100 — 2026-09-04 02:39-02:52 UTC, motion-disabled — the E-VIO continuity guard + the corridor fix's other sibling
+
+**No motion was commanded. The gate never left disarmed** — verified before and
+after from the live API **and** RAW `core.config_entries`.
+
+Ships three offline changes:
+
+1. 🛡️ **E-VIO refuses a heading-frame discontinuity** (`vio_heading_discontinuity`),
+   predeclared at `36922533`. `vio_state` checks liveness, not continuity; any
+   interval above `_STEP_RESPONSE_VIO_MAX_PLAUSIBLE_RATE_DEG_PER_S = 30.0`
+   refuses the **whole run**. The predeclared table held exactly — all eight
+   clean banked runs byte-identical, exactly one flipped to unscoreable.
+2. 🐛 **`raw_pymammotion_motion_probe`'s clock-bound corridor omitted the stop
+   overshoot** — the same defect beta98 fixed in `step_path_contained`, never
+   propagated to the sibling. It BINDS at the schema maximum.
+3. 🧹 **Stale speed constants retired** from `services.yaml` / `strings.json` /
+   `en.json` (the refuted "39% speed cut", and "300 has never been measured
+   sustained").
+
+**Verification tail — measured, not expected:**
+
+| check | value |
+| --- | --- |
+| files byte-identical | **48 / 48** (normalised for the expect wrapper's CRLF) |
+| archive SHA-256, local == host | `dfa42bd01d16d6ad5f3a3d62c3f40a51704a3168c7ba679fa108dc6af5eeeeab` |
+| card md5, local == both host paths | `77971e3f889b12d9d1a897129c8cffd2` |
+| AppleDouble `._*` files | **0** |
+| host `manifest.json` / both `CARD_VERSION` | `0.6.4-beta100` |
+| Lovelace resource, read back | `?v=0.6.4-beta100&build=77971e3f` |
+| backend, from inside the container | `0.8.12.post4` (unchanged) |
+| API back after restart | **91 s**; 133 mammotion entities at 281 s |
+| config entry | `state=loaded` (`01M1CVFWHYWW527S9BM5M2BDP3`) |
+| entities | 142 total, **117 ok**, 22 `unknown`, 3 `unavailable` |
+| gate, live API | `enabled: false`, `real_motion_allowed: false`, no session |
+| gate, RAW `.storage` | `enable_experimental_motion":false` |
+
+🔑 **The dry run was DISCRIMINATING, not a version-string read.** A
+`raw_pymammotion_motion_probe` dry run at `duration_ms: 12000`, linear 400,
+`max_travel_m: 0.10` returned **`corridor_must_cover_m: 4.1`** — beta99 reports
+**3.60** for that identical call, because its clock branch carried no overshoot.
+`would_send: false`, `command_result.attempted: false`; nothing was dispatched.
+The E-VIO guard cannot be exercised by a dry run (it returns before sampling), so
+it was verified in the **deployed bytes** instead:
+`_STEP_RESPONSE_VIO_MAX_PLAUSIBLE_RATE_DEG_PER_S = 30.0` and two
+`vio_heading_discontinuity` occurrences on the host.
+
+Gates before release: **1018 pytest** (54% coverage), ruff check, ruff format,
+mypy (30 files), **91 frontend**, all 10 pre-commit hooks.
+
+⚠️ **Known-benign.** The 22 `unknown` are button entities and `last_*` sensors,
+which have no state until first pressed / first event — normal after a restart.
+The 3 `unavailable` are `master_bedroom_proxy_*` ESPHome buttons, **unrelated to
+the mower** (it is not paired to that proxy — see the 2026-09-03 correction).
+`position_not_valid_for_motion` is the expected dock blocker.
+
+🚨 **NOT browser-verified.** The card footer and console banner still need an
+operator eye on `0.6.4-beta100`. A correct backend deploy with a stale card cache
+is still a failed deployment.
+
 ### beta98 -> beta99 — 2026-09-03 19:06-19:10 EDT, motion-disabled — the guard drain + the other half of the overshoot
 
 Ships the two defects found by the beta98 adversarial review (5/5 agents, the
