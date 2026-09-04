@@ -44,7 +44,84 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: beta99 (DEPLOYED 2026-09-03; backend post4 unchanged); PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
+## Current build: beta99 DEPLOYED; TREE IS AHEAD OF THE HOST (offline work, 2026-09-03 later session); PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
+
+⚠️ **THE HOST RUNS beta99. THE TREE IS AHEAD OF IT AND NOT DEPLOYED.** Three
+commits of offline work sit on `main` past `b9d62007`: the E-VIO continuity
+guard, the motion-probe corridor fix, and the stale-speed sweep. **None of it is
+on the host.** All gates green offline (1018 pytest, ruff, mypy, frontend).
+🔐 **The deploy is deliberately NOT done: `HA_SSH_PASS` rotation is still
+unconfirmed since the 2026-08-31 exposure**, and deploying sends that credential
+to the host again. Confirm the rotation first.
+
+🛡️ **E-VIO NOW REFUSES A HEADING-FRAME DISCONTINUITY —
+`vio_heading_discontinuity`, predeclared at `36922533`, implemented at
+`a1935d09`.** Read `docs/predeclared-vio-heading-continuity-guard-20260903.md`
+then `docs/findings-vio-heading-continuity-guard-20260903.md`. `vio_state`
+checks **liveness, not continuity**; any interval above
+`_STEP_RESPONSE_VIO_MAX_PLAUSIBLE_RATE_DEG_PER_S = 30.0` refuses the **whole
+run**, never just the interval.
+✅ **The predeclared table held exactly**: all eight clean banked runs
+byte-identical (2a 2.156 / 3.664 / 2.319 / 0.130 / 3.4049 / 2.8364 / 4.3966,
+ω/τ unchanged), exactly one run flipped `scoreable: true` → refused. That was
+written as a **falsifier** — a guard that moved an existing verdict would not
+have shipped.
+🔑 **Adoptable where Rule D was denied, because the asymmetry runs the OTHER
+way:** it can only move scoreable → unscoreable, so it cannot turn a FAIL into a
+PASS or manufacture a result.
+🗑️ **The plan's proposed shape was WRONG and measurement caught it before any
+code:** bounding by *the commanded angular rate* refuses **every** clean run —
+commanded angular is zero in baseline and settle, yet rotation persists past the
+command going to zero (settle carries up to **9.97 °/s**). **The bound must be
+the plant's envelope, not the instantaneous command.**
+⚠️ **It catches gross re-referencing, not small frame shifts** (under ~30° at the
+~1 Hz cadence), does not detect drift, and does not repair a run — a
+discontinuity still costs a supervised dispatch. 🚨 **Valid only for this probe's
+commands** (linear 300/400, |angular| 120/180); stationary pivots reach ~38 °/s
+and would trip it. A test fails if the schema widens without a re-derivation.
+
+🐛 **A REGRESSION FOUND AND FIXED, §1c done INLINE not as a workflow
+(`dba5ee5f`): `raw_pymammotion_motion_probe`'s clock-bound corridor carried NO
+stop overshoot.** beta98 fixed exactly this in `step_path_contained` — *"the
+overshoot applies to BOTH branches"* — and it was never propagated to the
+sibling. The stop is dispatched **after** the window ends, so when the guard
+no-ops the post-stop creep (0.4544 m) lands outside the number the operator was
+told covers the path. **It BINDS at the schema maximum**: 12000 ms at linear 400
+gives a 3.60 m clock bound against a 3.50 m guard bound.
+✅ **Checked and NOT defects:** the beta99 drain site is the only position
+consumer with a poll-cadence mismatch (the 0.1 s decision loop self-drains
+against a ~1 Hz feed), and every `open_position_stream` uses the maxsize
+constant.
+
+🚨 **A test was RED on `main` at `b9d62007` and nobody noticed** —
+`test_every_banked_run_is_pinned_or_explicitly_excused`. Three 2026-09-03
+raw-sample files were banked unpinned. ✅ **The guard test worked exactly as
+designed** — written that same day after a run sat unpinned for two days, it
+caught the next three the same week. Both 5000 ms linear-300 runs are now pinned
+(2a FAIL 2.8364 and 4.3966 — **a 5000 ms step is still ramping at linear 300
+too**); the discontinuity run is excused *with its reason*.
+🔑 **Method note: found by RUNNING the suite, not by reading the diff.** Nothing
+in the commits looked wrong; a file simply existed that a globbing test could
+see.
+
+🧹 **STALE SPEED CONSTANTS RETIRED (§2a).** `services.yaml`, `strings.json` and
+`en.json` no longer tell the operator that 300 *"has never been measured
+sustained"* or that a 25% command cut gives a 39% speed cut — **both false**.
+`continuous_controller.nominal_speed_mps` (0.2482, ~16% low as a sustained
+speed) is **caveated, not changed**: Phase 2 is parked and its banked replays
+were scored against that value.
+
+📋 **THE 4.0 m RELIABILITY SERIES IS PREDECLARED AND AUTHORIZES NO RUN** —
+`docs/predeclared-clicktopath-reliability-4m-20260903.md`.
+🗑️ **It corrects the plan's own prior: 4.0 m is 1 reached / 1 FAILED**
+(`vio_realign_incomplete`, BLE, 0.5493 m out) — **n = 2, not the n = 1 the plan
+recorded**, and the missing run is the failure. So the criterion is fixed at
+**5/5**, not "≥4 of 5", which at a 1/2 prior could not distinguish the status quo
+from an improvement.
+⚠️ **n = 5 is a SCREEN, not a certification: 5/5 bounds the true success rate at
+only ~55% with 95% confidence.** Do not let a pass become the sentence "trustworthy
+unwatched". 🚨 **A run that stops safely on a named refusal is a FAIL**, not a
+smaller number.
 
 🏁 **2026-09-03 WAS A MEASUREMENT DAY: SIX SUPERVISED DISPATCHES, ALL CLEAN —
 15/15 gates every time, ZERO guard trips across 315 samples**, stop confirmed and
