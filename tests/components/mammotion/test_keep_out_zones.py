@@ -32,7 +32,7 @@ from custom_components.mammotion.services import (
     _validate_custom_path,
 )
 
-from .test_map_task_visibility import _coordinator
+from .conftest import _coordinator
 
 
 def _frames(points: list[tuple[float, float]]) -> SimpleNamespace:

@@ -46,7 +46,7 @@ from custom_components.mammotion.services import (
     _raw_pymammotion_execute_vector_segment,
 )
 
-from .test_map_task_visibility import _pulse_coordinator
+from .conftest import _pulse_coordinator
 
 
 def _no_real_sleeps(monkeypatch: pytest.MonkeyPatch) -> None:

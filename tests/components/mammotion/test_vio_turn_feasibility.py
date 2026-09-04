@@ -43,7 +43,7 @@ from custom_components.mammotion.services import (
     _vio_turn_to_heading,
 )
 
-from .test_map_task_visibility import _pulse_coordinator
+from .conftest import _pulse_coordinator
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPTS_DIR = REPO_ROOT / "scripts"

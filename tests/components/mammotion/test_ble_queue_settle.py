@@ -19,7 +19,7 @@ import pytest
 from custom_components.mammotion import services
 from custom_components.mammotion.coordinator import MammotionBaseUpdateCoordinator
 
-from .test_map_task_visibility import _pulse_coordinator
+from .conftest import _pulse_coordinator
 
 
 def _report(reason: str | None, *, live: bool) -> dict[str, Any]:

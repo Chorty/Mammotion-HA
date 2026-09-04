@@ -63,7 +63,7 @@ from custom_components.mammotion.services import (
     _vio_turn_to_heading,
 )
 
-from .test_map_task_visibility import _pulse_coordinator
+from .conftest import _pulse_coordinator
 
 # A true 50 ft click. Placed inside the shared fixture's 20 x 20 m area
 # (-10..10 on both axes) so containment is not what these tests are measuring.
