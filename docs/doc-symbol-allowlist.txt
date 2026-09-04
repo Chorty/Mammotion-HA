@@ -69,3 +69,6 @@ scripts/update_credentials.py                    # upstream PyMammotion's build-
 bermuda_global_active_proxy_count
 master_bedroom_proxy_
 master_bedroom_proxy
+
+# --- checker false positives from regex literals in code spans ---
+Z_                                               # not a symbol -- a fragment of the `[A-Z_]*=`/`[A-Z_]+=` regex character classes in CLAUDE.md's 2026-09-04 credential-hygiene note (grep patterns for env var names), mis-tokenized as an identifier
