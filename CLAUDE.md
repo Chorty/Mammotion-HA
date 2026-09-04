@@ -44,7 +44,84 @@ now fails when these docs name code that does not exist — but it checks *names
 not whether the prose around them is still true. One grep against the tree beats
 this file every time.
 
-## Current build: beta95 (E-VIO step-response scoring, DEPLOYED 2026-09-01; backend post4 unchanged); PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
+## Current build: beta99 (DEPLOYED 2026-09-03; backend post4 unchanged); PHASE 2 CONTINUOUS STEERING IS PARKED (operator, 2026-08-28)
+
+🏁 **2026-09-03 WAS A MEASUREMENT DAY: SIX SUPERVISED DISPATCHES, ALL CLEAN —
+15/15 gates every time, ZERO guard trips across 315 samples**, stop confirmed and
+gate disarmed/verified after each. Three betas shipped (97, 98, 99), two real
+safety defects fixed, and four previously-unknown quantities measured.
+
+🔑 **SUSTAINED SPEEDS ARE NOW MEASURED, AND THE OLD "NOT LINEAR" CLAIM IS DEAD.**
+Post-ramp: **linear 300 → 0.223 m/s**, **linear 400 → 0.295 m/s**
+(`docs/evidence-phaseA-linear300-sustained-speed-20260903.md`). Sustained
+0.223/0.295 = 0.756 against a command ratio of 0.750 — **essentially linear.**
+🗑️ The long-quoted *"a 25% command cut gave a 39% speed cut"* was an artifact of
+comparing **4 s ramp-inclusive averages**, where the slower run spends more of
+its window ramping. `_PROBE_SPEED_PER_LINEAR_UNIT_MS` is now **7.5e-04**; the old
+7.0e-04 sat 6% BELOW measurement, the unsafe direction for a constant that sizes
+corridor clearance.
+⚠️ **SEPARATE THE RAMP BEFORE SIZING ANY WINDOW. This trap has now bitten three
+times in eight days** — a 4 s average understated an 8 s window, and the 8 s
+whole-window figure understated a 28 s one. 🚨 **The 8 s figure agreed with the
+extrapolation to 1.6% and was STILL WRONG for sizing.** Agreement with an
+estimate is not validation.
+
+🏁 **ROTATION AT LINEAR 300 IS MEASURED AT BOTH ANGULAR COMMANDS, AND A
+PREDECLARED PREDICTION HELD TO 1.3%.**
+`docs/evidence-linear300-angular180-rotation-20260903.md` and
+`docs/evidence-linear300-angular120-rotation-20260903.md`.
+
+| | at linear 400 | at linear 300 | change |
+| --- | --- | --- | --- |
+| angular 120 | ~-8.2 °/s | **-9.175** (sd 0.484) | **+12%** |
+| angular 180 | ~-11.8 °/s | **-13.431** (sd 1.530) | **+13%** |
+
+🔑 **Dropping linear 400 → 300 RAISES yaw rate ~12-13%** — predicted in a
+committed predeclaration at one command and confirmed at the other, and
+corroborated by the RTK course channel, which shares no mechanism with VIO.
+✅ **No deadband at either operating point.** ✅ **The linear-400 constants behind
+2a TRANSFER** — onset deficit 11.39 vs 10.43, residual sd 1.530 vs 1.445.
+⚠️ **n = 1 per configuration. Do NOT fit a law to two points**; the mechanism is
+unexplained.
+
+🚨 **NEW UNFIXED DEFECT: E-VIO SCORES HEADING-FRAME DISCONTINUITIES.** Read
+`docs/evidence-linear300-angular180-heading-discontinuity-20260903.md`. A run
+returned `scoreable: true` with a step rate of **-149.79 °/s** while the mower
+drove **straight** — RTK course moved ~6° across the whole window and the
+operator watched it go straight. At one report VIO heading jumped **-166.47°**
+and `toward` jumped **+69.12°**, different magnitudes, so no physical rotation
+explains it (most likely VIO re-referencing after a mower restart).
+🔑 **`vio_state` stayed 2 for all 79 samples, so `vio_not_live_throughout` never
+fired: the guard checks STATE, not CONTINUITY.** A frame jump inside a real step
+phase is silently converted into a rate and scored. **NOT FIXED** — a continuity
+guard changes when the criterion refuses, so it must be predeclared first.
+
+⚠️ **THE CONTAINMENT GATE DOES NOT CHECK THE MAP.** `step_path_contained`
+measures clearance against the **operator-supplied corridor polygon**, not the
+mowing area. On 2026-09-03 a position with **2.8447 m** of real yard clearance
+against a **3.20 m** clock bound passed 15/15 gates, because the corridor was
+centred on the mower by construction. **A pre-dispatch scan against the map
+caught it and forced a reposition.** 🔑 **Scan the map every time; the gate is
+not a substitute.**
+
+🛠️ **TWO REAL SAFETY DEFECTS FIXED AND DEPLOYED (beta98, beta99).**
+**(1)** `step_path_contained`'s corridor was `max_travel_m + 0.50` only, which
+**assumes the travel guard works** — and a documented latched-position mode makes
+it a no-op while the window runs to the wall clock. Now
+`max(travel bound, clock bound)`, and **both branches carry the stop overshoot**
+(the mandatory stop fires after the window ends either way). At linear 400 / 23 s
+the requirement went **5.00 → 7.40 m**.
+**(2)** The travel guard consumed **one position payload per sampler poll**, so
+`max_travel_m` went soft whenever payloads outpaced polls — at a legal
+`sample_interval_ms: 1000` the guard would not reach 4.5 m until the mower had
+driven **~6.5-6.9 m**. It now DRAINS, bounded by `_PROBE_MAX_DRAIN_PER_POLL`.
+⚠️ My first version of that drain was an unbounded `while True` that **hung the
+test suite** — a mocked queue never raises `QueueEmpty`.
+
+⚠️ **beta96 WAS NEVER FULLY DEPLOYED AND STILL REACHED THE RUNNING PROCESS.** Its
+files were staged and the restart deliberately interrupted; HA restarted on its
+own overnight and loaded them. 🔑 **A staged-but-unfinished deploy will
+eventually deploy itself — finish it or back it out, never leave it.**
 
 🛑 **DO NOT QUOTE A CRITERION 2a VERDICT AS FACT. THE SHIPPED INSTRUMENT HAS A
 MEASURED BIAS.** Read `docs/findings-2a-replacement-20260903.md` (predeclared at
