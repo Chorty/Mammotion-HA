@@ -8,6 +8,41 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta100 -> beta101 — 2026-09-04, motion-disabled — the 0.58 m advisory wording, card-only
+
+**No motion was commanded. The gate never left disarmed** — verified before and
+after from the live API **and** RAW `core.config_entries`.
+
+Carries `958a99ff`, cut the same day as beta100 but not deployed until this
+release: the backend docstring and card wording for the 0.58 m advisory were
+re-derived from "why 3.0 m legs miss" (refuted — reach is closed at 6.0 m,
+landing does not degrade with distance) to "a guarantee bound that fires on
+essentially every useful leg" — arithmetic unchanged, interpretation only. No
+Python behavior changed; the card `.js` is the only content diff from beta100.
+
+**Verification tail — measured, not expected:**
+
+| check | value |
+| --- | --- |
+| files byte-identical | **48 / 48** (normalised for the expect wrapper's CRLF) |
+| archive SHA-256, local == host | `d4ece4210c56cfca434e8608efc0643b8d63bb0d09f66c1c5837dcdbc4590402` |
+| card md5, local == both host paths | `466da31b5daf4cce47c3083d178a91b5` |
+| AppleDouble `._*` files | **0** |
+| host `manifest.json` / both `CARD_VERSION` | `0.6.4-beta101` |
+| Lovelace resource, read back | `?v=0.6.4-beta101&build=466da31b` |
+| backend, from inside the container | `0.8.12.post4` (unchanged) |
+| API back after restart | **50 s**; 133 mammotion entities at 163 s |
+| config entry | present, not `disabled_by` (`01M1CVFWHYWW527S9BM5M2BDP3`) |
+| dark-safe dry run | `raw_pymammotion_motion_probe` dry_run: `would_send: false` |
+| gate, live API | `enabled: false`, `real_motion_allowed: false`, no session |
+| gate, RAW `.storage` | `enable_experimental_motion: False` |
+
+⚠️ **NOT YET browser-confirmed.** This release's only functional content is
+rendered card text — the discriminating check is what the operator's browser
+shows, not these hashes. Ask the operator to confirm the console banner and
+card footer both read `0.6.4-beta101` and that the advisory wording reads as a
+calibration note, not an alarm, before treating this deploy as fully verified.
+
 ### beta99 -> beta100 — 2026-09-04 02:39-02:52 UTC, motion-disabled — the E-VIO continuity guard + the corridor fix's other sibling
 
 **No motion was commanded. The gate never left disarmed** — verified before and

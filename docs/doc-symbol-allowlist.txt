@@ -72,3 +72,6 @@ master_bedroom_proxy
 
 # --- checker false positives from regex literals in code spans ---
 Z_                                               # not a symbol -- a fragment of the `[A-Z_]*=`/`[A-Z_]+=` regex character classes in CLAUDE.md's 2026-09-04 credential-hygiene note (grep patterns for env var names), mis-tokenized as an identifier
+
+# --- Home Assistant core fields, not defined in this integration's tree ---
+disabled_by                                      # a field on HA core's own ConfigEntry object (homeassistant.config_entries), read from the host's raw core.config_entries storage in the beta101 deploy-runbook entry; this repo only consumes it, never defines it

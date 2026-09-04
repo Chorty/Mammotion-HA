@@ -24,14 +24,30 @@ prose around them is still true. **One grep against the tree beats this file.**
 
 ---
 
-## Current build: beta100 (deployed and verified 2026-09-04; backend `chorty-0.8.12.post4`)
+## Current build: beta101 (deployed 2026-09-04; backend `chorty-0.8.12.post4`)
 
-✅ **Verified end to end** — 48/48 files byte-identical, card md5 `77971e3f` at
-both serving paths, Lovelace `?v=0.6.4-beta100&build=77971e3f`, backend read from
-inside the container, config entry `loaded`, **browser-confirmed by the
-operator**. Record: `docs/deploy-runbook-p0.md` → beta99 -> beta100.
+✅ **Bytes verified end to end** — 48/48 files byte-identical, card md5
+`466da31b` at both serving paths, Lovelace `?v=0.6.4-beta101&build=466da31b`,
+backend read from inside the container, config entry present and not
+`disabled_by`, 133 entities loaded, a dark-safe `raw_pymammotion_motion_probe`
+dry run returned `would_send: false` through the deployed executor.
+⚠️ **NOT YET browser-confirmed.** This release's actual change is card-text
+only (see below) — the discriminating check is the *rendered* wording, which
+needs the operator's browser; bytes on the host are necessary and not
+sufficient. Record: `docs/deploy-runbook-p0.md` → beta100 -> beta101.
 
-**What beta100 shipped:**
+**What beta101 shipped** (carried from `958a99ff`, cut same-day as beta100 but
+not deployed until now):
+- ✏️ **Re-derived the 0.58 m advisory's interpretation, arithmetic unchanged.**
+  Both the backend docstring and the card previously asserted it "is why the
+  measured-good regime is ~0.8 m and why 3.0 m legs miss" — refuted, since
+  reach is closed at 6.0 m and landing does not degrade with distance
+  (0.1023 / 0.1015 / 0.1144 m at 4 / 5 / 6 m). The ~0.8 m rule was an artifact
+  of the pre-beta57 angle-triggered re-aim. The bound is a **guarantee** bound,
+  not a prediction, and since it fires on essentially every useful leg the
+  card wording now calibrates rather than alarms.
+
+**What beta100 shipped** (deployed 2026-09-03, browser-confirmed then):
 - 🛡️ **E-VIO refuses heading-frame discontinuities** (`vio_heading_discontinuity`).
   `vio_state` checks liveness, **not continuity**; any interval above
   `_STEP_RESPONSE_VIO_MAX_PLAUSIBLE_RATE_DEG_PER_S = 30.0` refuses the whole run.
