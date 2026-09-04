@@ -48,13 +48,19 @@ const SPLIT_LEG_TARGET_METRES = 3.85;
 //     limit = waypoint_tolerance / sin(CORRECTABLE_AIM_FLOOR_DEGREES)
 //
 // On the accepted profile (tolerance 0.15) that is 0.580 m. At 3.0 m the same
-// floor permits an uncorrectable 0.776 m miss -- 5x tolerance -- which is why
-// the measured-good regime is ~0.8 m and why 3.0 m legs miss.
+// floor permits an uncorrectable 0.776 m miss -- 5x tolerance.
 //
-// ⚠️ ADVISORY and deliberately pessimistic: it asks what happens if aim sits at
-// the floor for a whole leg. Real legs correct repeatedly -- a 3.0 m sub-leg
-// reached target at 0.094 m on 2026-08-20 while its sibling missed by 0.259 m.
-// The card WARNS; it must never refuse on this. Mirrors
+// 🗑️ CORRECTED 2026-09-04: the arithmetic stands, the operational reading was
+// REFUTED. This used to say 0.580 m is "why the measured-good regime is ~0.8 m
+// and why 3.0 m legs miss". Reach is CLOSED at 6.0 m and landing does NOT
+// degrade with distance -- 0.1023 / 0.1015 / 0.1144 m at 4 / 5 / 6 m, all inside
+// tolerance. The ~0.8 m rule was an artifact of the pre-beta57 ANGLE-triggered
+// re-aim, which never fired in the far field.
+//
+// ⚠️ ADVISORY and deliberately pessimistic -- a GUARANTEE bound, not a
+// prediction. It asks what happens if aim sits at the floor for a whole leg and
+// is never corrected. Real legs correct repeatedly. The card WARNS; it must
+// never refuse on this. Mirrors
 // `_correctable_leg_length_limit_m` in services.py; keep the two in step.
 const CORRECTABLE_AIM_FLOOR_DEGREES = 15.0;
 // Deliberate safety-gate overrides, 2026-08-19, at the operator's explicit
@@ -810,15 +816,16 @@ class MammotionCustomPathCard extends HTMLElement {
       const worst =
         longest * Math.sin((CORRECTABLE_AIM_FLOOR_DEGREES * Math.PI) / 180);
       // ⚠️ ADVISORY ONLY -- never downgrade `level`. A leg past this bound can
-      // still land well (3.0 m reached target at 0.094 m on 2026-08-20) and a
-      // leg inside it can still miss. The bound says the controller can no
+      // still land well (measured: 0.1023 / 0.1015 / 0.1144 m at 4 / 5 / 6 m)
+      // and a leg inside it can still miss. The bound says the controller can no
       // longer GUARANTEE the landing, because aim error under the correction
-      // floor is never corrected at all.
+      // floor is never corrected at all. It fires on essentially every useful
+      // leg, so the wording must stay calibrating rather than alarming.
       banner.details = [
         ...(banner.details || []),
         `⚠️ Longest leg is ${longest.toFixed(2)} m, over the ${limit.toFixed(2)} m the controller can protect. ` +
-          `Aim error below the ${CORRECTABLE_AIM_FLOOR_DEGREES.toFixed(0)}° correction floor is never corrected, so this leg can miss by up to ${worst.toFixed(2)} m. ` +
-          `Measured-good is ~0.8 m. This is a warning, not a blocker.`,
+          `Aim error below the ${CORRECTABLE_AIM_FLOOR_DEGREES.toFixed(0)}° correction floor is never corrected, so this leg could miss by up to ${worst.toFixed(2)} m in the worst case. ` +
+          `That is a guarantee bound, not a prediction: measured single-segment landings are 0.10-0.11 m at 4, 5 and 6 m. This is a warning, not a blocker.`,
       ];
     }
     return banner;

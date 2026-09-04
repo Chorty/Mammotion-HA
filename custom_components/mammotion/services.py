@@ -15731,16 +15731,27 @@ def _correctable_leg_length_limit_m(
         limit = waypoint_tolerance / sin(min_correctable_aim_degrees)
 
     On the accepted profile -- tolerance 0.15 m, floor 15 deg (post-turn
-    tolerance 10 + deadband 5) -- that is **0.580 m**, which is why the measured
-    -good regime is ~0.8 m and why longer legs miss. At 3.0 m the same floor
+    tolerance 10 + deadband 5) -- that is **0.580 m**. At 3.0 m the same floor
     permits an uncorrectable 0.776 m miss, over 5x the tolerance.
 
+    🗑️ **CORRECTED 2026-09-04. The arithmetic stands; the operational reading
+    attached to it was REFUTED and has been removed.** This docstring used to say
+    0.580 m "is why the measured-good regime is ~0.8 m and why longer legs miss".
+    Measurement contradicts both halves: **reach is CLOSED at 6.0 m and landing
+    does not degrade with distance** -- 0.1023 m at 4 m, 0.1015 m at 5 m,
+    0.1144 m at 6 m, every one inside the 0.15 m tolerance and roughly 10x better
+    than this bound permits at that length. 3.0 m legs are 5 reached / 1 failed.
+    ⚠️ **Do not re-attach a "~0.8 m operating rule" to this number.** That rule
+    was an artifact of the pre-beta57 ANGLE-triggered re-aim, which never fired
+    in the far field; beta57 made the trigger a projected miss.
+
     ⚠️ **This is an ADVISORY bound, not a hard limit, and it is deliberately
-    pessimistic.** It asks what happens when aim error sits just under the floor
-    for the whole leg. Real legs correct repeatedly and often land far better --
-    a 3.0 m sub-leg reached target at 0.094 m on 2026-08-20. Treat it as "beyond
-    here the controller cannot GUARANTEE the landing", not "beyond here the
-    landing fails".
+    pessimistic -- it is a GUARANTEE bound, not a prediction.** It asks what
+    happens when aim error sits just under the floor for the whole leg and is
+    never corrected. Real legs correct repeatedly and land far better. Read it as
+    "beyond here the controller cannot GUARANTEE the landing", never as "beyond
+    here the landing fails" -- the measured landings above are the direct
+    counter-evidence to the second reading.
 
     🚨 **Do not respond to a breach by lowering the floor.** The floor is set by
     the turn primitive's actuation limit, not by preference: at the 200 ms floor
