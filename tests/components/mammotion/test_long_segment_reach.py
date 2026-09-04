@@ -35,6 +35,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from custom_components.mammotion import services as mammotion_services
 from custom_components.mammotion.services import (
     _BUDGET_CHECK_METRES_PER_PULSE,
     _MAX_SEGMENT_LENGTH_M,
@@ -46,6 +47,24 @@ from custom_components.mammotion.services import (
 )
 
 from .test_map_task_visibility import _pulse_coordinator
+
+
+def _no_real_sleeps(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Strip the executor's real waits for tests that only assert on GATES.
+
+    ⚠️ These two tests deliberately pass their gates, so the executor runs on
+    into the calibration drive and pulse loop and serves out its real settle
+    waits -- **12 seconds each**, second and third slowest in the whole suite,
+    to assert `blockers == []`. Nothing they assert depends on that wall clock.
+    🔑 The loops stay bounded by `time.monotonic()` deadlines, which this does
+    not touch, so the drive still terminates the way production does.
+    """
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
 
 _MIN_FLOOR = _MIN_CORRECTABLE_AIM_ERROR_DEGREES
 _MAX_SEGMENT = _MAX_SEGMENT_LENGTH_M
@@ -251,7 +270,9 @@ async def test_an_over_long_segment_is_refused_before_any_command() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_leg_within_the_cap_is_not_refused_by_the_length_gates() -> None:
+async def test_a_leg_within_the_cap_is_not_refused_by_the_length_gates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The 20 ft cap must actually admit a 20 ft leg.
 
     A cap that refuses the length it was built to allow is worse than no cap;
@@ -259,6 +280,7 @@ async def test_a_leg_within_the_cap_is_not_refused_by_the_length_gates() -> None
     """
     coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
     coordinator.data.report_data.vision_info = SimpleNamespace(heading=0.0, vio_state=2)
+    _no_real_sleeps(monkeypatch)
 
     result = await _raw_pymammotion_execute_vector_segment(
         coordinator,
@@ -301,7 +323,9 @@ async def test_a_ceiling_too_small_for_the_leg_is_refused_up_front() -> None:
 
 
 @pytest.mark.asyncio
-async def test_the_fixed_budget_path_keeps_its_accepted_behaviour() -> None:
+async def test_the_fixed_budget_path_keeps_its_accepted_behaviour(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The budget gate is loop-to-tolerance only, and that is load-bearing.
 
     Fixed-budget pulses travel ~1.06 m (measured 1.0785 / 1.0449), not the
@@ -310,6 +334,7 @@ async def test_the_fixed_budget_path_keeps_its_accepted_behaviour() -> None:
     """
     coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
     coordinator.data.report_data.vision_info = SimpleNamespace(heading=0.0, vio_state=2)
+    _no_real_sleeps(monkeypatch)
 
     result = await _raw_pymammotion_execute_vector_segment(
         coordinator,

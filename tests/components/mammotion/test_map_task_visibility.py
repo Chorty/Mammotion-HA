@@ -5253,11 +5253,36 @@ async def test_vector_segment_loop_to_tolerance_stops_on_consecutive_no_progress
 
 
 @pytest.mark.asyncio
-async def test_vector_segment_real_run_requires_ble_transport() -> None:
-    """Real motion is refused when the active transport is not BLE."""
+async def test_vector_segment_real_run_requires_ble_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real motion is refused when the active transport is not BLE.
+
+    ⚠️ `_attempt_ble_recovery` is stubbed to a FAILED recovery, which is what
+    production does here: `ble_auto_recover` defaults to True, so a non-BLE
+    transport runs recovery BEFORE the gates. Unstubbed, this test drove the
+    real 90 s timeout at a 5 s poll and took **90 seconds -- 65% of the entire
+    suite's runtime** -- to assert a refusal that needs none of it. The stub
+    keeps the path under test (the gates judge POST-recovery state, and the
+    recovery failed) and every assertion is unchanged.
+    🔑 The recovery routine's own behaviour is covered directly, and fast, by
+    `test_ble_recovery_gives_up_when_ble_never_promotes` below.
+    """
     coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
     # Flip the coordinator's normalized live transport to cloud.
     coordinator.active_transport_state = "cloud_aliyun"
+
+    async def failed_recovery(
+        coordinator_arg: MammotionReportUpdateCoordinator, **kwargs: object
+    ) -> dict:
+        return {
+            "attempted": True,
+            "ok": False,
+            "reason": "timeout",
+            "steps": ["reasserted_ble_preference"],
+        }
+
+    monkeypatch.setattr(mammotion_services, "_attempt_ble_recovery", failed_recovery)
 
     result = await _raw_pymammotion_execute_vector_segment(
         coordinator,
@@ -5273,6 +5298,49 @@ async def test_vector_segment_real_run_requires_ble_transport() -> None:
     assert "ble_transport_required" in result["blockers"]
     assert result["stop_reason"] == "safety_gates_failed"
     coordinator.manager.send_command_with_args.assert_not_called()
+    # The gate refused on POST-recovery state, and the report says recovery ran.
+    assert result["ble_recovery"]["ok"] is False
+
+
+@pytest.mark.asyncio
+async def test_ble_recovery_gives_up_when_ble_never_promotes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """🔑 Direct coverage for `_attempt_ble_recovery`, which every other test stubs.
+
+    It is patched out at all six existing call sites and at the transport-gate
+    test above, so the routine itself had no test of its own -- the 90 s it used
+    to burn there bought no coverage of it either, because that test asserts
+    only the gate. Driven here with a tiny budget: it must reassert the
+    preference, spend its one full off->on toggle at the halfway point, and
+    report failure rather than claiming success.
+    """
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+    coordinator.active_transport_state = "cloud_aliyun"
+    toggles: list[bool] = []
+
+    async def record_toggle(value: bool) -> None:
+        toggles.append(value)
+
+    coordinator.async_set_bluetooth_enabled = record_toggle
+
+    # The off->on toggle has a hardcoded `asyncio.sleep(3)` that no argument
+    # reaches, so the budget alone cannot make this fast. The loop is still
+    # bounded by the real `timeout_seconds` below, not by the patched sleep.
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
+
+    report = await mammotion_services._attempt_ble_recovery(  # noqa: SLF001
+        coordinator, timeout_seconds=0.05, poll_interval_seconds=0.01
+    )
+
+    assert report["attempted"] is True
+    assert report["ok"] is False
+    # Reasserted the preference, then spent its single off->on toggle.
+    assert toggles == [True, False, True]
+    assert "reasserted_ble_preference" in report["steps"]
 
 
 @pytest.mark.asyncio
