@@ -63,9 +63,9 @@ The 3 `unavailable` are `master_bedroom_proxy_*` ESPHome buttons, **unrelated to
 the mower** (it is not paired to that proxy — see the 2026-09-03 correction).
 `position_not_valid_for_motion` is the expected dock blocker.
 
-🚨 **NOT browser-verified.** The card footer and console banner still need an
-operator eye on `0.6.4-beta100`. A correct backend deploy with a stale card cache
-is still a failed deployment.
+✅ **BROWSER-VERIFIED by the operator, 2026-09-03: the card reads
+`0.6.4-beta100`.** The deploy is verified end to end — backend bytes, both
+serving paths, the Lovelace cache key, and the rendered card.
 
 ### beta98 -> beta99 — 2026-09-03 19:06-19:10 EDT, motion-disabled — the guard drain + the other half of the overshoot
 

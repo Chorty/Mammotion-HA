@@ -57,8 +57,9 @@ from the live API **and** RAW. **No motion was commanded.** Record:
 beta99 reports **3.60** for the identical call. The E-VIO guard cannot be
 dry-run-exercised (dry runs return before sampling), so it was verified in the
 **deployed bytes**.
-🚨 **NOT browser-verified** — the card footer still needs an operator eye on
-`0.6.4-beta100`.
+✅ **Browser-verified by the operator, 2026-09-03: the card reads `0.6.4-beta100`**
+— the deploy is verified end to end (backend bytes, both serving paths, the
+Lovelace cache key, and the rendered card).
 🔐 The operator confirmed `HA_SSH_PASS` was rotated before this deploy.
 ⚠️ **The E-VIO guard is DEPLOYED but UNEXERCISED on hardware** — it first
 populates on a real, separately-authorized daylight step-response run, and no
