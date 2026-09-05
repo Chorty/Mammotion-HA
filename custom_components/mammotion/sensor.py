@@ -1253,6 +1253,17 @@ class MammotionErrorSensorEntity(MammotionBaseEntity, SensorEntity):
         coordinator = cast(MammotionDeviceErrorUpdateCoordinator, self.coordinator)
         return self.entity_description.value_fn(coordinator, coordinator.data)
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Expose every known fault, not just the freshest one.
+
+        The state carries one code because the entity is single-valued; the
+        device reports ten log slots and a live push can carry several at once.
+        Attributes make the rest reachable without a new entity per slot.
+        """
+        coordinator = cast(MammotionDeviceErrorUpdateCoordinator, self.coordinator)
+        return coordinator.error_log_snapshot()
+
 
 class MammotionWorkSensorEntity(MammotionBaseEntity, SensorEntity):
     """Defining the Mammotion Sensor."""

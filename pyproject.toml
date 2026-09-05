@@ -500,6 +500,9 @@ ignore = [
 # Reaches into entity/coordinator private state to set up fixtures without a
 # full HA instance; standard practice for HA component tests.
 "tests/components/mammotion/test_camera_hotfix.py" = ["SLF001"]
+# Calls the error coordinator's private accessors unbound against a stub, so the
+# test exercises the SHIPPED methods rather than a re-implementation of them.
+"tests/components/mammotion/test_device_error_codes.py" = ["SLF001"]
 # --- Pre-existing debt, suppressed rather than fixed -------------------------
 # These violations all predate the VIO/click-to-path work and live in entity
 # setup and config-entry orchestration that this branch does not touch. They are

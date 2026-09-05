@@ -1,0 +1,2252 @@
+{
+ "_generated": "2026-09-05",
+ "_note": "Offline fallback for the cloud CSV served by MammotionHTTP.get_all_error_codes, which returned blank English text for at least one code seen live (rendered as \"mcu: , \").",
+ "_source": "assets/errorcodejson.txt from the Mammotion Android app (decompiled 2026-07-20). English handleList entries only.",
+ "codes": {
+  "0": {
+   "implication": "Request succeeded11111",
+   "level": 1,
+   "solution": ""
+  },
+  "10": {
+   "implication": "Firmware mismatch",
+   "level": 1,
+   "solution": ""
+  },
+  "100": {
+   "implication": "The robot cannot work as it is out of task areas (%s)",
+   "level": 1,
+   "solution": ""
+  },
+  "1003": {
+   "implication": "Rain sensor activated",
+   "level": 1,
+   "solution": "Please continue to work after the rain stops"
+  },
+  "1004": {
+   "implication": "Tilt sensor activated",
+   "level": 1,
+   "solution": "Please place the robot on a flat surface and unlock it to continue"
+  },
+  "1005": {
+   "implication": "The battery is too low",
+   "level": 1,
+   "solution": "The robot will resume working automatically after the battery level reaches 80%"
+  },
+  "1006": {
+   "implication": "The current battery level is too low",
+   "level": 1,
+   "solution": ""
+  },
+  "1007": {
+   "implication": "The battery is too low",
+   "level": 1,
+   "solution": "Please charge the robot"
+  },
+  "1008": {
+   "implication": "The robot has been locked",
+   "level": 1,
+   "solution": "Follow the tips to unlock the robot"
+  },
+  "1009": {
+   "implication": "The charging area is not clear",
+   "level": 1,
+   "solution": "The ground of charging area should be flat and free of obstacles"
+  },
+  "101": {
+   "implication": "101",
+   "level": 1,
+   "solution": "11101"
+  },
+  "1010": {
+   "implication": "Positioning signal lost during getting off the charging station",
+   "level": 1,
+   "solution": "Please check if the space above the charging station is covered by eaves/trees or other obstacles. If any, relocate the charging station to a proper location."
+  },
+  "1011": {
+   "implication": "The front bumper has not been installed",
+   "level": 1,
+   "solution": "Please install/reinstall the front bumper"
+  },
+  "101235": {
+   "implication": "5",
+   "level": 1,
+   "solution": "5"
+  },
+  "1013": {
+   "implication": "The 'Less Touch' obstacle detection strategy may fail due to raining",
+   "level": 1,
+   "solution": "Do not let the robot work on rainy days"
+  },
+  "1014": {
+   "implication": "The front bumper has been collided during manual mowing",
+   "level": 1,
+   "solution": ""
+  },
+  "1015": {
+   "implication": "Battery status update failed",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "1016": {
+   "implication": "The robot is working and unable to perform this command",
+   "level": 1,
+   "solution": ""
+  },
+  "1017": {
+   "implication": "The task has been interrupted and the robot will not automatically resume working",
+   "level": 1,
+   "solution": "After the positioning is back to normal, use the app or buttons on the robot to resume working"
+  },
+  "1018": {
+   "implication": "Charging station error",
+   "level": 1,
+   "solution": ""
+  },
+  "1019": {
+   "implication": "The robot is not ready to execute your command because it is mapping or has been locked",
+   "level": 1,
+   "solution": "Please check the robot is ready to execute your command"
+  },
+  "102": {
+   "implication": "Please try again after the battery level is over 30%1",
+   "level": 1,
+   "solution": "Please try again after the battery level is over 30%1"
+  },
+  "1020": {
+   "implication": "The task failed to initiate because the robot is working or being upgraded",
+   "level": 1,
+   "solution": "Please retry when the robot is idle"
+  },
+  "1021": {
+   "implication": "The 3D vision obstacle avoidance function has been disabled as the image quality degrades",
+   "level": 1,
+   "solution": "Please move the robot to an open area with ample lighting and try again"
+  },
+  "1022": {
+   "implication": "The 3D vision obstacle avoidance function has been disabled as the image synchronization error",
+   "level": 1,
+   "solution": "Please move the robot to an open area with ample lighting and try again"
+  },
+  "1023": {
+   "implication": "The robot is in non-working scenarios where the 3D vision obstacle avoidance function has been disabled",
+   "level": 1,
+   "solution": "Please ensure the robot is working in a lawn and try again in a well-lit environment"
+  },
+  "1024": {
+   "implication": "The 3D vision obstacle avoidance function has been disabled as the image it too dark",
+   "level": 1,
+   "solution": "Please ensure the robot is working in a well-lit environment"
+  },
+  "1025": {
+   "implication": "The task failed to initiate during non-working periods",
+   "level": 1,
+   "solution": "Please disable the non-working periods"
+  },
+  "1026": {
+   "implication": "The robot stops working and starts recharging during non-working periods",
+   "level": 1,
+   "solution": "The robot will resume working after non-working periods"
+  },
+  "1027": {
+   "implication": "The robot battery power update failed",
+   "level": 3,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "1028": {
+   "implication": "Error detected in the chassis motor",
+   "level": 1,
+   "solution": "Please wait for the robot to resume, or restart it. If the issue persists, please contact our after-sales support"
+  },
+  "1029": {
+   "implication": "Error detected in the cutting disc motor",
+   "level": 1,
+   "solution": "Please wait for the robot to resume, or restart it. If the issue persists, please contact our after-sales support"
+  },
+  "1030": {
+   "implication": "The robot's front wheels are lifted or tilted",
+   "level": 1,
+   "solution": "Please place the robot on a flat surface and try again"
+  },
+  "1031": {
+   "implication": "Error resolved. The robot is returning to the charging station",
+   "level": 1,
+   "solution": "Error resolved. The robot is returning to the charging station"
+  },
+  "1032": {
+   "implication": "The robot slipped",
+   "level": 1,
+   "solution": "Please move the robot to a different location and try again"
+  },
+  "1033": {
+   "implication": "No lawns detected",
+   "level": 1,
+   "solution": "Please move the robot to the charging station or place it within the lawn and try again"
+  },
+  "1068": {
+   "implication": "The vision camera is dirty",
+   "level": 1,
+   "solution": "Please check and clean the vision camera"
+  },
+  "1100": {
+   "implication": "The robot is out of a task area or is inside a no-go zone",
+   "level": 1,
+   "solution": "Please ensure the robot is into a task area or on the charging station before starting a task"
+  },
+  "1101": {
+   "implication": "There is no channel between the charging area and a task area",
+   "level": 1,
+   "solution": "Please add a channel between the charging area and a task area"
+  },
+  "1102": {
+   "implication": "There is no channel between the task areas",
+   "level": 1,
+   "solution": "Please add a channel"
+  },
+  "1103": {
+   "implication": "Too far from the starting point",
+   "level": 1,
+   "solution": "Follow the guidelines to control the robot to the start point"
+  },
+  "1104": {
+   "implication": "Charging station is located inside a no-go zone",
+   "level": 1,
+   "solution": "Please ensure that the charging area is not overlapping with the no-go zone"
+  },
+  "1105": {
+   "implication": "No access ahead of the charging station",
+   "level": 1,
+   "solution": "Please move the charging station to a suitable location, ensuring that there are no No-go zones, obstacles, and no slipping hazards ahead of it"
+  },
+  "1106": {
+   "implication": "Unable to start task due to no task area",
+   "level": 1,
+   "solution": "Please map a task area"
+  },
+  "1107": {
+   "implication": "The task area is too small (〈5 square meters)",
+   "level": 1,
+   "solution": "Please remap"
+  },
+  "1108": {
+   "implication": "The task area is too small (〈5 square meters)",
+   "level": 1,
+   "solution": "Please remap the task area"
+  },
+  "1109": {
+   "implication": "The task area is too large",
+   "level": 1,
+   "solution": "Please plan the size of the task area appropriately"
+  },
+  "111": {
+   "implication": "The left front wheel hub motor is overheating",
+   "level": 1,
+   "solution": "The robot will come back to normal once the motor temperature decreases. This may take several minutes"
+  },
+  "1110": {
+   "implication": "The maximum number of no-go zones has been exceeded",
+   "level": 1,
+   "solution": "Please remap the no-go zone"
+  },
+  "1111": {
+   "implication": "The maximum number of task areas has been exceeded",
+   "level": 1,
+   "solution": "Please remap the task area"
+  },
+  "11111": {
+   "implication": "aaa\nsdfsdfddfd,,,,\nsdffs\ndfgdfgklk",
+   "level": 1,
+   "solution": ""
+  },
+  "1112": {
+   "implication": "The task area mapping failed",
+   "level": 1,
+   "solution": "The perimeter of the task area is self-intersecting, please remap"
+  },
+  "1113": {
+   "implication": "The task area mapping failed",
+   "level": 1,
+   "solution": "The perimeter of the task area is self-intersecting, please remap"
+  },
+  "1114": {
+   "implication": "The channel already exists",
+   "level": 1,
+   "solution": "To add a new channel, delete the current one"
+  },
+  "1115": {
+   "implication": "The maximum number of no-go zones has been exceeded",
+   "level": 1,
+   "solution": "Please map the no-go zone properly"
+  },
+  "1116": {
+   "implication": "The no-go zone is overlapping with the existing ones",
+   "level": 1,
+   "solution": "Please map the no-go zone properly"
+  },
+  "1117": {
+   "implication": "The task area is about to exceed the upper limit",
+   "level": 1,
+   "solution": "Please finish the task area mapping by controlling the robot back to the beginning and ensure that the area does not exceed the upper limit"
+  },
+  "1118": {
+   "implication": "Mapping failed because one task area is fully covered by another",
+   "level": 1,
+   "solution": "Please map the lawn perimeter appropriately"
+  },
+  "1119": {
+   "implication": "The channel is unpassable",
+   "level": 1,
+   "solution": "Please make sure that there are no obstacles on the channel and try again"
+  },
+  "112": {
+   "implication": "The temperature of the left front wheel hub is too low",
+   "level": 1,
+   "solution": "The ambient temperature is too low. Recommended to operate the robot above -10°C."
+  },
+  "1120": {
+   "implication": "The new perimeter added is too complex",
+   "level": 1,
+   "solution": ""
+  },
+  "1121": {
+   "implication": "Perimeter self-intersection causes modification failed",
+   "level": 1,
+   "solution": ""
+  },
+  "1122": {
+   "implication": "A new perimeter cannot be added inside the task area",
+   "level": 1,
+   "solution": "Please add the perimeter outside the task area"
+  },
+  "112233": {
+   "implication": "testing123",
+   "level": 3,
+   "solution": "testing123"
+  },
+  "1123": {
+   "implication": "qwraf",
+   "level": 1,
+   "solution": "adsda"
+  },
+  "1124": {
+   "implication": "An invalid channel will be generated",
+   "level": 1,
+   "solution": "Please try again after deleting the channel"
+  },
+  "1125": {
+   "implication": "The new perimeter crosses the no-go zone",
+   "level": 1,
+   "solution": "Please map the task area properly"
+  },
+  "1126": {
+   "implication": "Channel mapping failed",
+   "level": 1,
+   "solution": "Please control the robot into the task area and retry"
+  },
+  "1127": {
+   "implication": "The perimeter added is too complex",
+   "level": 1,
+   "solution": ""
+  },
+  "1128": {
+   "implication": "The remaining area is less than 5 square meters, resulting in failed modification",
+   "level": 1,
+   "solution": ""
+  },
+  "1129": {
+   "implication": "The perimeter has multiple intersections",
+   "level": 1,
+   "solution": "Please remap the task area and avoid multiple intersections among perimeters"
+  },
+  "113": {
+   "implication": "The left front wheel hub motor is overloaded",
+   "level": 2,
+   "solution": "The robot or wheel hub stuck. Check if the robot gets stuck by obstacles and if the left front wheels run well"
+  },
+  "1130": {
+   "implication": "The new perimeter is divided into multiple sections by other perimeters",
+   "level": 1,
+   "solution": "Please remap the task area without multiple intersections with the existing task areas"
+  },
+  "1131": {
+   "implication": "The map is too crooked",
+   "level": 1,
+   "solution": "Please split into multiple areas"
+  },
+  "1133": {
+   "implication": "The no-go zone mapping failed to save as it is too small",
+   "level": 1,
+   "solution": ""
+  },
+  "1134": {
+   "implication": "The no-go zone area is too small",
+   "level": 3,
+   "solution": "Please re-map the no-go zone"
+  },
+  "1135": {
+   "implication": "No-go zone mapping failed",
+   "level": 1,
+   "solution": "Please delete the no-go zone and try again"
+  },
+  "1136": {
+   "implication": "The charging station is overlapping with the no-go zone",
+   "level": 1,
+   "solution": "Please place the charging station in an open area without no-go zones"
+  },
+  "1137": {
+   "implication": "Unable to map a no-go zone outside a task area",
+   "level": 1,
+   "solution": "Please map the no-go zone inside the task area"
+  },
+  "1138": {
+   "implication": "Multiple intersections for perimeters. Failed to add the no-go zone",
+   "level": 1,
+   "solution": "Please remap the no-go zone"
+  },
+  "1139": {
+   "implication": "Adaptive zigzag path generating failed",
+   "level": 1,
+   "solution": "Please move the charging station outside the no-go zone and try again"
+  },
+  "114": {
+   "implication": "The left front wheel hub motor stalled",
+   "level": 3,
+   "solution": "Robot or wheel hub stuck. Check if the robot gets stuck by obstacles and if the left front wheels run well"
+  },
+  "1140": {
+   "implication": "The task area is too small (〈5 square meters)",
+   "level": 1,
+   "solution": "Please create a task area larger than 5 square meters"
+  },
+  "1141": {
+   "implication": "The task area mapping failed due to charging",
+   "level": 1,
+   "solution": ""
+  },
+  "1142": {
+   "implication": "Status error of robot",
+   "level": 1,
+   "solution": "Please try it again after restart"
+  },
+  "1143": {
+   "implication": "Charging station relocation failed",
+   "level": 1,
+   "solution": "Place the robot on the charging station to charge and do not move the robot or the charging station when relocating"
+  },
+  "1144": {
+   "implication": "The modification failed",
+   "level": 1,
+   "solution": "Control the robot to the original perimeter to save the modification"
+  },
+  "1145": {
+   "implication": "The robot is outside the task area",
+   "level": 1,
+   "solution": "Please control the robot into the task area to map the no-go zone"
+  },
+  "1146": {
+   "implication": "There is a narrow opening in the new task area that is narrower than the robot",
+   "level": 1,
+   "solution": "Please ensure the narrow opening is at least as wide as the robot"
+  },
+  "1147": {
+   "implication": "There is a narrow protrusion in the no-go zone that is narrower than the robot",
+   "level": 1,
+   "solution": "Please ensure the narrow protrusion is at least as wide as the robot"
+  },
+  "1148": {
+   "implication": "The number of dumping spot has exceeded the upper limit",
+   "level": 1,
+   "solution": "Please delete some of the existing dumping spots and try again"
+  },
+  "1149": {
+   "implication": "The dumping spot is too close to the perimeter",
+   "level": 3,
+   "solution": "Please set the dumping spot at a distance of at least 1.5 meters from the perimeter to prevent collision with the obstacles in the perimeter"
+  },
+  "115": {
+   "implication": "The Hall sensor on the left front wheel hub error",
+   "level": 3,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "1150": {
+   "implication": "The channel to the dumping spot failed to generate",
+   "level": 1,
+   "solution": "Please set a dumping spot again"
+  },
+  "1151": {
+   "implication": "The dumping spot is set in a no-go zone",
+   "level": 1,
+   "solution": "Please do not set a dumping spot in a no-go zone"
+  },
+  "1152": {
+   "implication": "The no-go zone covers a dumping spot",
+   "level": 1,
+   "solution": "Please do not set a dumping spot in a no-go zone"
+  },
+  "1153": {
+   "implication": "The distance between a dumping spot and a no-go zone is less than the minimum limit",
+   "level": 1,
+   "solution": "Please do not set a dumping spot near a no-go zone"
+  },
+  "1154": {
+   "implication": "The robot is too close to a dumping spot",
+   "level": 1,
+   "solution": "Please do not control the robot to go through or get close to a dumping spot while mapping"
+  },
+  "1155": {
+   "implication": "The task area mapping should not cover the existing no-go zone",
+   "level": 1,
+   "solution": "Please maintain a proper distance between a task area and an existing no-go zone while mapping a new task area"
+  },
+  "1156": {
+   "implication": "The task area is too close to or crosses over an existing no-go zone",
+   "level": 1,
+   "solution": "Please maintain a proper distance between a task area and an existing no-go zone while mapping a new task area"
+  },
+  "1157": {
+   "implication": "The new perimeter crosses over a dumping spot",
+   "level": 1,
+   "solution": "Do not cross over a dumping spot while modifying the perimeter"
+  },
+  "1158": {
+   "implication": "The new perimeter is too close to a dumping spot",
+   "level": 1,
+   "solution": "Do not set the perimeter close to a dumping spot"
+  },
+  "1159": {
+   "implication": "The dumping spot is too close to an existing channel",
+   "level": 1,
+   "solution": "Do not set a dumping spot near an existing channel"
+  },
+  "116": {
+   "implication": "Left front wheel hub motor sensor failed",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "1160": {
+   "implication": "The no-go zone is located in an overlapping area",
+   "level": 1,
+   "solution": "Do not map a no-go zone in an overlapping area"
+  },
+  "1161": {
+   "implication": "The no-go zone crosses over an overlapping area",
+   "level": 1,
+   "solution": "Do not set a no-go zone in an overlapping area"
+  },
+  "1162": {
+   "implication": "The dumping spot is in an overlapping area",
+   "level": 1,
+   "solution": "Do not set a dumping spot in an overlapping area"
+  },
+  "1163": {
+   "implication": "The new task area covers an existing dumping spot",
+   "level": 1,
+   "solution": "Do not cover an existing dumping spot while mapping a new task area"
+  },
+  "1164": {
+   "implication": "The dumping spot is too close to the charging area",
+   "level": 1,
+   "solution": "Do not set a dumping spot near the charging area"
+  },
+  "1165": {
+   "implication": "The dumping spot is located in the charging area",
+   "level": 1,
+   "solution": "Do not set a dumping spot in the charging area"
+  },
+  "1166": {
+   "implication": "The dumping spot is too close to the charging station",
+   "level": 1,
+   "solution": "Do not set a dumping spot near the charging station"
+  },
+  "1167": {
+   "implication": "Failed to create a dumping spot",
+   "level": 1,
+   "solution": "Please create a dumping spot at least 1 meter away from any channel"
+  },
+  "1168": {
+   "implication": "The charging station relocation failed due to poor positioning signal",
+   "level": 1,
+   "solution": "When relocate the charging station, please ensure the RTK reference station works sound, no obstruction above the charging station, and the robot's positioning is good"
+  },
+  "1169": {
+   "implication": "The channel to the charging station has been deleted during relocation",
+   "level": 1,
+   "solution": ""
+  },
+  "1170": {
+   "implication": "The pattern is too complex",
+   "level": 3,
+   "solution": "Please simplify the pattern and retry"
+  },
+  "1171": {
+   "implication": "The current pattern location is impractical",
+   "level": 3,
+   "solution": "Please move the pattern to another location"
+  },
+  "1172": {
+   "implication": "The pattern size is too small",
+   "level": 3,
+   "solution": "Please increase the pattern size and retry"
+  },
+  "1177": {
+   "implication": "The number of patterns exceeds the upper limit",
+   "level": 3,
+   "solution": ""
+  },
+  "1178": {
+   "implication": "The new perimeter interfered with a pattern",
+   "level": 3,
+   "solution": "Do not get close to or cross the pattern when mapping the perimeter"
+  },
+  "1179": {
+   "implication": "The new no-go zone interfered with a pattern",
+   "level": 3,
+   "solution": "Do not get close to or cross the pattern when mapping the no-go zone"
+  },
+  "1180": {
+   "implication": "The new no-go zone interfered with a pattern",
+   "level": 3,
+   "solution": "Do not cover or cross the pattern when mapping the no-go zone"
+  },
+  "1181": {
+   "implication": "The dumping spot mapping failed",
+   "level": 3,
+   "solution": "Do not set the dumping spot inside a pattern"
+  },
+  "1182": {
+   "implication": "The new dumping spot interfered with a pattern",
+   "level": 3,
+   "solution": "Do not set the dumping spot at the edge of the pattern"
+  },
+  "1183": {
+   "implication": "The new task area overlaps with a pattern in another area",
+   "level": 3,
+   "solution": "Do not overlap the pattern in another area when mapping the new task area"
+  },
+  "1184": {
+   "implication": "Unable to place the charging station inside a pattern",
+   "level": 3,
+   "solution": "Do not place the charging station inside a pattern"
+  },
+  "1185": {
+   "implication": "Unable to place the charging station near a pattern",
+   "level": 3,
+   "solution": "Do not place the charging station near a pattern"
+  },
+  "1186": {
+   "implication": "The number of patterns in the area exceeds the upper limit",
+   "level": 3,
+   "solution": ""
+  },
+  "1187": {
+   "implication": "Unable to edit the map",
+   "level": 3,
+   "solution": "Please ensure the robot is ready and retry"
+  },
+  "12": {
+   "implication": "Firmware error",
+   "level": 1,
+   "solution": ""
+  },
+  "1200": {
+   "implication": "Recharge failed",
+   "level": 1,
+   "solution": "No infrared signal is detected. Please ensure the LED on charging station is green and the infrared modules on both charging station and the robot rear are clean"
+  },
+  "1201": {
+   "implication": "The robot is stuck",
+   "level": 1,
+   "solution": "The robot is stuck and needs help"
+  },
+  "1202": {
+   "implication": "The cutting disk is jammed",
+   "level": 1,
+   "solution": ""
+  },
+  "1203": {
+   "implication": "Recharge has failed",
+   "level": 1,
+   "solution": "Please make sure that there are no obstacles on the recharge route and try again. If the issue persists, contact the after-sales support"
+  },
+  "1204": {
+   "implication": "Traversing the task areas failed during recharge process",
+   "level": 1,
+   "solution": "Please make sure that there are no obstacles on the recharge route and try again. If the issue persists, contact the after-sales support"
+  },
+  "1205": {
+   "implication": "Unreachable areas have been skipped",
+   "level": 1,
+   "solution": ""
+  },
+  "1206": {
+   "implication": "Please make sure that there are no obstacles on the channel and try again",
+   "level": 1,
+   "solution": ""
+  },
+  "1207": {
+   "implication": "Front bumper is experiencing repeated triggering",
+   "level": 1,
+   "solution": "Check if the robot front bumper is stuck"
+  },
+  "1209": {
+   "implication": "Task path generation failed",
+   "level": 1,
+   "solution": "Please restart the task"
+  },
+  "121": {
+   "implication": "The right front wheel hub motor is overheating",
+   "level": 1,
+   "solution": "The robot will come back to normal once the motor temperature decreases. This may take several minutes"
+  },
+  "1210": {
+   "implication": "Failed to adjust the roller brush motor",
+   "level": 1,
+   "solution": ""
+  },
+  "1211": {
+   "implication": "The sweeper kit hasn't been installed yet",
+   "level": 1,
+   "solution": "Please install the sweeper kit before using the sweeping function"
+  },
+  "1212": {
+   "implication": "Failed to start the task as there is no dumping spot",
+   "level": 1,
+   "solution": "Please create a dumping spot before using the sweeping function"
+  },
+  "1213": {
+   "implication": "Failed to adjust the dumping motor",
+   "level": 3,
+   "solution": "Please verify whether the roller brush is stuck. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "1214": {
+   "implication": "The channel is obstructed",
+   "level": 1,
+   "solution": "Please make sure that there are no obstacles on the recharge route and try again. If the issue persists, contact the after-sales support"
+  },
+  "1215": {
+   "implication": "Failed to access the dumping spot",
+   "level": 3,
+   "solution": ""
+  },
+  "1216": {
+   "implication": "Detected obstruction in the rotation of the cutter head",
+   "level": 3,
+   "solution": "Please turn off the robot to check if the cutting disk is jammed. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "1217": {
+   "implication": "Undocking failed due to the front bumper being triggered or detecting obstacles",
+   "level": 3,
+   "solution": "Check if the front bumper is normal. If the front bumper is abnormal, please contact the after-sales service. Or check and clear any possible obstacles on the way out of the charging station"
+  },
+  "1218": {
+   "implication": "When leaving the charging station, detected slippage",
+   "level": 3,
+   "solution": "Please check if there are any cases of wheel slipping caused by abnormal rotation, slow rotation, overly wet soil, etc. If the problem persists after restarting, please contact customer service"
+  },
+  "1219": {
+   "implication": "When leaving the charging station, heading calibration failed",
+   "level": 3,
+   "solution": "Please manually control the robot to move forward by 1.5m until the upper left status turns \"Ready"
+  },
+  "122": {
+   "implication": "The temperature of the right front wheel hub is too low",
+   "level": 1,
+   "solution": "The ambient temperature is too low. Recommended to operate the robot above -10°C."
+  },
+  "1220": {
+   "implication": "The vision camera is continuously blocked",
+   "level": 1,
+   "solution": "Please check if the robot is obstructed or if the vision camera is covered. Clean the vision camera or move the robot to a clear area before proceeding"
+  },
+  "123": {
+   "implication": "The right front wheel hub motor overcurrent",
+   "level": 2,
+   "solution": "Robot or wheel hub stuck. Check if the robot gets stuck by obstacles and if the right front wheels run well"
+  },
+  "124": {
+   "implication": "The right front wheel hub motor stalled",
+   "level": 3,
+   "solution": "Robot or wheel hub stuck. Check if the robot gets stuck by obstacles and if the right front wheels run well"
+  },
+  "125": {
+   "implication": "The Hall sensor on the right front wheel hub error",
+   "level": 3,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "126": {
+   "implication": "Right front wheel hub motor sensor failed",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "13": {
+   "implication": "Firmware download failed",
+   "level": 1,
+   "solution": ""
+  },
+  "1300": {
+   "implication": "Poor positioning status",
+   "level": 1,
+   "solution": "Please wait for the robot positioning to restore"
+  },
+  "1301": {
+   "implication": "The charging station position has changed",
+   "level": 1,
+   "solution": "Please relocate the charging station"
+  },
+  "1302": {
+   "implication": "Heading calibration failed",
+   "level": 1,
+   "solution": "Please make sure that the robot’s positioning status is fine and try again"
+  },
+  "1303": {
+   "implication": "Poor positioning status",
+   "level": 1,
+   "solution": "The robot is resetting the onboard RTK module and trying to restore normal positioning"
+  },
+  "1304": {
+   "implication": "Poor positioning status",
+   "level": 1,
+   "solution": "The robot has reset the onboard RTK module several times but the positioning has still failed. Please move the robot to a more open area and wait for positioning to resume"
+  },
+  "1305": {
+   "implication": "Positioning module initialization error",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "1308": {
+   "implication": "The RTK reference station location seems to be moved",
+   "level": 3,
+   "solution": ""
+  },
+  "1309": {
+   "implication": "Heading calibration failed because the robot starts working at the perimeter of a task area",
+   "level": 1,
+   "solution": "Please control the robot into a task area and retry"
+  },
+  "131": {
+   "implication": "The left rear wheel hub motor is overheating",
+   "level": 1,
+   "solution": "The robot will come back to normal once the motor temperature decreases. This may take several minutes"
+  },
+  "1310": {
+   "implication": "The robot is unable to get the infrared signal from its current location",
+   "level": 1,
+   "solution": "Please check and clean infrared transceivers on the robot's rear and the charging station. Control the robot into the charging area with its rear to the charging station and try again"
+  },
+  "1311": {
+   "implication": "Unable to recharge here",
+   "level": 1,
+   "solution": "Please control the robot into a task area and retry"
+  },
+  "1312": {
+   "implication": "The 3D vision module's positioning data differs significantly from that of the wheel speed sensor",
+   "level": 1,
+   "solution": "Please restart the robot and try again in a well-lit environment"
+  },
+  "1313": {
+   "implication": "Unable to work because the robot is not at the charging station",
+   "level": 1,
+   "solution": "Please move the robot to the charging station and try again"
+  },
+  "132": {
+   "implication": "The temperature of the left rear wheel hub is too low",
+   "level": 1,
+   "solution": "The ambient temperature is too low. Recommended to operate the robot above -10°C."
+  },
+  "133": {
+   "implication": "The left rear wheel hub motor overcurrent",
+   "level": 2,
+   "solution": "The robot or wheel hub stuck. Check if the robot gets stuck by obstacles and if the left rear wheels run well"
+  },
+  "134": {
+   "implication": "The left rear wheel hub motor stalled",
+   "level": 3,
+   "solution": "Robot or wheel hub stuck. Check if the robot gets stuck by obstacles and if the left rear wheels run well"
+  },
+  "135": {
+   "implication": "The Hall sensor on the left rear wheel hub error",
+   "level": 3,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "136": {
+   "implication": "Left rear wheel hub motor sensor failed",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "1400": {
+   "implication": "Out of memory",
+   "level": 3,
+   "solution": ""
+  },
+  "1406": {
+   "implication": "Invalid task area detected",
+   "level": 1,
+   "solution": "Please try again after restarting the robot"
+  },
+  "1407": {
+   "implication": "The charging station location is unknown",
+   "level": 1,
+   "solution": "Please move the robot on the charging station and relocate the charging station"
+  },
+  "141": {
+   "implication": "The right rear wheel hub motor is overheating",
+   "level": 1,
+   "solution": "The robot will come back to normal once the motor temperature decreases. This may take several minutes"
+  },
+  "1411": {
+   "implication": "The robot is outside a task area or is inside a no-go zone",
+   "level": 1,
+   "solution": "Please control the robot into a task area and retry"
+  },
+  "1412": {
+   "implication": "The robot cannot reach the next point",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists after restart, contact the after-sales support"
+  },
+  "1413": {
+   "implication": "Recharge route planning failed",
+   "level": 1,
+   "solution": "Please make sure that there are no obstacles around the robot and the task areas are accessible, then try recharge again"
+  },
+  "1414": {
+   "implication": "The charging station is outside a task area and not connected to any task area",
+   "level": 1,
+   "solution": "Please add a channel between the charging station and a task area"
+  },
+  "1415": {
+   "implication": "Mowing area selection is abnormal",
+   "level": 2,
+   "solution": "Please reselect the mowing area"
+  },
+  "1416": {
+   "implication": "The channel is unpassable",
+   "level": 1,
+   "solution": "Please try again after removing the obstacle on the channel"
+  },
+  "1417": {
+   "implication": "Invalid task area detected",
+   "level": 1,
+   "solution": "Please try again after restarting the robot. If the issue persists, please delete the map and remap the task area"
+  },
+  "1418": {
+   "implication": "Positioning timeout",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "1419": {
+   "implication": "IMU data timeout",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "142": {
+   "implication": "The temperature of the right rear wheel hub is too low",
+   "level": 1,
+   "solution": "The ambient temperature is too low. Recommended to operate the robot above -10°C."
+  },
+  "1420": {
+   "implication": "Wheel speed data timeout",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "1421": {
+   "implication": "The robot stuck during recharge process",
+   "level": 1,
+   "solution": "Please make sure that there are no obstacles on the recharge route and try again. If the issue persists, contact the after-sales support"
+  },
+  "1422": {
+   "implication": "The robot failed to return to the charging station and is out of a task area",
+   "level": 1,
+   "solution": "Please control the robot into a task area or the charging area and then click the button to recharge"
+  },
+  "1423": {
+   "implication": "Unable to access the RTK reference station location",
+   "level": 3,
+   "solution": "Please restart the RTK reference station and retry. If the issue persists, please contact our after-sales support"
+  },
+  "1424": {
+   "implication": "Failed to perform Follow the Perimeter mode and automatically switched to Direct mode for recharging path",
+   "level": 3,
+   "solution": "Please ensure the perimeter is accessible"
+  },
+  "1425": {
+   "implication": "Error detected in the 3D vision module",
+   "level": 3,
+   "solution": "Please verify whether the vision camera is blocked. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "1429": {
+   "implication": "Vision calibration failed",
+   "level": 3,
+   "solution": "Please ensure there are no obstacles around calibration location"
+  },
+  "143": {
+   "implication": "The right rear wheel hub motor overcurrent",
+   "level": 2,
+   "solution": "Robot or wheel hub stuck. Check if the robot gets stuck by obstacles and if the right rear wheels run well"
+  },
+  "1430": {
+   "implication": "The vision module has no output",
+   "level": 3,
+   "solution": "Please ensure the front bumper is normal and the camera can view the guidance line"
+  },
+  "144": {
+   "implication": "The right rear wheel hub motor stalled",
+   "level": 3,
+   "solution": "Robot or wheel hub stuck. Check if the robot gets stuck by obstacles and if the right rear wheels run well"
+  },
+  "145": {
+   "implication": "The Hall sensor on the right rear wheel hub error",
+   "level": 3,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "146": {
+   "implication": "Right rear wheel hub motor sensor failed",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "150": {
+   "implication": "The robot has failed to return to the charging station due to no infrared signal (%s)",
+   "level": 1,
+   "solution": ""
+  },
+  "1510": {
+   "implication": "The ambient light is too weak, 3D vision has been turned off",
+   "level": 1,
+   "solution": ""
+  },
+  "1511": {
+   "implication": "Vision positioning error and will be reset in 3 seconds",
+   "level": 1,
+   "solution": ""
+  },
+  "1550": {
+   "implication": "RTK initialization failed",
+   "level": 1,
+   "solution": "If the error persists after restart, contact the after-sales support"
+  },
+  "1551": {
+   "implication": "The RTK reference station has been disconnected",
+   "level": 1,
+   "solution": "Please wait for automatic reconnection"
+  },
+  "1552": {
+   "implication": "RTK data transmission is delayed",
+   "level": 1,
+   "solution": "If the error persists after restart, please contact the after-sales support"
+  },
+  "1553": {
+   "implication": "The RTK reference station has been disconnected to the robot",
+   "level": 1,
+   "solution": "If the error persists after restart, please contact the after-sales support"
+  },
+  "1555": {
+   "implication": "The RTK data of the robot is abnormal",
+   "level": 3,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "188": {
+   "implication": "The environment is too dark, and the visual obstacle avoidance function has been turned off",
+   "level": 3,
+   "solution": ""
+  },
+  "2": {
+   "implication": "Please try again after the battery level is over 30%1",
+   "level": 2,
+   "solution": ""
+  },
+  "2001": {
+   "implication": "The 3D vision obstacle avoidance function has been disabled as the camera configuration error",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "2002": {
+   "implication": "No GDC image has been received. The image driver error",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "211": {
+   "implication": "The left driver board is overheating",
+   "level": 2,
+   "solution": "Task paused. The robot will come back to normal once the motor temperature decreases. This may take several minutes"
+  },
+  "212": {
+   "implication": "The temperature of the left driver board is too low",
+   "level": 1,
+   "solution": "The ambient temperature is too low. Recommended to operate the robot above -10°C."
+  },
+  "213": {
+   "implication": "The left driver board voltage is too high",
+   "level": 3,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "214": {
+   "implication": "The left driver board voltage is too low",
+   "level": 3,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "215": {
+   "implication": "The left driver board has lost communication",
+   "level": 3,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "221": {
+   "implication": "The right driver board is overheating",
+   "level": 2,
+   "solution": "The robot will come back to normal once the motor temperature decreases. This may take several minutes"
+  },
+  "222": {
+   "implication": "The temperature of the right driver board is too low",
+   "level": 1,
+   "solution": "The ambient temperature is too low. Recommended to operate the robot above -10°C."
+  },
+  "223": {
+   "implication": "The right driver board voltage is too high",
+   "level": 3,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "224": {
+   "implication": "The right driver board voltage is too low",
+   "level": 3,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "225": {
+   "implication": "The right driver board has lost communication",
+   "level": 3,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "2700": {
+   "implication": "The robot cannot work as the battery level is too low (〈15%)",
+   "level": 1,
+   "solution": "Please charge the robot"
+  },
+  "2701": {
+   "implication": "The battery level is low (〈15%)",
+   "level": 1,
+   "solution": "Please charge the robot"
+  },
+  "2702": {
+   "implication": "The battery level is too low (〈5%). If there is no control within 30 seconds, the robot will power off to conserve power",
+   "level": 1,
+   "solution": "Please charge the robot"
+  },
+  "2705": {
+   "implication": "Battery system error",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "2706": {
+   "implication": "Battery system error",
+   "level": 1,
+   "solution": "Please power off the robot and restart it after 15 minutes"
+  },
+  "2707": {
+   "implication": "Battery system error",
+   "level": 1,
+   "solution": ""
+  },
+  "2708": {
+   "implication": "Battery system error",
+   "level": 1,
+   "solution": ""
+  },
+  "2709": {
+   "implication": "Battery voltage is low",
+   "level": 1,
+   "solution": "Please charge"
+  },
+  "2711": {
+   "implication": "Lift motor error",
+   "level": 3,
+   "solution": "Please check if the cutting disk is jammed. If the issue persists, contact the after-sales support"
+  },
+  "2713": {
+   "implication": "Battery voltage is too low. Charging has been paused",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "2714": {
+   "implication": "Battery MOS temperature is too high",
+   "level": 1,
+   "solution": "Please power off the robot and restart it after 15 minutes"
+  },
+  "2715": {
+   "implication": "Battery secondary protection triggered",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "2716": {
+   "implication": "Battery temperature is too low",
+   "level": 1,
+   "solution": "The ambient temperature is too low. Recommended to operate the robot above -10°C."
+  },
+  "2717": {
+   "implication": "Battery temperature is too high during the discharge process",
+   "level": 1,
+   "solution": "Please power off the robot and restart it after 15 minutes"
+  },
+  "2718": {
+   "implication": "Battery temperature is too low",
+   "level": 1,
+   "solution": "The ambient temperature is too low. Recommended to operate the robot above -10°C."
+  },
+  "2719": {
+   "implication": "Battery temperature too high. Charging error",
+   "level": 1,
+   "solution": "Please power off the robot and restart it after 15 minutes"
+  },
+  "2720": {
+   "implication": "Battery short circuit protection triggered",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "2721": {
+   "implication": "Battery overcurrent",
+   "level": 1,
+   "solution": "Check if the wheels or cutting disks are jammed. If not, restart the robot. If the error persists, contact the after-sales support"
+  },
+  "2722": {
+   "implication": "Battery overcurrent",
+   "level": 1,
+   "solution": "Check if the wheels or cutting disks are jammed. If not, restart the robot. If the error persists, contact the after-sales support"
+  },
+  "2723": {
+   "implication": "Battery overcurrent",
+   "level": 1,
+   "solution": "Check if the wheels or cutting disks are jammed. If not, restart the robot. If the error persists, contact the after-sales support"
+  },
+  "2724": {
+   "implication": "Battery over-discharged",
+   "level": 1,
+   "solution": "Please charge"
+  },
+  "2725": {
+   "implication": "Battery overcharged",
+   "level": 1,
+   "solution": "Stop charging immediately. If overcharging occurs frequently, contact the after-sales support"
+  },
+  "2726": {
+   "implication": "Battery overcharged",
+   "level": 1,
+   "solution": "Stop charging immediately. If overcharging occurs frequently, contact the after-sales support"
+  },
+  "2727": {
+   "implication": "Battery over-discharged",
+   "level": 1,
+   "solution": "Please charge"
+  },
+  "2728": {
+   "implication": "The battery cannot be charged fully even after prolonged charging",
+   "level": 3,
+   "solution": "Please ensure the robot and the charging station contact well. Allow the robot work until its battery drops from over 70% to 15%, then recharge it. Repeat this process 3 times. If the issue persists, please contact our after-sales support"
+  },
+  "2729": {
+   "implication": "The voltage of the power adapter is too low",
+   "level": 1,
+   "solution": "Please check if the power adapter is a standard 30V, 3A. If the issue persists, please contact the after-sales support"
+  },
+  "2735": {
+   "implication": "The charging station is too hot and the charging fails",
+   "level": 3,
+   "solution": "Please disconnect Robot from the charging station and try charging again after waiting for 1-2 hours for the temperature to drop"
+  },
+  "2741": {
+   "implication": "The lift motor stalled when ascending",
+   "level": 1,
+   "solution": "Check if the cutting disk is jammed. If not, restart the robot. If the error persists, contact the after-sales support"
+  },
+  "2742": {
+   "implication": "The lift motor stalled when descending",
+   "level": 1,
+   "solution": "Check if the cutting disk is jammed. If not, restart the robot. If the error persists, contact the after-sales support"
+  },
+  "2743": {
+   "implication": "Lift motor overcurrent when ascending",
+   "level": 1,
+   "solution": "Check if the cutting disk is jammed. If not, restart the robot. If the error persists, contact the after-sales support"
+  },
+  "2744": {
+   "implication": "Lift motor overcurrent when descending",
+   "level": 1,
+   "solution": "Check if the cutting disk is jammed. If not, restart the robot. If the error persists, contact the after-sales support"
+  },
+  "2745": {
+   "implication": "Data error of angle position sensor",
+   "level": 1,
+   "solution": "Check if the lifting system is stuck, then restart the robot. If the error persists after restart, contact the after-sales support"
+  },
+  "2746": {
+   "implication": "Lift motor control error",
+   "level": 1,
+   "solution": "Check if the lifting system is stuck, then restart the robot. If the error persists after restart, contact the after-sales support"
+  },
+  "2747": {
+   "implication": "The lift motor cannot reach the designated height",
+   "level": 1,
+   "solution": "Check if the lifting system is stuck, then restart the robot. If the error persists after restart, contact the after-sales support"
+  },
+  "2748": {
+   "implication": "Angle position sensor of lift motor disconnected",
+   "level": 1,
+   "solution": "If the error persists after restart, contact the after-sales support"
+  },
+  "2800": {
+   "implication": "STOP button triggered",
+   "level": 1,
+   "solution": ""
+  },
+  "2801": {
+   "implication": "Lift sensor triggered",
+   "level": 1,
+   "solution": ""
+  },
+  "2803": {
+   "implication": "Time clash for tasks",
+   "level": 1,
+   "solution": "Please set a task properly to avoid time clash"
+  },
+  "2804": {
+   "implication": "The robot control is delayed due to poor Bluetooth connection",
+   "level": 1,
+   "solution": ""
+  },
+  "2805": {
+   "implication": "The task failed to start",
+   "level": 1,
+   "solution": "Please ensure that the robot is ready"
+  },
+  "2806": {
+   "implication": "Weak Wi-Fi signal",
+   "level": 2,
+   "solution": "Please move the Robot closer to the network hotspot"
+  },
+  "2807": {
+   "implication": "Weak 4G signal",
+   "level": 2,
+   "solution": "Please ensure that the 4G network coverage in the area of use is good"
+  },
+  "2821": {
+   "implication": "Communication timeout occurred in the controller of the rear wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "2822": {
+   "implication": "Communication timeout occurred in the controller of the cutting disc motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "2823": {
+   "implication": "Communication timeout occurred in the controller of the sweeping motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "2824": {
+   "implication": "Communication timeout occurred in the controller of the dumping motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "2825": {
+   "implication": "Communication timeout occurred in the controller of the lift motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "2826": {
+   "implication": "Communication timeout occurred in the controller of the front wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "2828": {
+   "implication": "Security key is not installed",
+   "level": 1,
+   "solution": "Please install the security key"
+  },
+  "2829": {
+   "implication": "Battery temperature too low. The robot may not function properly",
+   "level": 1,
+   "solution": "Please stop the robot and move it to a room temperature environment to recover"
+  },
+  "2830": {
+   "implication": "Battery temperature too high. The robot may not function properly",
+   "level": 1,
+   "solution": "Please stop the robot and move it to a room temperature environment to recover"
+  },
+  "2836": {
+   "implication": "Component version mismatch detected",
+   "level": 1,
+   "solution": "Please update the robot firmware to the latest version"
+  },
+  "311": {
+   "implication": "The sampling resistance offset for the left cutting disk motor error",
+   "level": 3,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "312": {
+   "implication": "The left cutting disk motor is overloaded",
+   "level": 3,
+   "solution": "The left cutting disk is jammed or the current cutting height is too low. Please clean the cutting disk or increase the cutting height"
+  },
+  "313": {
+   "implication": "The left cutting disk motor is overloaded",
+   "level": 2,
+   "solution": "The left cutting disk is jammed or the current cutting height is too low. Please clean the cutting disk or increase the cutting height"
+  },
+  "314": {
+   "implication": "The left cutting disk stalled",
+   "level": 3,
+   "solution": "The left cutting disk is jammed or the current cutting height is too low. Please clean the cutting disk or increase the cutting height"
+  },
+  "315": {
+   "implication": "The left cutting disk failed to start",
+   "level": 3,
+   "solution": "Check if the left cutting disk motor is jammed. If not, restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "316": {
+   "implication": "The left cutting disk motor is overheating",
+   "level": 1,
+   "solution": "The robot will come back to normal once the motor temperature decreases. This may take several minutes"
+  },
+  "317": {
+   "implication": "The left cutting disk motor temperature is too low",
+   "level": 1,
+   "solution": "The ambient temperature is too low. Recommended to operate the robot above -10°C."
+  },
+  "318": {
+   "implication": "The sensor in the left cutting disk motor failed",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "321": {
+   "implication": "The sampling resistance offset for the right cutting disk motor error",
+   "level": 3,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "322": {
+   "implication": "The right cutting disk motor is overloaded",
+   "level": 3,
+   "solution": "The right cutting disk is jammed or the current cutting height is too low. Please clean the cutting disk or increase the cutting height"
+  },
+  "323": {
+   "implication": "The right cutting disk motor is overloaded",
+   "level": 2,
+   "solution": "The right cutting disk is jammed or the current cutting height is too low. Please clean the cutting disk or increase the cutting height"
+  },
+  "324": {
+   "implication": "The right cutting disk stalled",
+   "level": 3,
+   "solution": "The right cutting disk is jammed or the current cutting height is too low. Please clean the cutting disk or increase the cutting height"
+  },
+  "325": {
+   "implication": "The right cutting disk failed to start",
+   "level": 3,
+   "solution": "Check if the right cutting disk motor is jammed. If not, restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "326": {
+   "implication": "The right cutting disk motor is overheating",
+   "level": 1,
+   "solution": "The robot will resume to task once the motor temperature decreases. This process may take several minutes"
+  },
+  "327": {
+   "implication": "The right cutting disk motor temperature is too low",
+   "level": 1,
+   "solution": "The ambient temperature is too low. Recommended to operate the robot above -10°C."
+  },
+  "328": {
+   "implication": "The sensor in the right cutting disk motor failed",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "350": {
+   "implication": "The left wheel hub motor has stalled",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "351": {
+   "implication": "The left wheel hub motor is overloaded",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "352": {
+   "implication": "Phase loss detected in the left wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "353": {
+   "implication": "Current unbalance detected in the left wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "354": {
+   "implication": "Error detected in the Hall sensor of the left wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "355": {
+   "implication": "Zero drift detected in the Hall sensor of the left wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "356": {
+   "implication": "Current error detected in the left wheel hub motor bus",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "357": {
+   "implication": "The left wheel hub motor is overloaded",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "358": {
+   "implication": "Communication error detected in the left wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "359": {
+   "implication": "The voltage of the left wheel hub motor is too high",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "360": {
+   "implication": "The voltage of the left wheel hub motor is too low",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "361": {
+   "implication": "Timeout occurred in the speed response of the left wheel hub motor",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "362": {
+   "implication": "Overcurrent detected in the left wheel hub drive",
+   "level": 3,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "363": {
+   "implication": "The left wheel hub motor experienced phase overcurrent",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "366": {
+   "implication": "The left wheel hub motor is overheating",
+   "level": 1,
+   "solution": "The robot will come back to normal once the motor temperature decreases. This may take several minutes."
+  },
+  "367": {
+   "implication": "Error detected in the temperature sensor of the left wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "368": {
+   "implication": "The temperature of the left wheel hub motor MOS is too high",
+   "level": 1,
+   "solution": "The robot will come back to normal once the motor temperature decreases. This may take several minutes."
+  },
+  "369": {
+   "implication": "The temperature of the left wheel hub motor MOS is too low",
+   "level": 1,
+   "solution": "The ambient temperature is too low. Recommended to operate the robot above -10°C."
+  },
+  "377": {
+   "implication": "The left rear hub motor response timed out",
+   "level": 3,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "382": {
+   "implication": "The right wheel hub motor has stalled",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "383": {
+   "implication": "The right wheel hub motor is overloaded",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "384": {
+   "implication": "Phase loss detected in the right wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "385": {
+   "implication": "Current unbalance detected in the right wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "386": {
+   "implication": "Error detected in the Hall sensor of the right wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "387": {
+   "implication": "Zero drift detected in the Hall sensor of the left wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "388": {
+   "implication": "Current error detected in the left wheel hub motor bus",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "389": {
+   "implication": "The right wheel hub motor is overloaded",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "390": {
+   "implication": "Communication error detected in the right wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "391": {
+   "implication": "The voltage of the right wheel hub motor is too high",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "392": {
+   "implication": "The voltage of the right wheel hub motor is too low",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "393": {
+   "implication": "Timeout occurred in the speed response of the right wheel hub motor",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "394": {
+   "implication": "Overcurrent detected in the right wheel hub drive",
+   "level": 3,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "395": {
+   "implication": "The right wheel hub motor experienced phase overcurrent",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "398": {
+   "implication": "The right wheel hub motor is overheating",
+   "level": 1,
+   "solution": "The robot will come back to normal once the motor temperature decreases. This may take several minutes."
+  },
+  "399": {
+   "implication": "Error detected in the temperature sensor of the right wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "40": {
+   "implication": "Please try again after the battery level is over 40%",
+   "level": 1,
+   "solution": ""
+  },
+  "400": {
+   "implication": "The temperature of the right wheel hub motor MOS is too low",
+   "level": 1,
+   "solution": "The ambient temperature is too low. Recommended to operate the robot above -10°C."
+  },
+  "401": {
+   "implication": "Right wheel hub motor MOS temperature too low",
+   "level": 1,
+   "solution": "The ambient temperature is too low. Recommended to operate the robot above -10°C."
+  },
+  "40200": {
+   "implication": "Service exception",
+   "level": 1,
+   "solution": ""
+  },
+  "40201": {
+   "implication": "User does not exist",
+   "level": 1,
+   "solution": ""
+  },
+  "40202": {
+   "implication": "Incorrect password",
+   "level": 1,
+   "solution": ""
+  },
+  "40203": {
+   "implication": "This email address has been already registered",
+   "level": 1,
+   "solution": ""
+  },
+  "40204": {
+   "implication": "The new email address cannot be the same as the old one",
+   "level": 1,
+   "solution": ""
+  },
+  "40205": {
+   "implication": "Service timeout",
+   "level": 1,
+   "solution": ""
+  },
+  "40206": {
+   "implication": "Email failed to send",
+   "level": 1,
+   "solution": ""
+  },
+  "40300": {
+   "implication": "Parameter is incorrect",
+   "level": 1,
+   "solution": ""
+  },
+  "40301": {
+   "implication": "Invalid email address",
+   "level": 1,
+   "solution": ""
+  },
+  "40302": {
+   "implication": "Password must contain 8 to 16 letters or numbers",
+   "level": 1,
+   "solution": ""
+  },
+  "409": {
+   "implication": "The right rear hub motor response timed out",
+   "level": 3,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "422": {
+   "implication": "Communication error detected in the left cutting disk motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "424": {
+   "implication": "The voltage of the left cutting disk motor is too low",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "426": {
+   "implication": "Left rear wheel hub overcurrent",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "428": {
+   "implication": "The controller of the left cutting disk motor is overloaded",
+   "level": 1,
+   "solution": "Please turn off the robot to check if the cutting disk is jammed. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "429": {
+   "implication": "The left cutting disk motor is overloaded",
+   "level": 1,
+   "solution": "Please turn off the robot to check if the cutting disk is jammed. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "434": {
+   "implication": "Timeout occurred in the commutation of the left cutting disk motor",
+   "level": 1,
+   "solution": "Please turn off the robot to check if the cutting disk is jammed. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "435": {
+   "implication": "Timeout occurred in the startup of the left cutting disk motor",
+   "level": 1,
+   "solution": "Please turn off the robot to check if the cutting disk is jammed. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "436": {
+   "implication": "Temperature error detected in the left cutting disk motor",
+   "level": 1,
+   "solution": "The robot will come back to normal once the motor temperature decreases. This may take several minutes. Alternatively, you can restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "437": {
+   "implication": "Temperature error detected in the left cutting disk motor MOS",
+   "level": 1,
+   "solution": "The robot will come back to normal once the motor temperature decreases. This may take several minutes. Alternatively, you can restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "438": {
+   "implication": "Timeout occurred in the commutation of the left cutting disk motor",
+   "level": 1,
+   "solution": "Please turn off the robot to check if the cutting disk is jammed. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "454": {
+   "implication": "Communication error detected in the right cutting disk motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "456": {
+   "implication": "The voltage of the right cutting disk motor is too low",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "458": {
+   "implication": "Right cutting disc motor overcurrent",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "460": {
+   "implication": "The controller of the right cutting disk is overloaded",
+   "level": 1,
+   "solution": "Please turn off the robot to check if the cutting disk is jammed. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "461": {
+   "implication": "The right cutting disk motor is overloaded",
+   "level": 1,
+   "solution": "Please turn off the robot to check if the cutting disk is jammed. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "466": {
+   "implication": "Timeout occurred in the commutation of the right cutting disk motor",
+   "level": 1,
+   "solution": "Please turn off the robot to check if the cutting disk is jammed. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "467": {
+   "implication": "Timeout occurred in the startup of the right cutting disk motor",
+   "level": 1,
+   "solution": "Please turn off the robot to check if the cutting disk is jammed. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "468": {
+   "implication": "Temperature error detected in the right cutting disk motor",
+   "level": 1,
+   "solution": "The robot will come back to normal once the motor temperature decreases. This may take several minutes. Alternatively, you can restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "469": {
+   "implication": "Temperature error detected in the right cutting disk motor MOS",
+   "level": 1,
+   "solution": "The robot will come back to normal once the motor temperature decreases. This may take several minutes. Alternatively, you can restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "470": {
+   "implication": "Timeout occurred in the commutation of the right cutting disk motor",
+   "level": 1,
+   "solution": "Please turn off the robot and check if the cutting disk is jammed. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "486": {
+   "implication": "Communication error detected in the left sweeping motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "488": {
+   "implication": "The voltage of the left sweeping motor is too low",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "490": {
+   "implication": "Sweeping motor overcurrent",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "492": {
+   "implication": "Peak power overload on the left sweeping motor controller",
+   "level": 1,
+   "solution": "Please turn off the robot to check if the roller is jammed. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "493": {
+   "implication": "The left sweeping motor is overloaded",
+   "level": 1,
+   "solution": "Please turn off the robot to check if the roller is jammed. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "498": {
+   "implication": "Timeout occurred in the commutation of the left sweeping motor",
+   "level": 1,
+   "solution": "Please turn off the robot to check if the roller is jammed. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "499": {
+   "implication": "Timeout occurred in the startup of the left sweeping motor",
+   "level": 1,
+   "solution": "Please turn off the robot to check if the roller is jammed. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "500": {
+   "implication": "Temperature error detected in the left sweeping motor",
+   "level": 1,
+   "solution": "The robot will come back to normal once the motor temperature decreases. This may take several minutes. Alternatively, you can restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "50001": {
+   "implication": "Failed to request server",
+   "level": 1,
+   "solution": ""
+  },
+  "50009": {
+   "implication": "Connection has been interrupted",
+   "level": 1,
+   "solution": ""
+  },
+  "5001": {
+   "implication": "LoRa configuration error, please contact the after-sales support",
+   "level": 1,
+   "solution": ""
+  },
+  "50019": {
+   "implication": "Bluetooth signal is weak, causing delay",
+   "level": 1,
+   "solution": "Please keep your phone within 5 meters of the robot"
+  },
+  "50020": {
+   "implication": "Connection failed",
+   "level": 1,
+   "solution": ""
+  },
+  "50021": {
+   "implication": "Connection failed",
+   "level": 1,
+   "solution": ""
+  },
+  "501": {
+   "implication": "Temperature error detected in the left sweeping motor MOS",
+   "level": 1,
+   "solution": "The robot will come back to normal once the motor temperature decreases. This may take several minutes. Alternatively, you can restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "502": {
+   "implication": "Timeout occurred in the commutation of the left sweeping motor",
+   "level": 1,
+   "solution": "Please turn off the robot to check if the roller is jammed. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "503": {
+   "implication": "Rated power overload on the left sweeping motor controller",
+   "level": 1,
+   "solution": "Please turn off the robot to check if the roller is jammed. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "518": {
+   "implication": "Communication error detected in the right dumping motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "520": {
+   "implication": "The voltage of the right dumping motor is too low",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "521": {
+   "implication": "Timeout occurred in the speed response of the right dumping motor",
+   "level": 1,
+   "solution": "Please check if the hopper is overloaded. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "522": {
+   "implication": "Dumping motor overcurrent",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "524": {
+   "implication": "The controller of the right sweeping motor is overloaded",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "525": {
+   "implication": "The right sweeping motor is overloaded",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "530": {
+   "implication": "Timeout occurred in the commutation of the right sweeping motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "531": {
+   "implication": "Timeout occurred in the startup of the right sweeping motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "532": {
+   "implication": "Temperature error detected in the right sweeping motor",
+   "level": 1,
+   "solution": "The robot will come back to normal once the motor temperature decreases. This may take several minutes. Alternatively, you can restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "533": {
+   "implication": "Temperature error detected in the right sweeping motor MOS",
+   "level": 1,
+   "solution": "The robot will come back to normal once the motor temperature decreases. This may take several minutes. Alternatively, you can restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "534": {
+   "implication": "Timeout occurred in the commutation of the right dumping motor",
+   "level": 1,
+   "solution": "Please check if the hopper is overloaded. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "542": {
+   "implication": "The left front wheel hub motor has stalled",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "543": {
+   "implication": "The left front wheel hub motor is overloaded",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "544": {
+   "implication": "Phase loss detected in the left front wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "545": {
+   "implication": "Current imbalance detected in the left front wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "546": {
+   "implication": "Error detected in the Hall sensor of the left front wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "547": {
+   "implication": "Zero drift detected in the Hall sensor of the left front wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "548": {
+   "implication": "Current error detected in the left front wheel hub motor bus",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the left front wheels run well"
+  },
+  "549": {
+   "implication": "Overload warning for the left front wheel hub motor",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "550": {
+   "implication": "Communication error detected in the left front wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "551": {
+   "implication": "The voltage of the left front wheel hub motor is too high",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "552": {
+   "implication": "The voltage of the left front wheel hub motor is too low",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "553": {
+   "implication": "Timeout occurred in the speed response of the left front wheel hub motor",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "554": {
+   "implication": "The left front wheel hub has experienced an overcurrent in the drive hardware",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "555": {
+   "implication": "The left front wheel hub motor has experienced phase overcurrent",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "558": {
+   "implication": "The left front wheel hub motor is overheating",
+   "level": 1,
+   "solution": "The robot will come back to normal once the temperature decreases. This may take several minutes"
+  },
+  "559": {
+   "implication": "Error detected in the temperature sensor of the left front wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "560": {
+   "implication": "The temperature of the left front wheel hub motor MOS is too high",
+   "level": 1,
+   "solution": "The robot will come back to normal once the temperature decreases. This may take several minutes"
+  },
+  "561": {
+   "implication": "The temperature of the left front wheel hub motor MOS is too low",
+   "level": 1,
+   "solution": "The ambient temperature is too low. Recommended to operate the robot above -10°C"
+  },
+  "569": {
+   "implication": "Timeout occurred in the shutdown response of the left front wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "574": {
+   "implication": "The right front wheel hub motor has stalled",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "575": {
+   "implication": "The right front wheel hub motor is overloaded",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "576": {
+   "implication": "Phase loss detected in the right front wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "577": {
+   "implication": "Current imbalance detected in the right front wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "578": {
+   "implication": "Error detected in the Hall sensor of the right front wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "579": {
+   "implication": "Zero drift detected in the Hall sensor of the left front wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "580": {
+   "implication": "Current error detected in the right front wheel hub motor bus",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "581": {
+   "implication": "Overload warning for the right front wheel hub motor",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "582": {
+   "implication": "Communication error detected in the right front wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "583": {
+   "implication": "The voltage of the right front wheel hub motor is too high",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "584": {
+   "implication": "The voltage of the right front wheel hub motor is too low",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "585": {
+   "implication": "Timeout occurred in the speed response of the right front wheel hub motor",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "586": {
+   "implication": "The right front wheel hub has experienced an overcurrent in the drive hardware",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "587": {
+   "implication": "The right front wheel hub motor has experienced phase overcurrent",
+   "level": 1,
+   "solution": "The robot or wheel hub is stuck. Check if the robot gets stuck by obstacles and if the wheels run well"
+  },
+  "590": {
+   "implication": "The right front wheel hub motor is overheating",
+   "level": 1,
+   "solution": "The robot will come back to normal once the temperature decreases. This may take several minutes"
+  },
+  "591": {
+   "implication": "Error detected in the temperature sensor of the right front wheel hub motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "592": {
+   "implication": "The temperature of the right front wheel hub motor MOS is too low",
+   "level": 1,
+   "solution": "The ambient temperature is too low. Recommended to operate the robot above -10°C"
+  },
+  "593": {
+   "implication": "The temperature of the right front wheel hub motor MOS is too low",
+   "level": 1,
+   "solution": "The ambient temperature is too low. Recommended to operate the robot above -10°C"
+  },
+  "601": {
+   "implication": "Timeout occurred in the shutdown response of the right front wheel hub motor",
+   "level": 1,
+   "solution": "The ambient temperature is too low. Recommended to operate the robot above -10°C"
+  },
+  "606": {
+   "implication": "Timeout occurred in the response of the lift motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "609": {
+   "implication": "Reset error detected in the lift motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "610": {
+   "implication": "Error detected in the Limit Hall sensor of the lift motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "613": {
+   "implication": "Lifting motor overload",
+   "level": 3,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "615": {
+   "implication": "The voltage of the lift motor is too high",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "616": {
+   "implication": "The voltage of the lift motor is too low",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "617": {
+   "implication": "Lifting motor response timeout",
+   "level": 3,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "618": {
+   "implication": "Lifting motor overcurrent",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "619": {
+   "implication": "Lifting motor overcurrent",
+   "level": 3,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "632": {
+   "implication": "Magnetic encoder error of lifting motor",
+   "level": 3,
+   "solution": "Restart the robot. If the issue persists, contact the after-sales support"
+  },
+  "646": {
+   "implication": "Communication error detected in the cutting disc motor",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "648": {
+   "implication": "The temperature of the cutting disc motor is too low",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "650": {
+   "implication": "Cutting disc motor overcurrent",
+   "level": 1,
+   "solution": "Restart the robot. If the issue persists, please contact our after-sales support"
+  },
+  "652": {
+   "implication": "The controller of the cutting disc motor is overloaded",
+   "level": 1,
+   "solution": "Please turn off the robot to check if the cutting disc is jammed. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "653": {
+   "implication": "The cutting disc motor is overloaded",
+   "level": 1,
+   "solution": "Please turn off the robot to check if the cutting disc is jammed. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "658": {
+   "implication": "Timeout occurred in the commutation of the cutting disc motor",
+   "level": 1,
+   "solution": "Please turn off the robot to check if the cutting disc is jammed. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "659": {
+   "implication": "Timeout occurred in the startup of the cutting disc motor",
+   "level": 1,
+   "solution": "Please turn off the robot to check if the cutting disc is jammed. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "660": {
+   "implication": "Temperature error detected in the cutting disc motor",
+   "level": 1,
+   "solution": "The robot will come back to normal once the temperature decreases. This may take several minutes"
+  },
+  "661": {
+   "implication": "Temperature error detected in the cutting disc motor MOS",
+   "level": 1,
+   "solution": "The robot will come back to normal once the temperature decreases. This may take several minutes"
+  },
+  "662": {
+   "implication": "Timeout occurred in the commutation and startup of the cutting disc motor",
+   "level": 1,
+   "solution": "Please turn off the robot to check if the cutting disc is jammed. If not, restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "900": {
+   "implication": "The camera wiper error",
+   "level": 1,
+   "solution": "Please restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "901": {
+   "implication": "The camera wiper error",
+   "level": 1,
+   "solution": "Please restart the robot. If the issue persists, please contact the after-sales support"
+  },
+  "902": {
+   "implication": "Overcurrent detected in the camera wiper motor controller",
+   "level": 1,
+   "solution": "Please check if the camera wiper is stuck. If the issue persists, please contact the after-sales support"
+  },
+  "903": {
+   "implication": "Overcurrent detected in the camera wiper motor controller",
+   "level": 1,
+   "solution": "Please check if the camera wiper is stuck. If the issue persists, please contact the after-sales support"
+  }
+ }
+}

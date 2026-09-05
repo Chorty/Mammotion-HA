@@ -2650,6 +2650,19 @@ def _active_mowing_detected(telemetry: dict[str, Any], ha_state: str | None) -> 
     return ha_state == "mowing" or telemetry.get("work_mode_label") == "MODE_WORKING"
 
 
+#: The map frame is a math angle (CCW from +x) while ``toward`` is a compass
+#: bearing (CW from north), so their relation is a reflection, not an offset.
+#: The 0.13 degree map alignment is measured for this installation; callers can
+#: override it per mower rather than treating it as a universal map constant.
+#:
+#: 🚨 A reflection cannot be emulated by adding a constant, so **no value of
+#: ``calibrated_forward_heading_offset_degrees`` can ever be correct** for
+#: turning ``toward`` into a map bearing. The additive form looks right only
+#: near the two headings where the curves cross, which is how it survived to
+#: 2026-09-04 and aimed a real dispatch 164 deg wrong.
+_TOWARD_MIRROR_DEGREES = 90.13
+
+
 #: How far the two independent heading sources may disagree and still be
 #: published as a trustworthy orientation, in degrees.
 #:
@@ -2700,6 +2713,7 @@ def _current_orientation(
     vio_raw = _safe_attr_path(coordinator.data, "report_data.vision_info.heading")
     toward = (telemetry.get("position") or {}).get("toward")
 
+    evidence_source = getattr(coordinator, "facing_motion_evidence", None)
     result: dict[str, Any] = {
         "trustworthy": False,
         "map_heading_degrees": None,
@@ -2707,6 +2721,16 @@ def _current_orientation(
         "reason": None,
         "vio_feed_live": feed["live"],
         "vio_tracked_features": feed["tracked_features"],
+        # 🚨 Say what the flag means, in the payload, because it was read as
+        # something stronger and hardware moved the wrong way on 2026-09-04.
+        "trustworthy_means": (
+            "two independent estimates agree -- NOT that either is fresh; "
+            "both can be stale together after a manual reposition. "
+            "Use runtime_state.map_facing.safe_to_aim_dispatch to aim a dispatch."
+        ),
+        "motion_evidence": (
+            evidence_source() if callable(evidence_source) else {"unavailable": True}
+        ),
     }
 
     try:
@@ -2747,6 +2771,181 @@ def _current_orientation(
     result["source"] = "vio_heading corroborated by compass mirror"
     result["reason"] = "corroborated"
     return result
+
+
+#: How closely the last driven leg's bearing must match the mower's published
+#: facing before that facing counts as confirmed against the ground.
+#:
+#: Loose on purpose. This does not measure anything -- it asks "did the machine
+#: go roughly where its own estimate says it points?" The failure it exists to
+#: catch is the ~166 deg class seen on 2026-09-04, not a few degrees of
+#: cross-track. A tight bound here would demote perfectly good facings to
+#: "ask the operator" on ordinary drift, and being needlessly blocked is a real
+#: cost in this yard.
+_FACING_MOTION_AGREEMENT_TOLERANCE_DEGREES = 20.0
+
+#: How long a motion-confirmed facing stays motion-confirmed once the mower
+#: stops.
+#:
+#: ⚠️ This is a POLICY choice, not a measurement, and it is the honest
+#: expression of a gap: nothing in the telemetry can detect the mower being
+#: picked up and turned by hand. Time at rest is the only proxy available --
+#: the longer a machine sits, the more opportunity there was to move it. Five
+#: minutes covers the seconds-scale gaps between segments of one run while
+#: refusing anything after a real pause. It cannot be tightened into safety and
+#: must not be read as one.
+_FACING_MOTION_CONFIRMED_TTL_SECONDS = 300.0
+
+#: 16-point compass names, indexed by (bearing + 11.25) // 22.5.
+_COMPASS_POINTS: tuple[str, ...] = (
+    "N",
+    "NNE",
+    "NE",
+    "ENE",
+    "E",
+    "ESE",
+    "SE",
+    "SSE",
+    "S",
+    "SSW",
+    "SW",
+    "WSW",
+    "W",
+    "WNW",
+    "NW",
+    "NNW",
+)
+
+
+def _compass_point(compass_bearing_degrees: float) -> str:
+    """Return the 16-point compass name for a compass bearing."""
+    index = int((float(compass_bearing_degrees) % 360.0) / 22.5 + 0.5) % 16
+    return _COMPASS_POINTS[index]
+
+
+def _map_facing_report(
+    coordinator: MammotionReportUpdateCoordinator,
+    telemetry: dict[str, Any],
+    *,
+    toward_mirror_degrees: float = _TOWARD_MIRROR_DEGREES,
+) -> dict[str, Any]:
+    """Answer "which way is this mower pointing, and is that answer fresh?".
+
+    🔑 **This is the one place that question is answered.** It exists because on
+    2026-09-04 nobody could answer it: not the integration, not the orchestrating
+    session, not the operator through Home Assistant. The full record is
+    ``docs/findings-clicktopath-reliability-4m-20260904.md``.
+
+    Three things it deliberately does:
+
+    1. **It uses the reflection and nothing else.** ``map_facing = mirror -
+       toward``. The map frame is a math angle (CCW from +x) and ``toward`` is a
+       compass bearing (CW from north), so the relation is a reflection. ⚠️ **No
+       value of ``calibrated_forward_heading_offset_degrees`` can ever be
+       correct here** -- an additive constant cannot emulate a reflection; it
+       merely happens to look right near the two headings where the curves
+       cross, which is how it survived. Measured on 43 real pulses that night:
+       the mirror predicts the driven direction to a mean 1.000 deg, the
+       additive offset to a mean 87.478 deg.
+    2. **It separates corroboration from freshness.** ``current_orientation``
+       publishes ``trustworthy`` when VIO and the mirror agree. That is real
+       corroboration and it is NOT evidence of freshness: after a manual
+       reposition both sources described the pre-reposition facing and agreed
+       with each other to 0.079 deg. Only the third source here -- the bearing
+       of the leg the mower actually drove -- can rule that out, because it is
+       not an estimate.
+    3. **It returns unknown rather than a number it cannot stand behind.**
+
+    ``confidence`` is one of:
+
+    * ``motion_confirmed`` -- the mower drove a real leg recently and its
+      published facing agrees with where it went. This is the only value that
+      sets ``safe_to_aim_dispatch``.
+    * ``corroborated_not_motion_confirmed`` -- two independent estimates agree,
+      but nothing has checked them against the ground. Usable for a display
+      arrow; ⚠️ **not** for aiming a dispatch without operator confirmation.
+    * ``unknown`` -- sources disagree, or one is unavailable.
+
+    ⚠️ An in-place rotation after the last driven leg legitimately puts the
+    driven bearing out of date, and this will demote such a facing to
+    ``corroborated_not_motion_confirmed``. That is the conservative direction:
+    it asks for a human, it never green-lights a wrong number.
+    """
+    orientation = _current_orientation(coordinator, telemetry)
+    evidence_source = getattr(coordinator, "facing_motion_evidence", None)
+    evidence: dict[str, Any] = (
+        evidence_source() if callable(evidence_source) else {"unavailable": True}
+    )
+
+    report: dict[str, Any] = {
+        "map_facing_degrees": None,
+        "confidence": "unknown",
+        "safe_to_aim_dispatch": False,
+        "reason": orientation.get("reason"),
+        "model": (
+            "map_facing = toward_mirror_degrees - toward "
+            "(a REFLECTION; no additive offset can emulate it)"
+        ),
+        "toward_mirror_degrees": toward_mirror_degrees,
+        "sources": {
+            "vio_heading": orientation.get("vio_map_heading_degrees"),
+            "compass_mirror": orientation.get("mirror_map_heading_degrees"),
+            "last_driven_leg": evidence.get("last_travel_bearing_degrees"),
+        },
+        "corroboration": {
+            "corroborated": bool(orientation.get("trustworthy")),
+            "disagreement_degrees": orientation.get("disagreement_degrees"),
+            "agreement_tolerance_degrees": orientation.get(
+                "agreement_tolerance_degrees"
+            ),
+            "means": (
+                "two independent estimates agree; NOT evidence that either is fresh"
+            ),
+        },
+        "motion_evidence": evidence,
+        "operator_confirmation_required": True,
+    }
+
+    if not orientation.get("trustworthy"):
+        return report
+
+    facing = float(orientation["map_heading_degrees"])
+    report["map_facing_degrees"] = round(facing, 3)
+    compass = _map_heading_to_toward_degrees(
+        facing, toward_mirror_degrees=toward_mirror_degrees
+    )
+    report["map_facing_compass_degrees"] = round(compass, 1)
+    report["map_facing_compass_point"] = _compass_point(compass)
+    report["confidence"] = "corroborated_not_motion_confirmed"
+    report["reason"] = "corroborated_but_unverified_against_ground"
+
+    driven = evidence.get("last_travel_bearing_degrees")
+    age = evidence.get("last_travel_age_seconds")
+    if driven is None or age is None:
+        report["reason"] = "no_driven_leg_on_record"
+        return report
+    if float(age) > _FACING_MOTION_CONFIRMED_TTL_SECONDS:
+        report["reason"] = "last_driven_leg_too_old"
+        report["motion_confirmed_ttl_seconds"] = _FACING_MOTION_CONFIRMED_TTL_SECONDS
+        return report
+
+    drift = abs(((float(driven) - facing + 180.0) % 360.0) - 180.0)
+    report["motion_agreement_degrees"] = round(drift, 3)
+    report["motion_agreement_tolerance_degrees"] = (
+        _FACING_MOTION_AGREEMENT_TOLERANCE_DEGREES
+    )
+    if drift > _FACING_MOTION_AGREEMENT_TOLERANCE_DEGREES:
+        # Either the mower rotated in place since that leg (benign) or its
+        # estimate is wrong (not benign). Nothing here can tell them apart, so
+        # the answer is "ask", not "probably fine".
+        report["reason"] = "facing_disagrees_with_last_driven_leg"
+        return report
+
+    report["confidence"] = "motion_confirmed"
+    report["safe_to_aim_dispatch"] = True
+    report["operator_confirmation_required"] = False
+    report["reason"] = "confirmed_by_last_driven_leg"
+    return report
 
 
 def _runtime_blade_diagnostics(
@@ -3222,6 +3421,10 @@ def _export_runtime_state(
         # The card's direction arrow reads this and nothing produced it until
         # 2026-08-26; see _current_orientation.
         "current_orientation": _current_orientation(coordinator, telemetry),
+        # 🔑 The one place to ask "which way is it pointing, and is that fresh?".
+        # `current_orientation.trustworthy` answers a weaker question -- see
+        # _map_facing_report.
+        "map_facing": _map_facing_report(coordinator, telemetry),
         "online": telemetry.get("online"),
         "work_mode": telemetry.get("work_mode"),
         "work_mode_label": telemetry.get("work_mode_label"),
@@ -8339,7 +8542,7 @@ async def _raw_pymammotion_motion_probe(  # noqa: PLR0913
 # against it. On 2026-08-20 a dispatch script re-derived an endpoint "to be
 # safe" and silently drove a path the scan never covered.
 _CONTINUOUS_MAX_START_DRIFT_M = 0.30
-_CONTINUOUS_MIRROR_SUM_DEGREES = 90.13
+_CONTINUOUS_MIRROR_SUM_DEGREES = _TOWARD_MIRROR_DEGREES
 # The mower is already stopped during this wait, so it consumes no blind-motion
 # budget and does not enlarge the acquisition disk (1.34 m since the 2026-08-27
 # budget change; 1.06 m before it). The 3.5 s bound covers the stationary
@@ -14766,13 +14969,6 @@ def _normalized_heading_degrees(value: Any) -> float | None:
         return None
 
 
-#: The map frame is a math angle (CCW from +x) while ``toward`` is a compass
-#: bearing (CW from north), so their relation is a reflection, not an offset.
-#: The 0.13 degree map alignment is measured for this installation; callers can
-#: override it per mower rather than treating it as a universal map constant.
-_TOWARD_MIRROR_DEGREES = 90.13
-
-
 def _map_heading_to_toward_degrees(
     map_heading_degrees: float,
     *,
@@ -14793,6 +14989,78 @@ def _toward_to_map_heading_degrees(
     explicit for review.
     """
     return (float(toward_mirror_degrees) - float(toward_degrees)) % 360
+
+
+#: Above this the opening geometry is reported as a post-turn leg rather than an
+#: aligned start. A reporting threshold only -- the measured error is always
+#: present in the record, so a caller with a different bar can apply it.
+_ALIGNED_START_TOLERANCE_DEGREES = 10.0
+
+#: Why the obvious alignment check is not a check. Carried in every run record.
+_CIRCULAR_ALIGNMENT_WARNING = (
+    "target_reported_heading_degrees agrees with `toward` by construction "
+    "whenever the target was placed along `toward`, so comparing them proves "
+    "NOTHING. Alignment is only confirmed by a source that does not derive "
+    "from the number being checked -- the VIO calibration drive's measured "
+    "map_motion_heading_degrees, or the operator's eyes."
+)
+
+
+def _unmeasured_start_geometry(reason: str) -> dict[str, Any]:
+    """Return a start-geometry record that asserts nothing."""
+    return {
+        "aligned_start_confirmed": None,
+        "basis": None,
+        "reason": reason,
+        "measured_map_facing_degrees": None,
+        "target_map_heading_degrees": None,
+        "initial_heading_error_degrees": None,
+        "circularity_warning": _CIRCULAR_ALIGNMENT_WARNING,
+    }
+
+
+def _start_alignment_evidence(
+    *,
+    measured_map_facing_degrees: float | None,
+    target_map_heading_degrees: float | None,
+    tolerance_degrees: float = _ALIGNED_START_TOLERANCE_DEGREES,
+) -> dict[str, Any]:
+    """Return a NON-CIRCULAR verdict on whether this segment starts aligned.
+
+    🚨 On 2026-09-04 four runs were recorded as "aligned start confirmed"
+    because the echoed ``target_reported_heading_degrees`` matched the live
+    ``toward`` to ~0.0002 deg. It matched by construction -- the target had been
+    placed along ``toward``. The check measured nothing, and runs 3 and 4 in
+    fact opened with real ~120-135 deg turns, making them post-turn legs, the
+    property that series had explicitly put out of scope.
+
+    The only independent measurement of true facing this executor has is the VIO
+    calibration drive's ``map_motion_heading_degrees``: the mower is told to go
+    forward and the map-frame displacement says where forward was. It does not
+    derive from ``toward`` at all, so comparing it against the bearing to the
+    target is a real check. When it is unavailable the answer is ``None`` --
+    never ``True``.
+    """
+    if measured_map_facing_degrees is None or target_map_heading_degrees is None:
+        return _unmeasured_start_geometry("independent_facing_unavailable")
+    error = abs(
+        (
+            (float(target_map_heading_degrees) - float(measured_map_facing_degrees))
+            + 180.0
+        )
+        % 360.0
+        - 180.0
+    )
+    return {
+        "aligned_start_confirmed": error <= float(tolerance_degrees),
+        "basis": "vio_calibration_drive.map_motion_heading_degrees",
+        "reason": ("aligned" if error <= float(tolerance_degrees) else "post_turn_leg"),
+        "measured_map_facing_degrees": round(float(measured_map_facing_degrees), 3),
+        "target_map_heading_degrees": round(float(target_map_heading_degrees), 3),
+        "initial_heading_error_degrees": round(error, 3),
+        "tolerance_degrees": float(tolerance_degrees),
+        "circularity_warning": _CIRCULAR_ALIGNMENT_WARNING,
+    }
 
 
 def _raw_turn_to_heading_status(
@@ -16369,6 +16637,18 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         "target_map_heading_degrees": target_heading,
         "target_reported_heading_degrees": target_reported_heading,
         "target_heading_degrees": target_reported_heading,
+        # 🚨 Never asserted from `toward`. Filled in by the VIO calibration
+        # drive, which measures true facing independently; stays None-with-a-
+        # reason on every other path. See _start_alignment_evidence.
+        "start_geometry": _unmeasured_start_geometry(
+            "dry_run"
+            if dry_run
+            else (
+                "not_measured_outside_vio_turn_mode"
+                if turn_mode != "vio"
+                else "calibration_drive_not_run"
+            )
+        ),
         "heading_calibration": (
             {
                 "model": "mirror",
@@ -16500,6 +16780,7 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
             }
         else:
             offset = vio_heading_offset_degrees
+            calibration: dict[str, Any] | None = None
             if offset is None:
                 calibration = await _vio_segment_calibration_drive(
                     coordinator,
@@ -16556,6 +16837,22 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
                 return result
             target_heading = _path_heading_degrees(current_point, target)
             result["target_map_heading_degrees"] = target_heading
+            # The calibration drive just measured true facing without going
+            # anywhere near `toward`. That makes this the one non-circular
+            # moment to record whether the segment actually starts aligned --
+            # the check four runs were wrongly credited with on 2026-09-04.
+            result["start_geometry"] = (
+                _start_alignment_evidence(
+                    measured_map_facing_degrees=calibration.get(
+                        "map_motion_heading_degrees"
+                    ),
+                    target_map_heading_degrees=target_heading,
+                )
+                if calibration is not None
+                else _unmeasured_start_geometry(
+                    "vio_heading_offset_provided_no_calibration_drive"
+                )
+            )
             target_vision = _normalized_heading_degrees(
                 float(target_heading) - float(offset)
             )

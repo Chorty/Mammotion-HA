@@ -7,6 +7,7 @@ import contextlib
 import dataclasses
 import datetime
 import json
+import math
 import secrets
 import time
 from abc import abstractmethod
@@ -96,9 +97,18 @@ from .const import (
     LOGGER,
     NO_REQUEST_MODES,
 )
+from .error_codes import describe_error_code
 
 if TYPE_CHECKING:
     from . import MammotionConfigEntry
+
+#: A displacement must clear this before it counts as a driven leg worth taking
+#: a bearing from. The position feed has a 2-4 cm ABSOLUTE noise floor when
+#: pulsed (measured 2026-07-18), so 10 cm keeps the bearing meaningful.
+_FACING_MIN_TRAVEL_M = 0.10
+#: A displacement above this counts as the mower having moved at all. Sits just
+#: above the same noise floor so a parked mower does not look like it is drifting.
+_FACING_POSITION_CHANGE_M = 0.05
 
 # Upper bound on the opportunistic BLE reconnect attempted during a report
 # update. ``BLETransport.connect()`` is not bounded overall: it can run a
@@ -201,6 +211,13 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         self._latest_position_sample: Any | None = None
         self._latest_position_consumed_at: float | None = None
         self._position_payload_intervals: deque[float] = deque(maxlen=100)
+        # Facing evidence that does NOT derive from `toward`. See
+        # `facing_motion_evidence` for why a third source is needed at all.
+        self._facing_anchor: tuple[float, float] | None = None
+        self._last_travel_bearing_degrees: float | None = None
+        self._last_travel_distance_m: float | None = None
+        self._last_travel_at_monotonic: float | None = None
+        self._last_position_change_at_monotonic: float | None = None
         self.map_offset_lat: float = 0.0
         self.map_offset_lon: float = 0.0
         self._bluetooth_enabled: bool = True
@@ -2684,6 +2701,76 @@ class MammotionReportUpdateCoordinator(MammotionBaseUpdateCoordinator[MowingDevi
             previous_receipt = sample.received_at_monotonic
             self._latest_position_sample = sample
             self._latest_position_consumed_at = consumed_at
+            self._track_facing_motion_evidence(sample, consumed_at)
+
+    def _track_facing_motion_evidence(self, sample: Any, consumed_at: float) -> None:
+        """Accumulate the bearing of the mower's most recent driven leg.
+
+        This is the third, genuinely independent answer to "which way is the
+        mower pointing?" -- and the only one that cannot be stale in the way
+        that bit on 2026-09-04, because it is not an estimate at all. It is
+        where the machine physically went.
+
+        Both device-side sources failed together that night: after the operator
+        turned the mower by hand, `toward` and `vision_info.heading` agreed with
+        each other to 0.079 deg while both still described the pre-reposition
+        facing, and `current_orientation` published `trustworthy: true` on that
+        agreement. Corroboration between two stale sources is not freshness.
+        A driven bearing has no such failure mode: if the mower drove that way,
+        it was pointing that way.
+
+        The 0.10 m gate is above the position feed's 2-4 cm absolute noise floor
+        (measured 2026-07-18) by enough that a bearing from it is meaningful.
+        """
+        x, y = getattr(sample, "x", None), getattr(sample, "y", None)
+        if x is None or y is None:
+            return
+        point = (float(x), float(y))
+        if self._facing_anchor is None:
+            self._facing_anchor = point
+            self._last_position_change_at_monotonic = consumed_at
+            return
+        dx = point[0] - self._facing_anchor[0]
+        dy = point[1] - self._facing_anchor[1]
+        distance = math.hypot(dx, dy)
+        if distance >= _FACING_POSITION_CHANGE_M:
+            self._last_position_change_at_monotonic = consumed_at
+        if distance < _FACING_MIN_TRAVEL_M:
+            return
+        self._last_travel_bearing_degrees = math.degrees(math.atan2(dy, dx)) % 360.0
+        self._last_travel_distance_m = distance
+        self._last_travel_at_monotonic = consumed_at
+        self._facing_anchor = point
+
+    def facing_motion_evidence(self) -> dict[str, Any]:
+        """Return the last driven leg's bearing and how long ago it was driven.
+
+        Ages are seconds. ``None`` everywhere means the mower has not moved far
+        enough since this coordinator started for a bearing to exist -- which is
+        an honest "unknown", not a zero.
+        """
+        now = time.monotonic()
+
+        def _age(then: float | None) -> float | None:
+            return round(now - then, 3) if then is not None else None
+
+        return {
+            "last_travel_bearing_degrees": (
+                round(self._last_travel_bearing_degrees, 3)
+                if self._last_travel_bearing_degrees is not None
+                else None
+            ),
+            "last_travel_distance_m": (
+                round(self._last_travel_distance_m, 4)
+                if self._last_travel_distance_m is not None
+                else None
+            ),
+            "last_travel_age_seconds": _age(self._last_travel_at_monotonic),
+            "seconds_since_position_change": _age(
+                self._last_position_change_at_monotonic
+            ),
+            "min_travel_distance_m": _FACING_MIN_TRAVEL_M,
+        }
 
     def open_position_sample_stream(self, *, maxsize: int = 1) -> Any | None:
         """Open an independent safety-consumer position stream."""
@@ -3188,6 +3275,11 @@ class MammotionMapUpdateCoordinator(MammotionBaseUpdateCoordinator[MowerInfo]):
         await self._async_setup()
 
 
+#: How many pushed fault codes to keep. The device reports ten error-log slots,
+#: so ten is enough to cover a burst without turning a diagnostic tail into a log.
+_MAX_TRACKED_NOTIFICATION_CODES = 10
+
+
 class MammotionDeviceErrorUpdateCoordinator(
     MammotionBaseUpdateCoordinator[MowingDevice]
 ):
@@ -3214,15 +3306,64 @@ class MammotionDeviceErrorUpdateCoordinator(
         assert mowing_device is not None
         if self.data is None:
             self.data = mowing_device
+        # Live fault pushes, most recent first. See _record_notification_codes.
+        self._notification_codes: list[dict[str, Any]] = []
 
     def get_coordinator_data(self, device: MowingDevice) -> MowingDevice:
         """Get coordinator data."""
         return device
 
+    def _record_notification_codes(self, payload: Any) -> int:
+        """Store the fault codes carried by a device notification push.
+
+        🚨 This payload used to be parsed, logged at DEBUG, and discarded. On
+        2026-09-04 the mower emitted ``1309`` five times while
+        ``sensor.<mower>_last_error`` showed ``"mcu: , "`` from an hour-stale
+        entry in the polled error log -- the live code never reached anywhere an
+        operator could see it (findings-clicktopath-reliability-4m-20260904.md
+        section 6.6). The push carries both the code and its timestamp; keeping
+        them is the whole fix.
+
+        Two payload shapes are in the wild and both are accepted:
+        ``[{"c":-2801,"ct":1,"ft":1731493734000}, ...]`` from
+        ``device_warning_code_event`` and ``{"localTime":..., "code":"1002"}``
+        from ``device_notification_event``. Codes are stored ABS -- the device
+        signs them inconsistently and ``get_error_code`` has always normalised.
+
+        Returns the number of codes recorded.
+        """
+        entries = payload if isinstance(payload, list) else [payload]
+        recorded: list[dict[str, Any]] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            raw_code: Any = entry.get("c", entry.get("code"))
+            raw_time: Any = entry.get("ft", entry.get("localTime"))
+            try:
+                code = abs(int(cast(int, raw_code)))
+            except TypeError, ValueError:
+                continue
+            if code == 0:
+                continue
+            timestamp: float | None
+            try:
+                # Both shapes report milliseconds since the epoch.
+                timestamp = float(cast(float, raw_time)) / 1000.0
+            except TypeError, ValueError:
+                timestamp = None
+            recorded.append({"code": code, "timestamp": timestamp})
+        if not recorded:
+            return 0
+        # Most recent first, and bounded: this is a diagnostic tail, not a log.
+        self._notification_codes = (recorded + self._notification_codes)[
+            :_MAX_TRACKED_NOTIFICATION_CODES
+        ]
+        return len(recorded)
+
     async def _async_update_event_message(self, event: ThingEventMessage) -> None:
-        if (
-            hasattr(event.params, "identifier")
-            and event.params.identifier == "device_warning_code_event"
+        if hasattr(event.params, "identifier") and event.params.identifier in (
+            "device_warning_code_event",
+            "device_notification_event",
         ):
             event_params: DeviceNotificationEventParams = cast(
                 DeviceNotificationEventParams, event.params
@@ -3230,62 +3371,144 @@ class MammotionDeviceErrorUpdateCoordinator(
             # '[{"c":-2801,"ct":1,"ft":1731493734000},{"c":-1008,"ct":1,"ft":1731493734000}]'
             try:
                 warning_event = json.loads(event_params.value.data)
-                LOGGER.debug("warning event %s", warning_event)
-                await self._async_update_data()
-                if device := self.manager.get_device_by_name(self.device_name):
-                    self.async_set_updated_data(device)
             except json.JSONDecodeError:
                 """Failed to parse warning event."""
+                return
+            LOGGER.debug("warning event %s", warning_event)
+            if self._record_notification_codes(warning_event):
+                LOGGER.warning(
+                    "%s reported fault %s",
+                    self.device_name,
+                    self.get_error_message(1),
+                )
+            await self._async_update_data()
+            if device := self.manager.get_device_by_name(self.device_name):
+                self.async_set_updated_data(device)
+
+    def _latest_fault(self) -> dict[str, Any] | None:
+        """Return the freshest fault from the live push or the polled log.
+
+        The polled error log (``bidire_comm_cmd`` rw_id 5) is only re-read at
+        setup and on a ``sys_status`` transition, so it goes stale by design; a
+        live push is by definition newer than anything already in it. Prefer the
+        push whenever one exists, and fall back to the log otherwise.
+        """
+        pushed = self._notification_codes[0] if self._notification_codes else None
+        logged: dict[str, Any] | None = None
+        codes = list(self.data.errors.err_code_list)
+        times = list(self.data.errors.err_code_list_time)
+        for index, raw_code in enumerate(codes):
+            code = abs(int(raw_code))
+            if code == 0:
+                continue
+            logged = {
+                "code": code,
+                "timestamp": (
+                    float(times[index]) if index < len(times) and times[index] else None
+                ),
+            }
+            break
+        if pushed is None:
+            return logged
+        if logged is None:
+            return pushed
+        if pushed["timestamp"] is None or logged["timestamp"] is None:
+            return pushed
+        return pushed if pushed["timestamp"] >= logged["timestamp"] else logged
+
+    def _cloud_error_text(self, code: int) -> tuple[str, str, str]:
+        """Return (module, implication, solution) from the cloud table, if any."""
+        error_info: ErrorInfo | None = self.data.errors.error_codes.get(f"{code}")
+        if error_info is None:
+            return "", "", ""
+        language = self.hass.config.language
+        implication = getattr(
+            error_info, f"{language}_implication", error_info.en_implication
+        )
+        solution = getattr(error_info, f"{language}_solution", error_info.en_solution)
+        return (
+            error_info.module or "",
+            implication or error_info.en_implication or "",
+            solution or error_info.en_solution or "",
+        )
 
     def get_error_code(self, number: int) -> int:
-        """Get error code from an error code list."""
-        try:
-            return int(abs(next(iter(self.data.errors.err_code_list))))
-        except StopIteration:
-            return 0
+        """Get the freshest known fault code, or 0 when there is none."""
+        fault = self._latest_fault()
+        return int(fault["code"]) if fault else 0
 
     def get_error_time(self, number: int) -> datetime.datetime | None:
-        """Get error time from an error code list."""
+        """Get the timestamp of the freshest known fault code."""
+        fault = self._latest_fault()
+        if fault is None or fault["timestamp"] is None:
+            return None
         try:
             return datetime.datetime.fromtimestamp(
-                next(iter(self.data.errors.err_code_list_time)), datetime.UTC
+                float(fault["timestamp"]), datetime.UTC
             )
-        except StopIteration:
+        except OSError, OverflowError, ValueError:
             return None
 
     def get_error_message(self, number: int) -> str:
-        """Return error message."""
-        try:
-            error_code: int = next(iter(self.data.errors.err_code_list))
+        """Return an operator-facing fault description that carries the number.
 
-            error_code = abs(error_code)
-            error_info: ErrorInfo = self.data.errors.error_codes[f"{error_code}"]
-
-            implication = (
-                getattr(error_info, f"{self.hass.config.language}_implication")
-                if hasattr(error_info, f"{self.hass.config.language}_implication")
-                else error_info.en_implication
-            )
-            solution = (
-                getattr(error_info, f"{self.hass.config.language}_solution")
-                if hasattr(error_info, f"{self.hass.config.language}_solution")
-                else error_info.en_solution
-            )
-
-            if implication == "":
-                implication = error_info.en_implication
-
-            if solution == "":
-                solution = error_info.en_solution
-
-            return f"{error_info.module}: {implication}, {solution}"
-
-        except StopIteration:
-            """Failed to get error code."""
+        🚨 The old implementation returned ``f"{module}: {implication},
+        {solution}"`` straight from the cloud table and nothing else. When that
+        row's localised text was blank the operator saw ``"mcu: , "`` -- no
+        code, no words, no way to look it up. ``describe_error_code`` always
+        leads with the numeric code and falls back to the bundled offline table
+        (``error_codes.json``) before giving up, so the worst case is now the
+        number plus "no description available".
+        """
+        fault = self._latest_fault()
+        if fault is None:
             return "No Error"
-        except KeyError:
-            """Failed to get error message."""
-            return "Error message not found"
+        code = int(fault["code"])
+        module, implication, solution = self._cloud_error_text(code)
+        return describe_error_code(
+            code, implication=implication, solution=solution, module=module
+        )
+
+    def error_log_snapshot(self) -> dict[str, Any]:
+        """Return every known fault code with its text, for sensor attributes.
+
+        Only ``err_code_list[0]`` was ever surfaced; the device reports ten
+        slots and the live push can carry several codes at once. Exposing the
+        whole tail as attributes costs no new entity (and so no translation
+        sweep) while making a multi-fault condition readable at a glance.
+        """
+
+        def _describe(code: int) -> str:
+            module, implication, solution = self._cloud_error_text(code)
+            return describe_error_code(
+                code, implication=implication, solution=solution, module=module
+            )
+
+        pushed = [
+            {
+                "code": entry["code"],
+                "timestamp": entry["timestamp"],
+                "message": _describe(entry["code"]),
+            }
+            for entry in self._notification_codes
+        ]
+        times = list(self.data.errors.err_code_list_time)
+        logged = [
+            {
+                "code": abs(int(raw_code)),
+                "timestamp": (
+                    float(times[index]) if index < len(times) and times[index] else None
+                ),
+                "message": _describe(abs(int(raw_code))),
+            }
+            for index, raw_code in enumerate(self.data.errors.err_code_list)
+            if abs(int(raw_code)) != 0
+        ]
+        return {
+            "pushed_faults": pushed,
+            "logged_faults": logged,
+            "cloud_error_table_loaded": bool(self.data.errors.error_codes),
+        }
 
     async def _async_update_data(self) -> MowingDevice:
         """Get data from the device."""
