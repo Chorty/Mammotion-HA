@@ -50,3 +50,8 @@ LubaBaseStationUpgrade.app/
 
 # Local copy of upstream pymammotion examples (reference only, not part of this integration)
 PyMammotion examples/
+
+# Editor settings: machine-specific and not shareable (the current file is an
+# absolute ESP-IDF path in the operator's home directory, unrelated to this
+# integration).
+.vscode/
