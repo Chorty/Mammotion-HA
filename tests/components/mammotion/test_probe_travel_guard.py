@@ -514,3 +514,168 @@ def test_the_overshoot_constant_covers_a_whole_position_chord() -> None:
     cover the whole chord, not the average draw from it.
     """
     assert _PROBE_TRAVEL_GUARD_OVERSHOOT_M >= 0.20 + 0.26
+
+
+# ---------------------------------------------------------------------------
+# 🐛 The baseline race that made `max_travel_m` unusable on real hardware
+# ---------------------------------------------------------------------------
+#
+# 2026-09-05: two consecutive real dispatches died at 344 ms and 273 ms having
+# sent 1 of 11 refresh writes, both reporting `position_sequence_gap` with
+# `travel_at_trip_m: 0.0` on a healthy link (RTK Fix, BLE -54 dBm, command and
+# stop both `ok`). The guard took its sequence baseline from
+# `handle.latest_position_sample` AFTER opening the stream, so any payload
+# arriving in between made the first drained sample fail `sequence ==
+# baseline + 1`.
+#
+# ⚠️ The whole existing harness above models `latest_position_sample = None`,
+# which yields baseline 0 against a stream starting at sequence 1 -- the single
+# arrangement in which the bug cannot appear. That is why 1053 passing tests
+# said nothing about it.
+
+
+class _SeededCoordinator(_FakeCoordinator):
+    """A coordinator whose handle has ALREADY seen samples, as on real hardware.
+
+    ``first_stream_sequence`` is where the queue picks up. Equal to the handle's
+    latest means one payload landed between opening the stream and reading the
+    baseline -- the exact live race.
+
+    ⚠️ The queue raises ``QueueEmpty`` once ``total`` samples are drained. A fake
+    that never empties makes the sampler's bounded drain take 64 per poll and the
+    run trips ``max_travel_reached`` before any contiguity check is interesting.
+    """
+
+    def __init__(
+        self,
+        *,
+        handle_latest_sequence: int,
+        first_stream_sequence: int,
+        step_m: float = 0.05,
+        total: int = 6,
+        skip_after: int | None = None,
+        drop_after: int | None = None,
+    ) -> None:
+        super().__init__(lambda sequence: (step_m * (sequence - 1), 0.0, True))
+        self._emitted = 0
+        self._first = first_stream_sequence
+        self._step_m = step_m
+        self._total = total
+        self._skip_after = skip_after
+        self._drop_after = drop_after
+        handle = SimpleNamespace(
+            latest_position_sample=SimpleNamespace(sequence=handle_latest_sequence),
+            position_epoch=1,
+        )
+        self.manager = SimpleNamespace(mower=lambda _name: handle)
+
+    def _next_position(self) -> Any:
+        if self._emitted >= self._total:
+            raise asyncio.QueueEmpty
+        sequence = self._first + self._emitted
+        if self._skip_after is not None and self._emitted > self._skip_after:
+            sequence += 1  # a genuine dropped payload, mid-window
+        self._emitted += 1
+        if self._drop_after is not None and self._emitted > self._drop_after:
+            self._stream.dropped_samples += 1
+        return SimpleNamespace(
+            sequence=sequence,
+            epoch=1,
+            x=self._step_m * self._emitted,
+            y=0.0,
+            toward=0.0,
+            pos_type=1,
+            zone_hash=1,
+            source="test",
+            received_at_monotonic=time.monotonic(),
+            valid_for_motion=True,
+        )
+
+
+def _run_guard(coordinator: _FakeCoordinator, **kwargs: Any) -> list[dict[str, Any]]:
+    return asyncio.run(
+        _capture_in_window_telemetry(
+            coordinator,
+            sample_interval_ms=100,
+            duration_ms=kwargs.pop("duration_ms", 600),
+            window_started=time.monotonic(),
+            stop_event=asyncio.Event(),
+            command="send_movement",
+            command_args={"linear_speed": 400, "angular_speed": 0},
+            max_travel_m=kwargs.pop("max_travel_m", 5.0),
+            travel_abort=asyncio.Event(),
+        )
+    )
+
+
+def test_the_first_sample_seeds_the_baseline_and_is_never_a_gap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """🚨 The live failure, replayed: a payload landed during guard setup.
+
+    The handle's latest is sequence 41 and the queue starts at 41 as well. The
+    old code demanded 42 from the first drained sample and tripped at zero
+    travel, killing the drive before it began.
+    """
+    _moving_snapshot(monkeypatch, 0.05)
+
+    samples = _run_guard(
+        _SeededCoordinator(handle_latest_sequence=41, first_stream_sequence=41)
+    )
+
+    assert not any(s.get("travel_guard_tripped") for s in samples)
+    # Travel was actually accumulated, so the guard ran rather than idling.
+    assert max(s.get("cumulative_travel_m") or 0.0 for s in samples) > 0.0
+
+
+def test_a_stream_backlog_older_than_the_handle_is_not_a_gap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A caller-supplied stream can hold payloads older than the handle's latest."""
+    _moving_snapshot(monkeypatch, 0.05)
+
+    samples = _run_guard(
+        _SeededCoordinator(handle_latest_sequence=41, first_stream_sequence=38)
+    )
+
+    assert not any(s.get("travel_guard_tripped") for s in samples)
+
+
+def test_a_genuine_gap_mid_window_still_trips(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fix must not buy its way out by weakening the check it exists for.
+
+    Contiguity is seeded, not abandoned: a payload dropped once the guard is
+    running is still a refusal, because travel may have happened inside it.
+    """
+    _moving_snapshot(monkeypatch, 0.05)
+
+    samples = _run_guard(
+        _SeededCoordinator(
+            handle_latest_sequence=41, first_stream_sequence=41, skip_after=2
+        )
+    )
+
+    tripped = [s for s in samples if s.get("travel_guard_tripped")]
+    assert tripped, "a mid-window dropped payload must still trip the guard"
+    assert tripped[0]["travel_guard_reason"] == "position_sequence_gap"
+
+
+def test_dropped_samples_reports_a_reason_of_its_own(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two different faults shared one name, so a live trip was unattributable.
+
+    On 2026-09-05 that cost two dispatches spent guessing which check had fired.
+    """
+    _moving_snapshot(monkeypatch, 0.05)
+    samples = _run_guard(
+        _SeededCoordinator(
+            handle_latest_sequence=41, first_stream_sequence=41, drop_after=2
+        )
+    )
+
+    tripped = [s for s in samples if s.get("travel_guard_tripped")]
+    assert tripped
+    assert tripped[0]["travel_guard_reason"] == "position_samples_dropped"

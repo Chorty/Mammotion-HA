@@ -7858,7 +7858,11 @@ def _apply_travel_guard(  # noqa: C901
 
     stream = guard_state["stream"]
     if stream.dropped_samples != guard_state["dropped_samples"]:
-        return _trip("position_sequence_gap")
+        # ⚠️ Distinct from `position_sequence_gap` on purpose. Both used to
+        # report the same string, so a live trip could not be told apart
+        # without re-deriving it by hand -- and on 2026-09-05 that cost a
+        # session two dispatches guessing which check had fired.
+        return _trip("position_samples_dropped")
     if position_sample is None:
         stale_ms = (time.monotonic() - guard_state["last_receipt_at"]) * 1000.0
         if stale_ms >= _PROBE_FEED_STALE_ABORT_MS:
@@ -7867,7 +7871,28 @@ def _apply_travel_guard(  # noqa: C901
         return False
     if position_sample.epoch != guard_state["epoch"]:
         return _trip("position_epoch_changed")
-    if position_sample.sequence != guard_state["sequence"] + 1:
+    # 🐛 **The FIRST sample seeds the baseline; it cannot be a gap.**
+    #
+    # The baseline used to come from `handle.latest_position_sample`, read
+    # AFTER the stream was opened -- so any payload landing in between (or
+    # already queued on a caller-supplied stream) made the first drained sample
+    # fail `sequence == baseline + 1`, and the guard tripped instantly at
+    # `travel_at_trip_m: 0.0`. Reproduced deterministically on hardware
+    # 2026-09-05, twice: the window died at 344 ms and 273 ms having sent 1 of
+    # 11 refresh writes, so a `max_travel_m` run could not travel at all.
+    #
+    # 🔑 The inconsistency was internal: `last_position` was ALREADY seeded from
+    # the first sample rather than checked against a prior value. Sequence now
+    # does the same thing, which is the only reading under which the two agree.
+    #
+    # This weakens nothing. Contiguity is still enforced across every later
+    # sample, `dropped_samples` still catches queue overruns during the window,
+    # and the epoch check is untouched. What is given up is contiguity with
+    # payloads that arrived BEFORE the guard began -- which carry no travel the
+    # guard is accountable for, since `last_position` ignores them too.
+    if guard_state["sequence"] is None:
+        guard_state["sequence"] = position_sample.sequence
+    elif position_sample.sequence != guard_state["sequence"] + 1:
         return _trip("position_sequence_gap")
     guard_state["sequence"] = position_sample.sequence
     guard_state["last_receipt_at"] = position_sample.received_at_monotonic
@@ -7961,11 +7986,13 @@ async def _capture_in_window_telemetry(  # noqa: C901
             travel_abort.set()
         return [sample]
     handle = coordinator.manager.mower(coordinator.device_name)
-    latest = getattr(handle, "latest_position_sample", None)
     guard_state = {
         "stream": position_stream,
         "epoch": getattr(handle, "position_epoch", 0),
-        "sequence": getattr(latest, "sequence", 0),
+        # None until the first drained sample seeds it -- see _apply_travel_guard.
+        # Seeding from `handle.latest_position_sample` here is what made the
+        # guard trip at zero travel on every real run.
+        "sequence": None,
         "dropped_samples": getattr(position_stream, "dropped_samples", 0),
         "last_receipt_at": time.monotonic(),
         "last_position": None,
