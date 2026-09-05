@@ -101,8 +101,12 @@ not deployed until 2026-09-04):
 ⚠️ **Live state was true at 2026-09-05 ~16:30 UTC. Requery HA and the mower
 before acting on it.** Mower **docked and charging**, 80%, RTK Fix, VIO 80
 features, BLE **-56 dBm**. Gate **disarmed and verified from live API AND RAW**
-after the run. ⚠️ The gate was found ARMED at rest **twice today** (the seventh
-and eighth occurrences).
+after the run. ✏️ **The gate was armed twice today and at least once was the
+OPERATOR arming it deliberately** to use the click-to-go card — *not* the
+"found armed at rest" defect. It was miscounted as occurrences seven and eight
+before they corrected it. 🔑 **Ask before attributing an armed gate to the
+defect; a card session is the ordinary explanation.** The standing count below
+stays at six.
 
 🏆 **`lawn_mower.dock` worked FIRST TRY from 8.7 m out, in ~75 s, with no
 `1309`** — the same command that failed twice last night. Corroborates the

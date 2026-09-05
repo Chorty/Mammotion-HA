@@ -54,11 +54,19 @@ browser-confirmed (`card v0.6.4-beta102`), so no new browser check is owed.
 
 ### beta101 -> beta102 — 2026-09-05 13:14-13:25 UTC, motion-disabled — the orientation fixes
 
-⚠️ **The gate was found ARMED at rest — the seventh time** (`enabled: true`,
+✏️ **The gate was armed before this deploy** (`enabled: true`,
 `real_motion_allowed: false`, blocker `position_not_valid_for_motion`, no active
 session). Disarmed before anything else and verified from the live API **and**
 RAW `core.config_entries`; verified again after the restart. **No motion was
 commanded at any point.**
+
+⚠️ **Originally written up here as "found ARMED at rest — the seventh time".
+That attribution was WRONG and the operator corrected it**: they arm the gate
+themselves when they use the click-to-go card, which is the ordinary reason a
+gate is on. 🔑 **An armed gate is not evidence of the
+`automation.mammotion_disarm_motion_gate_when_left_armed` defect unless nobody
+was using the card — ask before counting it.** The standing count in CLAUDE.md
+stays at six.
 
 Ships `09e4335e` — the three heading/orientation defects from
 `docs/findings-clicktopath-reliability-4m-20260904.md`, all offline:
