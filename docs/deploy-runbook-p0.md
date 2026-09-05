@@ -63,7 +63,8 @@ commanded at any point.**
 ⚠️ **Originally written up here as "found ARMED at rest — the seventh time".
 That attribution was WRONG and the operator corrected it**: they arm the gate
 themselves when they use the click-to-go card, which is the ordinary reason a
-gate is on. 🔑 **An armed gate is not evidence of the
+gate is on. **Both of today's armed-gate observations were theirs — zero defect
+sightings.** 🔑 **An armed gate is not evidence of the
 `automation.mammotion_disarm_motion_gate_when_left_armed` defect unless nobody
 was using the card — ask before counting it.** The standing count in CLAUDE.md
 stays at six.
