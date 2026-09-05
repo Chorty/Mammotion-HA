@@ -102,20 +102,46 @@ as the gate's backstop.
 
 ## 5. Legs, and which of them are scored
 
-**n = 4 total. Only 3 are scored.**
+### ✏️ AMENDED 2026-09-05, BEFORE ANY LEG WAS DISPATCHED — n = 4, all 4 scored
 
-### Leg 1 — the re-anchor leg. NOT SCORED.
+**The precondition for excluding leg 1 stopped being true before the series
+started, so the criterion TIGHTENS from 3 of 3 to 4 of 4.**
 
-At the time of writing, the mower's two heading sources disagree by **178.391°**
-on the dock (VIO 89.967, compass mirror 271.575) and `map_facing.confidence` is
-`unknown`. Per the shipped model the estimate cannot re-anchor until the mower
-drives. Leg 1 is that drive.
+Leg 1 was reserved as an unscored re-anchor drive because, as originally
+written, the mower was docked with its two heading sources disagreeing by
+**178.391°** and `map_facing.confidence` reading `unknown` — and the shipped
+model refuses an unconfirmed facing, so scoring it would have scored a case the
+code already declines to stand behind.
 
-Its prediction is **recorded but excluded from the criterion**, because the
-shipped model itself says an unconfirmed facing must not be trusted — scoring it
-would be scoring a case the code already refuses.
+The operator then started, paused and cancelled a mow session to get the mower
+off the dock. **That drive re-anchored the estimate on its own.** Before any leg
+of this series was dispatched, `map_facing` read:
 
-### Legs 2, 3, 4 — scored.
+| source | map bearing |
+| --- | --- |
+| `vio_heading` | 279.336° |
+| compass mirror | 279.985° |
+| last driven leg | 280.952° |
+
+`confidence: motion_confirmed`, `safe_to_aim_dispatch: true`, disagreement
+collapsed from 178.391° to **0.649°**.
+
+🔑 **Every leg will therefore be dispatched `motion_confirmed`, which §5 already
+names as the condition for a leg to be scored.** Leg 1 now meets that condition
+by the rule as written; excluding it would mean discarding a valid leg on a
+technicality.
+
+⚠️ **This amendment is recorded because amending a predeclaration is exactly the
+move the discipline exists to police.** Two facts make it legitimate, and both
+are checkable: it was made **before any data existed** — no verdict can have been
+flipped by it — and it moves the bar **up**, from 3 of 3 to 4 of 4, not down.
+🛑 **No comparable amendment may be made once a leg has run.**
+
+The re-anchoring itself becomes a §7 secondary observation rather than leg 1's
+job, and it is already answered: the collapse from 178.391° to 0.649° is the
+behaviour the model predicts, observed unprompted.
+
+### Legs 1, 2, 3 and 4 — all scored.
 
 Each must be dispatched with `map_facing.confidence == "motion_confirmed"` and
 `safe_to_aim_dispatch == true`, read from `export_runtime_state` immediately
@@ -148,12 +174,14 @@ Per leg, define:
   probe's own in-window samples.
 - `error` = the signed-normalised absolute difference, in degrees.
 
-> ### **PASS = 3 of 3 scored legs with `error` ≤ 10.0°.**
+> ### **PASS = 4 of 4 scored legs with `error` ≤ 10.0°.**
+>
+> *(Was 3 of 3; tightened by the §5 amendment before any leg was dispatched.)*
 
-⚠️ **The criterion is deliberately strict at 3/3, not "≥ 2 of 3".** With the
+⚠️ **The criterion is deliberately strict at 4/4, not "≥ 3 of 4".** With the
 banked mirror error at a mean 1.000° and a max of 3.003°, and the measurement
 noise floor at ~5.7°, a leg above 10° is not bad luck — it is the model failing.
-**2 of 3 is a FAIL with an informative failure**, and the response is a
+**3 of 4 is a FAIL with an informative failure**, and the response is a
 predeclared follow-up, not a retroactive softening of this line.
 
 ### The falsifier, stated plainly
@@ -168,10 +196,12 @@ is the result this series exists to be able to return.
 Putting a criterion on these would be fitting a rule to what is already
 suspected. They are recorded per-item and reported as observations:
 
-- Whether `current_orientation.disagreement_degrees` collapses from 178.391°
-  after leg 1, and to what.
-- Whether `map_facing.confidence` flips to `motion_confirmed` after leg 1.
-- Whether `toward` and `vio_heading` jump on leg 1 the way they did on
+- ✅ **Already answered before the series began**: whether the estimate
+  re-anchors on real motion. The operator's undocking mow session collapsed
+  `current_orientation.disagreement_degrees` from **178.391° to 0.649°** and
+  flipped `map_facing.confidence` to `motion_confirmed`, unprompted. Recorded as
+  an observation; it was never a scored claim.
+- Whether `toward` and `vio_heading` jump on any leg the way they did on
   2026-09-04 (~166°), and by how much.
 - Actual travel per leg against the 0.40 m bound, and the realised guard
   overshoot — two prior firings are the whole sample, so this is a third and
