@@ -2,6 +2,11 @@
 
 ## §0 Live state — 2026-08-31, end of session
 
+🚨 **THIS WHOLE FILE IS SUPERSEDED. `CLAUDE.md` → "Current build" is the live
+source of truth for what the host runs and what state the mower is in.** As of
+2026-09-05 the host runs **beta102**, not the beta94 described below. This file
+is kept for the evidence in its later sections; do not read §0 as current.
+
 ⚠️ **Everything BELOW this section is historical.** Reverify before acting on it.
 
 🏁 **HOST IS BETA94 (backend `0.8.12.post4`). THE LOGIN OUTAGE IS ROOT-CAUSED,

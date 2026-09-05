@@ -24,20 +24,46 @@ prose around them is still true. **One grep against the tree beats this file.**
 
 ---
 
-## Current build: beta101 (deployed 2026-09-04; backend `chorty-0.8.12.post4`)
+## Current build: beta102 (deployed 2026-09-05; backend `chorty-0.8.12.post4`)
 
-✅ **Bytes verified end to end** — 48/48 files byte-identical, card md5
-`466da31b` at both serving paths, Lovelace `?v=0.6.4-beta101&build=466da31b`,
+✅ **Bytes verified end to end** — 50/50 files byte-identical, card md5
+`28b6d7b3` at both serving paths, Lovelace `?v=0.6.4-beta102&build=28b6d7b3`,
 backend read from inside the container, config entry present and not
 `disabled_by`, 133 entities loaded, a dark-safe `raw_pymammotion_motion_probe`
-dry run returned `would_send: false` through the deployed executor.
-⚠️ **NOT YET browser-confirmed.** This release's actual change is card-text
-only (see below) — the discriminating check is the *rendered* wording, which
-needs the operator's browser; bytes on the host are necessary and not
-sufficient. Record: `docs/deploy-runbook-p0.md` → beta100 -> beta101.
+dry run returned `would_send: false` with 11/11 gates through the deployed
+executor. Record: `docs/deploy-runbook-p0.md` → beta101 -> beta102.
+⚠️ **NOT browser-confirmed — for beta102 OR beta101.** Ask the operator to
+confirm the console banner and card footer read `0.6.4-beta102`, and that the
+0.58 m advisory reads as a calibration note rather than an alarm.
+
+**What beta102 shipped** (`09e4335e`, the three orientation defects from
+`docs/findings-clicktopath-reliability-4m-20260904.md`, all offline):
+- 🔴 **Device fault codes now reach the operator.** The live push is kept
+  instead of parsed-and-discarded, every message leads with the numeric code,
+  a bundled 449-code offline table (from the vendor app's own asset) backs up a
+  blank cloud row, and all ten log slots are exposed as sensor attributes
+  instead of only slot 0. 🏆 **Confirmed live**: `sensor.*_last_error` now reads
+  `1309 (navigation): Heading calibration failed because the robot starts
+  working at the perimeter of a task area — Please control the robot into a task
+  area and retry`, and `logged_faults` shows **all five 1309 events at the exact
+  timestamps the vendor app showed**. 🔑 **They were on the host the whole time**
+  — the old accessor read slot 0 only and omitted the number from the message.
+- 🔑 **`runtime_state.map_facing` is the ONE place to ask for facing.** It uses
+  the reflection and nothing else, and separates corroboration from freshness:
+  `motion_confirmed` (the bearing of the leg the mower actually drove agrees
+  with its published facing — the only value that sets `safe_to_aim_dispatch`),
+  `corroborated_not_motion_confirmed`, or `unknown`. `current_orientation`
+  keeps its old meaning and now says so in the payload.
+- 🚨 **`start_geometry` replaces the circular alignment check.** Filled in only
+  from the VIO calibration drive's independently measured
+  `map_motion_heading_degrees`; `None`-with-a-reason everywhere else. Never
+  from `toward`.
+- `_TOWARD_MIRROR_DEGREES` is one constant again (was three copies of 90.13).
+
+⚠️ `docs/accepted-profile.json` is UNTOUCHED. No Gate 5 is owed.
 
 **What beta101 shipped** (carried from `958a99ff`, cut same-day as beta100 but
-not deployed until now):
+not deployed until 2026-09-04):
 - ✏️ **Re-derived the 0.58 m advisory's interpretation, arithmetic unchanged.**
   Both the backend docstring and the card previously asserted it "is why the
   measured-good regime is ~0.8 m and why 3.0 m legs miss" — refuted, since
@@ -59,11 +85,19 @@ not deployed until now):
   overshoot — the sibling of a beta98 fix that was never propagated.
 - 🧹 Stale speed constants retired from the operator-facing service text.
 
-⚠️ **Live state was true at 2026-09-05 ~02:30 UTC. Requery HA and the mower
-before acting on it.** Mower **docked and charging** at (4.3188, 3.2862) after a
-real-motion session, ~33% and climbing, RTK Fix, BLE marginal (-74 dBm), gate
-**disarmed and verified from live API AND RAW**. ⚠️ VIO was dead
-(`tracked_features: 0`) at session end — it was night; expect it back in daylight.
+⚠️ **Live state was true at 2026-09-05 ~13:25 UTC. Requery HA and the mower
+before acting on it.** Mower **docked**, `MODE_READY`, VIO healthy again in
+daylight (`tracked_features: 80`, feed live). Gate **disarmed and verified from
+live API AND RAW** — ⚠️ **it was found ARMED at rest again first, the seventh
+time.**
+
+🚨 **THE MOWER DOES NOT CURRENTLY KNOW WHICH WAY IT IS POINTING.** Live on the
+dock, `current_orientation` reports `heading_sources_disagree` at **178.391°**
+(VIO 89.967, compass mirror 271.575) and `map_facing.confidence` is `unknown`.
+That is the ~180° ambiguity signature from the 2026-09-04 incident, present
+right now, and it is what `1309` and the manufacturer's own remedy describe.
+🔑 **Per the shipped model it cannot re-anchor until the mower drives** — so any
+hardware work has to start by establishing facing, not by assuming it.
 
 🚨 **The 4.0 m reliability series ran 2026-09-04 and is a determined FAIL at
 n = 4** (3 `target_reached` at 0.1140 / 0.1310 / 0.1354 m, 1 refusal at 0.1656 m).

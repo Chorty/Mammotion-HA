@@ -8,6 +8,81 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta101 -> beta102 — 2026-09-05 13:14-13:25 UTC, motion-disabled — the orientation fixes
+
+⚠️ **The gate was found ARMED at rest — the seventh time** (`enabled: true`,
+`real_motion_allowed: false`, blocker `position_not_valid_for_motion`, no active
+session). Disarmed before anything else and verified from the live API **and**
+RAW `core.config_entries`; verified again after the restart. **No motion was
+commanded at any point.**
+
+Ships `09e4335e` — the three heading/orientation defects from
+`docs/findings-clicktopath-reliability-4m-20260904.md`, all offline:
+
+- Device fault codes reach the operator: the live push is kept instead of
+  discarded, every message leads with the numeric code, a bundled 449-code
+  offline table backs up a blank cloud row, and all ten log slots are exposed as
+  sensor attributes instead of only slot 0.
+- `runtime_state.map_facing` — the one place to ask for facing, with a
+  freshness concept (`motion_confirmed` / `corroborated_not_motion_confirmed` /
+  `unknown`) built on the bearing of the leg the mower actually drove.
+- `start_geometry` on every vector-segment run, filled in only from the VIO
+  calibration drive's independently measured facing; never from `toward`.
+
+`docs/accepted-profile.json` is untouched. No Gate 5 is owed.
+
+**Verification tail — measured, not expected:**
+
+| check | value |
+| --- | --- |
+| files byte-identical | **50 / 50** (48 + `error_codes.py`, `error_codes.json`) |
+| archive SHA-256, local == host | `67fa70430ced846e53e9740816e471b0c7c4355a9d11492eac83ea68163a246a` |
+| card md5, local == both host paths | `28b6d7b3f448b82bf404767259afb149` |
+| AppleDouble `._*` files | **0** |
+| host `manifest.json` / both `CARD_VERSION` | `0.6.4-beta102` |
+| Lovelace resource, read back | `?v=0.6.4-beta102&build=28b6d7b3` |
+| backend, from inside the container | `0.8.12.post4` (unchanged) |
+| API back after restart | **61 s**; 133 mammotion entities at 174 s |
+| config entry | present, not `disabled_by` (`01M1CVFWHYWW527S9BM5M2BDP3`) |
+| dark-safe dry run | `raw_pymammotion_motion_probe` dry_run: `would_send: false`, 11/11 gates, zero blockers |
+| gate, live API | `enabled: false`, `real_motion_allowed: false`, no session |
+| gate, RAW `.storage` | `enable_experimental_motion: false` |
+
+🏆 **The error-code fix is confirmed on live hardware, and it settles findings
+section 6.6.** `sensor.back_yard_clip_skywalker_last_error` now reads:
+
+> `1309 (navigation): Heading calibration failed because the robot starts working
+> at the perimeter of a task area — Please control the robot into a task area and
+> retry`
+
+and the new `logged_faults` attribute shows **all five 1309 events, at the exact
+timestamps the vendor app showed** — 01:24:49 / 01:36:06 / 02:04:09 / 02:09:21 /
+02:11:50 UTC, matching the app's 21:24 / 21:36 / 22:04 / 22:09 / 22:11 local to
+the minute — plus `2804 (mcu)` BLE-delay, `2709 (mcu)` low battery, `1425
+(common)` 3D-vision, and two `1014 (navigation)` bumper hits.
+
+🔑 **So the answer to "was the code available all along and merely dropped?" is
+YES, and more completely than the findings doc supposed.** The codes were in the
+device's own error log, the cloud table decodes them fully, and every one of them
+was already on the host. The old accessor read `err_code_list[0]` and nothing
+else, and rendered `f"{module}: {implication}, {solution}"` with the number
+omitted — so whatever sat in slot 0 at the moment of reading (blank English text,
+module `mcu`) was all the operator ever got, and the other nine slots, including
+five explicit orientation faults, were unreachable.
+
+🚨 **A live reading worth acting on before any hardware work:** with the mower
+docked, `current_orientation` reports `heading_sources_disagree` at **178.391°**
+(VIO 89.967, compass mirror 271.575) and `map_facing.confidence` is `unknown`.
+That is the ~180° ambiguity signature from the 2026-09-04 incident, present right
+now — and it is exactly what 1309 and the manufacturer's remedy describe. The
+mower's estimate has not re-anchored, and per the shipped model it cannot until
+it drives.
+
+⚠️ **NOT YET browser-confirmed** — and beta101's card wording is still not
+browser-confirmed either. Ask the operator to confirm the console banner and card
+footer both read `0.6.4-beta102`, and that the 0.58 m advisory text reads as a
+calibration note rather than an alarm.
+
 ### beta100 -> beta101 — 2026-09-04, motion-disabled — the 0.58 m advisory wording, card-only
 
 **No motion was commanded. The gate never left disarmed** — verified before and
