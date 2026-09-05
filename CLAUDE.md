@@ -98,14 +98,16 @@ not deployed until 2026-09-04):
   overshoot — the sibling of a beta98 fix that was never propagated.
 - 🧹 Stale speed constants retired from the operator-facing service text.
 
-⚠️ **Live state was true at 2026-09-05 ~16:15 UTC. Requery HA and the mower
-before acting on it.** Mower is **OFF THE DOCK**, stopped at **(5.4852,
--5.3257)** in *Backyard Right*, `MODE_READY`, RTK Fix, VIO 80 features,
-**battery 81%**, **BLE -76 dBm (at the documented death threshold)**. Gate
-**disarmed and verified from live API AND RAW** after the run.
-🔴 **It needs docking** — it is sitting in the yard, not on the charger.
-⚠️ The gate was found ARMED at rest **twice today** (the seventh and eighth
-occurrences).
+⚠️ **Live state was true at 2026-09-05 ~16:30 UTC. Requery HA and the mower
+before acting on it.** Mower **docked and charging**, 80%, RTK Fix, VIO 80
+features, BLE **-56 dBm**. Gate **disarmed and verified from live API AND RAW**
+after the run. ⚠️ The gate was found ARMED at rest **twice today** (the seventh
+and eighth occurrences).
+
+🏆 **`lawn_mower.dock` worked FIRST TRY from 8.7 m out, in ~75 s, with no
+`1309`** — the same command that failed twice last night. Corroborates the
+2026-09-04 §6.6 diagnosis that those failures were orientation. ⚠️ n = 1 and the
+conditions differ in several ways; corroboration, not proof.
 
 🏆 **The facing question is ANSWERED and the model works on the ground.**
 `map_facing` predicted the driven direction to a **mean 1.382°** over four

@@ -185,7 +185,27 @@ operator now gets a number they can search for and report. ⚠️ **What 5004 me
 is unknown and is not guessed at here.** It is the first genuinely unmapped code
 seen since the change and is worth watching for a correlation with motion.
 
-### 4.5 Link and battery
+### 4.5 🏆 The mower docked itself first try — corroborating last night's diagnosis
+
+`lawn_mower.dock` was dispatched from (5.4852, -5.3257), **8.7 m** out, with the
+gate disarmed. It returned in **~75 s**: `returning` -> `turn_area_inside` ->
+`charge_on`, **no `1309`**.
+
+🔑 **That is independent corroboration of
+`findings-clicktopath-reliability-4m-20260904.md` section 6.6.** The same command
+failed twice last night, shuffling 0.20 m and giving up 10.35 m from the dock,
+while the device emitted `Robot orientation unavailable (1309)` five times with
+the remedy *"move the robot onto the charging station or to a mapped area, then
+try again."* Today it ran from well inside a mapped area with a
+`motion_confirmed` heading and simply worked.
+
+⚠️ **Corroboration, not proof.** This is n = 1 against last night's n = 2, the
+conditions differ in more ways than one (position, battery, daylight, link
+quality), and no `1309` was induced deliberately. It is recorded because it is
+consistent with the diagnosis and cost nothing, **not** as a demonstration that
+orientation was the cause.
+
+### 4.6 Link and battery
 
 BLE finished at **-76 dBm** — the documented death threshold — having started at
 -54. Battery 100% → 81% across the session. No leg suffered a transport failure,
