@@ -8,6 +8,50 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### beta102 -> beta103 — 2026-09-05 ~15:50-16:00 UTC — the travel-guard fix, then a REAL MOTION series
+
+⚠️ **Unlike every entry above this one, motion was commanded after this deploy**
+— five bounded forward legs with the operator present, predeclared and
+criterion-scored. Full record: `docs/findings-facing-prediction-20260905.md`.
+The gate was disarmed for the deploy itself, armed only for the run, and
+**disarmed and verified from the live API AND RAW afterwards**.
+
+Ships `4f908b04`: the travel guard took its sequence baseline from
+`handle.latest_position_sample` *after* opening the position stream, so any
+payload landing in that gap tripped `position_sequence_gap` on the first drained
+sample at `travel_at_trip_m: 0.0`. Found on hardware — two dispatches died at
+344 ms and 273 ms having sent 1 of 11 refresh writes and travelled ~0.09 m
+against a 0.40 m bound. `max_travel_m` was unusable in practice.
+
+**Verification tail — measured, not expected:**
+
+| check | value |
+| --- | --- |
+| files byte-identical | **50 / 50** |
+| archive SHA-256, local == host | `45f199c66665e1a3457951898a98d745aa131fc0fc9bedbec09261b681663f91` |
+| card md5, local == both host paths | `1b3a404dbcaaba2d5fff7d66e9fcfea9` |
+| AppleDouble `._*` files | **0** |
+| host `manifest.json` / both `CARD_VERSION` | `0.6.4-beta103` |
+| Lovelace resource, read back | `?v=0.6.4-beta103&build=1b3a404d` |
+| backend, from inside the container | `0.8.12.post4` (unchanged) |
+| API back after restart | **31 s**; 133 mammotion entities at 163 s |
+| gate, live API + RAW, after the run | `enable_experimental_motion: false` |
+
+✅ **The fix is confirmed on hardware.** Refresh writes went from 1-of-11 on both
+void dispatches to **10 or 11 of 11** on all five legs, and travel from
+0.058-0.095 m to **0.626-0.684 m** — while the guard still did its real job,
+stopping two legs on `max_travel_reached` at 0.4296 and 0.4006 m. Zero false
+`position_sequence_gap` trips in five runs.
+
+🏆 **The run it unblocked passed**: `map_facing` predicted the driven direction
+to a mean **1.382°** over four scored legs against a predeclared 10° bar.
+🚨 **Read §0 of the findings before quoting that** — every leg ran within ~4° of
+the heading where the mirror and the additive offset cross, so it does not
+discriminate the two models.
+
+⚠️ **beta103's card content is unchanged from beta102**, which was
+browser-confirmed (`card v0.6.4-beta102`), so no new browser check is owed.
+
 ### beta101 -> beta102 — 2026-09-05 13:14-13:25 UTC, motion-disabled — the orientation fixes
 
 ⚠️ **The gate was found ARMED at rest — the seventh time** (`enabled: true`,

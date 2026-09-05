@@ -1,0 +1,379 @@
+{
+ "series": "does the corrected facing derivation predict the driven direction on the ground?",
+ "date_utc": "2026-09-05",
+ "predeclaration": {
+  "first_edition": "docs/predeclared-facing-prediction-20260905.md",
+  "second_edition": "docs/predeclared-facing-prediction-20260905-ed2.md",
+  "committed_before_any_scored_leg": true,
+  "criterion": "PASS = 4 of 4 scored legs with abs error <= 10.0 deg"
+ },
+ "build": {
+  "integration": "beta103",
+  "commit": "4f908b04",
+  "backend": "chorty-0.8.12.post4",
+  "service": "raw_pymammotion_motion_probe",
+  "card_used": false
+ },
+ "verdict": {
+  "result": "PASS",
+  "scored_legs": 4,
+  "legs_within_criterion": 4,
+  "abs_error_degrees": {
+   "values": [
+    1.05,
+    0.899,
+    1.617,
+    1.961
+   ],
+   "mean": 1.382,
+   "median": 1.333,
+   "max": 1.961
+  },
+  "criterion_degrees": 10.0
+ },
+ "critical_scope_limit": {
+  "headline": "This series does NOT discriminate the mirror from the additive offset, and must never be cited as if it did.",
+  "why": "The two models are equal where 90.13 - toward == toward + 102.4, i.e. toward = 173.865 deg. Every leg ran at toward 167.5-170.1 deg, within 3.7-6.3 deg of that crossing, so the models differed by only 7.4 deg here -- less than the 10 deg criterion.",
+  "consequence": "Under the additive offset the same four legs would have scored 8.849 / 9.126 / 12.192 / 14.297 deg: it would have FAILED the criterion, but only on two of four legs, and by a margin that proves nothing about the model form.",
+  "what_does_discriminate": "The banked 43-pulse dataset in docs/evidence-clicktopath-reliability-4m-20260904.json, where the mirror is a mean 1.000 deg and the additive offset a mean 87.478 deg across many headings.",
+  "additive_counterfactual_abs_error_degrees": [
+   8.849,
+   9.126,
+   12.192,
+   14.297
+  ]
+ },
+ "secondary_observations": {
+  "systematic_positive_bias": {
+   "note": "EVERY leg's signed error is positive: the mower drives slightly clockwise of where its estimate points.",
+   "signed_errors_all_legs": [
+    2.619,
+    1.05,
+    0.899,
+    1.617,
+    1.961
+   ],
+   "mean_scored": 1.382,
+   "caveat": "n=4 (5 with the unscored leg). DO NOT FIT A CORRECTION TO IT. Recorded as the direction to check next."
+  },
+  "travel_guard_after_the_fix": {
+   "note": "The 4f908b04 fix is confirmed on hardware: refresh writes went from 1-of-11 on both void beta102 dispatches to 10-or-11-of-11 on all five, and travel from 0.058-0.095 m to 0.626-0.684 m.",
+   "trips_on_max_travel_reached": 2,
+   "trip_travel_m": [
+    0.4296,
+    0.4006
+   ],
+   "false_sequence_gap_trips": 0
+  },
+  "guard_overshoot_past_trip_m": {
+   "values": [
+    0.1968,
+    0.2252
+   ],
+   "constant_allows": 0.5,
+   "prior_sample": [
+    0.276,
+    0.307
+   ],
+   "caveat": "Two new points against a prior n=2. All four are inside 0.50. Recorded, NOT fitted."
+  },
+  "re_anchoring": {
+   "note": "Confirmed twice. On the dock the two heading sources disagreed by 178.391 deg; the operator's undocking mow session collapsed that to 0.649 deg. After the HA restart cleared the in-memory tracker, one unscored leg restored motion_confirmed."
+  },
+  "facing_drift_across_the_series": [
+   {
+    "after": "A_reanchor",
+    "vio_heading": 280.344,
+    "compass_mirror": 279.985,
+    "last_driven_leg": 279.413
+   },
+   {
+    "after": "1",
+    "vio_heading": 280.772,
+    "compass_mirror": 279.985,
+    "last_driven_leg": 280.559
+   },
+   {
+    "after": "2",
+    "vio_heading": 281.954,
+    "compass_mirror": 281.151,
+    "last_driven_leg": 283.069
+   },
+   {
+    "after": "3",
+    "vio_heading": 282.266,
+    "compass_mirror": 282.6,
+    "last_driven_leg": 283.808
+   },
+   {
+    "after": "4",
+    "vio_heading": 283.442,
+    "compass_mirror": 283.801,
+    "last_driven_leg": 285.087
+   }
+  ],
+  "undocumented_fault_code_5004": {
+   "occurrences_utc": [
+    "2026-09-05T14:45:07+00:00",
+    "2026-09-05T15:11:40+00:00"
+   ],
+   "surfaced_as": "5004: no description available for this code",
+   "absent_from": [
+    "custom_components/mammotion/error_codes.json (449 codes)",
+    "the vendor APK's servicecode.csv (368 rows)",
+    "the live cloud error table (loaded, but carries no row for it)"
+   ],
+   "note": "This is the beta102 error path degrading exactly as designed: an unknown code reaches the operator as a NUMBER rather than as the old empty 'mcu: , '. What 5004 means is unknown and is NOT guessed at here."
+  },
+  "link_and_battery": {
+   "ble_rssi_dbm_at_end": -76,
+   "battery_percent_start": 100,
+   "battery_percent_end": 81,
+   "note": "BLE ended at -76 dBm, the documented death threshold. No leg suffered a transport failure, but a longer series would have."
+  }
+ },
+ "geometry": {
+  "start": {
+   "x": 4.7753,
+   "y": -2.1332
+  },
+  "end": {
+   "x": 5.4852,
+   "y": -5.3257
+  },
+  "net_displacement_m": 3.27,
+  "map_corridor_clearance_m_at_start": 9.28,
+  "area": "Backyard Right"
+ },
+ "safety": {
+  "gates_per_leg": "11/11 passed, zero blockers, on all five dry runs and all five real dispatches",
+  "named_refusals": 0,
+  "gate_disarmed_after": true,
+  "gate_disarm_verified_live_api_and_raw": true,
+  "operator_present_and_watching": true,
+  "protocol_deviation": "One standing operator go covered the sequence rather than a separate go per leg, because the 300 s motion-confirmation TTL cannot survive five separate confirmation round-trips. Declared to the operator before the run, and they retained a stop at any point."
+ },
+ "what_this_authorizes": "Only that map_facing.safe_to_aim_dispatch may be relied on to aim a dispatch, in this yard, at this scale. No change to docs/accepted-profile.json, no change to any bound, tolerance or budget, and no resumption of the 4.0 m series.",
+ "legs": [
+  {
+   "leg": "A_reanchor",
+   "scored": false,
+   "dispatched_at_utc": "2026-09-05T16:07:02.145863+00:00",
+   "start": {
+    "x": 4.7753,
+    "y": -2.1332,
+    "toward": 170.145
+   },
+   "end": {
+    "x": 4.9028,
+    "y": -2.7465,
+    "toward": 170.145
+   },
+   "map_facing_confidence_at_dispatch": "corroborated_not_motion_confirmed",
+   "safe_to_aim_dispatch_at_dispatch": false,
+   "sources_at_dispatch": {
+    "vio_heading": 279.125,
+    "compass_mirror": 279.985,
+    "last_driven_leg": null
+   },
+   "predicted_map_bearing_degrees": 279.125,
+   "measured_map_bearing_degrees": 281.7440374623303,
+   "abs_error_degrees": 2.6190374623303114,
+   "signed_error_degrees": 2.619,
+   "travel_m": 0.6264,
+   "bearing_noise_floor_degrees_at_this_travel": 3.65,
+   "travel_guard": {
+    "tripped": true,
+    "trip_reason": "max_travel_reached",
+    "travel_at_trip_m": 0.4296
+   },
+   "motion_refresh": {
+    "sent": 10,
+    "max": 11,
+    "aborted_early": true,
+    "elapsed_ms": 2125.0
+   },
+   "probe_reason": "completed",
+   "counterfactual_additive_offset": {
+    "prediction_degrees": 272.545,
+    "abs_error_degrees": 9.199
+   }
+  },
+  {
+   "leg": "1",
+   "scored": true,
+   "dispatched_at_utc": "2026-09-05T16:08:13.039112+00:00",
+   "start": {
+    "x": 4.9028,
+    "y": -2.7465,
+    "toward": 170.145
+   },
+   "end": {
+    "x": 5.038,
+    "y": -3.4174,
+    "toward": 170.145
+   },
+   "map_facing_confidence_at_dispatch": "motion_confirmed",
+   "safe_to_aim_dispatch_at_dispatch": true,
+   "sources_at_dispatch": {
+    "vio_heading": 280.344,
+    "compass_mirror": 279.985,
+    "last_driven_leg": 279.413
+   },
+   "predicted_map_bearing_degrees": 280.344,
+   "measured_map_bearing_degrees": 281.3936669691007,
+   "abs_error_degrees": 1.0496669691007128,
+   "signed_error_degrees": 1.05,
+   "travel_m": 0.6844,
+   "bearing_noise_floor_degrees_at_this_travel": 3.34,
+   "travel_guard": {
+    "tripped": false,
+    "trip_reason": null,
+    "travel_at_trip_m": 0.2932
+   },
+   "motion_refresh": {
+    "sent": 11,
+    "max": 11,
+    "aborted_early": null,
+    "elapsed_ms": 2367.4
+   },
+   "probe_reason": "completed",
+   "counterfactual_additive_offset": {
+    "prediction_degrees": 272.545,
+    "abs_error_degrees": 8.849
+   }
+  },
+  {
+   "leg": "2",
+   "scored": true,
+   "dispatched_at_utc": "2026-09-05T16:09:24.368441+00:00",
+   "start": {
+    "x": 5.038,
+    "y": -3.4174,
+    "toward": 170.145
+   },
+   "end": {
+    "x": 5.1646,
+    "y": -4.0303,
+    "toward": 168.979
+   },
+   "map_facing_confidence_at_dispatch": "motion_confirmed",
+   "safe_to_aim_dispatch_at_dispatch": true,
+   "sources_at_dispatch": {
+    "vio_heading": 280.772,
+    "compass_mirror": 279.985,
+    "last_driven_leg": 280.559
+   },
+   "predicted_map_bearing_degrees": 280.772,
+   "measured_map_bearing_degrees": 281.67082054968887,
+   "abs_error_degrees": 0.8988205496888781,
+   "signed_error_degrees": 0.899,
+   "travel_m": 0.6258,
+   "bearing_noise_floor_degrees_at_this_travel": 3.66,
+   "travel_guard": {
+    "tripped": true,
+    "trip_reason": "max_travel_reached",
+    "travel_at_trip_m": 0.4006
+   },
+   "motion_refresh": {
+    "sent": 10,
+    "max": 11,
+    "aborted_early": true,
+    "elapsed_ms": 2150.9
+   },
+   "probe_reason": "completed",
+   "counterfactual_additive_offset": {
+    "prediction_degrees": 272.545,
+    "abs_error_degrees": 9.126
+   }
+  },
+  {
+   "leg": "3",
+   "scored": true,
+   "dispatched_at_utc": "2026-09-05T16:10:35.233673+00:00",
+   "start": {
+    "x": 5.1646,
+    "y": -4.0303,
+    "toward": 168.979
+   },
+   "end": {
+    "x": 5.3202,
+    "y": -4.6749,
+    "toward": 167.5301
+   },
+   "map_facing_confidence_at_dispatch": "motion_confirmed",
+   "safe_to_aim_dispatch_at_dispatch": true,
+   "sources_at_dispatch": {
+    "vio_heading": 281.954,
+    "compass_mirror": 281.151,
+    "last_driven_leg": 283.069
+   },
+   "predicted_map_bearing_degrees": 281.954,
+   "measured_map_bearing_degrees": 283.5710136394507,
+   "abs_error_degrees": 1.617013639450704,
+   "signed_error_degrees": 1.617,
+   "travel_m": 0.6631,
+   "bearing_noise_floor_degrees_at_this_travel": 3.45,
+   "travel_guard": {
+    "tripped": false,
+    "trip_reason": null,
+    "travel_at_trip_m": 0.2868
+   },
+   "motion_refresh": {
+    "sent": 11,
+    "max": 11,
+    "aborted_early": null,
+    "elapsed_ms": 2360.7
+   },
+   "probe_reason": "completed",
+   "counterfactual_additive_offset": {
+    "prediction_degrees": 271.379,
+    "abs_error_degrees": 12.192
+   }
+  },
+  {
+   "leg": "4",
+   "scored": true,
+   "dispatched_at_utc": "2026-09-05T16:11:47.293708+00:00",
+   "start": {
+    "x": 5.3202,
+    "y": -4.6749,
+    "toward": 167.5301
+   },
+   "end": {
+    "x": 5.4852,
+    "y": -5.3257,
+    "toward": 166.3291
+   },
+   "map_facing_confidence_at_dispatch": "motion_confirmed",
+   "safe_to_aim_dispatch_at_dispatch": true,
+   "sources_at_dispatch": {
+    "vio_heading": 282.266,
+    "compass_mirror": 282.6,
+    "last_driven_leg": 283.808
+   },
+   "predicted_map_bearing_degrees": 282.266,
+   "measured_map_bearing_degrees": 284.2266629574076,
+   "abs_error_degrees": 1.9606629574075782,
+   "signed_error_degrees": 1.961,
+   "travel_m": 0.6714,
+   "bearing_noise_floor_degrees_at_this_travel": 3.41,
+   "travel_guard": {
+    "tripped": false,
+    "trip_reason": null,
+    "travel_at_trip_m": 0.2535
+   },
+   "motion_refresh": {
+    "sent": 11,
+    "max": 11,
+    "aborted_early": null,
+    "elapsed_ms": 2358.0
+   },
+   "probe_reason": "completed",
+   "counterfactual_additive_offset": {
+    "prediction_degrees": 269.93,
+    "abs_error_degrees": 14.297
+   }
+  }
+ ]
+}

@@ -24,17 +24,30 @@ prose around them is still true. **One grep against the tree beats this file.**
 
 ---
 
-## Current build: beta102 (deployed 2026-09-05; backend `chorty-0.8.12.post4`)
+## Current build: beta103 (deployed 2026-09-05; backend `chorty-0.8.12.post4`)
 
 ✅ **Bytes verified end to end** — 50/50 files byte-identical, card md5
-`28b6d7b3` at both serving paths, Lovelace `?v=0.6.4-beta102&build=28b6d7b3`,
+`1b3a404d` at both serving paths, Lovelace `?v=0.6.4-beta103&build=1b3a404d`,
 backend read from inside the container, config entry present and not
-`disabled_by`, 133 entities loaded, a dark-safe `raw_pymammotion_motion_probe`
-dry run returned `would_send: false` with 11/11 gates through the deployed
-executor. Record: `docs/deploy-runbook-p0.md` → beta101 -> beta102.
-⚠️ **NOT browser-confirmed — for beta102 OR beta101.** Ask the operator to
-confirm the console banner and card footer read `0.6.4-beta102`, and that the
-0.58 m advisory reads as a calibration note rather than an alarm.
+`disabled_by`, 133 entities loaded, API back in 31 s.
+✅ **beta102 and beta101 were both browser-confirmed** (card footer
+`v0.6.4-beta102`, and the 0.58 m advisory reads as a calibration note).
+⚠️ beta103's card text is unchanged from beta102, so nothing new needs a browser
+check. Record: `docs/deploy-runbook-p0.md`.
+
+**What beta103 shipped** (`4f908b04`): 🐛 **the travel guard tripped at ZERO
+travel on every real run.** It took its sequence baseline from
+`handle.latest_position_sample` *after* opening the position stream, so any
+payload arriving in that gap failed the first contiguity check. Found on
+hardware: two dispatches died at 344 ms and 273 ms having sent 1 of 11 refresh
+writes, travelling ~0.09 m against a 0.40 m bound. **`max_travel_m` was unusable
+in practice.** The first sample now seeds the baseline, as `last_position`
+already did. Also splits `position_samples_dropped` out of
+`position_sequence_gap` — the two shared one string, which cost two dispatches
+spent guessing which had fired.
+⚠️ **The old harness modelled `latest_position_sample = None`** — baseline 0
+against a stream starting at 1, the one arrangement where the bug cannot appear.
+That is why 1053 passing tests said nothing about it.
 
 **What beta102 shipped** (`09e4335e`, the three orientation defects from
 `docs/findings-clicktopath-reliability-4m-20260904.md`, all offline):
@@ -85,19 +98,24 @@ not deployed until 2026-09-04):
   overshoot — the sibling of a beta98 fix that was never propagated.
 - 🧹 Stale speed constants retired from the operator-facing service text.
 
-⚠️ **Live state was true at 2026-09-05 ~13:25 UTC. Requery HA and the mower
-before acting on it.** Mower **docked**, `MODE_READY`, VIO healthy again in
-daylight (`tracked_features: 80`, feed live). Gate **disarmed and verified from
-live API AND RAW** — ⚠️ **it was found ARMED at rest again first, the seventh
-time.**
+⚠️ **Live state was true at 2026-09-05 ~16:15 UTC. Requery HA and the mower
+before acting on it.** Mower is **OFF THE DOCK**, stopped at **(5.4852,
+-5.3257)** in *Backyard Right*, `MODE_READY`, RTK Fix, VIO 80 features,
+**battery 81%**, **BLE -76 dBm (at the documented death threshold)**. Gate
+**disarmed and verified from live API AND RAW** after the run.
+🔴 **It needs docking** — it is sitting in the yard, not on the charger.
+⚠️ The gate was found ARMED at rest **twice today** (the seventh and eighth
+occurrences).
 
-🚨 **THE MOWER DOES NOT CURRENTLY KNOW WHICH WAY IT IS POINTING.** Live on the
-dock, `current_orientation` reports `heading_sources_disagree` at **178.391°**
-(VIO 89.967, compass mirror 271.575) and `map_facing.confidence` is `unknown`.
-That is the ~180° ambiguity signature from the 2026-09-04 incident, present
-right now, and it is what `1309` and the manufacturer's own remedy describe.
-🔑 **Per the shipped model it cannot re-anchor until the mower drives** — so any
-hardware work has to start by establishing facing, not by assuming it.
+🏆 **The facing question is ANSWERED and the model works on the ground.**
+`map_facing` predicted the driven direction to a **mean 1.382°** over four
+scored legs (max 1.961°) against a predeclared 10° bar — **PASS at 4 of 4**.
+Record: `docs/findings-facing-prediction-20260905.md` +
+`docs/evidence-facing-prediction-20260905.json`.
+🚨 **But read §0 of that findings doc before quoting it**: every leg ran within
+~4° of the heading where the mirror and the additive offset CROSS, so the series
+says nothing about which model is right. That case still rests entirely on the
+banked 43-pulse data.
 
 🚨 **The 4.0 m reliability series ran 2026-09-04 and is a determined FAIL at
 n = 4** (3 `target_reached` at 0.1140 / 0.1310 / 0.1354 m, 1 refusal at 0.1656 m).
