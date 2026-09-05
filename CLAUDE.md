@@ -353,9 +353,17 @@ it is a live credential that controls the mower over the cloud path.
 applies to any file that holds secrets, and the transcript is as much an
 exposure surface as a commit.
 
-⚠️ **Never `git add -A`.** The operator keeps an uncommitted edit in
-`docs/agora_outbound_audio_probe.md`; it has been swept into commits twice.
-**Stage by explicit path.**
+⚠️ **Never `git add -A`. Stage by explicit path.** The rule stands on its own:
+this repo's working tree routinely holds scratch files and operator edits, and
+`-A` has swept them into commits twice.
+
+✏️ **Its old justification was a phantom, corrected 2026-09-05.** This bullet
+used to say the operator "keeps an uncommitted edit in
+`docs/agora_outbound_audio_probe.md`" — so every session since August tiptoed
+around that file as if the edit were deliberate. It was two stray keystrokes
+(`/st` typed into the middle of a word, and a deleted `/`). The operator has
+since fixed both and **the working tree is clean**. 🔑 **If a file looks
+permanently dirty, read the diff before deciding it is sacred.**
 
 ⚠️ **Repositories owned by `mikey0000` are read-only.** Push only to `Chorty`, and
 pass `-R Chorty/Mammotion-HA` to every `gh` command.
