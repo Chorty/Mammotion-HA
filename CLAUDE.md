@@ -59,9 +59,21 @@ not deployed until now):
   overshoot — the sibling of a beta98 fix that was never propagated.
 - 🧹 Stale speed constants retired from the operator-facing service text.
 
-⚠️ **Live state was true at deploy time. Requery HA and the mower before acting
-on it.** Mower docked, 100%, BLE live, RTK Fix, gate disarmed
-(`experimental_motion_disabled`, `position_not_valid_for_motion`).
+⚠️ **Live state was true at 2026-09-05 ~02:30 UTC. Requery HA and the mower
+before acting on it.** Mower **docked and charging** at (4.3188, 3.2862) after a
+real-motion session, ~33% and climbing, RTK Fix, BLE marginal (-74 dBm), gate
+**disarmed and verified from live API AND RAW**. ⚠️ VIO was dead
+(`tracked_features: 0`) at session end — it was night; expect it back in daylight.
+
+🚨 **The 4.0 m reliability series ran 2026-09-04 and is a determined FAIL at
+n = 4** (3 `target_reached` at 0.1140 / 0.1310 / 0.1354 m, 1 refusal at 0.1656 m).
+Full record: `docs/findings-clicktopath-reliability-4m-20260904.md` +
+`docs/evidence-clicktopath-reliability-4m-20260904.json`.
+🔑 **Read that before any further motion work — it found three things bigger than
+the verdict**: the heading model used to place every target was wrong by a mean
+87° (the mirror `90.13 - toward` is right to 1.000°), the "aligned start" check
+was circular so runs 3–4 were secretly post-turn legs, and the device emits
+`Robot orientation unavailable (1309)` that this integration cannot see.
 
 ---
 
@@ -169,6 +181,41 @@ exactly the same instants. Requested report periods of 100/250/500/1000 ms all
 measure p95 1119–1372 ms — **the rate is the device's choice.**
 
 ### Traps that keep biting
+
+🚨 **A REPOSITIONED MOWER'S HEADING TELEMETRY IS STALE UNTIL IT DRIVES —
+INCLUDING "SMALL TEST" MOVES.** On 2026-09-04 a 0.5 m move was dispatched
+immediately after the operator turned the mower **by hand**, aimed from the
+then-current `toward` via `toward + calibrated_forward_heading_offset_degrees`.
+It reported `target_reached` and the operator saw it drive in the mower's
+**pre-reposition** direction. Both `toward` and `vio_heading` then jumped ~166°
+on that first real motion — the device's own estimate had not re-anchored.
+🔑 **`current_orientation` publishes `trustworthy` on corroboration between two
+sources, NOT on freshness: both can be stale together.** And the additive offset
+is not the model — on 30 fresh-`toward` pulses that night the mirror
+`90.13 - toward` predicted the driven direction to a mean **1.000°**, while
+`toward + 102.4` was off by a mean **87°**.
+✅ **Before ANY armed dispatch, derive facing two ways — the last driven leg's
+bearing and `(90.13 - toward)` with `toward` fresh — require agreement, and state
+the destination in compass terms for the operator.** A short "test" move is an
+armed dispatch. Full record: `docs/findings-clicktopath-reliability-4m-20260904.md`.
+
+🚨 **"TARGET HEADING MATCHES `toward`" PROVES NOTHING — IT IS CIRCULAR.** If the
+target was placed along `toward`, the echoed `target_reported_heading_degrees`
+agrees with `toward` by construction. On 2026-09-04 that check was read as
+"aligned start confirmed" on all four runs; the executor's own VIO calibration
+drive showed the true facing was **26 / 27 / 122 / 135°** off, and runs 3 and 4
+opened with real ~120–135° turns — making them post-turn legs, a property their
+own predeclaration put out of scope. 🔑 **Alignment is only confirmed by a source
+that does not derive from the number being checked** — the calibration drive's
+measured `map_motion_heading_degrees`, or the operator's eyes.
+
+🚨 **THE GATE DOES NOT CHECK THE MAP, AND THE MAP DOES NOT CHECK THE GROUND.**
+On 2026-09-04 a map-polygon corridor scan showed **3.5 m** of clearance where the
+operator's tape measured **2.79 m** to a real fence — 0.71 m of error, in the
+unsafe direction, invisible to both the containment gate and the polygon scan
+that CLAUDE.md prescribes as the gate's backstop. ✅ **On any corridor tighter
+than a couple of metres, ask for a physical measurement.** The operator's tape
+caught two real hazards that night that no software check would have.
 
 ⚠️ **SEPARATE THE RAMP BEFORE SIZING ANY WINDOW.** This cost three measurements in
 eight days. 🚨 One 8 s figure agreed with the extrapolation to **1.6%** and was

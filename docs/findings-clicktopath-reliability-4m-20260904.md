@@ -387,6 +387,56 @@ closing the door: real darkness on top of an already-unstable link.
 `core.config_entries` at the end of the session**, per §8 and CLAUDE.md's
 motion-gate section.
 
+### 6.6 🚨 The mower could not dock itself — and the app said why, in words we never saw
+
+Added after the session, from operator-supplied app notifications.
+
+With the gate disarmed, `lawn_mower.dock` was dispatched (native firmware
+return-to-dock, RTK-navigated — not the guarded executor, and RTK holds in the
+dark where VIO does not). **It failed twice, with an identical signature:**
+`MODE_RETURNING` engaged, the mower shuffled ~0.20 m, then dropped back to
+`MODE_READY`/paused and sat still, **10.35 m from the dock**, at 33% battery.
+No error surfaced anywhere in the integration — `last_error` read `"mcu: , "`,
+effectively empty, and its timestamp was stale from over an hour earlier.
+
+🚨 **The Mammotion app was showing the reason the whole time:
+`Robot orientation unavailable (1309)`**, five times, with the manufacturer's own
+prescribed remedy: *"Move the robot onto the charging station or to a mapped
+area, then try again."* Timestamps (app local = UTC−4) map onto the docking
+phase precisely:
+
+| app local | UTC | what was happening |
+| --- | --- | --- |
+| 21:24 | 01:24 | first `lawn_mower.dock` attempt failing |
+| 21:36 | 01:36 | second `lawn_mower.dock` attempt failing |
+| 22:04 / 22:09 / 22:11 | 02:04 / 02:09 / 02:11 | operator's own manual dock attempts |
+
+**The operator resolved it exactly as the app instructed** — manually drove the
+mower close to the dock, then commanded dock, which succeeded. It is docked and
+charging at (4.3188, 3.2862), the same dock coordinates it started from.
+
+🔑 **Three things follow, and the first is the important one.**
+
+1. **The device itself was in a degraded orientation state.** This is
+   independent, manufacturer-level corroboration that the orientation trouble
+   this session kept running into was not *only* the orchestrating session's
+   wrong formula (§4) — the mower's own firmware was separately reporting that
+   it did not know which way it was pointing, and refused to navigate on it.
+   Two distinct failures with the same surface symptom; do not collapse them.
+2. **The integration is blind to this error class.** `1309` appears nowhere in
+   `custom_components/` or in the pinned pymammotion. Everything this session
+   saw was downstream symptom — VIO/mirror disagreement, `trustworthy: false`,
+   ~166° heading jumps, a wrong-direction move, two silent docking failures —
+   while the device was emitting a specific, named, actionable code that never
+   reached the operator through Home Assistant. ⚠️ **An earlier hypothesis in
+   this session that the docking failure was the low-battery MCU refusal (which
+   genuinely did block undocking at 35% earlier that day) was WRONG.** It was
+   orientation, and the app said so.
+3. ⚠️ **Scope limit, stated so nobody over-reads it.** The earliest 1309 is
+   ~2 h 20 m *after* run 4 ended. **There is no evidence 1309 was present during
+   any of the four scored runs**, and this section must not be cited as if there
+   were.
+
 ---
 
 ## 7. What this authorizes
@@ -448,6 +498,16 @@ ground** — a map-polygon corridor scan showed 3.5 m where the operator measure
   for it; it was not captured separately either. Recorded as a gap, not a value.
   The §7 abort rule gates on battery below 35% off-dock, so this is a covariate a
   future series needs a way to record.
+- 🔴 **Device error codes do not reach the operator at all.** §6.6: the mower
+  emitted `Robot orientation unavailable (1309)` five times while
+  `sensor.*_last_error` read `"mcu: , "` with an hour-stale timestamp. `1309`
+  is not decoded anywhere in `custom_components/` or the pinned pymammotion.
+  🔑 **The single highest-value instrumentation fix available right now**: an
+  operator watching Home Assistant had strictly less information than an
+  operator watching the vendor app, during a failure the vendor app diagnosed
+  in one line. Surfacing the device's own error codes — at minimum the raw code
+  plus its text, without needing a full mapping table — is offline work, needs
+  no hardware, and would have shortened this session materially.
 
 ### 8.3 If the series is repeated
 
