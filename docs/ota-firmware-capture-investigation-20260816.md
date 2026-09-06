@@ -32,9 +32,12 @@
 > repo ROOT, so the original `scripts/ota_tls_probe/` ignore did not cover them
 > — both locations plus `*.ota` are covered now). Verified never committed.
 >
-> 🛑 **Standing decision 6 (OTA CLOSED, negative result) is the operator's, and
-> its factual premise — "the firmware was never captured" — is now false.
-> Reopening or re-closing it is an operator call, not a code question.**
+> 🛑 **Standing decision 6 (OTA CLOSED) was REAFFIRMED by the operator on
+> 2026-09-05, with the firmware in hand.** Its old factual premise ("the firmware
+> was never captured") is false, but the decision stands: the line stays closed,
+> the capture does not reopen it, and no analysis/decryption work is planned. The
+> probe tool `scripts/ota_tls_probe.py` is deliberately kept out of the repo as
+> untracked local tooling, also by operator decision.**
 
 ---
 

@@ -34,37 +34,23 @@ here against the tree and live HA before acting** — this file was true at the
    number rather than `"mcu: , "`. Confirmed live.
 3. 🐛 **The travel guard was tripping at zero travel on every real run**; fixed
    in beta103 and confirmed on hardware. `max_travel_m` works now.
-4. 🚨 **The mower's OTA firmware is CAPTURED** — see the top item below.
+4. **The mower's OTA firmware was captured, and the OTA line was reaffirmed
+   CLOSED by the operator with the firmware in hand** — see item 1, nothing to do.
 
 ---
 
 ## The work — pick what the operator wants; none of it is forced
 
-### 1. 🚨 OTA firmware — decide the disposition, then (if reopened) make it readable
+### 1. 🛑 OTA firmware — CLOSED, do not reopen
 
-**This is the biggest open thing and it is squarely an operator call.** On
-2026-09-05 the firmware was captured (213 MB) via a self-signed-TLS probe the
-mower did not authenticate. Standing decision 6 was CLOSED on the premise that
-the firmware could never be captured; **that premise is now false.** Full record
-and the security caveats: `docs/ota-firmware-capture-investigation-20260816.md`
-(top banner + the 2026-09-05 section).
-
-Before any work here, get an explicit operator decision:
-
-- **Do they want to reopen the OTA line at all?** It was closed deliberately; a
-  capture does not reopen it, the operator does.
-- If yes, the next question is **reading** the payload, not capturing it: it
-  begins `ATO\x9b\xc7…` and does not gunzip. Is it encrypted, a container, or
-  just needs the right unpacker? This is offline analysis on a file that already
-  exists — no mower, no network.
-- ⚠️ **Reconcile the contradiction first:** §4 of the OTA doc concluded the
-  mower would reject our cert; on 2026-09-05 it accepted a self-signed one.
-  CA-trust vs no-verification, or a firmware change? Resolve it before trusting
-  either section.
-
-🛑 Keep it defensive/research-only and on the operator's own hardware. Do not
-help craft or serve modified firmware to the device; the probe is fail-closed
-(returns 503) and must stay that way.
+The firmware was captured on 2026-09-05 (213 MB), and the operator was asked
+whether that reopens the deliberately-closed OTA line. **It does not.** No OTA
+capture, analysis, or decryption work is planned; a captured file is not a reason
+to reopen it. The probe tool `scripts/ota_tls_probe.py` is kept OUT of the repo
+by operator decision (untracked local tooling). The capture artefacts are
+gitignored and must never be committed. Full record:
+`docs/ota-firmware-capture-investigation-20260816.md`. **Nothing to do here —
+listed only so it is not re-raised.**
 
 ### 2. If the operator wants more facing/motion confidence
 
@@ -102,8 +88,8 @@ daylight, a fresh predeclaration):
 ## Boundaries (unchanged, all still binding)
 
 - 🛑 **Standing decisions hold**: Phase 2 continuous steering (5), accuracy (3),
-  night (4) all CLOSED; reliability stats beta57+ epoch only (7). OTA (6) had its
-  factual premise overturned but the decision itself is the operator's.
+  night (4) all CLOSED; reliability stats beta57+ epoch only (7). OTA (6) is
+  CLOSED and was reaffirmed 2026-09-05 with the firmware captured — do not reopen.
 - 🛑 **`docs/accepted-profile.json` is untouched and stays that way** without a
   predeclaration and a Gate 5. Today's facing PASS authorizes no profile change.
 - Never push to `mikey0000/*`; pass `-R Chorty/Mammotion-HA` to every `gh`.

@@ -168,9 +168,13 @@ The operator's, not derivable from the code. **They override anything older.**
    recorded reversal condition). The probe stays in the tree and stays safe; it
    is simply not where effort goes.
    **Reopening is an operator call, not a code question.**
-6. **OTA firmware capture — was CLOSED with a negative result (2026-09-04); its
-   factual premise was OVERTURNED 2026-09-05, so the decision is the operator's
-   to revisit.** 🚨 **The firmware IS now captured** (213 MB,
+6. **OTA firmware capture is CLOSED — reaffirmed by the operator 2026-09-05 WITH
+   the firmware in hand.** The negative-result close (2026-09-04) had its factual
+   premise overturned the next day — the firmware was captured — and the operator
+   was asked whether that reopens the line. **It does not: keep it closed.** Do
+   not propose OTA capture, analysis, or decryption work; a captured file is not
+   a reason to reopen a deliberately-closed line. 🚨 **The firmware IS captured**
+   (213 MB,
    `Luba2-LubavX3Midware-922545983374491648.ota`, sha256 `472c4f08…`). The
    "firmware was never captured / the wall is cryptographic" basis of the close
    no longer holds for the *download* path: `scripts/ota_tls_probe.py` presented
@@ -186,7 +190,9 @@ The operator's, not derivable from the code. **They override anything older.**
    🔴 **The capture artefacts hold a real private key, the signed URL, and the
    firmware. All are gitignored (`ota_tls_probe/`, `ota_work/`, `*.ota`) and
    must never be committed** — the probe was run from the repo root, which the
-   original ignore missed; fixed this session.
+   original ignore missed; fixed 2026-09-05. The probe tool itself
+   (`scripts/ota_tls_probe.py`) is deliberately kept OUT of the repo too, by
+   operator decision; it stays as untracked local tooling.
    ✅ The earlier permanent capability still stands: `ota_info_probe`, a
    read-only BLE service that works.
    ⚠️ Unrelated leftovers to check: UniFi Hardware Acceleration was deliberately
