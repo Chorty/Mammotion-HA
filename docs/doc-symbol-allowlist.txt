@@ -75,3 +75,6 @@ Z_                                               # not a symbol -- a fragment of
 
 # --- Home Assistant core fields, not defined in this integration's tree ---
 disabled_by                                      # a field on HA core's own ConfigEntry object (homeassistant.config_entries), read from the host's raw core.config_entries storage in the beta101 deploy-runbook entry; this repo only consumes it, never defines it
+
+# --- gitignored OTA capture paths, intentionally absent from the tree ---
+ota_work                                         # a local OTA-capture working directory (2026-09-05); gitignored by design (holds a 213MB firmware copy) so it never appears in the tree. Its sibling `ota_tls_probe` resolves only because scripts/ota_tls_probe.py exists; this one has no in-tree file on purpose.

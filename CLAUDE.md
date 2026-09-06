@@ -168,16 +168,29 @@ The operator's, not derivable from the code. **They override anything older.**
    recorded reversal condition). The probe stays in the tree and stays safe; it
    is simply not where effort goes.
    **Reopening is an operator call, not a code question.**
-6. **OTA firmware capture is CLOSED with a negative result** (was "paused"
-   2026-08-16; closed 2026-09-04). The firmware was never captured and the
-   remaining wall is **cryptographic** — the mower's own Aliyun device
-   credentials, which no software-only method obtains. Better timing does not
-   change that. ✅ One permanent capability came out of it: `ota_info_probe`, a
-   read-only BLE service that works. Full record:
+6. **OTA firmware capture — was CLOSED with a negative result (2026-09-04); its
+   factual premise was OVERTURNED 2026-09-05, so the decision is the operator's
+   to revisit.** 🚨 **The firmware IS now captured** (213 MB,
+   `Luba2-LubavX3Midware-922545983374491648.ota`, sha256 `472c4f08…`). The
+   "firmware was never captured / the wall is cryptographic" basis of the close
+   no longer holds for the *download* path: `scripts/ota_tls_probe.py` presented
+   a **self-signed** cert for `mds.mammotion.com` and the mower
+   (`Wget/1.21.4`) completed the TLS 1.3 handshake and handed over its own
+   signed URL — its updater does not verify the server cert. The account/Aliyun
+   credential wall still stands; it was simply not the only door.
+   ⚠️ **Captured ≠ readable.** The payload begins `ATO\x9b\xc7…` and does not
+   gunzip; whether it is encrypted or a proprietary container is the open
+   question. Full record + reconciliation note (§4 said the cert would be
+   rejected; today it was accepted):
    `docs/ota-firmware-capture-investigation-20260816.md`.
-   ⚠️ Unrelated leftovers to check before trusting either: UniFi Hardware
-   Acceleration was deliberately left **OFF**, and the UniFi block-sta API is
-   confirmed broken.
+   🔴 **The capture artefacts hold a real private key, the signed URL, and the
+   firmware. All are gitignored (`ota_tls_probe/`, `ota_work/`, `*.ota`) and
+   must never be committed** — the probe was run from the repo root, which the
+   original ignore missed; fixed this session.
+   ✅ The earlier permanent capability still stands: `ota_info_probe`, a
+   read-only BLE service that works.
+   ⚠️ Unrelated leftovers to check: UniFi Hardware Acceleration was deliberately
+   left **OFF**, and the UniFi block-sta API is confirmed broken.
 7. 📏 **Reliability statistics use the beta57+ epoch ONLY** (declared 2026-09-04).
    beta57 is the current control law and the Gate 5-accepted profile. Landings
    from beta32–beta56 span the beta37 turn-model rebuild, the beta38 re-aim

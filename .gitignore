@@ -33,6 +33,18 @@ scripts/firmware/
 # that — see docs/ota-firmware-capture-investigation-20260816.md).
 scripts/ota_captures/
 
+# Fail-closed mower TLS probe output: private key, signed OTA URL, request
+# headers, and any captured firmware binary.
+#
+# 🚨 The `scripts/` entry alone was NOT enough: the probe was also run from the
+# repo ROOT on 2026-09-05, leaving `mds-key.pem` (a real private key) and a
+# signed CDN URL untracked-but-committable, one `git add -A` away from being
+# published. Both locations are covered now, plus the working copies.
+scripts/ota_tls_probe/
+ota_tls_probe/
+ota_work/
+*.ota
+
 # Coverage data from `pytest --cov` (CI reports to the terminal, never a file)
 .coverage
 .coverage.*
