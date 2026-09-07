@@ -1,5 +1,73 @@
-# OTA firmware capture investigation — ✅ CAPTURED 2026-09-05 (was PAUSED 2026-08-16)
+# OTA firmware capture investigation — 🔓 REOPENED 2026-09-07 (captured 2026-09-05, was PAUSED 2026-08-16)
 
+> 🔓 **2026-09-07 — line REOPENED by the operator**, from a separate session
+> working in `/Users/mattjoslin/Documents/Luba 2 OTA` (the captured `.ota` was
+> copied there). Per the standing rule ("reopening is an operator call"), this
+> is that call.
+>
+> **The captured file's version is `1.30.29.24`** — not `1.30.29.20` (the
+> original goal target) or `1.30.29.8` (the version behind the MQTT
+> `otaProgress` telemetry below). Neither prior version appears anywhere in
+> this doc; the operator supplied `1.30.29.24` directly. This reconciles the
+> small size gap noted informally: `SocMidware` is 213,447,524 bytes in this
+> capture vs. 213,377,800 bytes reported for `1.30.29.8` in the MQTT
+> telemetry — consistent with normal growth across three point releases, not
+> an error.
+>
+> **2026-09-07 analysis session — still unreadable, three more negative
+> results, no new format lead:**
+> - Decompiled both bundled desktop tools (`LubaBaseStationUpgrade.app`,
+>   `LubaLogTools.exe` — both PyInstaller/Python 3.10, extracted with
+>   `pyinstxtractor-ng`). Neither contains `.ota` container parsing: the base
+>   station tool only does serial/CH341 MCU flashing (CRC16 framing); the log
+>   tool only does msgbus/protobuf log capture. No decrypt code either has.
+> - Decompiled the Android app (`Mammotion_2.3.8.19_APKPure.xapk`) — React
+>   Native, JS bundle unobfuscated (`assets/index.android.bundle`, plain
+>   text). Confirms by direct inspection (not just network inference): the
+>   app only holds UI strings for the update flow (`button_upgrade`,
+>   `firmwareVersion`, …) — no binary parsing logic. The phone never touches
+>   the firmware bytes.
+> - `binwalk -a` (v3.1.0, all-offsets mode) found no embedded filesystem or
+>   archive signature anywhere in the 213MB payload — only the same
+>   coincidental sub-100-byte zlib/GPG/S-record matches you'd expect from
+>   high-entropy encrypted data.
+> - One positive corroboration, not a break: the gzip header's own ISIZE
+>   field (mod 2^32) reads `502,794,240`; the real device's own
+>   `write img to /dev/mmcblk0p15` telemetry (see §3 below, `1.30.29.8` run)
+>   tops out at `502,603,776`. Close enough (different version) to confirm
+>   the compressed-core claim is real, not a decoy magic — something garbles
+>   the deflate bitstream before it reaches us, but the underlying format
+>   claim holds.
+>
+> **Module breakdown, and why only one file was ever captured (both sourced
+> from primary telemetry, not inferred):** the `1.30.29.8` MQTT capture in
+> §3 shows three components — `deviceRTK` (2,383,436 B), `mcu` (415,544 B),
+> `SocMidware` (213,377,800 B, i.e. this container). Only `deviceRTK` and
+> `SocMidware` ever show `dl fw:X, bytes/total` *download* progress; `mcu`
+> only ever shows `upgrading mcu(bytes/total)` — an *install* stage, never a
+> download stage. The 2026-09-05 TLS probe (below) stayed armed 7+ minutes
+> past its single captured request and never saw a second one — the 503 to
+> the `SocMidware` request most likely aborted the whole sequence before the
+> mower ever asked for the next component. `mcu`'s bytes may not cross this
+> HTTPS path at all (possibly bundled inside `SocMidware`, possibly
+> BLE-relayed from the phone) — never confirmed either way.
+>
+> ⚠️ **Open question raised 2026-09-07, not yet acted on: could the probe be
+> changed to let `SocMidware` through for real, so the mower proceeds to
+> request `deviceRTK`/`mcu` and we capture those too?** This is materially
+> different from everything done so far. Every prior probe run was
+> deliberately fail-closed (always 503) specifically so the mower's real
+> update path never executes. Letting the first response through means the
+> mower actually flashes real firmware to `/dev/mmcblk0p15` — a genuine,
+> physical, hard-to-reverse action on the operator's own hardware (real
+> version change, real flash-failure/brick risk), not a passive capture.
+> There is no way to forge a valid signed URL for `deviceRTK`/`mcu`
+> ourselves — Aliyun OSS signatures are scoped to the exact object path the
+> mower itself requested, so the only way to see those URLs at all is to let
+> the mower's real sequence advance. **Not attempted; needs an explicit,
+> separate operator decision before any code changes here**, not folded into
+> today's reopening.
+>
 > 🚨 **2026-09-05 UPDATE — THE FIRMWARE IS CAPTURED. The "cryptographic wall"
 > conclusion below is SUPERSEDED for the download path.** A fail-closed TLS
 > probe (`scripts/ota_tls_probe.py`) presented a **self-signed** certificate for
@@ -32,29 +100,47 @@
 > repo ROOT, so the original `scripts/ota_tls_probe/` ignore did not cover them
 > — both locations plus `*.ota` are covered now). Verified never committed.
 >
-> 🛑 **Standing decision 6 (OTA CLOSED) was REAFFIRMED by the operator on
-> 2026-09-05, with the firmware in hand.** Its old factual premise ("the firmware
-> was never captured") is false, but the decision stands: the line stays closed,
-> the capture does not reopen it, and no analysis/decryption work is planned. The
-> probe tool `scripts/ota_tls_probe.py` is deliberately kept out of the repo as
-> untracked local tooling, also by operator decision.**
+> 🛑 **✏️ SUPERSEDED 2026-09-07.** Standing decision 6 (OTA CLOSED) WAS
+> reaffirmed by the operator on 2026-09-05 with the firmware in hand, on the
+> basis that "the capture does not reopen it, and no analysis/decryption work is
+> planned." **That basis no longer holds — see the REOPENED banner at the top of
+> this file, from the operator, 2026-09-07.** Analysis work is now under way, in
+> a separate directory/repo (`/Users/mattjoslin/Documents/Luba 2 OTA`), not this
+> one. Kept for the record: this is the second reversal on this line in three
+> days (2026-09-04 closed on a false premise → 2026-09-05 premise corrected,
+> decision reaffirmed anyway → 2026-09-07 decision itself reversed). Reopening
+> and re-closing are both the operator's call, not a code question, and that
+> continues to hold.
 
 ---
 
 
 **Goal:** capture a readable copy of the mower's OTA firmware binary (first
-`1.30.29.8`, then `1.30.29.20`) before/without installing it, for research —
-not to block updates forever, just to get one copy. **Status: paused at the
-operator's request** to wait a day or two and watch for any issues before
-actually running the next real attempt. Everything below is either a proven
-finding, a genuine new permanent capability, or an armed-but-unused tool
-ready to resume from. Nothing here was committed to
-`custom_components/mammotion/` except the one deliberate, permanent,
-read-only service (`ota_info_probe`) — everything else is operator-side
-tooling in `scripts/`, which never ships to end users.
+`1.30.29.8`, then `1.30.29.20`, actually captured as `1.30.29.24`) for research —
+not to block updates forever, just to get one copy, and now to read it.
+**Status: REOPENED 2026-09-07, analysis in progress.** History: paused
+2026-08-16, closed with a negative result 2026-09-04, that premise overturned
+and the closure reaffirmed anyway 2026-09-05, reopened by the operator
+2026-09-07. Everything below is either a proven finding, a genuine new permanent
+capability, or an armed-but-unused tool ready to resume from. Nothing here was
+committed to `custom_components/mammotion/` except the one deliberate,
+permanent, read-only service (`ota_info_probe`) — everything else is
+operator-side tooling in `scripts/`, which never ships to end users.
 
 ## Bottom line, if you read nothing else
 
+- ✏️ **REOPENED 2026-09-07.** Live status: version identified as
+  `1.30.29.24`; still **not readable** after three further negative results
+  (no known container/archive format in the 213 MB payload via `binwalk`; no
+  decrypt/parse logic in either bundled desktop tool or the Android app's own
+  JS bundle). One corroboration, not a break: the gzip trailer's stored
+  decompressed size is consistent with the device's own reported install size
+  for the sibling `1.30.29.8` build. 🚨 **An open, UNDECIDED, safety-relevant
+  question is on the table: letting the probe pass the mower's real request
+  through instead of returning 503, so it proceeds to request the other two
+  firmware components — a genuine flash to the mower's own hardware, not a
+  passive capture. Not attempted. Needs its own explicit operator decision,
+  separate from today's reopening.** Full detail in the REOPENED banner above.
 - ✏️ **SUPERSEDED 2026-09-05: we now HAVE the firmware file** (213 MB, sha256
   `472c4f08…`), captured via the self-signed-TLS path in the banner above. The
   original line read: *"We do not have the firmware file. We have proof of the
@@ -341,7 +427,14 @@ integration) unless noted:
   `translations/en.json`) — the one permanent addition, `ota_info_probe`
   (§8). This is real, shipped, deployed code — not research scaffolding.
 
-## Resume checklist
+## Resume checklist (stale — kept for the record, superseded by the 2026-09-05 method)
+
+⚠️ **This checklist describes the pre-2026-09-05 network-MITM/UniFi-block plan,
+which the capture did NOT end up using.** The method that actually worked is the
+self-signed TLS probe in the 2026-09-05 section above
+(`scripts/ota_tls_probe.py`, run from `/Users/mattjoslin/Documents/Luba 2 OTA`
+as of the 2026-09-07 reopening). Left below verbatim since it is a real record
+of what was tried and may still be useful if that path is ever blocked.
 
 Nothing is currently running — everything was stopped cleanly before
 pausing (mower confirmed `blocked: false` and reachable at time of pause).

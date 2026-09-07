@@ -98,10 +98,18 @@ not deployed until 2026-09-04):
   overshoot — the sibling of a beta98 fix that was never propagated.
 - 🧹 Stale speed constants retired from the operator-facing service text.
 
-⚠️ **Live state was true at 2026-09-05 ~16:30 UTC. Requery HA and the mower
-before acting on it.** Mower **docked and charging**, 80%, RTK Fix, VIO 80
-features, BLE **-56 dBm**. Gate **disarmed and verified from live API AND RAW**
-after the run. ✏️ **The gate was armed twice today and BOTH were the operator**
+⚠️ **Live state was true at 2026-09-07 ~13:00 UTC. Requery HA and the mower
+before acting on it.** Mower **docked**, 54%, RTK Fix, VIO 80 features,
+`ble_rssi: 0` (dozed — normal after being untouched for a while, not a fault).
+Gate **disarmed and verified from live API**.
+🔑 **The `mammotion` config entry was found `disabled_by: user` this session**
+— every entity read `unavailable` with HA core otherwise healthy
+(`2026.9.0`, `RUNNING`). The operator confirmed they disabled it themselves
+(troubleshooting) and re-enabled it; not a defect, not the automation gate
+issue below. Container logs showed ~18 min of MQTT reconnect churn shortly
+before the disable, timing consistent with but not proven to be the cause.
+
+✏️ **The gate was armed twice on 2026-09-05 and BOTH were the operator**
 arming it deliberately to use the click-to-go card. **Zero defect sightings.**
 I recorded them as occurrences seven and eight before they corrected me.
 🔑 **Ask before attributing an armed gate to the defect — a card session is the
@@ -168,31 +176,40 @@ The operator's, not derivable from the code. **They override anything older.**
    recorded reversal condition). The probe stays in the tree and stays safe; it
    is simply not where effort goes.
    **Reopening is an operator call, not a code question.**
-6. **OTA firmware capture is CLOSED — reaffirmed by the operator 2026-09-05 WITH
-   the firmware in hand.** The negative-result close (2026-09-04) had its factual
-   premise overturned the next day — the firmware was captured — and the operator
-   was asked whether that reopens the line. **It does not: keep it closed.** Do
-   not propose OTA capture, analysis, or decryption work; a captured file is not
-   a reason to reopen a deliberately-closed line. 🚨 **The firmware IS captured**
-   (213 MB,
-   `Luba2-LubavX3Midware-922545983374491648.ota`, sha256 `472c4f08…`). The
-   "firmware was never captured / the wall is cryptographic" basis of the close
-   no longer holds for the *download* path: `scripts/ota_tls_probe.py` presented
-   a **self-signed** cert for `mds.mammotion.com` and the mower
-   (`Wget/1.21.4`) completed the TLS 1.3 handshake and handed over its own
-   signed URL — its updater does not verify the server cert. The account/Aliyun
-   credential wall still stands; it was simply not the only door.
-   ⚠️ **Captured ≠ readable.** The payload begins `ATO\x9b\xc7…` and does not
-   gunzip; whether it is encrypted or a proprietary container is the open
-   question. Full record + reconciliation note (§4 said the cert would be
-   rejected; today it was accepted):
-   `docs/ota-firmware-capture-investigation-20260816.md`.
+6. 🔓 **OTA firmware capture is REOPENED (operator, 2026-09-07).** Reversed
+   twice in three days: negative-result close 2026-09-04 → premise overturned
+   and closure reaffirmed anyway 2026-09-05 → **reopened 2026-09-07**. Analysis
+   work is happening in a **separate directory/repo**,
+   `/Users/mattjoslin/Documents/Luba 2 OTA` — **not this one.** This repo's own
+   `scripts/ota_tls_probe.py` stays untracked/uncommitted per the 2026-09-05
+   operator decision; that has not been revisited and should not be assumed
+   changed just because the line reopened elsewhere.
+   🚨 **The firmware IS captured** (213 MB, version **`1.30.29.24`** — confirmed
+   2026-09-07, supersedes the earlier `1.30.29.8`/`1.30.29.20` targets;
+   `Luba2-LubavX3Midware-922545983374491648.ota`, sha256 `472c4f08…`). Captured
+   via `scripts/ota_tls_probe.py`: presented a **self-signed** cert for
+   `mds.mammotion.com`, the mower (`Wget/1.21.4`) completed the TLS 1.3
+   handshake anyway and handed over its own signed URL — its updater does not
+   verify the server cert. The account/Aliyun credential wall still stands; it
+   was simply not the only door.
+   ⚠️ **Still not readable as of 2026-09-07**, after three further negative
+   results (no format match via `binwalk -a`; no decrypt/parse logic in either
+   bundled desktop tool or the Android app's own JS bundle, both directly
+   inspected). One corroboration only: the gzip trailer's stored size is
+   consistent with the device's own reported install size for the sibling
+   `1.30.29.8` build.
+   🚨 **An open, UNDECIDED, safety-relevant question is on the table and NOT
+   resolved:** letting the probe pass the mower's real request through instead
+   of always returning 503, so the mower proceeds to request its other two
+   firmware components — a genuine flash to the mower's own hardware, not a
+   passive capture. Explicitly flagged as needing its OWN separate operator
+   decision. **Do not implement this without that decision being made
+   explicitly, in the moment, not inferred from the reopening.**
+   Full record: `docs/ota-firmware-capture-investigation-20260816.md`.
    🔴 **The capture artefacts hold a real private key, the signed URL, and the
-   firmware. All are gitignored (`ota_tls_probe/`, `ota_work/`, `*.ota`) and
-   must never be committed** — the probe was run from the repo root, which the
-   original ignore missed; fixed 2026-09-05. The probe tool itself
-   (`scripts/ota_tls_probe.py`) is deliberately kept OUT of the repo too, by
-   operator decision; it stays as untracked local tooling.
+   firmware. Gitignored (`ota_tls_probe/`, `ota_work/`, `*.ota`) and must never
+   be committed** — the probe was run from the repo root at one point, which the
+   original ignore missed; fixed 2026-09-05.
    ✅ The earlier permanent capability still stands: `ota_info_probe`, a
    read-only BLE service that works.
    ⚠️ Unrelated leftovers to check: UniFi Hardware Acceleration was deliberately
