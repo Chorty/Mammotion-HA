@@ -78,3 +78,4 @@ disabled_by                                      # a field on HA core's own Conf
 
 # --- gitignored OTA capture paths, intentionally absent from the tree ---
 ota_work                                         # a local OTA-capture working directory (2026-09-05); gitignored by design (holds a 213MB firmware copy) so it never appears in the tree. Its sibling `ota_tls_probe` resolves only because scripts/ota_tls_probe.py exists; this one has no in-tree file on purpose.
+ota_serve_probe                                  # an inert serve-mode OTA toolkit (2026-09-07) that lives in the SEPARATE repo `/Users/mattjoslin/Documents/Luba 2 OTA`, not this one -- standing decision 6 keeps all OTA analysis out of this tree, so this name is deliberately unresolvable here

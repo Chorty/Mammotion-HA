@@ -98,16 +98,41 @@ not deployed until 2026-09-04):
   overshoot — the sibling of a beta98 fix that was never propagated.
 - 🧹 Stale speed constants retired from the operator-facing service text.
 
-⚠️ **Live state was true at 2026-09-07 ~13:00 UTC. Requery HA and the mower
-before acting on it.** Mower **docked**, 54%, RTK Fix, VIO 80 features,
-`ble_rssi: 0` (dozed — normal after being untouched for a while, not a fault).
-Gate **disarmed and verified from live API**.
-🔑 **The `mammotion` config entry was found `disabled_by: user` this session**
-— every entity read `unavailable` with HA core otherwise healthy
-(`2026.9.0`, `RUNNING`). The operator confirmed they disabled it themselves
-(troubleshooting) and re-enabled it; not a defect, not the automation gate
-issue below. Container logs showed ~18 min of MQTT reconnect churn shortly
-before the disable, timing consistent with but not proven to be the cause.
+🚨 **HACS DESTROYED THE BUILD ONCE — 2026-09-07 17:22 EDT.** HACS downloaded
+`mikey0000/Mammotion-HA` **v0.6.4** over `/config/custom_components/mammotion/`,
+replacing all 50 fork files with upstream's 31. **HACS owns that directory; there
+is no coexistence.** For ~30 h the host ran upstream: **29 services instead of
+67**, no `export_runtime_state` / `raw_pymammotion_execute_vector_segment`,
+`pymammotion 0.8.14`, **46 of 134 entities unavailable** (the whole VIO block,
+`ble_link_live`, `real_motion_ready`) — and **the click-to-go card was dead**,
+its file intact but every backend service gone.
+✅ **Fixed and prevented 2026-09-08:** the operator removed
+`mikey0000/Mammotion-HA` from HACS entirely, then beta103 was redeployed —
+51/51 byte-identical, card md5 `1b3a404d` at both paths, backend back to
+`0.8.12.post4`, 67 services, **zero unavailable entities**. Full tail:
+`docs/deploy-runbook-p0.md`. The three `mikey0000/ha-mammotion-*` **plugin**
+repos are frontend-only and were left in place.
+🔑 **If a future session finds the fork replaced by upstream `0.6.4`, this is the
+mechanism — check HACS first.** And 🔑 **the config entry_id CHANGED** to
+`01M1CVFWHYWW527S9BM5M2BDP3` (was `01KVM3JVYBWRKM25ZR8T7FKKJ3`); anything
+hardcoding the old one will fail.
+
+⚠️ **Live state was true at 2026-09-08 ~23:10 UTC. Requery HA and the mower
+before acting on it.** HA `2026.9.1`, `RUNNING`; entry `loaded`, not
+`disabled_by`. Mower **docked** (`charge_on`), **60% with `charging: off`**,
+VIO 80 features, `ble_rssi -50` but **`ble_link_live: off`**, `zone_hash 0`,
+and **RTK had dropped `Fix` -> `float`**. Gate **disarmed, verified from live API
+AND RAW `core.config_entries`**. Motion blockers at rest:
+`experimental_motion_disabled`, `position_not_valid_for_motion`,
+`rtk_not_precise`.
+⚠️ **Unresolved and worth a look before any run:** `last_error_code 2709`
+*"Battery voltage is low, Please charge"* logged **2026-09-08 07:20 EDT**, and
+the mower sits on the dock at 60% **not charging**. Not diagnosed.
+
+✏️ **The 2026-09-07 `disabled_by: user` finding stands but was not the whole
+story** — the operator disabled the entry themselves while troubleshooting and
+re-enabled it; the HACS overwrite landed the same afternoon and is what actually
+broke the build.
 
 ✏️ **The gate was armed twice on 2026-09-05 and BOTH were the operator**
 arming it deliberately to use the click-to-go card. **Zero defect sightings.**
@@ -176,14 +201,31 @@ The operator's, not derivable from the code. **They override anything older.**
    recorded reversal condition). The probe stays in the tree and stays safe; it
    is simply not where effort goes.
    **Reopening is an operator call, not a code question.**
-6. 🔓 **OTA firmware capture is REOPENED (operator, 2026-09-07).** Reversed
-   twice in three days: negative-result close 2026-09-04 → premise overturned
-   and closure reaffirmed anyway 2026-09-05 → **reopened 2026-09-07**. Analysis
-   work is happening in a **separate directory/repo**,
+6. ⏸️ **OTA firmware line is PARKED again (operator, 2026-09-08). Effort returns
+   to the click-to-go card. Do not resume OTA work without a fresh operator
+   call.** History: negative-result close 2026-09-04 → premise overturned and
+   closure reaffirmed anyway 2026-09-05 → reopened 2026-09-07 → **parked
+   2026-09-08** after the non-invasive analysis avenues were exhausted (below).
+   Analysis lived in a **separate directory/repo**,
    `/Users/mattjoslin/Documents/Luba 2 OTA` — **not this one.** This repo's own
    `scripts/ota_tls_probe.py` stays untracked/uncommitted per the 2026-09-05
    operator decision; that has not been revisited and should not be assumed
-   changed just because the line reopened elsewhere.
+   changed just because the line was reopened elsewhere.
+   📕 **What the reopened analysis established (all in the separate repo, so a
+   future reopen starts there, NOT from scratch):** a ranked lab-testbed plan
+   (`ota-lab-testbed-plan-20260907.md`), a byte-level analysis report
+   (`ota-analysis-report-20260907.md`), and an inert serve-mode toolkit
+   (`ota_serve_probe.py`, default 503, refuses to serve without BOTH an explicit
+   firmware path AND an operator-goahead flag). Findings: the payload is NOT a
+   multi-image container and shows NO ECB signature; its high byte-histogram
+   chi-square is a filler-region artifact, not weak encryption. **Phase 1
+   (non-invasive network shell recon) is CLOSED, NEGATIVE** — the mower at
+   192.168.1.66 exposes no inbound service on any realistic port (all RST, tested
+   awake at 22 ms latency and dozing), so there is no network door to instrument
+   the on-device decrypt. **Next lever if ever resumed is off-device — source a
+   SECOND firmware version for a header/keystream diff (zero device risk); UART
+   (Phase 6) is the invasive last resort the operator declined on warranty
+   grounds.** See `[[ota-lab-testbed-phase1-network-shell-closed]]` in memory.
    🚨 **The firmware IS captured** (213 MB, version **`1.30.29.24`** — confirmed
    2026-09-07, supersedes the earlier `1.30.29.8`/`1.30.29.20` targets;
    `Luba2-LubavX3Midware-922545983374491648.ota`, sha256 `472c4f08…`). Captured

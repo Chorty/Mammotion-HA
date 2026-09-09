@@ -8,6 +8,65 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### 🚨 RESTORE — 2026-09-08 23:03-23:07 UTC — HACS overwrote beta103 with upstream; beta103 redeployed
+
+**Not a release.** No version bump, no new commit shipped: this is
+`0.6.4-beta103` (`4f908b04`, unchanged) put back after it was destroyed.
+
+🔴 **What happened.** On **2026-09-07 17:22 EDT** HACS downloaded
+`mikey0000/Mammotion-HA` **v0.6.4** over `/config/custom_components/mammotion/`,
+replacing all 50 fork files with upstream's 31. HACS owns that directory, so
+there is no coexistence — a HACS download of that repo wipes the fork wholesale.
+Symptoms it produced, all measured before the fix:
+
+| symptom | reading |
+| --- | --- |
+| `mammotion.*` services | **29** (upstream set) instead of 67 |
+| `export_runtime_state`, `raw_pymammotion_execute_vector_segment` | **absent** — HTTP 400 |
+| manifest | `0.6.4`, codeowner `@mikey0000`, `pymammotion==0.8.14` |
+| mower entities unavailable | **46 / 134**, incl. the whole VIO block, `ble_link_live`, `real_motion_ready` |
+| config entry | **new** `01M1CVFWHYWW527S9BM5M2BDP3` (was `01KVM3JVYBWRKM25ZR8T7FKKJ3`), source `bluetooth` |
+| card | survived at `/config/www/community/mammotion/` (beta103), but its backend services were gone — **the click-to-go card was dead for ~30 h** |
+
+✅ **Prevention applied, and it is the part that matters.** The operator removed
+`mikey0000/Mammotion-HA` from HACS entirely (integration + repo) before this
+redeploy. HACS no longer tracks that directory, so it cannot be overwritten
+again. The three `mikey0000/ha-mammotion-*` **plugin** repos are frontend-only
+and were left in place.
+🔑 **If a future session finds the fork replaced by upstream 0.6.4, this is the
+mechanism — check HACS before diagnosing anything else.**
+
+**Verification tail — measured, not expected:**
+
+| check | value |
+| --- | --- |
+| files byte-identical | **51 / 51** |
+| archive SHA-256, local == host | `4020061701b6003c5fdf057db27b6ad8ccb2d696f19ea1197cac6510e41bdf68` |
+| AppleDouble `._*` files | 0 |
+| card md5, both serving paths == local | `1b3a404dbcaaba2d5fff7d66e9fcfea9` |
+| Lovelace resource | `?v=0.6.4-beta103&build=1b3a404d` — already correct, not bumped (card bytes unchanged) |
+| host manifest | `0.6.4-beta103` |
+| backend in container | **`0.8.12.post4`** (was `0.8.14` under upstream) |
+| services registered | **67**, incl. `export_runtime_state`, `raw_pymammotion_execute_vector_segment`, both readiness tests |
+| API back after restart | **41 s**; entities at 169 s |
+| mower entities | **132, zero unavailable** (was 46 unavailable) |
+| config entry | `01M1CVFWHYWW527S9BM5M2BDP3`, `state: loaded`, `disabled_by: null` |
+| gate — live API | `enabled: False`, `real_motion_allowed: False`, `active_session: None` |
+| gate — RAW `core.config_entries` | `enable_experimental_motion: false` |
+| dark-safe read-only call | `export_runtime_state` returned 27 keys; `map_facing` correctly **refused** (`safe_to_aim_dispatch: false`, `heading_sources_disagree`, 179.071 deg) — beta102/103 code confirmed live |
+| CI gates | 1062 passed; ruff check clean; 86 files formatted; mypy clean (31 files); frontend 91/91 |
+
+⚠️ **No motion was commanded.** The gate was disarmed throughout and verified
+disarmed both ways afterwards.
+
+⚠️ **Live blockers at the end of this deploy**, all expected on the dock:
+`experimental_motion_disabled`, `position_not_valid_for_motion` (`charge_on`,
+`zone_hash 0`), `rtk_not_precise` (RTK had dropped `Fix` -> `float`).
+Battery **60% with `charging: off`** on the dock, and `last_error_code 2709`
+*"Battery voltage is low, Please charge"* logged 2026-09-08 07:20 EDT — flagged
+to the operator, not diagnosed here.
+
+
 ### beta102 -> beta103 — 2026-09-05 ~15:50-16:00 UTC — the travel-guard fix, then a REAL MOTION series
 
 ⚠️ **Unlike every entry above this one, motion was commanded after this deploy**
