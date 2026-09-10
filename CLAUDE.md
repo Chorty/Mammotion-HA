@@ -117,17 +117,44 @@ mechanism — check HACS first.** And 🔑 **the config entry_id CHANGED** to
 `01M1CVFWHYWW527S9BM5M2BDP3` (was `01KVM3JVYBWRKM25ZR8T7FKKJ3`); anything
 hardcoding the old one will fail.
 
-⚠️ **Live state was true at 2026-09-08 ~23:10 UTC. Requery HA and the mower
-before acting on it.** HA `2026.9.1`, `RUNNING`; entry `loaded`, not
-`disabled_by`. Mower **docked** (`charge_on`), **60% with `charging: off`**,
-VIO 80 features, `ble_rssi -50` but **`ble_link_live: off`**, `zone_hash 0`,
-and **RTK had dropped `Fix` -> `float`**. Gate **disarmed, verified from live API
-AND RAW `core.config_entries`**. Motion blockers at rest:
-`experimental_motion_disabled`, `position_not_valid_for_motion`,
-`rtk_not_precise`.
-⚠️ **Unresolved and worth a look before any run:** `last_error_code 2709`
-*"Battery voltage is low, Please charge"* logged **2026-09-08 07:20 EDT**, and
-the mower sits on the dock at 60% **not charging**. Not diagnosed.
+🚨 **THE 4.0 m REPEAT SERIES RAN 2026-09-10 AND IS INCOMPLETE AT 1 OF 5
+SCORED.** Full record: `docs/findings-clicktopath-reliability-4m-repeat-20260910.md`.
+Four real dispatches: leg 1 **scored PASS** (`target_reached`, 0.1277 m, aligned
+6.213°), legs 2–3 unscored, leg 4 a **FAIL** on `stop_failed_aborting`.
+**n = 1 supports no claim about reliability — never quote it as a rate.**
+🔑 **The reusable finding: aim each leg at the live `map_facing_degrees`, not at
+a fixed compass bearing.** The executor stops on *position* tolerance, not
+orientation, so facing drifts between legs — leg 2 copied leg 1's absolute
+bearing and started 28.361° off; leg 3 aimed at the live reading and started
+3.979° off. `map_facing_degrees` is populated under mere corroboration and does
+**not** need `motion_confirmed`; that stricter flag gates operator-facing
+dispatch confidence, not target planning.
+🚨 **BLE range is the practical limiter, not the control law.** RSSI degraded
+−48 → −77 → −84 dBm as the series marched away from the house, and leg 4 died on
+three `gatt_write` failures — the stop could not be written, so the executor
+aborted. **That is the safety design working.** The turn logic is not
+implicated: the 156.797° corner-escape turn completed cleanly in 3 staged steps.
+✅ **`scripts/plan_aligned_leg.py`** (`2e5f3f36`) now plans legs with runway
+lookahead, steers inside the ±10° window preferring the heading **closest to the
+measured facing**, and names a required reset leg before it is forced. The
+series had walked into a corner where no heading in the window stayed in bounds.
+✏️ **Amendment 1** (`5aeba62f`, committed *before* leg 4) dropped scoring
+condition 3 and moved the gate disarm from per-leg to session-end — the two
+original requirements were structurally incompatible. **It did not rescore legs
+2–3.**
+
+⚠️ **Live state was true at 2026-09-10 ~20:20 UTC. Requery HA and the mower
+before acting on it.** Mower **off-dock and paused in "Backyard Right"** at
+(6.7772, −8.9361), `area_inside`, **91% battery**, `ble_link_live: on` at
+**−76 dBm — right at the documented wall**. Gate **disarmed, verified from live
+API AND RAW `core.config_entries`**. Mower confirmed stationary by three
+position samples (last two bit-identical).
+🔑 **It is still out in the yard** — it never returned to the dock after leg 4
+aborted. `return_to_dock` is the vendor's own navigation and needs an operator
+go like any real motion.
+✅ **The 2026-09-08 `2709` low-battery worry is CLOSED** — it was the mower
+mowing off-dock overnight on the operator's own trigger, not a charging fault.
+It charged to 100% and read 91% after this session.
 
 ✏️ **The 2026-09-07 `disabled_by: user` finding stands but was not the whole
 story** — the operator disabled the entry themselves while troubleshooting and
