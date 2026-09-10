@@ -6,6 +6,7 @@ import json
 import os
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -48,6 +49,49 @@ def post_service(
     except urllib.error.HTTPError as err:
         detail = err.read().decode(errors="replace")
         raise SystemExit(f"HA service call failed: HTTP {err.code}: {detail}") from err
+
+
+def get_state(
+    ha_url: str, token: str, entity_id: str, timeout: int = 20
+) -> dict[str, Any]:
+    """Return the current HA state object for one entity."""
+    request = urllib.request.Request(
+        f"{ha_url.rstrip('/')}/api/states/{entity_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.load(response)
+
+
+def get_history(
+    ha_url: str,
+    token: str,
+    entity_ids: list[str],
+    *,
+    start_iso: str,
+    end_iso: str | None = None,
+    timeout: int = 60,
+) -> dict[str, list[dict[str, Any]]]:
+    """Return HA history for the given entities, keyed by entity_id.
+
+    Uses the `/api/history/period/<start>` endpoint with `filter_entity_id`.
+    `end_iso` is optional -- HA defaults to "now" when omitted.
+    """
+    params = {"filter_entity_id": ",".join(entity_ids)}
+    if end_iso:
+        params["end_time"] = end_iso
+    query = urllib.parse.urlencode(params)
+    url = f"{ha_url.rstrip('/')}/api/history/period/{start_iso}?{query}"
+    request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        series_list = json.load(response)
+    out: dict[str, list[dict[str, Any]]] = {}
+    for series in series_list:
+        if not series or not isinstance(series[0], dict):
+            continue
+        eid = series[0].get("entity_id", "")
+        out[eid] = [p for p in series if isinstance(p, dict)]
+    return out
 
 
 def runtime_ready(runtime_state: dict[str, Any]) -> bool:

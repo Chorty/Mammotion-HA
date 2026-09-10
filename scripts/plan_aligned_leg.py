@@ -57,6 +57,36 @@ from scan_contained_bearings import (  # noqa: E402
 )
 
 
+def _load_coverage(path: Path) -> list[dict[str, float]]:
+    """Load BLE coverage samples written by `scripts/ble_coverage_map.py`."""
+    if not path.exists():
+        return []
+    data = json.loads(path.read_text())
+    samples = data.get("samples") or []
+    return [
+        {"x": float(s["x"]), "y": float(s["y"]), "rssi": float(s["rssi"])}
+        for s in samples
+    ]
+
+
+def _estimate_rssi(
+    x: float, y: float, samples: list[dict[str, float]], *, radius: float
+) -> tuple[float | None, int]:
+    """Average RSSI of coverage samples within `radius` of (x, y).
+
+    Returns (None, 0) when nothing was banked nearby -- callers must treat
+    that as "unverified", not as "fine". A point nobody has ever driven near
+    has no evidence either way, and optimistically treating it as clear is
+    exactly the assumption that walked leg 4 into a BLE dead zone.
+    """
+    nearby = [
+        s["rssi"] for s in samples if math.hypot(s["x"] - x, s["y"] - y) <= radius
+    ]
+    if not nearby:
+        return None, 0
+    return sum(nearby) / len(nearby), len(nearby)
+
+
 def _candidate(
     start: Point,
     heading: float,
@@ -147,8 +177,37 @@ def main() -> int:  # noqa: C901
     parser.add_argument("--step", type=float, default=0.05)
     parser.add_argument("--cap", type=float, default=25.0)
     parser.add_argument("--resolution", type=float, default=0.5)
+    parser.add_argument(
+        "--coverage",
+        type=Path,
+        default=Path("scripts/ble_coverage_map.json"),
+        help="BLE coverage file from scripts/ble_coverage_map.py; "
+        "missing file disables the BLE check entirely",
+    )
+    parser.add_argument(
+        "--min-rssi-dbm",
+        type=float,
+        default=-76.0,
+        help="reject a target whose nearby coverage samples average below this "
+        "-- matches the documented -76 dBm wall",
+    )
+    parser.add_argument(
+        "--coverage-radius-m",
+        type=float,
+        default=2.0,
+        help="how far from a target to pool coverage samples",
+    )
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args()
+
+    coverage = _load_coverage(args.coverage)
+    if coverage:
+        print(f"BLE coverage    : {len(coverage)} samples from {args.coverage}")
+    else:
+        print(
+            f"BLE coverage    : none loaded ({args.coverage} missing or empty) "
+            "-- BLE check disabled"
+        )
 
     load_dotenv(Path(".env"))
     url, token = os.environ["HA_URL"], os.environ["HA_TOKEN"]
@@ -210,6 +269,14 @@ def main() -> int:  # noqa: C901
         )
         if got is not None:
             got["offset_from_facing_degrees"] = round(offset, 3)
+            rssi, n_samples = _estimate_rssi(
+                got["target"]["x"],
+                got["target"]["y"],
+                coverage,
+                radius=args.coverage_radius_m,
+            )
+            got["estimated_rssi_dbm"] = round(rssi, 1) if rssi is not None else None
+            got["rssi_sample_count"] = n_samples
             aligned.append(got)
         offset += args.resolution
 
@@ -219,10 +286,41 @@ def main() -> int:  # noqa: C901
         "leg_m": args.leg,
         "tolerance_degrees": args.tolerance,
         "min_runway_m": args.min_runway,
+        "min_rssi_dbm": args.min_rssi_dbm if coverage else None,
         "aligned_candidates": len(aligned),
     }
 
-    with_runway = [c for c in aligned if c["runway_after_m"] >= args.min_runway]
+    # BLE filter: exclude only candidates with REAL nearby data below the
+    # wall. A candidate with no coverage data at all is unverified, not
+    # unsafe -- excluding it would make the planner refuse anything outside
+    # the small footprint driven so far. Report it either way.
+    rejected_ble = [
+        c
+        for c in aligned
+        if c["estimated_rssi_dbm"] is not None
+        and c["estimated_rssi_dbm"] < args.min_rssi_dbm
+    ]
+    ble_ok = [c for c in aligned if c not in rejected_ble]
+
+    with_runway = [c for c in ble_ok if c["runway_after_m"] >= args.min_runway]
+
+    result["ble_rejected_count"] = len(rejected_ble)
+    if rejected_ble:
+        print(
+            f"BLE filter       : {len(rejected_ble)} aligned candidate(s) rejected "
+            f"below {args.min_rssi_dbm} dBm (worst "
+            f"{min(c['estimated_rssi_dbm'] for c in rejected_ble):.1f} dBm)"
+        )
+    print()
+
+    def _rssi_line(candidate: dict[str, Any]) -> None:
+        if candidate["estimated_rssi_dbm"] is None:
+            print("  BLE coverage   : no banked samples nearby -- unverified")
+        else:
+            print(
+                f"  BLE coverage   : {candidate['estimated_rssi_dbm']} dBm "
+                f"(from {candidate['rssi_sample_count']} nearby samples)"
+            )
 
     if with_runway:
         # 🚨 Among candidates that clear `--min-runway`, prefer the one closest
@@ -247,8 +345,9 @@ def main() -> int:  # noqa: C901
             f"  runway after   : {best['runway_after_m']} m "
             f"(best next heading {best['runway_after_heading_degrees']} deg)"
         )
-    elif aligned:
-        best = max(aligned, key=lambda c: c["runway_after_m"])
+        _rssi_line(best)
+    elif ble_ok:
+        best = max(ble_ok, key=lambda c: c["runway_after_m"])
         result["verdict"] = "aligned_leg_fits_but_no_runway"
         result["recommended"] = best
         result["best_runway_after_m"] = best["runway_after_m"]
@@ -265,6 +364,23 @@ def main() -> int:  # noqa: C901
         )
         print(f"  target         : ({best['target']['x']}, {best['target']['y']})")
         print(f"  runway after   : {best['runway_after_m']} m")
+        _rssi_line(best)
+    elif aligned:
+        # Geometry has room, but every aligned candidate reads below the
+        # BLE wall. Taking one risks reproducing leg 4's stop_failed_aborting.
+        best = min(rejected_ble, key=lambda c: abs(c["offset_from_facing_degrees"]))
+        result["verdict"] = "aligned_leg_blocked_by_ble"
+        result["recommended"] = best
+        print("🚨 VERDICT: an aligned leg fits geometrically, but ALL such headings")
+        print(f"    read below the {args.min_rssi_dbm} dBm BLE wall.")
+        print("    Taking one risks the same stop_failed_aborting leg 4 hit.")
+        print()
+        print(
+            f"  heading        : {best['heading_degrees']} deg  "
+            f"(offset {best['offset_from_facing_degrees']:+} from facing)"
+        )
+        print(f"  target         : ({best['target']['x']}, {best['target']['y']})")
+        _rssi_line(best)
     else:
         result["verdict"] = "no_aligned_leg_reset_required"
         print("🛑 VERDICT: NO aligned leg fits. A reset turn is required.")

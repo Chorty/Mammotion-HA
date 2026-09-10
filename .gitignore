@@ -16,9 +16,12 @@ ios-decompile/
 __pycache__
 .secrets.local
 
-# Diagnostic script output (scripts/ble_advert_monitor.py, scripts/state_sampler.py)
+# Diagnostic script output (scripts/ble_advert_monitor.py, scripts/state_sampler.py,
+# scripts/ble_coverage_map.py) -- regenerated from banked HA history, not a fixed
+# point-in-time record, so it must not be committed stale.
 scripts/advert_log.jsonl
 scripts/state_log.jsonl
+scripts/ble_coverage_map.json
 
 # OTA firmware capture (scripts/mitm_ota_capture.py, scripts/fetch_ota_firmware.py,
 # scripts/listen_ota_mqtt.py, scripts/ota_safety_net.py,
