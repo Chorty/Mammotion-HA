@@ -1403,6 +1403,16 @@
         }
       }
     },
+    "motion_dispatch_timing_report": {
+      "name": "Motion dispatch timing report",
+      "description": "Returns a read-only distribution of how long confirmed BLE motion commands waited to start in the serialized command queue, and how long their GATT write took. Measures headroom on the queue-start bound. Sends no movement commands.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any Mammotion mower entity belonging to the device."
+        }
+      }
+    },
     "export_runtime_state": {
       "name": "Export runtime state",
       "description": "Returns read-only mower runtime telemetry and manual-motion safety blockers used by click/go preflight. Sends no movement commands.",

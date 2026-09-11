@@ -254,6 +254,23 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         # coupling normal mower operation to experimental motion internals.
         self.manual_motion_session: Any | None = None
         self.last_manual_motion_session: Any | None = None
+        #: Rolling per-dispatch queue/write timings for confirmed BLE motion.
+        #:
+        #: 🔑 This exists because the 2.0 s queue-start bound
+        #: (``services._BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS``) was
+        #: **unfalsifiable from telemetry**: a refusal recorded only that the
+        #: wait exceeded 2.0 s, and a success recorded nothing at all. That is a
+        #: censored observation -- it cannot distinguish "typical waits are 50 ms
+        #: and 2.0 s is a rare pathology" from "typical waits are 1.8 s and the
+        #: bound is marginal", which is exactly the question that decides whether
+        #: the constant should move (docs/plan-post-20260910-session-issues.md,
+        #: issue 1 step 2). Every dispatch appends here, so one real session
+        #: yields a distribution instead of another anecdote.
+        #:
+        #: Written by ``services._record_motion_dispatch_timing``; read by the
+        #: read-only ``motion_dispatch_timing_report`` service. Bounded, so a long
+        #: session cannot grow it without limit.
+        self.motion_dispatch_timings: deque[dict[str, Any]] = deque(maxlen=500)
         self.last_task_sync: datetime.datetime | None = None
         self.last_map_task_error: str | None = None
         self.last_cloud_login_success: datetime.datetime | None = None

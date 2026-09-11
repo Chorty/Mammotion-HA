@@ -85,6 +85,7 @@ SERVICE_GET_AREAS = "get_areas"
 SERVICE_EXPORT_MAP = "export_map"
 SERVICE_EXPORT_TASKS = "export_tasks"
 SERVICE_EXPORT_RUNTIME_STATE = "export_runtime_state"
+SERVICE_MOTION_DISPATCH_TIMING_REPORT = "motion_dispatch_timing_report"
 #: 🔒 ONE-WAY BY DESIGN. There is deliberately no matching "arm" service.
 #:
 #: Arming stays behind the options flow, which is a human sitting in front of
@@ -7682,6 +7683,103 @@ def _raw_pymammotion_motion_interpretation(
     }
 
 
+def _record_motion_dispatch_timing(
+    coordinator: MammotionReportUpdateCoordinator,
+    **fields: Any,
+) -> dict[str, Any]:
+    """Append one confirmed-motion dispatch's timing to the rolling history.
+
+    🔑 Turns the queue-start bound from a censored observation into a measured
+    one. Before this, ``_BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS`` could only ever
+    be observed being *exceeded* -- a successful pulse recorded no wait at all --
+    so there was no way to tell a rare pathology from a routinely marginal bound.
+    Both outcomes are recorded here, which is what
+    ``docs/plan-post-20260910-session-issues.md`` issue 1 step 2 needs before any
+    number is allowed to move.
+
+    Never raises: instrumentation must not be able to fail a dispatch. A
+    coordinator without the history attribute (older object, test double) is
+    simply skipped.
+    """
+    sample = {"recorded_at_utc": _utc_timestamp(), **fields}
+    try:
+        history = coordinator.motion_dispatch_timings
+    except AttributeError:
+        return sample
+    try:
+        history.append(sample)
+    except Exception as err:  # noqa: BLE001
+        LOGGER.debug("Could not record motion dispatch timing: %s", err)
+    return sample
+
+
+def _summarise_motion_dispatch_timings(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> dict[str, Any]:
+    """Summarise the rolling queue/write timings into a distribution.
+
+    This is the read side of issue 1 step 2. The question it exists to answer is
+    narrow and specific: **how much headroom does the 2.0 s queue-start bound
+    actually have in normal operation?** A p95 of 60 ms says the two 2026-09-10
+    refusals were a transient pathology and the constant is not the problem; a
+    p95 of 1.6 s says the bound is routinely marginal and raising it is
+    defensible. Neither conclusion was reachable before, because successful
+    pulses recorded nothing.
+
+    Read-only and side-effect free -- it sends no command and touches no
+    transport.
+    """
+    try:
+        samples = list(coordinator.motion_dispatch_timings)
+    except AttributeError:
+        samples = []
+    waits = sorted(
+        float(s["queue_wait_ms"])
+        for s in samples
+        if isinstance(s.get("queue_wait_ms"), int | float)
+    )
+
+    def pct(fraction: float) -> float | None:
+        if not waits:
+            return None
+        index = min(len(waits) - 1, int(round(fraction * (len(waits) - 1))))
+        return round(waits[index], 3)
+
+    outcomes: dict[str, int] = {}
+    for sample in samples:
+        key = str(sample.get("outcome", "unknown"))
+        outcomes[key] = outcomes.get(key, 0) + 1
+    budgets = {
+        float(s["queue_budget_seconds"])
+        for s in samples
+        if isinstance(s.get("queue_budget_seconds"), int | float)
+    }
+    #: How close the worst observed wait came to the bound it was measured
+    #: against. >1.0 is impossible for a completed dispatch by construction.
+    headroom = None
+    if waits and budgets:
+        headroom = round(max(waits) / (min(budgets) * 1000.0), 4)
+    return {
+        "service": SERVICE_MOTION_DISPATCH_TIMING_REPORT,
+        "queue_start_timeout_seconds": _BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS,
+        "write_timeout_seconds": _BLE_MOTION_WRITE_TIMEOUT_SECONDS,
+        "sample_count": len(samples),
+        "history_capacity": getattr(
+            getattr(coordinator, "motion_dispatch_timings", None), "maxlen", None
+        ),
+        "outcomes": outcomes,
+        "queue_wait_ms": {
+            "min": round(waits[0], 3) if waits else None,
+            "p50": pct(0.50),
+            "p95": pct(0.95),
+            "max": round(waits[-1], 3) if waits else None,
+            "count": len(waits),
+        },
+        "worst_wait_fraction_of_budget": headroom,
+        "samples": samples,
+    }
+
+
 async def _send_ble_motion_command_confirmed(  # noqa: C901
     coordinator: MammotionReportUpdateCoordinator,
     command: str,
@@ -7768,6 +7866,12 @@ async def _send_ble_motion_command_confirmed(  # noqa: C901
             if not completed.done():
                 completed.set_result(None)
 
+    queue_budget_seconds = (
+        _BLE_MOTION_WRITE_TIMEOUT_SECONDS + 1.0
+        if emergency_stop
+        else _BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS
+    )
+    enqueued_monotonic = time.monotonic()
     try:
         await handle.queue.enqueue(
             _dispatch,
@@ -7782,18 +7886,22 @@ async def _send_ble_motion_command_confirmed(  # noqa: C901
             completed.exception()
         raise
     try:
-        await asyncio.wait_for(
-            started.wait(),
-            timeout=(
-                _BLE_MOTION_WRITE_TIMEOUT_SECONDS + 1.0
-                if emergency_stop
-                else _BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS
-            ),
-        )
+        await asyncio.wait_for(started.wait(), timeout=queue_budget_seconds)
     except TimeoutError:
         armed = False
         if not completed.done():
             completed.cancel()
+        _record_motion_dispatch_timing(
+            coordinator,
+            command=command,
+            is_stop=is_stop,
+            emergency_stop=emergency_stop,
+            outcome="queue_start_timeout",
+            queue_wait_ms=round((time.monotonic() - enqueued_monotonic) * 1000, 3),
+            queue_budget_seconds=queue_budget_seconds,
+            started=False,
+            write_ms=None,
+        )
         raise RuntimeError(
             "BLE motion command did not start before the queue deadline; "
             "the queued item was disarmed"
@@ -7802,7 +7910,20 @@ async def _send_ble_motion_command_confirmed(  # noqa: C901
         armed = False
         if not completed.done():
             completed.cancel()
+        _record_motion_dispatch_timing(
+            coordinator,
+            command=command,
+            is_stop=is_stop,
+            emergency_stop=emergency_stop,
+            outcome="cancelled_before_start",
+            queue_wait_ms=round((time.monotonic() - enqueued_monotonic) * 1000, 3),
+            queue_budget_seconds=queue_budget_seconds,
+            started=False,
+            write_ms=None,
+        )
         raise
+    queue_wait_ms = round((time.monotonic() - enqueued_monotonic) * 1000, 3)
+    started_monotonic = time.monotonic()
 
     try:
         await asyncio.shield(completed)
@@ -7823,6 +7944,17 @@ async def _send_ble_motion_command_confirmed(  # noqa: C901
                 await _stop_manual_motion_confirmed(coordinator)
         raise
     else:
+        _record_motion_dispatch_timing(
+            coordinator,
+            command=command,
+            is_stop=is_stop,
+            emergency_stop=emergency_stop,
+            outcome="completed",
+            queue_wait_ms=queue_wait_ms,
+            queue_budget_seconds=queue_budget_seconds,
+            started=True,
+            write_ms=round((time.monotonic() - started_monotonic) * 1000, 3),
+        )
         record_completed_dispatch(
             coordinator,
             command=command,
@@ -21634,10 +21766,26 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             "enabled": experimental_motion_enabled(coordinator),
         }
 
+    async def handle_motion_dispatch_timing_report(
+        call: ServiceCall,
+    ) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        return _summarise_motion_dispatch_timings(mower.reporting_coordinator)
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_EXPORT_RUNTIME_STATE,
         handle_export_runtime_state,
+        schema=GEOJSON_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_MOTION_DISPATCH_TIMING_REPORT,
+        handle_motion_dispatch_timing_report,
         schema=GEOJSON_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )

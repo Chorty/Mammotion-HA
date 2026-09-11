@@ -359,6 +359,19 @@ export_runtime_state:
         entity:
           integration: mammotion
 
+motion_dispatch_timing_report:
+  description: >-
+    Read-only distribution of how long confirmed BLE motion commands waited to
+    start in the serialized command queue, and how long their GATT write took.
+    Measures the headroom on the 2.0s queue-start bound that refused legs 7 and 8
+    on 2026-09-10. Sends no movement commands and touches no transport.
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: mammotion
+
 export_active_route:
   fields:
     entity_id:
