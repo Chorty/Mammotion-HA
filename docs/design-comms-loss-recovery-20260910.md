@@ -1,7 +1,12 @@
 # DESIGN PROPOSAL — what happens after `stop_failed_aborting`, and who decides (2026-09-10)
 
-**This is a decision request, not a predeclaration and not an implementation.**
-Nothing here is authorized. It presents the current behavior as verified in the
+✅ **DECIDED 2026-09-11 — option B, built.** The operator chose **notify only,
+triggering on BOTH `command_failed` and `stop_failed_aborting`** (see the scope
+correction in §4B). C and D remain unbuilt and undecided. Implementation record:
+`docs/findings-comms-abort-notify-20260911.md`.
+
+**This was a decision request, not a predeclaration and not an implementation.**
+Nothing here was authorized when written. It presents the current behavior as verified in the
 tree, states the gap against a standing decision, and lays out concrete options
 for the operator to choose between. No code changes until one is picked.
 
@@ -18,9 +23,17 @@ in the system would have done it otherwise.
 Five call sites in `custom_components/mammotion/services.py`
 (`raw_pymammotion_execute_vector_segment`'s calibration-turn phase,
 turn-to-heading phase and linear phase; `manual_velocity_pulse_test`; the
-final-approach loop) all do the identical thing, each carrying its own
-`# Never keep driving/turning when stops are not deliverable` comment dated
-**2026-07-12**:
+final-approach loop) all do the identical thing:
+
+✏️ **Corrected 2026-09-11 against the tree.** Both the count and the attribution
+above are wrong, and the correct map is in
+`docs/findings-clicktopath-reliability-4m-repeat-20260910.md` §1.5.1. There are
+**four** `stop_failed_aborting` sites, not five, in `_vio_turn_to_heading`,
+`_raw_pymammotion_execute_segment`, `_vio_segment_calibration_drive` and
+`_raw_pymammotion_execute_vector_segment` — not in `manual_velocity_pulse_test`
+or a final-approach loop, and one of them (`_raw_pymammotion_execute_segment`)
+belongs to a service this series never ran. The shared-comment claim does not
+survive a grep either. The behaviour described below is accurate as behaviour:
 
 1. Send a motion pulse.
 2. Attempt to stop it.
@@ -67,12 +80,26 @@ Status quo. Zero implementation risk, zero new code. Leaves standing decision
 which so far has been every real session — so this is not a change, it is a
 decision to accept the current limit explicitly rather than by default.
 
-### B. Notify only
+### B. Notify only ✅ CHOSEN AND BUILT 2026-09-11
 When any of the five sites returns `stop_failed_aborting`, fire an HA
 `persistent_notification` (and/or mobile push, if configured) naming the leg,
 the last known position, and the time. **No new motion command, ever.** Purely
 additive — a read of state that already exists, surfaced instead of silently
 returned.
+
+🚨 **Scope correction, 2026-09-11 — this wording would have missed the point.**
+Triggering on `stop_failed_aborting` alone covers **leg 4 only**. Legs 7 and 8 —
+**the two that tripped the series' own abort rule** — both returned
+`command_failed`, so notify-as-written would have stayed silent for exactly the
+pair that stopped the series. As built, the trigger set is
+`{command_failed, stop_failed_aborting}`, and both `stop_reason` and `reason`
+keys are read (the calibration drive uses the latter for the identical
+condition).
+
+⚠️ **Mobile push is deliberately NOT integration config.** The build fires a
+`mammotion_motion_comms_abort` event on the HA bus alongside the persistent
+notification, so an operator automation routes it onward — no notify-service
+name is stored in this integration, and no manifest dependency was added.
 
 **Risk:** essentially none. Does not touch the motion path.
 **What it does not solve:** the operator still has to physically go check;

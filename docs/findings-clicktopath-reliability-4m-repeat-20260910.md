@@ -128,10 +128,19 @@ log, never from a proxy's entity state" rule, observed twice in one afternoon.
 ### 1.5 🚨 The real failure mode is a 2.0 s BLE command-queue timeout — not RSSI, not range
 
 Legs 4, 7 and 8 all failed differently on the surface (`stop_failed_aborting`
-twice, `command_failed` twice) but all three trace to the same family of
-defensive code in `services.py`: **five call sites**, all sharing an identical
-`# Never keep driving/turning when stops are not deliverable` comment dated
-**2026-07-12**, and one specific guard:
+once, `command_failed` twice) but all three trace to the same family of
+defensive code in `services.py`, and to one specific guard:
+
+✏️ **Corrected 2026-09-11 against the tree.** This paragraph originally read
+"`stop_failed_aborting` twice, `command_failed` twice" (four events for three
+legs — §0's table says one and two) and described "**five call sites**, all
+sharing an identical `# Never keep driving/turning when stops are not
+deliverable` comment dated **2026-07-12**". None of that survives a grep: that
+exact comment string matches **nothing**, there are **four** `stop_failed_aborting`
+assignment sites (a fifth hit is a docstring), they sit in **four different
+functions**, there are three comment variants, and only two carry the 2026-07-12
+date. The mechanism below is unaffected — but where a fix has to land is not,
+which is why it mattered. See §1.5.1.
 
 ```python
 _BLE_QUEUE_DEPTH_LIMIT = 0
@@ -152,6 +161,26 @@ flight, a brief reconnect retry — for more than 2.0 s when the next pulse
 tries to enqueue, the guard fires and the item is disarmed. **This is
 deliberate, not a bug**: a late-dispatched pulse would already have drifted
 out of sync with its own timing assumptions, so refusing is the safer choice.
+
+#### 1.5.1 ✏️ Where these sites actually are (verified 2026-09-11)
+
+| function | `command_failed` | `stop_failed_aborting` | reached by the vector executor? |
+| --- | --- | --- | --- |
+| `_vio_turn_to_heading` | ✅ | ✅ | ✅ its turn phase |
+| `_raw_pymammotion_turn_to_heading` | ✅ | — | ✅ its turn phase |
+| `_vio_segment_calibration_drive` | ✅ | ✅ | ✅ its calibration drive |
+| `_raw_pymammotion_execute_vector_segment` | ✅ | ✅ | ✅ its linear phase |
+| `_raw_pymammotion_execute_segment` | ✅ | ✅ | ❌ a different service |
+
+🚨 **This is why the 2026-09-10 instrumentation was not enough.** It went into
+the linear phase only, but the first three rows are *phases of the same
+service*, executed on every leg — a leg dying in the calibration drive or a turn
+produced the identical reason with **no queue snapshot at all**. Extended to all
+four in-scope functions on 2026-09-11 (operator-approved, beyond the plan's
+original step-1 scope); the ~17 sites in genuinely other executors stay deferred.
+
+⚠️ **The calibration drive reports `reason`, not `stop_reason`**, for the
+identical condition. Anything consuming these must read both keys.
 
 🔑 **RSSI cannot see this at all.** It is a periodic sample of physical signal
 strength; the queue-start timeout is a software-scheduling measurement on the

@@ -7178,6 +7178,157 @@ def _is_zero_motion_stop_nudge(
     )
 
 
+#: Stop reasons that end a REAL run with the mower's state unestablished by the
+#: call itself -- the command could not be delivered, or its stop could not be
+#: confirmed. Both are the 2026-07-12 design refusing to act on uncertain state,
+#: and both leave the operator with nothing unless somebody reads the service
+#: response. See docs/design-comms-loss-recovery-20260910.md.
+#:
+#: 🚨 ``command_failed`` belongs here as much as ``stop_failed_aborting`` does.
+#: On 2026-09-10 legs 7 and 8 -- the two that tripped the series' own abort rule
+#: -- both returned ``command_failed``; only leg 4 returned
+#: ``stop_failed_aborting``. Notifying on the latter alone would have stayed
+#: silent for exactly the pair that stopped the series.
+_COMMS_ABORT_REASONS = frozenset({"command_failed", "stop_failed_aborting"})
+
+#: Fired alongside the persistent notification so an operator automation can
+#: route a comms abort onward -- mobile push, siren, anything -- without this
+#: integration needing to know about a notify service or carry config for one.
+EVENT_MOTION_COMMS_ABORT = f"{DOMAIN}_motion_comms_abort"
+
+
+def _comms_abort_reason(result: dict[str, Any]) -> str | None:
+    """Return the comms-abort reason a motion result carries, if it carries one.
+
+    Both keys are read because the executors disagree about which to use for the
+    identical condition: the vector-segment and turn paths set ``stop_reason``,
+    while the VIO calibration drive sets ``reason``.
+    """
+    for key in ("stop_reason", "reason"):
+        value = result.get(key)
+        if isinstance(value, str) and value in _COMMS_ABORT_REASONS:
+            return value
+    return None
+
+
+def _last_queue_diagnostics(result: dict[str, Any]) -> dict[str, Any] | None:
+    """Return the queue snapshot from the most recent command that captured one."""
+    commands = result.get("command_results")
+    if not isinstance(commands, list):
+        return None
+    for command in reversed(commands):
+        if isinstance(command, dict) and isinstance(
+            command.get("queue_diagnostics"), dict
+        ):
+            return command["queue_diagnostics"]
+    return None
+
+
+def _describe_abort_position(result: dict[str, Any]) -> str:
+    """Render the last known position for an operator reading a notification."""
+    telemetry = result.get("final_telemetry")
+    position = telemetry.get("position") if isinstance(telemetry, dict) else None
+    if not isinstance(position, dict):
+        return "unknown (no telemetry captured in the result)"
+    x = position.get("x")
+    y = position.get("y")
+    if x is None or y is None:
+        return f"unknown (source: {position.get('source')})"
+    return (
+        f"x={x}, y={y}, toward={position.get('toward')} "
+        f"(source: {position.get('source')})"
+    )
+
+
+def _notify_motion_comms_abort(
+    hass: HomeAssistant,
+    service: str,
+    call: ServiceCall,
+    result: dict[str, Any],
+) -> None:
+    """Tell the operator a real run aborted on a comms failure.
+
+    Notify-only, deliberately. This sends no command of any kind -- not a stop,
+    not a re-connect, not a dock. The whole point of the abort it is reporting is
+    that a command could not be confirmed delivered, so adding another one here
+    would be strictly worse; auto-verify and auto-dock are held for their own
+    decisions (``docs/design-comms-loss-recovery-20260910.md`` options C and D).
+
+    The gap this closes: before this, ``stop_reason`` was a string inside one
+    service response with zero consumers anywhere in the integration. An
+    unwatched session that hit it left the mower wherever it stopped with no
+    record anybody would see -- which standing decision 2 ("reliable enough to
+    trust without watching") cannot survive.
+
+    ``persistent_notification`` is invoked by service name rather than imported,
+    so the manifest needs no new dependency entry for hassfest to police. Every
+    failure here is swallowed: a notification that cannot be delivered must never
+    turn a completed motion result into an exception.
+    """
+    reason = _comms_abort_reason(result)
+    if reason is None:
+        return
+    try:
+        entity_id = call.data.get(ATTR_ENTITY_ID)
+        occurred_at = _utc_timestamp()
+        queue_diagnostics = _last_queue_diagnostics(result)
+        hass.bus.async_fire(
+            EVENT_MOTION_COMMS_ABORT,
+            {
+                "service": service,
+                "entity_id": entity_id,
+                "reason": reason,
+                "occurred_at_utc": occurred_at,
+                "position": (result.get("final_telemetry") or {}).get("position"),
+                "queue_diagnostics": queue_diagnostics,
+            },
+        )
+        queue_line = (
+            f"BLE link at refusal: queue_depth={queue_diagnostics.get('queue_depth')}, "
+            f"last_send_age_seconds="
+            f"{queue_diagnostics.get('last_send_age_seconds')}, "
+            f"is_connected={queue_diagnostics.get('is_connected')}"
+            if queue_diagnostics
+            else "BLE link at refusal: not captured"
+        )
+        message = "\n".join(
+            (
+                f"A real motion run aborted on `{reason}`. The mower's state was "
+                "not established by the call itself.",
+                "",
+                f"Service: {service}",
+                f"Entity: {entity_id}",
+                f"Time (UTC): {occurred_at}",
+                f"Last known position: {_describe_abort_position(result)}",
+                queue_line,
+                "",
+                "No further command was sent. Confirm the mower is stationary "
+                "before re-arming the motion gate.",
+            )
+        )
+        hass.async_create_task(
+            hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "Mammotion: motion aborted on a comms failure",
+                    "message": message,
+                    "notification_id": (
+                        f"{DOMAIN}_comms_abort_{service}_{time.monotonic_ns()}"
+                    ),
+                },
+                blocking=False,
+            )
+        )
+    except Exception as err:  # noqa: BLE001
+        LOGGER.warning(
+            "Could not surface the %s comms abort for %s: %s",
+            reason,
+            service,
+            err,
+        )
+
+
 def _wrap_exclusive_manual_motion(  # noqa: C901
     hass: HomeAssistant,
     service: str,
@@ -7293,6 +7444,7 @@ def _wrap_exclusive_manual_motion(  # noqa: C901
             raise
         else:
             session.phase = "completed"
+            _notify_motion_comms_abort(hass, service, call, result)
             return result
         finally:
             session.owner_done.set()
@@ -13226,6 +13378,13 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         except Exception as err:  # noqa: BLE001
             command_result["ok"] = False
             command_result["error"] = f"{type(err).__name__}: {err}"
+            # 🔑 Extended 2026-09-11. The 2026-09-10 instrumentation covered the
+            # LINEAR phase only, but this helper is a *phase* of
+            # _raw_pymammotion_execute_vector_segment (called at its turn steps),
+            # not a separate executor -- a leg aborting here produced the same
+            # `command_failed` with no queue snapshot at all, which is exactly
+            # the blindness the original edit set out to remove.
+            command_result["queue_diagnostics"] = _ble_link_liveness(coordinator)
             result["command_results"].append(command_result)
             result["commands_sent"] += 1
             result["stop_reason"] = "command_failed"
@@ -13259,6 +13418,10 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         except Exception as err:  # noqa: BLE001
             # Never keep turning when stops are not deliverable (live 2026-07-12:
             # BLE connect cooldown raised mid-run and motion continued unstopped).
+            # 🔑 Extended 2026-09-11, same reasoning as the command_failed site
+            # above: capture the queue/connection snapshot at the instant of
+            # refusal, since RSSI alone cannot explain it.
+            command_result["queue_diagnostics"] = _ble_link_liveness(coordinator)
             command_result["stop_ack"] = {"error": f"{type(err).__name__}: {err}"}
             result["command_results"].append(command_result)
             result["stop_reason"] = "stop_failed_aborting"
@@ -15388,6 +15551,9 @@ async def _raw_pymammotion_turn_to_heading(  # noqa: C901, PLR0913
         except Exception as err:  # noqa: BLE001
             command_result["ok"] = False
             command_result["error"] = f"{type(err).__name__}: {err}"
+            # 🔑 Extended 2026-09-11: this helper runs as the vector executor's
+            # turn phase, so the same queue-scheduling refusal lands here.
+            command_result["queue_diagnostics"] = _ble_link_liveness(coordinator)
         finally:
             command_result["duration_ms"] = round(
                 (time.monotonic() - started) * 1000,
@@ -16135,6 +16301,11 @@ async def _vio_segment_calibration_drive(  # noqa: C901, PLR0913
         except Exception as err:  # noqa: BLE001
             command_result["ok"] = False
             command_result["error"] = f"{type(err).__name__}: {err}"
+            # 🔑 Extended 2026-09-11: the VIO calibration drive is the vector
+            # executor's FIRST real motion, so it is the earliest point a leg can
+            # die on a queue-start timeout -- and it reports `reason`, not
+            # `stop_reason`, which is why it reads as a different failure.
+            command_result["queue_diagnostics"] = _ble_link_liveness(coordinator)
             result["command_results"].append(command_result)
             result["pulses_sent"] += 1
             result["reason"] = "command_failed"
@@ -16148,6 +16319,9 @@ async def _vio_segment_calibration_drive(  # noqa: C901, PLR0913
             # Live 2026-07-12: BLE dropped into its connect cooldown mid-run and
             # the stop could not be delivered — never keep pulsing motion when
             # stops are not deliverable.
+            # 🔑 Extended 2026-09-11, same reasoning as the command_failed site
+            # above.
+            command_result["queue_diagnostics"] = _ble_link_liveness(coordinator)
             result["command_results"].append(command_result)
             result["reason"] = "stop_failed_aborting"
             return result

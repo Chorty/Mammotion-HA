@@ -1,6 +1,7 @@
 """Tests for the vector/manual-velocity segment executor: pulses, re-aim, post-turn correction."""
 
 import asyncio
+import contextlib
 import math
 import time
 from types import SimpleNamespace
@@ -4943,6 +4944,83 @@ async def test_exclusive_motion_wrapper_exempts_zero_motion_stop_nudge(
 
     release.set()
     await task
+
+
+class _AbortRecordingHass:
+    """Records the notifier's two outputs without needing a real event loop."""
+
+    def __init__(self) -> None:
+        self.events: list[tuple[str, dict[str, object]]] = []
+        self.notifications: list[dict[str, object]] = []
+        self.bus = SimpleNamespace(
+            async_fire=lambda event, payload: self.events.append((event, payload))
+        )
+        self.services = SimpleNamespace(async_call=self._async_call)
+
+    async def _async_call(
+        self, domain: str, service: str, data: dict[str, object], **_kwargs: object
+    ) -> None:
+        if (domain, service) == ("persistent_notification", "create"):
+            self.notifications.append(data)
+
+    def async_create_task(self, coro: object) -> None:
+        with contextlib.suppress(StopIteration):
+            coro.send(None)  # type: ignore[attr-defined]
+
+
+async def test_wrapper_notifies_the_operator_when_a_real_run_aborts_on_comms(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """🔑 The abort reason reaches the operator instead of only being returned.
+
+    Before 2026-09-11 `stop_reason` had zero consumers anywhere in the
+    integration, so an unwatched run that aborted left the mower wherever it
+    stopped with no record anybody would see. This is the hook that closes it --
+    on the wrapper's real-run return path, so every motion service gets it.
+    """
+    _fake_motion_mower(monkeypatch)
+    hass = _AbortRecordingHass()
+
+    async def aborting_handler(call: object) -> dict[str, object]:
+        return {
+            "stop_reason": "command_failed",
+            "final_telemetry": {"position": {"x": 6.62, "y": -9.18, "toward": 1234}},
+        }
+
+    wrapped = _wrap_exclusive_manual_motion(hass, "svc_motion", aborting_handler)
+    result = await wrapped(_motion_call())
+
+    # The result is returned unchanged -- notifying is purely additive.
+    assert result["stop_reason"] == "command_failed"
+    assert len(hass.events) == 1
+    assert hass.events[0][1]["reason"] == "command_failed"
+    assert len(hass.notifications) == 1
+    assert "x=6.62" in str(hass.notifications[0]["message"])
+
+
+async def test_wrapper_does_not_notify_on_a_normal_landing_or_a_dry_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only comms aborts notify; a good landing and a dry run stay silent."""
+    _fake_motion_mower(monkeypatch)
+    hass = _AbortRecordingHass()
+
+    async def landing_handler(call: object) -> dict[str, object]:
+        return {"stop_reason": "target_reached"}
+
+    wrapped = _wrap_exclusive_manual_motion(hass, "svc_motion", landing_handler)
+    await wrapped(_motion_call())
+    assert hass.events == []
+    assert hass.notifications == []
+
+    # A dry run returns before the real-run path entirely.
+    async def dry_handler(call: object) -> dict[str, object]:
+        return {"stop_reason": "command_failed"}
+
+    dry_wrapped = _wrap_exclusive_manual_motion(hass, "svc_dry", dry_handler)
+    await dry_wrapped(_motion_call(dry_run=True))
+    assert hass.events == []
+    assert hass.notifications == []
 
 
 def test_is_zero_motion_stop_nudge_truth_table() -> None:
