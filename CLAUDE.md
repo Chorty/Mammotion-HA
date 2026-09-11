@@ -24,7 +24,51 @@ prose around them is still true. **One grep against the tree beats this file.**
 
 ---
 
-## Current build: beta103 (deployed 2026-09-05; backend `chorty-0.8.12.post4`)
+## Current build: beta104 (deployed 2026-09-11; backend `chorty-0.8.12.post4`)
+
+✅ **beta104 verified end to end 2026-09-11 22:31-22:41 UTC** — 50/50 files
+byte-identical, card md5 `99126fb2` at both serving paths, Lovelace
+`?v=0.6.4-beta104&build=99126fb2`, backend read from inside the container,
+**133 entities, 0 unavailable**, **68 services**, gate `enabled: false`, API back
+in 30 s. Dry run `would_send: false`. Record: `docs/deploy-runbook-p0.md`.
+⚠️ **Browser confirmation still owed** (card text unchanged from beta103, but the
+resource URL moved).
+
+**What beta104 shipped** (PR #16, `fe8ee55c`) — **no motion-control-law value
+changed, `accepted-profile.json` untouched, no Gate 5 owed**:
+- 🔑 **The 2.0 s queue-start bound is now measurable.** It was
+  **unfalsifiable from telemetry**: a refusal recorded only that the wait
+  exceeded 2.0 s, and a *successful* pulse recorded nothing at all — a censored
+  observation that cannot tell "typical waits are 50 ms, 2.0 s is a rare
+  pathology" from "typical waits are 1.8 s, the bound is marginal". Every
+  dispatch now records its enqueue→started wait, outcome, budget and write
+  duration into a bounded deque (maxlen 500); the read-only service
+  **`motion_dispatch_timing_report`** returns min/p50/p95/max, outcome counts and
+  `worst_wait_fraction_of_budget`. 🛑 **`_BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS`
+  is still 2.0 and was deliberately NOT changed** — issue 1 step 2 is *measure*,
+  and the measurement has not been taken yet.
+- 🔑 **`queue_diagnostics` now covers all four in-scope functions** (7 sites).
+  The 2026-09-10 capture was the executor's LINEAR phase only, but
+  `_vio_segment_calibration_drive`, `_raw_pymammotion_turn_to_heading` and
+  `_vio_turn_to_heading` are *phases of the same service*, run on every leg —
+  a leg aborting there produced the identical reason with no snapshot at all.
+  Map: `docs/findings-clicktopath-reliability-4m-repeat-20260910.md` §1.5.1.
+- 🔴 **Comms aborts now reach the operator** (design options **B + C**).
+  `stop_reason` previously had **zero consumers** anywhere in the integration.
+  Now a persistent notification plus a bus event
+  (`EVENT_MOTION_COMMS_ABORT`, wire name built from `DOMAIN` at import)
+  fire on BOTH `command_failed` and `stop_failed_aborting` — 🚨 the design doc
+  said `stop_failed_aborting` only, which covers **leg 4 alone**; legs 7 and 8,
+  the two that tripped the abort rule, were `command_failed`.
+  C then verifies stationary **read-only**, guarded by `handle.position_epoch`:
+  🚨 **bit-identical position means the FEED is dead, not that the mower is
+  still**, so two of its four verdicts are "cannot confirm", never "fine".
+- 🛑 **Option D (auto `return_to_dock`) is NOT built and NOT authorized.**
+  Predeclaration written first:
+  `docs/predeclared-comms-abort-auto-dock-20260911.md`. It does not inherit B's
+  or C's approval.
+
+### Previously: beta103 (deployed 2026-09-05)
 
 ✅ **Bytes verified end to end** — 50/50 files byte-identical, card md5
 `1b3a404d` at both serving paths, Lovelace `?v=0.6.4-beta103&build=1b3a404d`,
@@ -138,13 +182,12 @@ legs 7 and 8 both failed here, both with good RSSI (−60 to −67 dBm) moments
 before and after, both after several pulses had already succeeded. RSSI cannot
 see queue occupancy; the 2026-09-10 (earlier) finding that BLE range bounds
 where a series can run **still holds** but is a *different* failure mode from
-this one. **Diagnostics added 2026-09-10** (`command_result["queue_diagnostics"]`,
-`_ble_link_liveness` snapshot at the moment of refusal) but **scoped to
-`_raw_pymammotion_execute_vector_segment` only** — the identical pattern exists
-at ~17 other sites across other executors, deliberately not touched. **Nothing
-about the timing constant itself was changed** — see
-`docs/plan-post-20260910-session-issues.md` for why it needs measurement, not a
-guess, before a number moves.
+this one. **Diagnostics added 2026-09-10** (`command_result["queue_diagnostics"]`) were
+**scoped to the executor's LINEAR phase only**; ✅ **beta104 extended them to all
+four in-scope functions** (7 sites) and added the timing instrument that makes
+the bound measurable at all. **The timing constant itself is still 2.0 and has
+never been changed** — see `docs/plan-post-20260910-session-issues.md` for why it
+needs measurement, not a guess, before a number moves.
 ✅ **`scripts/plan_aligned_leg.py`** (`2e5f3f36`) plans legs with runway
 lookahead, steers inside the ±10° window preferring the heading **closest to the
 measured facing**, names a required reset leg before it is forced, and (added
@@ -156,17 +199,33 @@ prevents the queue-timeout failure mode above.
 ✏️ **Amendment 1** (`5aeba62f`, committed *before* leg 4) dropped scoring
 condition 3 and moved the gate disarm from per-leg to session-end. **It did not
 rescore legs 2–3.**
-📋 **Comms-loss recovery is an open decision, not yet acted on:**
-`docs/design-comms-loss-recovery-20260910.md` lays out four options (nothing
-today reacts to a `stop_failed_aborting`/`command_failed` refusal — no
-notification, no auto-verify, no auto-dock) and recommends notify-only as the
-safe first step. Awaiting operator choice.
+✅ **Comms-loss recovery: DECIDED and SHIPPED in beta104 (options B + C).**
+`docs/design-comms-loss-recovery-20260910.md` records the choice and two
+corrections to its own text. 🛑 **Option D (auto-dock) remains unbuilt and
+undecided** — `docs/predeclared-comms-abort-auto-dock-20260911.md`.
 🔑 **The Mammotion integration itself failed setup mid-session** (bootstrap
 timeout cancelling setup, a documented trap, not new) — recovered cleanly with
 a config-entry reload in ~20 s, mower position confirmed unchanged across it.
 
-⚠️ **Live state was true at 2026-09-11 ~01:32 UTC. Requery HA and the mower
-before acting on it.** Mower **back on the dock** (`charge_on`), **NOT
+⚠️ **Live state was true at 2026-09-11 ~22:41 UTC (queried fresh this session).
+Requery HA and the mower before acting on it.** Mower **docked**, **69%**,
+trickle-charging (battery rose 66→69 over 14 h with ~1-min charge pulses roughly
+hourly; an instantaneous `charge_state: not_charging` read is just the gap
+between pulses — do not read it as off-dock). `ble_link_live: on` at **−62 dBm**,
+`work_mode: MODE_READY`, blade OFF, RTK **Fix**, VIO 80/80 features,
+`map_facing 277.646°` **motion_confirmed** with `safe_to_aim_dispatch: true`.
+Gate **disarmed** (`experimental_motion.enabled: false`, `blockers: []`).
+HA is **2026.9.1**. Only 2 entities unavailable, both camera-related and benign
+(the mower's last-event image and recognized-people sensor).
+
+📋 **Issue 1 step 2 is now UNBLOCKED but NOT DONE.** beta104 ships the
+instrument; **the measurement still needs a real session.** Call
+`motion_dispatch_timing_report` after a run to get the distribution. As of the
+deploy it reads `sample_count: 0` — nothing has been dispatched through it yet.
+
+🗄️ Superseded reading of the same evening below, kept for the correction it
+records:
+⚠️ **(2026-09-11 ~01:32 UTC)** Mower **back on the dock** (`charge_on`), **NOT
 charging**, **66% battery**, `ble_link_live: on` at **−52 dBm**. A fresh
 `1425` vision fault logged ~57 min earlier (after dark — consistent with the
 standing night-specific pattern). Gate **disarmed, verified from live API AND

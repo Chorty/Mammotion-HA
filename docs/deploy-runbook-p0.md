@@ -8,6 +8,50 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### ✅ 2026-09-11 22:31-22:41 UTC — beta104 deployed (comms-abort recovery + queue-start instrument)
+
+`0.6.4-beta104`, cut from `main` at `fe8ee55c` (PR #16, all checks green:
+python, hassfest, Socket). Backend `chorty-0.8.12.post4`, unchanged.
+
+**What shipped** — three commits, no motion-control-law value changed,
+`docs/accepted-profile.json` untouched, no Gate 5 owed:
+- `7b189ea6` — `queue_diagnostics` extended from the executor's linear phase to
+  all four in-scope functions (7 capture sites); option **B** (notify on a comms
+  abort) on BOTH `command_failed` and `stop_failed_aborting`.
+- `b114ed10` — the **step-2 instrument**: every confirmed motion dispatch now
+  records its enqueue→started wait, outcome, budget and write duration into a
+  bounded deque; new read-only service `motion_dispatch_timing_report`.
+  `_BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS` still **2.0**, untouched.
+- `541c2728` — option **C**, read-only stationary verification guarded by
+  `position_epoch` so a dead feed can never read as "confirmed stopped".
+
+**Measured verification tail:**
+
+| check | measured |
+| --- | --- |
+| archive SHA-256 | `ff51a079…` identical local and host |
+| files | **50/50 byte-identical** (normalised for the expect wrapper's CRLF) |
+| AppleDouble `._*` | **0** local archive, **0** on host |
+| card md5 | `99126fb2` — equal at `custom_components/…/www/`, `/config/www/community/mammotion/`, and locally |
+| Lovelace resource | read back as `?v=0.6.4-beta104&build=99126fb2` |
+| version quartet | manifest / pyproject / CARD_VERSION `0.6.4-beta104`; `uv.lock` `0.6.4b104` (PEP 440) |
+| backend | `0.8.12.post4` |
+| API return | **30 s**; 133 mammotion entities at **149 s** |
+| entities | 133, **0 unavailable** |
+| services | **68** (67 + `motion_dispatch_timing_report`) |
+| gate | `enabled: false`, `real_motion_allowed: false`, `active_session: null` |
+| new service live | returned `sample_count: 0`, `history_capacity: 500` — deque wired, nothing dispatched since restart |
+| dry run | `would_send: false`, `commands_sent: 0`, `valid: true`, `blockers: []` |
+
+Pre-deploy gate: pytest **1105**, ruff, ruff format, mypy, 91 frontend,
+pre-commit **10/10**. Backup at
+`/config/mammotion-backup-20260911-1831-pre-beta104.tgz`.
+
+⚠️ **Browser confirmation still owed.** The card's own text is unchanged from
+beta103, but the resource URL moved, so the operator should confirm the footer
+reads `v0.6.4-beta104`. A correct backend deploy with a stale card cache is
+still a failed deployment.
+
 ### 🚨 RESTORE — 2026-09-08 23:03-23:07 UTC — HACS overwrote beta103 with upstream; beta103 redeployed
 
 **Not a release.** No version bump, no new commit shipped: this is
