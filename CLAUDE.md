@@ -170,9 +170,12 @@ before acting on it.** Mower **back on the dock** (`charge_on`), **NOT
 charging**, **66% battery**, `ble_link_live: on` at **−52 dBm**. A fresh
 `1425` vision fault logged ~57 min earlier (after dark — consistent with the
 standing night-specific pattern). Gate **disarmed, verified from live API AND
-RAW `core.config_entries`**. 🔑 It returned to the dock on its own or via the
-operator between legs 8 and this check — not something this session
-commanded; not yet diagnosed how.
+RAW `core.config_entries`**. ✏️ **The dock trip was the operator's own action,
+not this session's and not a mystery** — they mowed the front side (a real,
+blades-on job, separate from the click-to-go series and its stranded
+mid-yard position at leg 8's end) and then commanded `return_to_dock`
+themselves. That also explains the 66% (mowing draws more than click-to-go
+pulses) and the fresh after-dark `1425`.
 ✅ **The 2026-09-08 `2709` low-battery worry is CLOSED** — it was the mower
 mowing off-dock overnight on the operator's own trigger, not a charging fault.
 
