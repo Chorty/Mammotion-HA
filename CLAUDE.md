@@ -117,44 +117,64 @@ mechanism — check HACS first.** And 🔑 **the config entry_id CHANGED** to
 `01M1CVFWHYWW527S9BM5M2BDP3` (was `01KVM3JVYBWRKM25ZR8T7FKKJ3`); anything
 hardcoding the old one will fail.
 
-🚨 **THE 4.0 m REPEAT SERIES RAN 2026-09-10 AND IS INCOMPLETE AT 1 OF 5
-SCORED.** Full record: `docs/findings-clicktopath-reliability-4m-repeat-20260910.md`.
-Four real dispatches: leg 1 **scored PASS** (`target_reached`, 0.1277 m, aligned
-6.213°), legs 2–3 unscored, leg 4 a **FAIL** on `stop_failed_aborting`.
-**n = 1 supports no claim about reliability — never quote it as a rate.**
+🚨 **THE 4.0 m REPEAT SERIES RAN 2026-09-10 AND ABORTED AT 3 OF 5 SCORED, PER
+ITS OWN RULE.** Full record: `docs/findings-clicktopath-reliability-4m-repeat-20260910.md`.
+Eight real dispatches: legs **1, 5, 6 scored PASS** (`target_reached`, all
+≤0.13 m, aligned ≤6.2°), legs 2 and 7 unscored by design, legs **4, 7, 8
+FAIL**. **The series stopped ITSELF** on two consecutive legs (7, 8) failing to
+reach target — its own predeclared abort rule, not pushed through under
+momentum. **n = 3 supports no claim about reliability — never quote it as a
+rate.**
 🔑 **The reusable finding: aim each leg at the live `map_facing_degrees`, not at
 a fixed compass bearing.** The executor stops on *position* tolerance, not
 orientation, so facing drifts between legs — leg 2 copied leg 1's absolute
-bearing and started 28.361° off; leg 3 aimed at the live reading and started
-3.979° off. `map_facing_degrees` is populated under mere corroboration and does
-**not** need `motion_confirmed`; that stricter flag gates operator-facing
-dispatch confidence, not target planning.
-🚨 **BLE range is the practical limiter, not the control law.** RSSI degraded
-−48 → −77 → −84 dBm as the series marched away from the house, and leg 4 died on
-three `gatt_write` failures — the stop could not be written, so the executor
-aborted. **That is the safety design working.** The turn logic is not
-implicated: the 156.797° corner-escape turn completed cleanly in 3 staged steps.
-✅ **`scripts/plan_aligned_leg.py`** (`2e5f3f36`) now plans legs with runway
+bearing and started 28.361° off; every leg aimed at the live reading (3, 5, 6, 8)
+landed aligned, three of them ≤3.98°. `map_facing_degrees` is populated under
+mere corroboration and does **not** need `motion_confirmed`.
+🚨 **The actual limiter is a 2.0 s BLE command-queue timeout, NOT RSSI, NOT
+range.** `_BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS = 2.0` refuses a motion pulse
+that can't begin processing in the serialized command queue within 2.0 s —
+legs 7 and 8 both failed here, both with good RSSI (−60 to −67 dBm) moments
+before and after, both after several pulses had already succeeded. RSSI cannot
+see queue occupancy; the 2026-09-10 (earlier) finding that BLE range bounds
+where a series can run **still holds** but is a *different* failure mode from
+this one. **Diagnostics added 2026-09-10** (`command_result["queue_diagnostics"]`,
+`_ble_link_liveness` snapshot at the moment of refusal) but **scoped to
+`_raw_pymammotion_execute_vector_segment` only** — the identical pattern exists
+at ~17 other sites across other executors, deliberately not touched. **Nothing
+about the timing constant itself was changed** — see
+`docs/plan-post-20260910-session-issues.md` for why it needs measurement, not a
+guess, before a number moves.
+✅ **`scripts/plan_aligned_leg.py`** (`2e5f3f36`) plans legs with runway
 lookahead, steers inside the ±10° window preferring the heading **closest to the
-measured facing**, and names a required reset leg before it is forced. The
-series had walked into a corner where no heading in the window stayed in bounds.
+measured facing**, names a required reset leg before it is forced, and (added
+same session) rejects a candidate whose nearby BLE coverage samples average
+below −76 dBm via `scripts/ble_coverage_map.py` (`a724d2ed`) — built from banked
+`device_tracker` history with a verified lat/lon→`mower_map_xy` transform,
+**0.0000 m RMS fit**. Both worked correctly on every leg they touched; neither
+prevents the queue-timeout failure mode above.
 ✏️ **Amendment 1** (`5aeba62f`, committed *before* leg 4) dropped scoring
-condition 3 and moved the gate disarm from per-leg to session-end — the two
-original requirements were structurally incompatible. **It did not rescore legs
-2–3.**
+condition 3 and moved the gate disarm from per-leg to session-end. **It did not
+rescore legs 2–3.**
+📋 **Comms-loss recovery is an open decision, not yet acted on:**
+`docs/design-comms-loss-recovery-20260910.md` lays out four options (nothing
+today reacts to a `stop_failed_aborting`/`command_failed` refusal — no
+notification, no auto-verify, no auto-dock) and recommends notify-only as the
+safe first step. Awaiting operator choice.
+🔑 **The Mammotion integration itself failed setup mid-session** (bootstrap
+timeout cancelling setup, a documented trap, not new) — recovered cleanly with
+a config-entry reload in ~20 s, mower position confirmed unchanged across it.
 
-⚠️ **Live state was true at 2026-09-10 ~20:20 UTC. Requery HA and the mower
-before acting on it.** Mower **off-dock and paused in "Backyard Right"** at
-(6.7772, −8.9361), `area_inside`, **91% battery**, `ble_link_live: on` at
-**−76 dBm — right at the documented wall**. Gate **disarmed, verified from live
-API AND RAW `core.config_entries`**. Mower confirmed stationary by three
-position samples (last two bit-identical).
-🔑 **It is still out in the yard** — it never returned to the dock after leg 4
-aborted. `return_to_dock` is the vendor's own navigation and needs an operator
-go like any real motion.
+⚠️ **Live state was true at 2026-09-11 ~01:32 UTC. Requery HA and the mower
+before acting on it.** Mower **back on the dock** (`charge_on`), **NOT
+charging**, **66% battery**, `ble_link_live: on` at **−52 dBm**. A fresh
+`1425` vision fault logged ~57 min earlier (after dark — consistent with the
+standing night-specific pattern). Gate **disarmed, verified from live API AND
+RAW `core.config_entries`**. 🔑 It returned to the dock on its own or via the
+operator between legs 8 and this check — not something this session
+commanded; not yet diagnosed how.
 ✅ **The 2026-09-08 `2709` low-battery worry is CLOSED** — it was the mower
 mowing off-dock overnight on the operator's own trigger, not a charging fault.
-It charged to 100% and read 91% after this session.
 
 ✏️ **The 2026-09-07 `disabled_by: user` finding stands but was not the whole
 story** — the operator disabled the entry themselves while troubleshooting and

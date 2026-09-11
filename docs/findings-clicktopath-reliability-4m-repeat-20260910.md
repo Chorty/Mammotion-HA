@@ -1,4 +1,4 @@
-# The 4.0 m aligned repeat is INCOMPLETE at 1 of 5 scored, and the practical limiter is BLE range, not the control law (2026-09-10)
+# The 4.0 m aligned repeat is ABORTED at 3 of 5 scored, per its own predeclared rule — the practical limiter is a BLE command-queue timeout, not the control law (2026-09-10)
 
 Predeclared in `docs/predeclared-clicktopath-reliability-4m-repeat-20260909.md`
 (committed `1acc8aa9`) and amended mid-session by
@@ -10,23 +10,30 @@ host earlier the same day after HACS overwrote it (see
 `docs/deploy-runbook-p0.md`). Service
 `raw_pymammotion_execute_vector_segment` dispatched directly; the card was not
 used. Accepted profile sent verbatim and verified key-by-key on **every** leg —
-0 mismatches, 4 of 4.
+0 mismatches, 8 of 8.
 
 ---
 
-## 0. 🚨 The series did NOT complete. Do not quote it as a rate.
+## 0. 🚨 The series ABORTED per its own rule. Do not quote it as a rate.
 
-**1 of 5 scored legs.** Four real dispatches produced one scored PASS, two
-unscored legs and one FAIL. **n = 1 supports no claim about reliability**, and
-the predeclaration's own §5 statistics note applies with more force here, not
-less. This document records what happened; it does not conclude the series.
+**3 of 5 scored legs.** Eight real dispatches: three scored PASS, two unscored
+by design (post-turn / deliberate reset), three FAIL. The series stopped
+itself on its own predeclared abort condition — **two consecutive legs failing
+to reach target** (legs 7 and 8) — rather than being pushed through. **n = 3
+supports no claim about reliability**, and every scored leg landing well
+inside tolerance is a data point toward the aiming fix in §1.1, not a
+conclusion about the series.
 
 | leg | stop_reason | landing | aligned? | scored |
 | --- | --- | --- | --- | --- |
 | 1 | `target_reached` | **0.1277 m** | ✅ 6.213° | ✅ **PASS** |
 | 2 | `target_reached` | 0.0523 m | ❌ 28.361° (`post_turn_leg`) | unscored |
 | 3 | `target_reached` | 0.1417 m | ✅ 3.979° | unscored (old condition 3) |
-| 4 | **`stop_failed_aborting`** | 0.29 m of 4.0 m | ❌ 156.797° | **FAIL** |
+| 4 | `stop_failed_aborting` | 0.29 m of 4.0 m | ❌ 156.797° | **FAIL** |
+| 5 | `target_reached` | **0.0516 m** | ✅ 3.013° | ✅ **PASS** |
+| 6 | `target_reached` | **0.0740 m** | ✅ 0.683° | ✅ **PASS** |
+| 7 | `command_failed` | 0.54 m of 4.0 m (deliberate reset) | ❌ 162.836° | unscored, FAIL |
+| 8 | `command_failed` | 1.39 m of 4.0 m | ✅ 0.821° (would have scored) | **FAIL — triggered abort** |
 
 ⚠️ **Leg 3 is the frustrating one.** It satisfied every condition that measures
 the leg's own quality — aligned to 3.979°, landed 0.1417 m, 13/13 gates, profile
@@ -36,6 +43,11 @@ on its 300 s TTL during the mandatory between-leg bookkeeping. **Amendment 1
 dropped that condition for leg 4 onward and explicitly did NOT rescore legs 2–3.**
 Rescoring them after seeing the verdicts would be the exact failure the
 predeclaration discipline exists to prevent.
+
+🔑 **Leg 8 is the most frustrating loss of the series.** It was correctly aimed (0.821°,
+the best of the series bar leg 6), it would have made the scored total 4 of 5,
+and it failed for a reason that had nothing to do with alignment, geometry, or
+the control law — see §1.5.
 
 ---
 
@@ -113,7 +125,64 @@ list and `queue_settle` are the authoritative sources; the entity is a lagging
 mirror.** This is the standing "diagnose from `queue_settle` and the container
 log, never from a proxy's entity state" rule, observed twice in one afternoon.
 
-### 1.5 The VIO/`1425` question got a clean daylight answer
+### 1.5 🚨 The real failure mode is a 2.0 s BLE command-queue timeout — not RSSI, not range
+
+Legs 4, 7 and 8 all failed differently on the surface (`stop_failed_aborting`
+twice, `command_failed` twice) but all three trace to the same family of
+defensive code in `services.py`: **five call sites**, all sharing an identical
+`# Never keep driving/turning when stops are not deliverable` comment dated
+**2026-07-12**, and one specific guard:
+
+```python
+_BLE_QUEUE_DEPTH_LIMIT = 0
+# "Real motion is never allowed behind existing queue work... even one
+#  predecessor makes the local pulse timer diverge from the mower's
+#  actual execution window."
+_BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS = 2.0
+# "Maximum time a motion item may wait to start in the command queue.
+#  If this expires the item is disarmed."
+```
+
+Every motion pulse gets **2.0 seconds to begin processing** in the single
+serialized BLE command queue before the write itself even starts. That queue
+also carries the profile's own `motion_refresh_interval_ms: 200` traffic —
+leg 4's own phase data logged 14 refresh commands in a single turn phase. If
+anything already occupies that queue slot — a refresh command still in
+flight, a brief reconnect retry — for more than 2.0 s when the next pulse
+tries to enqueue, the guard fires and the item is disarmed. **This is
+deliberate, not a bug**: a late-dispatched pulse would already have drifted
+out of sync with its own timing assumptions, so refusing is the safer choice.
+
+🔑 **RSSI cannot see this at all.** It is a periodic sample of physical signal
+strength; the queue-start timeout is a software-scheduling measurement on the
+same connection. Leg 8 failed with `ble_rssi` reading a genuinely good
+**−60 dBm** moments before and after, and the BLE coverage map (§1.3) had
+independently estimated **−66.9 dBm** at that exact position from 120 real
+samples — both correct, both irrelevant to what actually failed. Both leg 7
+and leg 8 failed after several pulses had already **succeeded**, consistent
+with transient queue contention rather than a standing range problem.
+
+**This reframes §1.3.** BLE range bounds where a series *can* run at all; this
+timeout is a second, independent failure mode that can strike inside a zone
+with excellent average coverage. The coverage-map constraint in
+`plan_aligned_leg.py` is real and correctly kept legs out of dead zones — it
+just cannot protect against this.
+
+### 1.6 The Mammotion integration itself failed setup mid-session, independent of the mower
+
+Between legs 6 and 7, `report_stream_probe` returned an empty
+`service_response` and `lawn_mower.back_yard_clip_skywalker` briefly did not
+exist. The container log named it exactly: *"Setup of config entry
+'Luba-VSPLV397' for mammotion integration cancelled"*, traced into
+`fetch_rtk_properties` → the Aliyun cloud gateway, with the config entry
+landing in `state: setup_error`, `reason: null`. This matches a documented
+trap (a bootstrap timeout cancelling Mammotion setup, which never
+auto-retries) rather than being a new defect. A config-entry reload (not a
+full HA restart) recovered it cleanly in ~20 s — `state: loaded`, gate options
+(`enable_experimental_motion`) persisted through the reload, mower position
+confirmed unchanged (nothing moved during the outage).
+
+### 1.7 The VIO/`1425` question got a clean daylight answer
 
 `vio_tracked_features` held at **80** (saturated) through the session with
 `vio_feed_live: true`, and **no `1425` fired at any point**. Combined with the
@@ -151,31 +220,48 @@ leg 4 dispatched and does not reach backward.
 
 | | |
 | --- | --- |
-| safety gates | **13/13 passed on all four real dispatches** |
+| safety gates | **13/13 passed on all eight real dispatches** |
 | keep-out violations | zero, every leg (2 zones checked each time) |
 | containment breaches | zero |
-| profile mismatches | zero, 4 of 4 legs |
-| named refusals | one — leg 4's `stop_failed_aborting`, recorded as a FAIL |
+| profile mismatches | zero, **8 of 8 legs** |
+| named refusals | three — leg 4 (`stop_failed_aborting`), legs 7 and 8 (`command_failed`), all recorded as FAIL |
+| mower confirmed stationary after every abort | ✅ 3 position samples each time (leg 4: 2 mm drift; leg 8: bit-identical) |
 | operator | present and confirming each leg's physical corridor individually |
+| integration outage mid-session | ✅ recovered by config-entry reload; position confirmed unchanged across it |
 | gate after session | **disarmed, verified from live API AND RAW** |
-| mower after session | stationary, confirmed by 3 position samples; 91% battery |
+| mower after session | back on the dock (not charging), 66% battery |
+
+**Every abort left the mower exactly where the last confirmed command put it.**
+No command executed without being accounted for, no landing exceeded
+tolerance, no keep-out was approached. The three failures were all refusals to
+act on uncertain state, not incidents of unintended motion.
 
 ---
 
 ## 4. What this authorizes
 
-**Nothing beyond this write-up and the planner already committed.** The series
-is incomplete at n = 1 scored.
+**Nothing beyond this write-up and the tooling already committed.** The series
+is **aborted, not concluded**, at n = 3 scored — one leg short of even the
+weak statistical floor its own §5 describes (a 95% lower bound from 5/5 needs
+all five; 3/3 so far says less than that).
 
 🛑 In particular this does not reopen accuracy (standing decision 3), reach
 (closed at 6.0 m), night (standing decision 4), Phase 2 (standing decision 5) or
 OTA (standing decision 6, parked). No bound, tolerance or profile key changed —
-`docs/accepted-profile.json` is untouched and no Gate 5 is owed.
+`docs/accepted-profile.json` is untouched and no Gate 5 is owed. In particular
+**`_BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS` and `motion_refresh_interval_ms`
+were NOT touched** despite being implicated in §1.5 — see
+`docs/plan-post-20260910-session-issues.md` for why that needs measurement
+before it needs a number changed.
 
-**To resume**, the open questions are operational rather than about the control
-law:
-1. **BLE coverage** bounds how far from the house a series can run. Either a
-   proxy moves closer, or legs are planned to stay within range — the planner
-   makes the second tractable but does not model RSSI.
-2. **Leg budget** must assume more dispatches than scored legs. Four dispatches
-   produced one scored leg; reset legs are now expected, not surprises.
+**To resume**, in order:
+1. **The queue-timeout failure mode (§1.5)** needs its own investigation before
+   more legs are worth dispatching — two consecutive command-queue timeouts in
+   ten minutes, independent of good RSSI, is the reason the series stopped.
+2. **BLE coverage** bounds where a series can run at all; the planner now
+   models it, but it is a distance/dead-zone constraint, not a queue-timing one.
+3. **Leg budget** must assume more dispatches than scored legs. Eight
+   dispatches produced three scored legs; reset legs and comms aborts are both
+   now expected, not surprises.
+
+Full plan: `docs/plan-post-20260910-session-issues.md`.

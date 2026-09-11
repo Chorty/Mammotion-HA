@@ -17355,6 +17355,13 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         except Exception as err:  # noqa: BLE001
             command_result["ok"] = False
             command_result["error"] = f"{type(err).__name__}: {err}"
+            # 🔑 Added 2026-09-10 after two command_failed aborts in one series
+            # (legs 7, 8) both read good RSSI moments before and after --
+            # _BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS is a QUEUE-scheduling
+            # timeout, not a radio-link one, and RSSI cannot see queue
+            # occupancy. Without this the only way to diagnose which was true
+            # was a manual container-log dig after the fact.
+            command_result["queue_diagnostics"] = _ble_link_liveness(coordinator)
         finally:
             command_result["duration_ms"] = round(
                 (time.monotonic() - started) * 1000,
@@ -17393,6 +17400,10 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         if not (command_result["stop_result"] or {}).get("ok"):
             # Never keep driving when stops are not deliverable (BLE cooldown,
             # transport loss); abort immediately.
+            # 🔑 Added 2026-09-10, same reasoning as the command_failed site
+            # above: capture the queue/connection snapshot at the instant of
+            # refusal, since RSSI alone cannot explain it.
+            command_result["queue_diagnostics"] = _ble_link_liveness(coordinator)
             result["stop_reason"] = "stop_failed_aborting"
             return result
         command_result[
