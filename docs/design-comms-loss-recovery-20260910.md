@@ -1,8 +1,10 @@
 # DESIGN PROPOSAL — what happens after `stop_failed_aborting`, and who decides (2026-09-10)
 
-✅ **DECIDED 2026-09-11 — option B, built.** The operator chose **notify only,
+✅ **DECIDED 2026-09-11 — options B and C, both built.** The operator chose **notify only,
 triggering on BOTH `command_failed` and `stop_failed_aborting`** (see the scope
-correction in §4B). C and D remain unbuilt and undecided. Implementation record:
+correction in §4B), then **C as the fast follow** (see the correction in §4C).
+**D remains unbuilt and undecided** — predeclaration at
+`docs/predeclared-comms-abort-auto-dock-20260911.md`. Implementation record:
 `docs/findings-comms-abort-notify-20260911.md`.
 
 **This was a decision request, not a predeclaration and not an implementation.**
@@ -105,12 +107,44 @@ name is stored in this integration, and no manifest dependency was added.
 **What it does not solve:** the operator still has to physically go check;
 it only guarantees they *know* to.
 
-### C. Notify, then auto-verify stationary
+### C. Notify, then auto-verify stationary ✅ CHOSEN AND BUILT 2026-09-11
 B, plus: once BLE contact is confirmed restored (`queue_settle.is_connected`),
 automatically pull `export_runtime_state` a few times over a short window and
 confirm position is unchanged — exactly the manual check done live this
 session — then update the notification with the result ("confirmed stopped"
 or "position still changing, needs attention").
+
+🚨 **Correction, 2026-09-11 — "confirm position is unchanged" is a TRAP as
+written, and implementing it literally would have made C actively dangerous.**
+This project has already recorded the failure mode twice
+(`telemetry_stream_stale`, `_streak_shows_dead_telemetry`): **bit-identical
+position samples mean the feed is dead, not that the mower is still.** After a
+comms abort a frozen feed is the *likely* case — so the naive check would report
+a confident "confirmed stopped" at precisely the moment it had gone blind, and
+going blind demands the opposite operator response (fix the link and go look).
+
+As built, liveness is proven independently of position: `handle.position_epoch`
+advances on every position report, and an unchanged position is only allowed to
+mean anything if the epoch moved during the window. Four verdicts, deliberately
+asymmetric — two of them are "cannot confirm", not "fine":
+
+| verdict | meaning |
+| --- | --- |
+| `confirmed_stationary` | epoch advanced, spread ≤ 0.05 m — a real confirmation |
+| `still_moving` | epoch advanced, spread > 0.05 m — 🚨 alarm |
+| `cannot_confirm_feed_stale` | epoch never moved — blind, **not** a stop |
+| `cannot_confirm_link_down` | BLE never returned within 20 s |
+
+⚠️ **It reads `_custom_path_telemetry_snapshot`, not `export_runtime_state`, and
+requests no reports.** A report request shares the very BLE command queue whose
+failure caused the abort. The consequence is honest but real: if nothing else is
+driving the report stream, C returns `cannot_confirm_feed_stale` rather than a
+verdict. That is the correct answer to "I cannot see the mower", and it is a
+candidate for a later decision (whether to spend one report request to get a
+real answer) — not something to paper over.
+
+The 0.05 m tolerance is set by the position feed's **absolute** 2–4 cm noise
+floor; anything tighter flags noise as motion.
 
 **Risk:** low. Every call involved is already a read-only diagnostic
 (`export_runtime_state`); this only automates a sequence already done by hand

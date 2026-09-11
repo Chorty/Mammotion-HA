@@ -258,3 +258,135 @@ async def test_calibration_drive_captures_queue_diagnostics_on_command_failure(
     assert "queue_depth" in diagnostics
     # And the notifier can find it through the same accessor the wrapper uses.
     assert _last_queue_diagnostics(result) is diagnostics
+
+
+# --------------------------------------------------------------------------
+# Option C -- read-only stationary verification (2026-09-11)
+# --------------------------------------------------------------------------
+
+
+class _VerifyCoordinator(SimpleNamespace):
+    """Coordinator double that replays a scripted sequence of position reports."""
+
+    def __init__(self, reports: list[tuple[float, float, int]], connected: bool = True):
+        super().__init__()
+        self._reports = list(reports)
+        self.connected = connected
+        self.device_name = "Luba-Test"
+        self.handle = SimpleNamespace(position_epoch=reports[0][2] if reports else 0)
+        self.manager = SimpleNamespace(mower=lambda _n: self.handle)
+
+    def pop(self) -> tuple[float, float, int]:
+        report = self._reports.pop(0) if len(self._reports) > 1 else self._reports[0]
+        self.handle.position_epoch = report[2]
+        return report
+
+
+def _install_verify_doubles(
+    monkeypatch: pytest.MonkeyPatch, coordinator: _VerifyCoordinator
+) -> None:
+    monkeypatch.setattr(
+        mammotion_services,
+        "_ble_link_liveness",
+        lambda _c: {"is_connected": coordinator.connected},
+    )
+
+    def snapshot(_c: object) -> dict[str, Any]:
+        x, y, _epoch = coordinator.pop()
+        return {"position": {"x": x, "y": y}}
+
+    monkeypatch.setattr(mammotion_services, "_custom_path_telemetry_snapshot", snapshot)
+    monkeypatch.setattr(mammotion_services, "_COMMS_ABORT_VERIFY_INTERVAL_SECONDS", 0.0)
+    monkeypatch.setattr(
+        mammotion_services, "_COMMS_ABORT_VERIFY_CONNECT_WAIT_SECONDS", 0.05
+    )
+
+
+@pytest.mark.asyncio
+async def test_verify_confirms_stationary_when_the_feed_is_alive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Epoch advancing + position held = a real confirmation."""
+    # Millimetre jitter on a live feed, epoch climbing each report.
+    coordinator = _VerifyCoordinator(
+        [
+            (1.000, 2.000, 10),
+            (1.002, 2.001, 11),
+            (1.001, 2.003, 12),
+            (1.003, 2.002, 13),
+            (1.002, 2.002, 14),
+        ]
+    )
+    _install_verify_doubles(monkeypatch, coordinator)
+    verdict = await mammotion_services._verify_stationary_after_comms_abort(coordinator)  # noqa: SLF001
+    assert verdict["verdict"] == "confirmed_stationary"
+    assert verdict["max_spread_m"] < 0.05
+
+
+@pytest.mark.asyncio
+async def test_verify_refuses_to_confirm_when_the_feed_is_dead(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """🚨 The trap: bit-identical position means BLIND, not stopped.
+
+    This project already recorded the failure mode (`telemetry_stream_stale`,
+    `_streak_shows_dead_telemetry`): after a comms abort a frozen feed is the
+    likely case, and a naive "position unchanged" check would report a confident
+    stop exactly when it has lost sight of the mower. The right operator response
+    to going blind is the opposite of the response to a confirmed stop.
+    """
+    frozen = [(4.2, -9.1, 77)] * 5  # identical position AND identical epoch
+    coordinator = _VerifyCoordinator(frozen)
+    _install_verify_doubles(monkeypatch, coordinator)
+    verdict = await mammotion_services._verify_stationary_after_comms_abort(coordinator)  # noqa: SLF001
+    assert verdict["verdict"] == "cannot_confirm_feed_stale"
+    assert "proves nothing" in verdict["detail"]
+
+
+@pytest.mark.asyncio
+async def test_verify_flags_a_mower_that_is_still_moving(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Live feed plus real displacement is the alarm case."""
+    coordinator = _VerifyCoordinator(
+        [(0.0, 0.0, 1), (0.2, 0.0, 2), (0.5, 0.0, 3), (0.9, 0.0, 4), (1.4, 0.0, 5)]
+    )
+    _install_verify_doubles(monkeypatch, coordinator)
+    verdict = await mammotion_services._verify_stationary_after_comms_abort(coordinator)  # noqa: SLF001
+    assert verdict["verdict"] == "still_moving"
+    assert verdict["max_spread_m"] > 0.05
+
+
+@pytest.mark.asyncio
+async def test_verify_gives_up_when_ble_never_returns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No contact means no verdict -- never a default-to-fine."""
+    coordinator = _VerifyCoordinator([(1.0, 1.0, 1)], connected=False)
+    _install_verify_doubles(monkeypatch, coordinator)
+    verdict = await mammotion_services._verify_stationary_after_comms_abort(coordinator)  # noqa: SLF001
+    assert verdict["verdict"] == "cannot_confirm_link_down"
+
+
+@pytest.mark.asyncio
+async def test_verify_sends_no_command_of_any_kind(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """🚨 C is read-only. A report request would share the queue that just failed."""
+    coordinator = _VerifyCoordinator(
+        [(1.0, 1.0, 1), (1.0, 1.0, 2), (1.0, 1.0, 3), (1.0, 1.0, 4), (1.0, 1.0, 5)]
+    )
+    _install_verify_doubles(monkeypatch, coordinator)
+
+    async def _forbidden(*_a: object, **_k: object) -> None:
+        raise AssertionError("verification must not send any command")
+
+    for name in (
+        "_send_manager_command_with_args",
+        "_send_ble_motion_command_confirmed",
+        "_stop_manual_motion_confirmed",
+    ):
+        monkeypatch.setattr(mammotion_services, name, _forbidden)
+
+    verdict = await mammotion_services._verify_stationary_after_comms_abort(coordinator)  # noqa: SLF001
+    assert verdict["verdict"] == "confirmed_stationary"

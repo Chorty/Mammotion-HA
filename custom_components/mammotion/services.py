@@ -7241,11 +7241,176 @@ def _describe_abort_position(result: dict[str, Any]) -> str:
     )
 
 
+#: How long to wait for BLE contact to come back before giving up on verifying.
+_COMMS_ABORT_VERIFY_CONNECT_WAIT_SECONDS = 20.0
+#: Position samples taken to decide whether the mower is actually stopped.
+_COMMS_ABORT_VERIFY_SAMPLES = 5
+_COMMS_ABORT_VERIFY_INTERVAL_SECONDS = 1.5
+#: Movement below this across the whole verify window reads as stationary. The
+#: position feed's own absolute noise floor is 2-4 cm (docs: the floor is
+#: ABSOLUTE, not a percentage), so anything tighter would flag noise as motion.
+_COMMS_ABORT_STATIONARY_TOLERANCE_M = 0.05
+
+
+def _abort_position_sample(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> tuple[float | None, float | None, int | None]:
+    """Read position and its report epoch without sending anything."""
+    telemetry = _custom_path_telemetry_snapshot(coordinator)
+    position = telemetry.get("position") or {}
+    epoch: int | None = None
+    with contextlib.suppress(Exception):
+        handle = coordinator.manager.mower(coordinator.device_name)
+        epoch = getattr(handle, "position_epoch", None)
+    x, y = position.get("x"), position.get("y")
+    return (
+        float(x) if isinstance(x, int | float) else None,
+        float(y) if isinstance(y, int | float) else None,
+        epoch,
+    )
+
+
+async def _verify_stationary_after_comms_abort(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> dict[str, Any]:
+    """Decide whether the mower actually stopped, reading only -- never sending.
+
+    🚨 **"Position unchanged" is NOT enough, and believing it would invert the
+    operator's response.** This project has already recorded the trap: bit-identical
+    samples mean the *feed* is dead, not that the mower is still
+    (``_streak_shows_dead_telemetry``, and the ``telemetry_stream_stale``
+    detector before it). After a comms abort a dead feed is the *likely* case,
+    so a naive unchanged-position check would confidently report "stopped"
+    exactly when it has gone blind -- and the right response to going blind is to
+    fix the link and go look, not to relax.
+
+    So liveness is proven independently: ``handle.position_epoch`` advances on
+    every position report, and only if it advanced during the window does an
+    unchanged position mean anything. The four verdicts are deliberately
+    asymmetric -- two of them are "cannot confirm", not "fine".
+
+    Sends no command of any kind: this reads cached coordinator telemetry and
+    transport attributes only. It never requests reports, because a report
+    request shares the very BLE command queue whose failure caused the abort.
+    """
+    deadline = time.monotonic() + _COMMS_ABORT_VERIFY_CONNECT_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        if _ble_link_liveness(coordinator).get("is_connected") is True:
+            break
+        await asyncio.sleep(1.0)
+    else:
+        return {
+            "verdict": "cannot_confirm_link_down",
+            "samples": [],
+            "detail": (
+                "BLE contact did not return within "
+                f"{_COMMS_ABORT_VERIFY_CONNECT_WAIT_SECONDS:.0f}s, so nothing "
+                "could be verified."
+            ),
+        }
+
+    samples: list[dict[str, Any]] = []
+    for index in range(_COMMS_ABORT_VERIFY_SAMPLES):
+        if index:
+            await asyncio.sleep(_COMMS_ABORT_VERIFY_INTERVAL_SECONDS)
+        x, y, epoch = _abort_position_sample(coordinator)
+        samples.append({"index": index, "x": x, "y": y, "position_epoch": epoch})
+
+    epochs = {s["position_epoch"] for s in samples if s["position_epoch"] is not None}
+    located = [s for s in samples if s["x"] is not None and s["y"] is not None]
+    if len(epochs) <= 1:
+        return {
+            "verdict": "cannot_confirm_feed_stale",
+            "samples": samples,
+            "detail": (
+                "No new position reports arrived during the window, so an "
+                "unchanged position proves nothing -- this is a blind link, not "
+                "a confirmed stop. Check the mower in person."
+            ),
+        }
+    if len(located) < 2:
+        return {
+            "verdict": "cannot_confirm_feed_stale",
+            "samples": samples,
+            "detail": "Position was unavailable in the reports that arrived.",
+        }
+
+    first, last = located[0], located[-1]
+    spread = max(math.hypot(s["x"] - first["x"], s["y"] - first["y"]) for s in located)
+    drift = math.hypot(last["x"] - first["x"], last["y"] - first["y"])
+    moving = spread > _COMMS_ABORT_STATIONARY_TOLERANCE_M
+    return {
+        "verdict": "still_moving" if moving else "confirmed_stationary",
+        "samples": samples,
+        "max_spread_m": round(spread, 4),
+        "net_drift_m": round(drift, 4),
+        "tolerance_m": _COMMS_ABORT_STATIONARY_TOLERANCE_M,
+        "detail": (
+            f"Position moved {spread:.3f} m across {len(located)} live reports "
+            f"(tolerance {_COMMS_ABORT_STATIONARY_TOLERANCE_M} m) -- the mower "
+            "may still be driving."
+            if moving
+            else f"Position held within {spread:.3f} m across {len(located)} "
+            "live reports; the feed was demonstrably alive throughout."
+        ),
+    }
+
+
+async def _create_abort_notification(
+    hass: HomeAssistant, notification_id: str, message: str
+) -> None:
+    """Create or replace the operator-facing comms-abort notification."""
+    await hass.services.async_call(
+        "persistent_notification",
+        "create",
+        {
+            "title": "Mammotion: motion aborted on a comms failure",
+            "message": message,
+            "notification_id": notification_id,
+        },
+        blocking=False,
+    )
+
+
+async def _verify_and_update_abort_notification(
+    hass: HomeAssistant,
+    coordinator: MammotionReportUpdateCoordinator,
+    notification_id: str,
+    base_message: str,
+) -> None:
+    """Run the read-only stationary check and rewrite the notification with it.
+
+    Swallows everything: this is a background task, so an exception here would
+    surface only as an un-retrieved task error and would leave the operator
+    staring at "Verifying..." forever.
+    """
+    headline = {
+        "confirmed_stationary": "✅ Confirmed stopped.",
+        "still_moving": "🚨 STILL MOVING - the mower may not have stopped.",
+        "cannot_confirm_feed_stale": "⚠️ Could NOT confirm - the position feed "
+        "went silent.",
+        "cannot_confirm_link_down": "⚠️ Could NOT confirm - BLE did not come back.",
+    }
+    try:
+        verdict = await _verify_stationary_after_comms_abort(coordinator)
+        summary = headline.get(str(verdict["verdict"]), "⚠️ Could not confirm.")
+        message = "\n".join((base_message, "", summary, str(verdict.get("detail", ""))))
+    except Exception as err:  # noqa: BLE001
+        LOGGER.warning("Comms-abort stationary verification failed: %s", err)
+        message = (
+            f"{base_message}\n\n"
+            "⚠️ Could NOT confirm - the verification check itself failed."
+        )
+    with contextlib.suppress(Exception):
+        await _create_abort_notification(hass, notification_id, message)
+
+
 def _notify_motion_comms_abort(
     hass: HomeAssistant,
     service: str,
     call: ServiceCall,
     result: dict[str, Any],
+    coordinator: MammotionReportUpdateCoordinator | None = None,
 ) -> None:
     """Tell the operator a real run aborted on a comms failure.
 
@@ -7307,20 +7472,23 @@ def _notify_motion_comms_abort(
                 "before re-arming the motion gate.",
             )
         )
+        notification_id = f"{DOMAIN}_comms_abort_{service}_{time.monotonic_ns()}"
         hass.async_create_task(
-            hass.services.async_call(
-                "persistent_notification",
-                "create",
-                {
-                    "title": "Mammotion: motion aborted on a comms failure",
-                    "message": message,
-                    "notification_id": (
-                        f"{DOMAIN}_comms_abort_{service}_{time.monotonic_ns()}"
-                    ),
-                },
-                blocking=False,
+            _create_abort_notification(
+                hass,
+                notification_id,
+                f"{message}\n\nVerifying the mower is stopped...",
             )
         )
+        # Option C: confirm stopped, read-only, in the background. Deliberately a
+        # separate task -- this runs for ~27 s worst case and must not delay the
+        # motion result it is reporting on.
+        if coordinator is not None:
+            hass.async_create_task(
+                _verify_and_update_abort_notification(
+                    hass, coordinator, notification_id, message
+                )
+            )
     except Exception as err:  # noqa: BLE001
         LOGGER.warning(
             "Could not surface the %s comms abort for %s: %s",
@@ -7445,7 +7613,7 @@ def _wrap_exclusive_manual_motion(  # noqa: C901
             raise
         else:
             session.phase = "completed"
-            _notify_motion_comms_abort(hass, service, call, result)
+            _notify_motion_comms_abort(hass, service, call, result, coordinator)
             return result
         finally:
             session.owner_done.set()

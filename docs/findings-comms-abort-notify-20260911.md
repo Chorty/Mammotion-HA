@@ -86,6 +86,50 @@ Two deliberate implementation choices:
    result into a raised error, losing the telemetry the operator needs exactly
    when something has already gone wrong. There is a test for this.
 
+## 2b. Option C, built — and the trap in its own specification
+
+C was chosen as the fast follow. Its design-doc wording is *"confirm position is
+unchanged"*, and 🚨 **implementing that literally would have made C actively
+dangerous.**
+
+This project has already recorded the failure mode twice — `telemetry_stream_stale`
+and `_streak_shows_dead_telemetry` both exist because **bit-identical position
+samples mean the feed is dead, not that the mower is still.** After a comms abort
+a frozen feed is the *likely* case. So the naive check would have reported a
+confident "confirmed stopped" at exactly the moment it had lost sight of the
+mower — and going blind demands the opposite response from the operator: fix the
+link and go look, not relax.
+
+As built, liveness is proven independently of position. `handle.position_epoch`
+advances on every position report; an unchanged position is only allowed to mean
+anything if the epoch moved during the window. Four verdicts, and two of them are
+"cannot confirm" rather than "fine":
+
+| verdict | condition |
+| --- | --- |
+| `confirmed_stationary` | epoch advanced, spread ≤ 0.05 m |
+| `still_moving` | epoch advanced, spread > 0.05 m |
+| `cannot_confirm_feed_stale` | epoch never moved — blind, **not** a stop |
+| `cannot_confirm_link_down` | BLE never returned within 20 s |
+
+It runs as a background task so it cannot delay the motion result it reports on,
+updates the same notification in place, and swallows every error — a failed
+verification must never leave the operator staring at "Verifying…".
+
+⚠️ **It requests no reports.** A report request shares the very BLE command queue
+whose failure caused the abort, so C reads `_custom_path_telemetry_snapshot`
+only. The honest consequence: if nothing else is driving the report stream, C
+answers `cannot_confirm_feed_stale` instead of a verdict. That is the correct
+answer to "I cannot see the mower" and is flagged in the design doc as a later
+decision, not papered over.
+
+The 0.05 m tolerance comes from the position feed's **absolute** 2–4 cm noise
+floor — anything tighter flags noise as motion.
+
+**Option D is NOT built.** Predeclaration written first, awaiting an explicit
+decision: `docs/predeclared-comms-abort-auto-dock-20260911.md`. It does not
+inherit B's or C's approval.
+
 ## 3. Corrections to the 09-10 docs
 
 Both the findings doc (§1.5) and the design doc (§1) claimed **five call sites,
