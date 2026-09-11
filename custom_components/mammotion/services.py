@@ -85,6 +85,7 @@ SERVICE_GET_AREAS = "get_areas"
 SERVICE_EXPORT_MAP = "export_map"
 SERVICE_EXPORT_TASKS = "export_tasks"
 SERVICE_EXPORT_RUNTIME_STATE = "export_runtime_state"
+SERVICE_MOTION_DISPATCH_TIMING_REPORT = "motion_dispatch_timing_report"
 #: 🔒 ONE-WAY BY DESIGN. There is deliberately no matching "arm" service.
 #:
 #: Arming stays behind the options flow, which is a human sitting in front of
@@ -7178,6 +7179,325 @@ def _is_zero_motion_stop_nudge(
     )
 
 
+#: Stop reasons that end a REAL run with the mower's state unestablished by the
+#: call itself -- the command could not be delivered, or its stop could not be
+#: confirmed. Both are the 2026-07-12 design refusing to act on uncertain state,
+#: and both leave the operator with nothing unless somebody reads the service
+#: response. See docs/design-comms-loss-recovery-20260910.md.
+#:
+#: 🚨 ``command_failed`` belongs here as much as ``stop_failed_aborting`` does.
+#: On 2026-09-10 legs 7 and 8 -- the two that tripped the series' own abort rule
+#: -- both returned ``command_failed``; only leg 4 returned
+#: ``stop_failed_aborting``. Notifying on the latter alone would have stayed
+#: silent for exactly the pair that stopped the series.
+_COMMS_ABORT_REASONS = frozenset({"command_failed", "stop_failed_aborting"})
+
+#: Fired alongside the persistent notification so an operator automation can
+#: route a comms abort onward -- mobile push, siren, anything -- without this
+#: integration needing to know about a notify service or carry config for one.
+EVENT_MOTION_COMMS_ABORT = f"{DOMAIN}_motion_comms_abort"
+
+
+def _comms_abort_reason(result: dict[str, Any]) -> str | None:
+    """Return the comms-abort reason a motion result carries, if it carries one.
+
+    Both keys are read because the executors disagree about which to use for the
+    identical condition: the vector-segment and turn paths set ``stop_reason``,
+    while the VIO calibration drive sets ``reason``.
+    """
+    for key in ("stop_reason", "reason"):
+        value = result.get(key)
+        if isinstance(value, str) and value in _COMMS_ABORT_REASONS:
+            return value
+    return None
+
+
+def _last_queue_diagnostics(result: dict[str, Any]) -> dict[str, Any] | None:
+    """Return the queue snapshot from the most recent command that captured one."""
+    commands = result.get("command_results")
+    if not isinstance(commands, list):
+        return None
+    for command in reversed(commands):
+        if isinstance(command, dict) and isinstance(
+            command.get("queue_diagnostics"), dict
+        ):
+            return command["queue_diagnostics"]
+    return None
+
+
+def _describe_abort_position(result: dict[str, Any]) -> str:
+    """Render the last known position for an operator reading a notification."""
+    telemetry = result.get("final_telemetry")
+    position = telemetry.get("position") if isinstance(telemetry, dict) else None
+    if not isinstance(position, dict):
+        return "unknown (no telemetry captured in the result)"
+    x = position.get("x")
+    y = position.get("y")
+    if x is None or y is None:
+        return f"unknown (source: {position.get('source')})"
+    return (
+        f"x={x}, y={y}, toward={position.get('toward')} "
+        f"(source: {position.get('source')})"
+    )
+
+
+#: How long to wait for BLE contact to come back before giving up on verifying.
+_COMMS_ABORT_VERIFY_CONNECT_WAIT_SECONDS = 20.0
+#: Position samples taken to decide whether the mower is actually stopped.
+_COMMS_ABORT_VERIFY_SAMPLES = 5
+_COMMS_ABORT_VERIFY_INTERVAL_SECONDS = 1.5
+#: Movement below this across the whole verify window reads as stationary. The
+#: position feed's own absolute noise floor is 2-4 cm (docs: the floor is
+#: ABSOLUTE, not a percentage), so anything tighter would flag noise as motion.
+_COMMS_ABORT_STATIONARY_TOLERANCE_M = 0.05
+
+
+def _abort_position_sample(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> tuple[float | None, float | None, int | None]:
+    """Read position and its report epoch without sending anything."""
+    telemetry = _custom_path_telemetry_snapshot(coordinator)
+    position = telemetry.get("position") or {}
+    epoch: int | None = None
+    with contextlib.suppress(Exception):
+        handle = coordinator.manager.mower(coordinator.device_name)
+        epoch = getattr(handle, "position_epoch", None)
+    x, y = position.get("x"), position.get("y")
+    return (
+        float(x) if isinstance(x, int | float) else None,
+        float(y) if isinstance(y, int | float) else None,
+        epoch,
+    )
+
+
+async def _verify_stationary_after_comms_abort(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> dict[str, Any]:
+    """Decide whether the mower actually stopped, reading only -- never sending.
+
+    🚨 **"Position unchanged" is NOT enough, and believing it would invert the
+    operator's response.** This project has already recorded the trap: bit-identical
+    samples mean the *feed* is dead, not that the mower is still
+    (``_streak_shows_dead_telemetry``, and the ``telemetry_stream_stale``
+    detector before it). After a comms abort a dead feed is the *likely* case,
+    so a naive unchanged-position check would confidently report "stopped"
+    exactly when it has gone blind -- and the right response to going blind is to
+    fix the link and go look, not to relax.
+
+    So liveness is proven independently: ``handle.position_epoch`` advances on
+    every position report, and only if it advanced during the window does an
+    unchanged position mean anything. The four verdicts are deliberately
+    asymmetric -- two of them are "cannot confirm", not "fine".
+
+    Sends no command of any kind: this reads cached coordinator telemetry and
+    transport attributes only. It never requests reports, because a report
+    request shares the very BLE command queue whose failure caused the abort.
+    """
+    deadline = time.monotonic() + _COMMS_ABORT_VERIFY_CONNECT_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        if _ble_link_liveness(coordinator).get("is_connected") is True:
+            break
+        await asyncio.sleep(1.0)
+    else:
+        return {
+            "verdict": "cannot_confirm_link_down",
+            "samples": [],
+            "detail": (
+                "BLE contact did not return within "
+                f"{_COMMS_ABORT_VERIFY_CONNECT_WAIT_SECONDS:.0f}s, so nothing "
+                "could be verified."
+            ),
+        }
+
+    samples: list[dict[str, Any]] = []
+    for index in range(_COMMS_ABORT_VERIFY_SAMPLES):
+        if index:
+            await asyncio.sleep(_COMMS_ABORT_VERIFY_INTERVAL_SECONDS)
+        x, y, epoch = _abort_position_sample(coordinator)
+        samples.append({"index": index, "x": x, "y": y, "position_epoch": epoch})
+
+    epochs = {s["position_epoch"] for s in samples if s["position_epoch"] is not None}
+    located = [s for s in samples if s["x"] is not None and s["y"] is not None]
+    if len(epochs) <= 1:
+        return {
+            "verdict": "cannot_confirm_feed_stale",
+            "samples": samples,
+            "detail": (
+                "No new position reports arrived during the window, so an "
+                "unchanged position proves nothing -- this is a blind link, not "
+                "a confirmed stop. Check the mower in person."
+            ),
+        }
+    if len(located) < 2:
+        return {
+            "verdict": "cannot_confirm_feed_stale",
+            "samples": samples,
+            "detail": "Position was unavailable in the reports that arrived.",
+        }
+
+    first, last = located[0], located[-1]
+    spread = max(math.hypot(s["x"] - first["x"], s["y"] - first["y"]) for s in located)
+    drift = math.hypot(last["x"] - first["x"], last["y"] - first["y"])
+    moving = spread > _COMMS_ABORT_STATIONARY_TOLERANCE_M
+    return {
+        "verdict": "still_moving" if moving else "confirmed_stationary",
+        "samples": samples,
+        "max_spread_m": round(spread, 4),
+        "net_drift_m": round(drift, 4),
+        "tolerance_m": _COMMS_ABORT_STATIONARY_TOLERANCE_M,
+        "detail": (
+            f"Position moved {spread:.3f} m across {len(located)} live reports "
+            f"(tolerance {_COMMS_ABORT_STATIONARY_TOLERANCE_M} m) -- the mower "
+            "may still be driving."
+            if moving
+            else f"Position held within {spread:.3f} m across {len(located)} "
+            "live reports; the feed was demonstrably alive throughout."
+        ),
+    }
+
+
+async def _create_abort_notification(
+    hass: HomeAssistant, notification_id: str, message: str
+) -> None:
+    """Create or replace the operator-facing comms-abort notification."""
+    await hass.services.async_call(
+        "persistent_notification",
+        "create",
+        {
+            "title": "Mammotion: motion aborted on a comms failure",
+            "message": message,
+            "notification_id": notification_id,
+        },
+        blocking=False,
+    )
+
+
+async def _verify_and_update_abort_notification(
+    hass: HomeAssistant,
+    coordinator: MammotionReportUpdateCoordinator,
+    notification_id: str,
+    base_message: str,
+) -> None:
+    """Run the read-only stationary check and rewrite the notification with it.
+
+    Swallows everything: this is a background task, so an exception here would
+    surface only as an un-retrieved task error and would leave the operator
+    staring at "Verifying..." forever.
+    """
+    headline = {
+        "confirmed_stationary": "✅ Confirmed stopped.",
+        "still_moving": "🚨 STILL MOVING - the mower may not have stopped.",
+        "cannot_confirm_feed_stale": "⚠️ Could NOT confirm - the position feed "
+        "went silent.",
+        "cannot_confirm_link_down": "⚠️ Could NOT confirm - BLE did not come back.",
+    }
+    try:
+        verdict = await _verify_stationary_after_comms_abort(coordinator)
+        summary = headline.get(str(verdict["verdict"]), "⚠️ Could not confirm.")
+        message = "\n".join((base_message, "", summary, str(verdict.get("detail", ""))))
+    except Exception as err:  # noqa: BLE001
+        LOGGER.warning("Comms-abort stationary verification failed: %s", err)
+        message = (
+            f"{base_message}\n\n"
+            "⚠️ Could NOT confirm - the verification check itself failed."
+        )
+    with contextlib.suppress(Exception):
+        await _create_abort_notification(hass, notification_id, message)
+
+
+def _notify_motion_comms_abort(
+    hass: HomeAssistant,
+    service: str,
+    call: ServiceCall,
+    result: dict[str, Any],
+    coordinator: MammotionReportUpdateCoordinator | None = None,
+) -> None:
+    """Tell the operator a real run aborted on a comms failure.
+
+    Notify-only, deliberately. This sends no command of any kind -- not a stop,
+    not a re-connect, not a dock. The whole point of the abort it is reporting is
+    that a command could not be confirmed delivered, so adding another one here
+    would be strictly worse; auto-verify and auto-dock are held for their own
+    decisions (``docs/design-comms-loss-recovery-20260910.md`` options C and D).
+
+    The gap this closes: before this, ``stop_reason`` was a string inside one
+    service response with zero consumers anywhere in the integration. An
+    unwatched session that hit it left the mower wherever it stopped with no
+    record anybody would see -- which standing decision 2 ("reliable enough to
+    trust without watching") cannot survive.
+
+    ``persistent_notification`` is invoked by service name rather than imported,
+    so the manifest needs no new dependency entry for hassfest to police. Every
+    failure here is swallowed: a notification that cannot be delivered must never
+    turn a completed motion result into an exception.
+    """
+    reason = _comms_abort_reason(result)
+    if reason is None:
+        return
+    try:
+        entity_id = call.data.get(ATTR_ENTITY_ID)
+        occurred_at = _utc_timestamp()
+        queue_diagnostics = _last_queue_diagnostics(result)
+        hass.bus.async_fire(
+            EVENT_MOTION_COMMS_ABORT,
+            {
+                "service": service,
+                "entity_id": entity_id,
+                "reason": reason,
+                "occurred_at_utc": occurred_at,
+                "position": (result.get("final_telemetry") or {}).get("position"),
+                "queue_diagnostics": queue_diagnostics,
+            },
+        )
+        queue_line = (
+            f"BLE link at refusal: queue_depth={queue_diagnostics.get('queue_depth')}, "
+            f"last_send_age_seconds="
+            f"{queue_diagnostics.get('last_send_age_seconds')}, "
+            f"is_connected={queue_diagnostics.get('is_connected')}"
+            if queue_diagnostics
+            else "BLE link at refusal: not captured"
+        )
+        message = "\n".join(
+            (
+                f"A real motion run aborted on `{reason}`. The mower's state was "
+                "not established by the call itself.",
+                "",
+                f"Service: {service}",
+                f"Entity: {entity_id}",
+                f"Time (UTC): {occurred_at}",
+                f"Last known position: {_describe_abort_position(result)}",
+                queue_line,
+                "",
+                "No further command was sent. Confirm the mower is stationary "
+                "before re-arming the motion gate.",
+            )
+        )
+        notification_id = f"{DOMAIN}_comms_abort_{service}_{time.monotonic_ns()}"
+        hass.async_create_task(
+            _create_abort_notification(
+                hass,
+                notification_id,
+                f"{message}\n\nVerifying the mower is stopped...",
+            )
+        )
+        # Option C: confirm stopped, read-only, in the background. Deliberately a
+        # separate task -- this runs for ~27 s worst case and must not delay the
+        # motion result it is reporting on.
+        if coordinator is not None:
+            hass.async_create_task(
+                _verify_and_update_abort_notification(
+                    hass, coordinator, notification_id, message
+                )
+            )
+    except Exception as err:  # noqa: BLE001
+        LOGGER.warning(
+            "Could not surface the %s comms abort for %s: %s",
+            reason,
+            service,
+            err,
+        )
+
+
 def _wrap_exclusive_manual_motion(  # noqa: C901
     hass: HomeAssistant,
     service: str,
@@ -7293,6 +7613,7 @@ def _wrap_exclusive_manual_motion(  # noqa: C901
             raise
         else:
             session.phase = "completed"
+            _notify_motion_comms_abort(hass, service, call, result, coordinator)
             return result
         finally:
             session.owner_done.set()
@@ -7530,6 +7851,103 @@ def _raw_pymammotion_motion_interpretation(
     }
 
 
+def _record_motion_dispatch_timing(
+    coordinator: MammotionReportUpdateCoordinator,
+    **fields: Any,
+) -> dict[str, Any]:
+    """Append one confirmed-motion dispatch's timing to the rolling history.
+
+    🔑 Turns the queue-start bound from a censored observation into a measured
+    one. Before this, ``_BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS`` could only ever
+    be observed being *exceeded* -- a successful pulse recorded no wait at all --
+    so there was no way to tell a rare pathology from a routinely marginal bound.
+    Both outcomes are recorded here, which is what
+    ``docs/plan-post-20260910-session-issues.md`` issue 1 step 2 needs before any
+    number is allowed to move.
+
+    Never raises: instrumentation must not be able to fail a dispatch. A
+    coordinator without the history attribute (older object, test double) is
+    simply skipped.
+    """
+    sample = {"recorded_at_utc": _utc_timestamp(), **fields}
+    try:
+        history = coordinator.motion_dispatch_timings
+    except AttributeError:
+        return sample
+    try:
+        history.append(sample)
+    except Exception as err:  # noqa: BLE001
+        LOGGER.debug("Could not record motion dispatch timing: %s", err)
+    return sample
+
+
+def _summarise_motion_dispatch_timings(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> dict[str, Any]:
+    """Summarise the rolling queue/write timings into a distribution.
+
+    This is the read side of issue 1 step 2. The question it exists to answer is
+    narrow and specific: **how much headroom does the 2.0 s queue-start bound
+    actually have in normal operation?** A p95 of 60 ms says the two 2026-09-10
+    refusals were a transient pathology and the constant is not the problem; a
+    p95 of 1.6 s says the bound is routinely marginal and raising it is
+    defensible. Neither conclusion was reachable before, because successful
+    pulses recorded nothing.
+
+    Read-only and side-effect free -- it sends no command and touches no
+    transport.
+    """
+    try:
+        samples = list(coordinator.motion_dispatch_timings)
+    except AttributeError:
+        samples = []
+    waits = sorted(
+        float(s["queue_wait_ms"])
+        for s in samples
+        if isinstance(s.get("queue_wait_ms"), int | float)
+    )
+
+    def pct(fraction: float) -> float | None:
+        if not waits:
+            return None
+        index = min(len(waits) - 1, int(round(fraction * (len(waits) - 1))))
+        return round(waits[index], 3)
+
+    outcomes: dict[str, int] = {}
+    for sample in samples:
+        key = str(sample.get("outcome", "unknown"))
+        outcomes[key] = outcomes.get(key, 0) + 1
+    budgets = {
+        float(s["queue_budget_seconds"])
+        for s in samples
+        if isinstance(s.get("queue_budget_seconds"), int | float)
+    }
+    #: How close the worst observed wait came to the bound it was measured
+    #: against. >1.0 is impossible for a completed dispatch by construction.
+    headroom = None
+    if waits and budgets:
+        headroom = round(max(waits) / (min(budgets) * 1000.0), 4)
+    return {
+        "service": SERVICE_MOTION_DISPATCH_TIMING_REPORT,
+        "queue_start_timeout_seconds": _BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS,
+        "write_timeout_seconds": _BLE_MOTION_WRITE_TIMEOUT_SECONDS,
+        "sample_count": len(samples),
+        "history_capacity": getattr(
+            getattr(coordinator, "motion_dispatch_timings", None), "maxlen", None
+        ),
+        "outcomes": outcomes,
+        "queue_wait_ms": {
+            "min": round(waits[0], 3) if waits else None,
+            "p50": pct(0.50),
+            "p95": pct(0.95),
+            "max": round(waits[-1], 3) if waits else None,
+            "count": len(waits),
+        },
+        "worst_wait_fraction_of_budget": headroom,
+        "samples": samples,
+    }
+
+
 async def _send_ble_motion_command_confirmed(  # noqa: C901
     coordinator: MammotionReportUpdateCoordinator,
     command: str,
@@ -7616,6 +8034,12 @@ async def _send_ble_motion_command_confirmed(  # noqa: C901
             if not completed.done():
                 completed.set_result(None)
 
+    queue_budget_seconds = (
+        _BLE_MOTION_WRITE_TIMEOUT_SECONDS + 1.0
+        if emergency_stop
+        else _BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS
+    )
+    enqueued_monotonic = time.monotonic()
     try:
         await handle.queue.enqueue(
             _dispatch,
@@ -7630,18 +8054,22 @@ async def _send_ble_motion_command_confirmed(  # noqa: C901
             completed.exception()
         raise
     try:
-        await asyncio.wait_for(
-            started.wait(),
-            timeout=(
-                _BLE_MOTION_WRITE_TIMEOUT_SECONDS + 1.0
-                if emergency_stop
-                else _BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS
-            ),
-        )
+        await asyncio.wait_for(started.wait(), timeout=queue_budget_seconds)
     except TimeoutError:
         armed = False
         if not completed.done():
             completed.cancel()
+        _record_motion_dispatch_timing(
+            coordinator,
+            command=command,
+            is_stop=is_stop,
+            emergency_stop=emergency_stop,
+            outcome="queue_start_timeout",
+            queue_wait_ms=round((time.monotonic() - enqueued_monotonic) * 1000, 3),
+            queue_budget_seconds=queue_budget_seconds,
+            started=False,
+            write_ms=None,
+        )
         raise RuntimeError(
             "BLE motion command did not start before the queue deadline; "
             "the queued item was disarmed"
@@ -7650,7 +8078,20 @@ async def _send_ble_motion_command_confirmed(  # noqa: C901
         armed = False
         if not completed.done():
             completed.cancel()
+        _record_motion_dispatch_timing(
+            coordinator,
+            command=command,
+            is_stop=is_stop,
+            emergency_stop=emergency_stop,
+            outcome="cancelled_before_start",
+            queue_wait_ms=round((time.monotonic() - enqueued_monotonic) * 1000, 3),
+            queue_budget_seconds=queue_budget_seconds,
+            started=False,
+            write_ms=None,
+        )
         raise
+    queue_wait_ms = round((time.monotonic() - enqueued_monotonic) * 1000, 3)
+    started_monotonic = time.monotonic()
 
     try:
         await asyncio.shield(completed)
@@ -7671,6 +8112,17 @@ async def _send_ble_motion_command_confirmed(  # noqa: C901
                 await _stop_manual_motion_confirmed(coordinator)
         raise
     else:
+        _record_motion_dispatch_timing(
+            coordinator,
+            command=command,
+            is_stop=is_stop,
+            emergency_stop=emergency_stop,
+            outcome="completed",
+            queue_wait_ms=queue_wait_ms,
+            queue_budget_seconds=queue_budget_seconds,
+            started=True,
+            write_ms=round((time.monotonic() - started_monotonic) * 1000, 3),
+        )
         record_completed_dispatch(
             coordinator,
             command=command,
@@ -13226,6 +13678,13 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         except Exception as err:  # noqa: BLE001
             command_result["ok"] = False
             command_result["error"] = f"{type(err).__name__}: {err}"
+            # 🔑 Extended 2026-09-11. The 2026-09-10 instrumentation covered the
+            # LINEAR phase only, but this helper is a *phase* of
+            # _raw_pymammotion_execute_vector_segment (called at its turn steps),
+            # not a separate executor -- a leg aborting here produced the same
+            # `command_failed` with no queue snapshot at all, which is exactly
+            # the blindness the original edit set out to remove.
+            command_result["queue_diagnostics"] = _ble_link_liveness(coordinator)
             result["command_results"].append(command_result)
             result["commands_sent"] += 1
             result["stop_reason"] = "command_failed"
@@ -13259,6 +13718,10 @@ async def _vio_turn_to_heading(  # noqa: C901, PLR0912, PLR0913, PLR0915
         except Exception as err:  # noqa: BLE001
             # Never keep turning when stops are not deliverable (live 2026-07-12:
             # BLE connect cooldown raised mid-run and motion continued unstopped).
+            # 🔑 Extended 2026-09-11, same reasoning as the command_failed site
+            # above: capture the queue/connection snapshot at the instant of
+            # refusal, since RSSI alone cannot explain it.
+            command_result["queue_diagnostics"] = _ble_link_liveness(coordinator)
             command_result["stop_ack"] = {"error": f"{type(err).__name__}: {err}"}
             result["command_results"].append(command_result)
             result["stop_reason"] = "stop_failed_aborting"
@@ -15388,6 +15851,9 @@ async def _raw_pymammotion_turn_to_heading(  # noqa: C901, PLR0913
         except Exception as err:  # noqa: BLE001
             command_result["ok"] = False
             command_result["error"] = f"{type(err).__name__}: {err}"
+            # 🔑 Extended 2026-09-11: this helper runs as the vector executor's
+            # turn phase, so the same queue-scheduling refusal lands here.
+            command_result["queue_diagnostics"] = _ble_link_liveness(coordinator)
         finally:
             command_result["duration_ms"] = round(
                 (time.monotonic() - started) * 1000,
@@ -16135,6 +16601,11 @@ async def _vio_segment_calibration_drive(  # noqa: C901, PLR0913
         except Exception as err:  # noqa: BLE001
             command_result["ok"] = False
             command_result["error"] = f"{type(err).__name__}: {err}"
+            # 🔑 Extended 2026-09-11: the VIO calibration drive is the vector
+            # executor's FIRST real motion, so it is the earliest point a leg can
+            # die on a queue-start timeout -- and it reports `reason`, not
+            # `stop_reason`, which is why it reads as a different failure.
+            command_result["queue_diagnostics"] = _ble_link_liveness(coordinator)
             result["command_results"].append(command_result)
             result["pulses_sent"] += 1
             result["reason"] = "command_failed"
@@ -16148,6 +16619,9 @@ async def _vio_segment_calibration_drive(  # noqa: C901, PLR0913
             # Live 2026-07-12: BLE dropped into its connect cooldown mid-run and
             # the stop could not be delivered — never keep pulsing motion when
             # stops are not deliverable.
+            # 🔑 Extended 2026-09-11, same reasoning as the command_failed site
+            # above.
+            command_result["queue_diagnostics"] = _ble_link_liveness(coordinator)
             result["command_results"].append(command_result)
             result["reason"] = "stop_failed_aborting"
             return result
@@ -21460,10 +21934,26 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             "enabled": experimental_motion_enabled(coordinator),
         }
 
+    async def handle_motion_dispatch_timing_report(
+        call: ServiceCall,
+    ) -> dict[str, Any]:
+        mower = _get_mower_by_entity_id(hass, call.data[ATTR_ENTITY_ID])
+        if mower is None:
+            LOGGER.error("Could not find entity %s", call.data[ATTR_ENTITY_ID])
+            return {}
+        return _summarise_motion_dispatch_timings(mower.reporting_coordinator)
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_EXPORT_RUNTIME_STATE,
         handle_export_runtime_state,
+        schema=GEOJSON_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_MOTION_DISPATCH_TIMING_REPORT,
+        handle_motion_dispatch_timing_report,
         schema=GEOJSON_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )

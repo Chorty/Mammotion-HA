@@ -43,6 +43,18 @@ after an aborted run.
    the same small edit, deferred rather than done in bulk at 1 AM on the
    file that runs the motion control law. 1062 tests, ruff, and mypy all
    clean after this change.
+
+   🚨 **Amended 2026-09-11: that scoping left the measurement blind where it
+   most needed to see.** The two instrumented sites are the executor's LINEAR
+   phase, but `_vio_segment_calibration_drive`, `_raw_pymammotion_turn_to_heading`
+   and `_vio_turn_to_heading` are *phases of the same service*, run on every
+   leg — and a leg aborting in any of them produced the identical reason with no
+   queue snapshot at all. Since leg 4 died 0.29 m into a 4.0 m leg, the
+   calibration drive is a live candidate for where it died, and the record
+   cannot say which. Extended to all four in-scope functions on operator
+   approval; the ~17 sites in genuinely other executors stay deferred. Seven
+   capture sites now, mapped in
+   `docs/findings-clicktopath-reliability-4m-repeat-20260910.md` §1.5.1.
 2. **Reproduce and measure, off the back of that instrumentation.** Next real
    session, watch for whether the occupant is consistently the
    `motion_refresh_interval_ms: 200` traffic, a reconnect retry, or something
@@ -68,8 +80,10 @@ nothing / notify only / notify + auto-verify / auto-return-to-dock), with
 notify-only recommended as the safe first step and auto-return-to-dock
 explicitly held for its own separate decision.
 
-**Status: awaiting the operator's choice of option**, not blocked on anything
-else. Once picked, it's a small, additive, non-motion change.
+✅ **RESOLVED 2026-09-11: the operator chose B, and it is built** — with a scope
+correction, since B as written would have fired for leg 4 only and stayed silent
+for legs 7 and 8. Record: `docs/findings-comms-abort-notify-20260911.md`.
+C and D remain unbuilt and undecided; D still needs its own separate decision.
 
 ## Issue 3 — the Mammotion integration's own setup failure (§1.6 of the findings doc)
 
@@ -90,8 +104,8 @@ assuming a mower-side fault.
 
 | issue | resolved tonight? | what's left |
 | --- | --- | --- |
-| 1. Queue timeout | Instrumentation added | Measurement, then a decision on a number |
-| 2. Comms-loss recovery | Design proposal written | Operator picks an option |
+| 1. Queue timeout | Instrumentation added, **extended 2026-09-11 to all four in-scope functions** | Measurement, then a decision on a number |
+| 2. Comms-loss recovery | Design proposal written; **option B chosen and built 2026-09-11** | C and D undecided |
 | 3. Integration setup failure | Fully resolved (reload worked) | Nothing — recorded for awareness only |
 
 No motion-control-law value changes tonight. No profile changes tonight. The
