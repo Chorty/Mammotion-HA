@@ -76,9 +76,18 @@ may be ~10 minutes away.
 
 **Preconditions, all verified live before planning legs:** daylight with real
 margin (not the last 45 minutes before sunset); battery ≥ 80 % and charging
-completed; `real_motion_ready` reachable; RTK `fix`, not `single`; VIO features
-non-zero; beta104 confirmed on the host with `motion_dispatch_timing_report`
-registered.
+completed; RTK `fix`, not `single`; VIO features non-zero; beta104 confirmed on
+the host with `motion_dispatch_timing_report` registered.
+🚨 **The mower must be PARKED IN A MOWING AREA FIRST — the executor cannot
+undock itself** (predeclaration §12.2). On the dock the gate reads
+`CHARGE_ON` / `zone_hash: 0` and refuses by design, so `real_motion_ready` and
+`position_valid_for_motion` **cannot** go true while docked and must not be
+waited on. Operator, app or undock places it; **leg 1 starts from where it is
+parked.** Then check POSITIVELY that `pos_type_label` is an accepted area label
+and `zone_hash` is non-zero — the absence of a blocker is not the check.
+⚠️ **A hand-placed or app-driven mower has stale heading telemetry until it
+drives** — derive facing two ways before the first armed dispatch, per the
+standing repositioning trap.
 
 **Frozen for the duration:** no proxy added, moved, powered down or
 re-provisioned; no change to `motion_refresh_interval_ms`; no change to

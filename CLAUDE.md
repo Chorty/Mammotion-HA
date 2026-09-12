@@ -267,7 +267,21 @@ shortfall found at analysis time is unrecoverable. The n ≥ 120 rate claim is
 p95 **1029.2 ms**, max **2014.0 ms** (98 writes, 59 % over the 200 ms interval).
 The queue is serialized, so a dispatch behind a ~1 s write inherits the wait —
 **a third answer, "write latency is the binding constraint", may beat both §3
-and §4.**
+and §4.** ✅ **§12.1 gives that answer a PREDECLARED test** (it was an escape
+hatch without one): `ratio = p95(queue_wait_ms | pulse-open) / p95(write_ms |
+all completed)`. §4 is evaluated first on absolutes; then at `Q ≥ 1000 ms`,
+**`ratio ≤ 1.5` ⇒ write latency binds and the constant is NOT a candidate to
+move**, `> 1.5` ⇒ real multi-item contention and §3 applies. Middle ground stays
+§5 inconclusive.
+🚨 **Phase 1 CANNOT start from the dock — the executor cannot undock itself**
+(§12.2). On the dock `pos_type_label` is `CHARGE_ON` and `zone_hash` is `0`, so
+`position_not_valid_for_motion` is an **expected, benign** blocker and
+`real_motion_ready` can never go true there. ✏️ I flagged it as an unresolved
+regression; it is not. Operator/app/undock parks the mower in a mowing area
+first, **leg 1 starts from where it is parked**, and the check is POSITIVE
+(accepted area label + non-zero `zone_hash`), never the absence of a blocker.
+⚠️ **A hand-placed mower has stale heading telemetry until it drives** — derive
+facing two ways first.
 ⚠️ **"Contention accumulates per pulse, not per metre" is an UNVERIFIED
 assumption** (peer-session origin) that justified short legs near the dock — the
 **strongest-link** regime, while legs 7 and 8 failed ~8 m out. §11.5 sites ≥ 2

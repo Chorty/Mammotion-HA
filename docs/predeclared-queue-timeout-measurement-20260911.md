@@ -556,3 +556,92 @@ and not a survey leg.
 
 ⚠️ **A null result still cannot be read as "the failure does not happen"** — only
 as "it did not happen in these bands at this n."
+
+---
+
+## 12. AMENDMENT — the third answer gets a PREDECLARED discriminator, and Phase 1
+## cannot start from the dock. Still `sample_count: 0`.
+
+### 12.1 🚨 §10.5's "third answer" was an escape hatch. Fixed.
+
+`mammotion-ha-0f` caught this and is right. §10.5 introduced a third possible
+outcome — *"write latency on this link is the binding constraint"* — **with no
+criterion attached.** An unfalsifiable extra branch, available after the data
+lands, is precisely what this document exists to forbid. I added it while
+correcting a contamination defect, which is how these things get in.
+
+✅ **It now has a test, from fields already banked — no new instrumentation.**
+`write_ms` is recorded on every completed dispatch, so the comparison costs
+nothing:
+
+```
+W = p95(write_ms)        over ALL classified COMPLETED samples (refreshes included)
+Q = p95(queue_wait_ms)   over the pulse-open class only
+write_inheritance_ratio  = Q / W
+```
+
+🔑 **Refreshes belong in `W` on purpose.** They are the writes that actually
+occupy the serialized queue, so they are the right estimate of "how long the
+thing ahead of a pulse-open takes". Only completed samples carry `write_ms`
+(a timeout records `None`), and that restriction is stated here so it cannot be
+quietly relaxed later.
+
+**Evaluation order is fixed now, because order decides verdicts:**
+
+1. **§4 first, on absolutes.** If `Q ≤ 250 ms` and the worst-wait fraction
+   `≤ 0.40`, §4 stands — the bound is exonerated and nothing needs explaining,
+   whatever the ratio says.
+2. **Then the ratio discriminates §3 from the third answer**, but only when §3's
+   own `Q ≥ 1000 ms` clause is met:
+   - **`ratio ≤ 1.5`** ⇒ **THIRD ANSWER: write latency is the binding
+     constraint.** The wait is consistent with a *single* in-flight write ahead
+     of the pulse, not with multiple items queued. 🛑 **§3 is NOT invoked and the
+     constant is NOT a candidate to move** — raising it would only let the pulse
+     start later and further out of sync with its own timing model, which is the
+     exact harm the bound exists to prevent.
+   - **`ratio > 1.5`** ⇒ genuine multi-item contention beyond what one write
+     explains, so **§3's clauses apply as written**.
+3. Anything else — `Q` between 250 and 1000 ms, or §3's other clauses unmet —
+   remains **§5 inconclusive**. The third answer does not absorb the middle.
+
+**Why 1.5:** one in-flight write plus queue and scheduling overhead should land
+at or just above 1.0; more than 1.5× means more than one write's worth of work
+sat ahead. The margin is deliberately generous so ordinary noise cannot flip the
+verdict.
+
+⚠️ **`W` and `Q` are different quantities and the ratio is a heuristic**, not a
+proof of mechanism. It is stated in advance precisely so it cannot be tuned
+afterwards, and a ratio near the 1.5 boundary should be reported as ambiguous
+rather than rounded into a verdict.
+
+### 12.2 🚨 Phase 1 CANNOT start from the dock — the executor cannot undock itself
+
+I flagged `position_not_valid_for_motion` to the operator as unresolved and
+gating Phase 1. ✏️ **That was wrong and is retracted.** It is the ordinary docked
+state: `_position_has_known_area` needs `pos_type_label` in
+{AREA_INSIDE, TURN_AREA_INSIDE, CHANNEL_AREA_OVERLAP} **and** `zone_hash` not in
+(None, 0, "0"), and on the dock the live readings are `CHARGE_ON` with
+`zone_hash: 0`. Position itself is fine (x 4.3188, y 3.2862) and RTK reads
+`Fix`, so `rtk_not_precise` cleared correctly — nothing replaced it and nothing
+regressed. The deploy skill's "Known-benign readings" already says exactly this.
+
+✅ **The operational consequence, which is real and belongs in the run plan:**
+the guarded executor **cannot be what leaves the dock**, because the gate
+refuses while docked. So:
+
+1. The mower is placed inside a mowing area **first** — by the operator, the
+   vendor app, or an undock — **not** by the vector executor.
+2. **Leg 1 starts from wherever the operator parks it**, not from the dock.
+   §11.5's "6–8 m from the dock" band is measured from that parked position's
+   relationship to the dock, not from a leg that begins on the charger.
+3. 🔑 **Confirm the gate POSITIVELY before the first armed dispatch** — that
+   `pos_type_label` reads an accepted area label and `zone_hash` is non-zero.
+   **The absence of a blocker is not the check**; a pre-flight that waits for
+   `position_valid_for_motion` to go true *while docked* will refuse forever.
+4. After parking, re-run the standing pre-flight in full: fresh corridor scan
+   against the map, tape measurement on any corridor under a couple of metres,
+   `docs/accepted-profile.json` verbatim and verified key-by-key, and the
+   mower's facing derived two ways per the standing repositioning trap — 🚨 **a
+   hand-placed or app-driven mower has stale heading telemetry until it drives**,
+   which is exactly the arrangement that produced the 2026-09-04 wrong-direction
+   dispatch.
