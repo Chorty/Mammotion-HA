@@ -170,3 +170,57 @@ carry it in, or power-cycle the RTK base and watch
 **Nothing was changed in code this session.** No control-law value, no profile
 value, no `_BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS`, no
 `motion_refresh_interval_ms`.
+
+---
+
+## 7. ✏️ CORRECTIONS — §1 partly REFUTED by daylight data (2026-09-12T15:26Z)
+
+Everything recovered without intervention. Mower **docked and charging** since
+14:49:53Z, **51 %** and rising, `rtk_position: fix` since 14:55:04Z,
+`position_level: 1`, VIO back to 74 features, full daylight (sun 47°).
+`device_tracker.rtk_backyard` is `home` again.
+
+🚨 **The base station's satellite count was NOT the mechanism.**
+`sensor.rtkbna235279309_satellites` still reads **0**, unchanged since
+02:11:58Z — *and the mower reached `fix` anyway*. §1 named the base's zero
+satellites as "the obvious suspect"; that is now refuted by direct observation
+11.5 h later. Either the field is meaningless on this hardware or it is
+unrelated to the correction stream — consistent with the standing note that
+corrections arrive **over the internet** and are relayed via LoRa, so the base
+does not need its own satellite lock to pass them on.
+✅ **§1's hedge was the load-bearing part**: it said "not proven to be the base
+station's fault. The base could be a second symptom rather than the cause."
+That hedge is what survived. **The correlation was real and the causal reading
+was wrong.**
+
+✏️ **The impossible longitude was TRANSIENT, not a standing parse bug.** §1 said
+the base's longitude sensor reads `-520.77` and to "distrust its readings until
+chased down". It now reads **`-84.7698871238333`** — correct for this location.
+🔑 **The two values share their decimals** (`-520.7698523536123` against
+`-84.7698871238333`): the integer part was corrupted while the fraction was
+intact, so it is the *same* underlying value mangled during the fault window,
+not a field that is always wrong. **The right reading is that this device emits
+corrupt values while unhealthy** — which makes a garbage longitude a useful
+*symptom* of the fault rather than a reason to distrust the device permanently.
+
+🔑 **What actually stands from §1**, and it is still the important part: **the
+mower tracked 24 satellites and could not reach a fix**, three independent
+fields agreed (`rtk_position: single`, `position_level: 0`, fault `1300`), and
+**a mower with no fix cannot dock** — the command was accepted and produced zero
+motion. The correction path failed; *why* it failed is still unexplained, and
+the base's satellite count is no longer a candidate answer.
+⚠️ **It cleared on its own, overnight-to-daylight.** Whether daylight, time, or
+the trip back to the dock did it is unknown — do not assume a night-only
+pattern from n = 1.
+
+⚠️ **Fault `2709` (low battery) fired at 07:29:02Z** while the mower was still
+stranded — the drain reached the device's own low-battery threshold before it got
+back on the dock. That is the same code as the 2026-09-08 episode and has the
+same benign-once-explained cause.
+
+⚠️ **Still not motion-ready even docked with RTK `fix`:**
+`real_motion_ready: off` and the gate now reports
+`blockers: ['experimental_motion_disabled', 'position_not_valid_for_motion']` —
+note `rtk_not_precise` cleared but a *different* position blocker replaced it.
+**Resolve that before planning Phase 1 legs**, rather than assuming a `fix`
+reading is sufficient.

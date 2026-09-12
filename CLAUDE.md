@@ -207,18 +207,22 @@ undecided** — `docs/predeclared-comms-abort-auto-dock-20260911.md`.
 timeout cancelling setup, a documented trap, not new) — recovered cleanly with
 a config-entry reload in ~20 s, mower position confirmed unchanged across it.
 
-🚨 **THE MOWER IS OFF-DOCK AND DRAINING AS OF 2026-09-12T03:24Z. Requery before
-acting — this block is a snapshot, not a source of truth.** `paused` at
-"Backyard Right", **not charging**, **45%** and falling ~4.3%/h (69% at
-2026-09-11T20:34Z). It left the dock at **21:57:23Z** on a brief `mowing`
-transition. `ble_link_live: on` at −58 dBm, `real_motion_ready: off`.
-🚨 **RTK is `single`, `position_level: 0`, fault `1300` (poor positioning)
-standing since 03:05:13Z** — while the mower's own receiver tracks **24
-satellites** and the RTK base reports **0**. A `lawn_mower.dock` on explicit
-operator go at 03:18:07Z was accepted (HTTP 200) and **produced zero motion**;
-it was not retried. Recovery is an operator action. Gate **disarmed**
-(`blockers: ['experimental_motion_disabled', 'rtk_not_precise']`). Dark:
-`vio_brightness: 0`, `vio_tracked_features: 0`. Full record:
+⚠️ **Live state at 2026-09-12T15:26Z — a snapshot, not a source of truth.
+Requery before acting.** ✅ **Recovered:** mower **docked and charging** since
+14:49:53Z, **51%** and rising, `rtk_position: fix` since 14:55:04Z,
+`position_level: 1`, VIO 74 features, `ble_link_live: on` at −56 dBm, full
+daylight. Gate **disarmed**.
+⚠️ **But `real_motion_ready: off` and the gate reports
+`position_not_valid_for_motion`** even with a fix — `rtk_not_precise` cleared
+and a different position blocker replaced it. **Resolve that before planning
+Phase 1 legs.**
+🗄️ **The overnight episode (resolved):** the mower left the dock 2026-09-11
+21:57:23Z, sat off-dock at "Backyard Right" and drained 69% → 45% at ~4.3%/h,
+raising fault `1300` (poor positioning) with RTK `single` while its own receiver
+tracked 24 satellites. A `lawn_mower.dock` on explicit operator go at 03:18:07Z
+was accepted (HTTP 200) and **produced zero motion**; it was not retried, and
+fault `2709` (low battery) fired at 07:29:02Z before it got back. Full record,
+including two of my own claims refuted the next day:
 `docs/findings-dock-failure-rtk-and-ble-contention-20260912.md`.
 
 ✏️ **The block that stood here was wrong when it was written.** It said "mower
@@ -560,16 +564,27 @@ unconditionally in `__init__.py`.
 ### RTK
 
 🚨 **The correction path can fail while the mower's own receiver is fine.**
-2026-09-12: mower tracking **24 satellites** yet stuck at `rtk_position: single`
-with `position_level: 0` and fault **`1300`** (poor positioning); RTK base
-reported **0 satellites** and a not_home tracker state. Three fields agreed, so
-this is not a circular read. **A mower with no fix cannot dock** — a
-`lawn_mower.dock` was accepted (HTTP 200) and produced zero motion.
+2026-09-12 03:00-15:00Z: mower tracking **24 satellites** yet stuck at
+`rtk_position: single` with `position_level: 0` and fault **`1300`** (poor
+positioning). Three independent fields agreed, so this is not a circular read.
+**A mower with no fix cannot dock** — a `lawn_mower.dock` was accepted
+(HTTP 200) and produced zero motion.
 🔑 **Check this before blaming orientation for a night docking failure** — the
 2026-09-04 §6.6 `1309` diagnosis may have had this underneath it.
-⚠️ **The RTK base station's longitude sensor reads -520.77**, an impossible value —
-at least one field on that device is mis-parsed. Distrust its readings until
-chased down. Record:
+✅ **It cleared on its own by 14:55Z** (daylight, back on the dock). ⚠️ n = 1;
+do not assume a night-only pattern.
+🗑️ **The RTK base's satellite count is NOT the mechanism** — my own first
+reading, refuted the same day. The base's satellites sensor stayed at
+**0** while the mower reached `fix` anyway. Corrections arrive over the
+**internet** and are LoRa-relayed, so the base needs no satellite lock of its
+own. **Why the correction path failed is still unexplained.**
+⚠️ **That device emits corrupt values while unhealthy** — its longitude read an
+impossible `-520.7698523536123` during the fault and a correct
+`-84.7698871238333` after, **same decimals, mangled integer part**. Treat a
+garbage reading as a *symptom*, not as a standing parse bug.
+⚠️ **`rtk_position: fix` is not sufficient for motion**: docked with a fix, the
+gate still reported `position_not_valid_for_motion` and
+`real_motion_ready: off`. Resolve that before planning legs. Record:
 `docs/findings-dock-failure-rtk-and-ble-contention-20260912.md`.
 
 ### The motion gate
