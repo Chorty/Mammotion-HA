@@ -727,3 +727,99 @@ a failure.
 ⚠️ **What a mid-session abort does cost is samples**, which is handled by axis 1
 (the `n ≥ 40`-after-exclusions bar and the unrelated-truncation clause) and by
 §11.4's 8-leg headroom — not by treating the refusal itself as a bad outcome.
+
+---
+
+## 14. AMENDMENT — bands re-keyed to MEASURED RSSI, and the run geometry fixed.
+## Still `sample_count: 0`.
+
+### 14.1 🚨 §11.5's bands were keyed to the wrong variable
+
+§11.5 required "≥ 2 legs sited 6–8 m from the dock" to avoid sampling only the
+strongest-link regime. ✏️ **Dock distance is the wrong key and I should not have
+used it.** Link strength depends on distance from the **serving proxy** —
+`hot-tub-backyard` — which is not the dock. The error is visible in the data:
+the cells 6.65–8.78 m from the dock read **−67 to −75 dBm**, while legs 7 and 8
+actually failed at **−60 to −67 dBm**. The "far" band was *better*-signalled than
+the failures it was meant to bracket, so it captured a weaker-link regime only
+by accident.
+
+✅ **Re-keyed to the coverage-map RSSI estimate at the planned target**, which is
+the quantity the failure hypothesis actually concerns and is knowable before
+dispatch:
+
+| band | coverage-map median RSSI at target |
+| --- | --- |
+| `strong` | **≥ −68 dBm** |
+| `moderate` | **−68 > estimate ≥ −76 dBm** |
+| rejected | below −76 dBm — unchanged, enforced by `plan_aligned_leg.py --min-rssi-dbm -76` |
+
+**Quota: ≥ 2 legs in EACH band**, tagged `rssi_band` in the evidence file
+alongside the estimate, its sample count, and the live `ble_rssi` at dispatch.
+
+**Why −68:** it splits the reachable ground near-evenly (56 vs 57 cells in the
+recommended excursion disc, which spans **14 dB**, −62 to −76), and it sits just
+above the −60…−67 range where legs 7 and 8 failed — so `moderate` is genuinely
+weaker-link than the observed failures while `strong` brackets them.
+
+🔑 **The quota is now satisfiable from a single parked position**, so the mower
+is placed once and not moved mid-session. Under the old dock-distance keying it
+was not: parking at 7.2 m put every leg in the "far" band with no "near" legs
+available at all.
+
+⚠️ **Unchanged: this is still not a test of the per-pulse-vs-per-metre
+assumption.** No criterion in §2–§5 or §12–§13 is conditioned on the band split;
+it exists so the population is not monolithic and so a later session has a
+per-band starting point. **A null result means "not in these bands at this n."**
+A real test of that assumption needs deliberate band contrast and its own
+predeclaration.
+
+### 14.2 Run geometry — bounded by construction, not predicted
+
+🔑 **The endpoint cannot be predicted and does not need to be.** Each leg aims at
+the **live** `map_facing_degrees`, which drifts because the executor stops on
+position tolerance, not orientation — so the path is a walk. It is therefore
+**bounded by design** instead, which is what the 4 m series failed to do when it
+"walked itself into a corner of Backyard Right".
+
+**Computed over the live area polygon, both keep-outs, and the 96 h coverage
+map** (`docs/evidence-ble-coverage-96h-20260912.json`):
+
+| excursion radius | cells outside area | cells < −76 dBm | cells with no BLE data |
+| --- | --- | --- | --- |
+| **3.0 m** | **0** | **0** | **0** |
+| 4.0 m | 0 | 1 | 1 |
+| 4.5 m | 0 | 2 | 5 |
+| 6.0 m | 24 | 6 | 13 |
+
+✅ **Maximum excursion is 3.0 m from the parked position** — the largest radius
+that is fully verified in every direction, with no unsampled cell and nothing
+below the wall.
+
+✅ **Leg rule: ~1.0 m legs, turn back every 3 legs.** Excursion is then
+`3 × 1.0 = 3.0 m` exactly, and 8 legs finish within ~2 m of the start. The two
+turn-backs also satisfy §2's "≥ 2 legs with a turn or calibration phase"
+naturally rather than through contrived extra turns.
+⚠️ **1.5 m legs would require turning back every 2 legs** to hold the same bound.
+Either is acceptable; what is fixed is the **3.0 m excursion cap**, not the leg
+length.
+
+**Parked position, primary:** `map_xy (5.4, −3.8)` — **≈1.1 m EAST and 7.1 m
+SOUTH of the dock**, range 7.21 m. Coverage-map estimate **−70 dBm** (n = 69),
+**4.9 m clearance** to the nearest boundary or keep-out.
+**Alternate:** `map_xy (4.9, −3.3)` — 6.65 m out, estimate **−67 dBm**, slightly
+less margin.
+
+🔑 **Use the DOCK-RELATIVE offset, not an absolute lat/lon.** The offset is a
+difference inside one frame, so the frame reference cancels and only the ~0.11 %
+scale term survives (≈8 mm over 7 m). An absolute lat/lon computed without the
+full affine fit is a rough cross-check only and must not be used for placement.
+
+**Resulting footprint:** everything stays within `x 2.4–8.4, y −6.8 to −0.8`.
+
+🛑 **None of this substitutes for the standing per-leg protocol.** Every leg
+still needs its own dry run, a fresh corridor scan against the map, a physical
+tape measurement on any corridor under a couple of metres, and explicit operator
+go/no-go immediately before dispatch. 🚨 **And the mower is hand- or app-placed,
+so its heading telemetry is stale until it drives** — derive facing two ways
+before the first armed dispatch (§12.2).

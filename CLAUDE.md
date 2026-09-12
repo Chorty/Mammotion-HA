@@ -284,9 +284,24 @@ first, **leg 1 starts from where it is parked**, and the check is POSITIVE
 facing two ways first.
 ⚠️ **"Contention accumulates per pulse, not per metre" is an UNVERIFIED
 assumption** (peer-session origin) that justified short legs near the dock — the
-**strongest-link** regime, while legs 7 and 8 failed ~8 m out. §11.5 sites ≥ 2
-legs at 6–8 m in response. **A null result means "not in these bands at this
-n", never "it does not happen."**
+**strongest-link** regime, while legs 7 and 8 failed at −60 to −67 dBm ~8 m out.
+**A null result means "not in these bands at this n", never "it does not
+happen."**
+🗑️ **§14.1 re-keys the leg bands from DOCK DISTANCE to measured RSSI** — my own
+error: link strength depends on distance from the serving proxy
+(`hot-tub-backyard`), not the dock, and the cells 6.65–8.78 m from the dock read
+−67 to −75 dBm, *better* than the failures they were meant to bracket. Bands are
+now `strong` ≥ −68 dBm and `moderate` −68…−76, ≥ 2 legs each; below −76 stays
+rejected. The excursion disc spans 14 dB, so **one parked position covers both
+bands and the mower is placed once.**
+✅ **§14.2 fixes the run geometry: park ≈1.1 m EAST and 7.1 m SOUTH of the dock**
+(`map_xy (5.4, −3.8)`, −70 dBm, 4.9 m clearance), **~1.0 m legs turning back
+every 3**, so excursion never exceeds **3.0 m** — the largest radius with 0
+cells outside the area, 0 below −76, and 0 unsampled. Footprint stays within
+`x 2.4–8.4, y −6.8 to −0.8`. 🔑 **The endpoint is bounded by construction, not
+predicted** — legs aim at the live drifting facing, so the path is a walk; this
+is what the 4 m series failed to do when it cornered itself. Use the
+**dock-relative offset, never an absolute lat/lon**.
 🚨 **Three traps in the instrument, recorded there before any data exists:**
 `worst_wait_fraction_of_budget` divides `max(waits)` by `min(budgets)` and an
 emergency stop is budgeted **5.0 s** against an ordinary pulse's 2.0 — recompute

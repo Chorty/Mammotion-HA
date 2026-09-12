@@ -95,14 +95,22 @@ re-provisioned; no change to `motion_refresh_interval_ms`; no change to
 the evidence file at session start** — scanner sources, names and connection
 slots — so any later change is attributable and the session stays reproducible.
 
-**Legs — REVISED 2026-09-12, see predeclaration §10–§11.** Plan **~8 legs**,
-0.8–1.5 m, each aimed at the live `map_facing_degrees`; ≥ 4 distinct,
-≥ 2 running a turn or calibration-drive phase, and **≥ 2 sited 6–8 m from the
-dock** (tagged `distance_band: "far"`) so the population is not entirely the
-strongest-link regime. 🚨 **The bar is `n ≥ 40` `pulse_open` samples surviving
-exclusion** — not 120, and not 40 collected. ~86 % of raw samples are refresh
-resends that record identically to pulse-opens; the rate claim needs n ≥ 120 and
-is deferred. 8 legs banks ~56–80 pulse-opens, absorbing ~25 % exclusion.
+**Legs — REVISED 2026-09-12, see predeclaration §10–§14.** Plan **~8 legs of
+~1.0 m**, each aimed at the live `map_facing_degrees`, **turning back every 3
+legs** so excursion never exceeds **3.0 m** from the parked position — the
+largest radius fully verified against the area polygon, both keep-outs and the
+96 h coverage map (0 cells outside, 0 below −76 dBm, 0 unsampled). ≥ 4 distinct
+legs; the two turn-backs satisfy "≥ 2 with a turn phase" naturally.
+**Park at `map_xy (5.4, −3.8)` ≈ 1.1 m EAST and 7.1 m SOUTH of the dock**
+(−70 dBm, 4.9 m clearance); alternate `(4.9, −3.3)` at −67 dBm. Use the
+dock-relative offset, not an absolute lat/lon.
+**Bands are keyed to RSSI, not dock distance** (§14.1): ≥ 2 legs `strong`
+(≥ −68 dBm) and ≥ 2 `moderate` (−68 to −76). The disc spans 14 dB, so one
+parked position covers both — **the mower is placed once and not moved.**
+🚨 **The bar is `n ≥ 40` pulse-open samples surviving exclusion** — not 120, and
+not 40 collected. ~86 % of raw samples are refresh resends that record
+identically to pulse-opens; the rate claim needs n ≥ 120 and is deferred.
+8 legs banks ~56–80 pulse-opens, absorbing ~25 % exclusion.
 
 **Protocol, no exceptions:** explicit operator go/no-go immediately before each
 dispatch; fresh corridor scan against the map; physical tape measurement on any
