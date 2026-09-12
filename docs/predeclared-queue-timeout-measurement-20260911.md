@@ -645,3 +645,85 @@ refuses while docked. So:
    hand-placed or app-driven mower has stale heading telemetry until it drives**,
    which is exactly the arrangement that produced the 2026-09-04 wrong-direction
    dispatch.
+
+---
+
+## 13. 🚨 §4's clause 3 CONTRADICTS §11.4 — fixed. And what "passing" means.
+## Still `sample_count: 0`.
+
+### 13.1 The contradiction, and why it would have mattered
+
+§4 clause 3 still reads **"`n ≥ 120` from `≥ 4` legs, per §2"**. But §10.4 and
+§11.4 restated the §3/§4 verdict bar as **`n ≥ 40` pulse-open surviving
+exclusion**, deferring n ≥ 120 to the rate claim alone.
+
+🚨 **As written, §4 was unreachable under the sizing actually planned.** A
+session banking 45 pulse-opens at p95 80 ms and a worst-wait fraction of 0.15
+would satisfy clauses 1 and 2 and then fail clause 3 — collapsing to §5
+inconclusive and discarding a clean, decisive exoneration on arithmetic alone.
+That would have defeated the operator's "split the claims" decision entirely,
+and it would have surfaced at analysis time with the mower already docked.
+
+✅ **§4 clause 3 is replaced by:** *`n ≥ 40` pulse-open samples surviving
+exclusion, from `≥ 4` distinct legs with `≥ 2` running a turn or calibration
+phase, per §11.4.*
+
+🔑 **§3 needed no equivalent fix** — its three clauses never referenced `n`; the
+sample floor reaches it through §11.1's inconclusive clause 3, which applies to
+every verdict equally.
+
+### 13.2 There is no "pass". Two independent axes.
+
+Recorded because "did it pass?" is the natural question and the honest answer is
+that this document does not define one.
+
+**AXIS 1 — is the session VALID?** This is the only genuine pass/fail here. All
+must hold:
+
+- `n ≥ 40` pulse-open samples **surviving exclusion**;
+- from `≥ 4` distinct legs, `≥ 2` with a turn or calibration phase;
+- pulse-open share within **8 %–35 %** of classified samples (§11.1);
+- unclassifiable bursts **≤ 20 %** of all bursts;
+- no leg with an unreconcilable per-burst cross-check disagreement;
+- the session was **not truncated by a cause unrelated to queue timing** —
+  transport loss, a VIO refusal, a containment refusal, battery.
+
+Fail any one ⇒ **INCONCLUSIVE**, the constant stays 2.0, and the per-item data
+is banked for the next attempt. ⚠️ **"Inconclusive" is a real outcome to be
+reported as one**, not a licence to interpret the numbers anyway with a caveat.
+
+**AXIS 2 — what is the VERDICT?** Only meaningful if axis 1 passed. Four
+mutually exclusive outcomes, in this fixed evaluation order:
+
+| order | verdict | condition |
+| --- | --- | --- |
+| 1 | **§4 — the constant is FINE** | `p95 ≤ 250 ms` **and** worst-wait fraction `≤ 0.40` |
+| 1b | **§4 strongest form** | a `queue_start_timeout` occurs **while** `p95 ≤ 250 ms` — bimodal, an episode not a tail; **overrides §3 outright** |
+| 2 | **Third answer — WRITE LATENCY binds** | `p95 ≥ 1000 ms` **and** `ratio ≤ 1.5` (§12.1) |
+| 3 | **§3 — a raise is DEFENSIBLE** | `p95 ≥ 1000 ms` **and** `ratio > 1.5` **and** fraction `≥ 0.75` on ≥ 2 legs **and** ≥ 1 real timeout |
+| 4 | **§5 — inconclusive** | anything else, notably `p95` between 250 and 1000 ms |
+
+🛑 **No outcome on this axis changes the constant in this session.** Even verdict
+3 earns only the right to *propose* a number to the operator; verdicts 1, 1b and
+2 each say explicitly that moving it is the wrong action.
+
+🔑 **The outcome I expect is verdict 1 or 2, and either is a good result.** "The
+constant is fine" is an answer, not a failure — the question was *how much
+headroom does the bound have*, and a confident "plenty" closes issue 1 as surely
+as a number change would.
+
+### 13.3 ⚠️ The standing "a safe refusal is a FAIL" rule does NOT apply here
+
+CLAUDE.md's discipline says *"a run that stops safely on a named refusal is a
+FAIL, not a smaller number."* 🔑 **That rule governs runs demonstrating a
+capability** — reach, landing accuracy — where a refusal means the capability
+was not shown.
+
+**This session is a measurement, and a `queue_start_timeout` is the signal it
+exists to observe.** A leg that aborts on one has produced the most valuable
+sample in the set, and §3 clause 3 positively *requires* at least one. It is not
+a failure.
+
+⚠️ **What a mid-session abort does cost is samples**, which is handled by axis 1
+(the `n ≥ 40`-after-exclusions bar and the unrelated-truncation clause) and by
+§11.4's 8-leg headroom — not by treating the refusal itself as a bad outcome.
