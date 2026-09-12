@@ -255,3 +255,40 @@ mean over a radius, so folding in 24 331 dock samples would swamp every estimate
 near the dock and could silently move planner verdicts. Replacing the planner's
 input is its own decision, made deliberately and not as a side effect of a
 survey.
+
+---
+
+## 9. 🚨 §8 IS WITHDRAWN IN PART — corrected 2026-09-12, still before any data
+
+§8 said a BLE survey drive could supply this measurement's legs. **The part
+claiming survey legs may feed the §2 population is withdrawn.** It would have
+corrupted the measurement in a way worth naming precisely, because the mistake
+is subtle and the discipline exists to catch exactly this.
+
+A survey drive deliberately enters cells where coverage is *weak* — that is its
+purpose. §3 justifies raising the constant on a high p95 and a worst-wait
+fraction ≥ 0.75. Feeding survey legs into that population would inflate both
+numbers by construction, and the measurement would then "justify" loosening a
+safety constant **on a sample selected for being unrepresentative**. That is not
+choosing the threshold after seeing the data; it is choosing the *sample* to fit
+the threshold. Same failure, different hat.
+
+✅ **What stands from §8:** the survey is worth doing, the two tasks share a
+daylight window, and the per-cell targets (≥ 10 samples per 1 m cell, from the
+5.5 dB within-cell vs 7.3 dB between-cell finding) are unchanged.
+
+✅ **What replaces the withdrawn part:**
+
+- The §2 population is **only** legs in known-good coverage, with
+  `plan_aligned_leg.py`'s `--min-rssi-dbm -76` rejection enforced.
+- Survey legs are tagged **`survey: true`** in the evidence file and **excluded
+  from the §2 population**. They are still recorded per-item — they are honest
+  data and useful for coverage — they simply do not feed these criteria.
+- A session short of `n ≥ 120` from good-coverage legs alone is **inconclusive**
+  per §5. It is **not** topped up with survey legs.
+- Consequently the survey runs as its **own session, after** the measurement is
+  banked, not interleaved with it.
+
+§2–§5 thresholds are unchanged and are not reopened by this correction.
+Sequencing and the RF freeze that follows from it:
+`docs/plan-queue-measurement-then-ble-20260912.md`.
