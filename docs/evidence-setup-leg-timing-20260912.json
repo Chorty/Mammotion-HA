@@ -1,0 +1,1123 @@
+{
+ "_comment": "Setup leg only. leg_role=setup, EXCLUDED from the section 2 population per predeclaration section 15, which was committed before this leg dispatched. Not a Phase 1 measurement.",
+ "recorded_utc": "2026-09-12T17:0xZ",
+ "leg_role": "setup",
+ "excluded_from_population": true,
+ "predeclaration": "docs/predeclared-queue-timeout-measurement-20260911.md",
+ "known_biases": {
+  "queue_wait_ms_biased_upward": true,
+  "mechanism": "_dispatch calls started.set() then runs _ble_link_liveness (plain def, no awaits) before its first yield, so started_monotonic is taken after that snapshot",
+  "magnitude": "sub-millisecond against a 2000 ms budget; immaterial in size",
+  "direction_favours": "section 3 (p95 >= 1000 ms justifies raising the constant)"
+ },
+ "leg": {
+  "start": {
+   "x": 4.4654,
+   "y": -0.503
+  },
+  "target": {
+   "x": 4.9234,
+   "y": -3.8708
+  },
+  "distance_m": 3.3987999117335517,
+  "target_map_heading_degrees": 277.86762544790935,
+  "stop_reason": "target_reached",
+  "completion_status": {
+   "complete": true,
+   "target_index": null,
+   "distance_to_target": null,
+   "waypoint_distances": [
+    {
+     "index": 0,
+     "distance": 3.3537935789192512
+    },
+    {
+     "index": 1,
+     "distance": 0.05103106896783545
+    }
+   ],
+   "reason": "path_complete"
+  },
+  "commands_sent": 10,
+  "turn_commands_sent": 0,
+  "linear_commands_sent": 9,
+  "calibration_commands_sent": 1,
+  "motion_refresh_commands_sent": 45,
+  "safety_gates": [
+   {
+    "name": "stop_primitive_available",
+    "passed": true,
+    "detail": "Coordinator must expose async_stop_manual_motion()."
+   },
+   {
+    "name": "ble_transport_required",
+    "passed": true,
+    "detail": "Real closed-loop motion requires the BLE transport for responsive telemetry; cloud/Wi-Fi lag is unsafe for guarded path execution. BLE must also report itself usable -- being selected for routing does not mean a command can be delivered."
+   },
+   {
+    "name": "ble_link_live",
+    "passed": true,
+    "detail": "Real motion requires a conservative BLE preflight -- a live client, an open dispatch gate, an empty command queue, and a recent outbound attempt. 'Usable' only means BLE is eligible for routing; it stays True while the command queue is gated and commands (including the mandatory stop that bounds a pulse) accumulate undelivered. The send path separately waits for confirmed queue start and GATT-write completion. See docs/pymammotion-ble-slot-leak-bug.md.",
+    "diagnostics": {
+     "live": true,
+     "reason": null,
+     "is_connected": true,
+     "is_usable": true,
+     "cooldown_active": false,
+     "cooldown_remaining_seconds": 0.0,
+     "last_send_age_seconds": 4.3,
+     "queue_depth": 0,
+     "queue_dispatch_paused": false,
+     "saga_active": false,
+     "stall_threshold_seconds": 15.0,
+     "queue_depth_limit": 0
+    }
+   },
+   {
+    "name": "operator_confirmed_blades_off",
+    "passed": true,
+    "detail": "Real pulse requires confirm_blades_off=true."
+   },
+   {
+    "name": "operator_confirmed_clear_area",
+    "passed": true,
+    "detail": "Real pulse requires confirm_clear_area=true."
+   },
+   {
+    "name": "mower_reports_blades_off",
+    "passed": true,
+    "detail": "Real pulse requires blade state and cutter mode off. A nonzero latched RPM register is discounted only after three samples prove the position feed live and the RPM constant.",
+    "diagnostics": {
+     "blade": {
+      "reported_state": 0,
+      "reported_state_label": "OFF",
+      "knife_status": null,
+      "current_cutter_mode": 0,
+      "current_cutter_rpm": 0,
+      "blade_safe_for_motion": true,
+      "safety_blockers": [],
+      "blade_rpm_looks_latched": false,
+      "blade_rpm_stale_register": false
+     },
+     "rpm_stale_verdict": {
+      "stale_register": false,
+      "reasons": [
+       "rpm_not_consistently_nonzero"
+      ],
+      "samples": 3,
+      "rpm_values": [
+       0,
+       0,
+       0
+      ],
+      "feed_proven_live": true
+     }
+    }
+   },
+   {
+    "name": "mower_ready",
+    "passed": true,
+    "detail": "Real pulse requires the mower to be ready/paused, not mowing or charging."
+   },
+   {
+    "name": "not_docked_or_charging",
+    "passed": true,
+    "detail": "Real pulse requires the mower to be off the dock and not charging."
+   },
+   {
+    "name": "live_map_position_available",
+    "passed": true,
+    "detail": "Real pulse requires live map-local mower position."
+   },
+   {
+    "name": "position_area_inside",
+    "passed": true,
+    "detail": "Real pulse requires AREA_INSIDE, TURN_AREA_INSIDE, or CHANNEL_AREA_OVERLAP and a nonzero known zone hash."
+   },
+   {
+    "name": "map_position_nonzero",
+    "passed": true,
+    "detail": "Real pulse requires nonzero map-local x/y coordinates."
+   },
+   {
+    "name": "segment_too_long",
+    "passed": true,
+    "detail": "Segment length is capped at 6.1 m by authorization, not by a measured reach limit; the longest segment ever executed is 4.0 m.",
+    "diagnostics": {
+     "segment_length_m": 3.3987999117335517,
+     "max_segment_length_m": 6.1
+    }
+   },
+   {
+    "name": "linear_budget_insufficient_for_segment",
+    "passed": true,
+    "detail": "22 linear pulses reach about 6.60 m at a stall-tolerant 0.3 m/pulse, short of this segment.",
+    "diagnostics": {
+     "segment_length_m": 3.3987999117335517,
+     "linear_pulse_ceiling": 22,
+     "budget_check_metres_per_pulse": 0.3,
+     "budget_reach_m": 6.6
+    }
+   }
+  ],
+  "blockers": [],
+  "valid": true,
+  "errors": [],
+  "warnings": [],
+  "start_geometry": {
+   "aligned_start_confirmed": true,
+   "basis": "vio_calibration_drive.map_motion_heading_degrees",
+   "reason": "aligned",
+   "measured_map_facing_degrees": 273.194,
+   "target_map_heading_degrees": 277.868,
+   "initial_heading_error_degrees": 4.674,
+   "tolerance_degrees": 10.0,
+   "circularity_warning": "target_reported_heading_degrees agrees with `toward` by construction whenever the target was placed along `toward`, so comparing them proves NOTHING. Alignment is only confirmed by a source that does not derive from the number being checked -- the VIO calibration drive's measured map_motion_heading_degrees, or the operator's eyes."
+  },
+  "queue_settle": {
+   "live": true,
+   "reason": null,
+   "is_connected": true,
+   "is_usable": true,
+   "cooldown_active": false,
+   "cooldown_remaining_seconds": 0.0,
+   "last_send_age_seconds": 4.3,
+   "queue_depth": 0,
+   "queue_dispatch_paused": false,
+   "saga_active": false,
+   "stall_threshold_seconds": 15.0,
+   "queue_depth_limit": 0
+  },
+  "progress_diagnostics": [
+   {
+    "status": "path_progress",
+    "passed": true,
+    "action": "forward",
+    "path_progress_distance": 0.32873453741417763,
+    "expected_target_heading_degrees": 277.86762544790935,
+    "movement_vector_heading_degrees": 276.9002179751261,
+    "heading_progress": true,
+    "min_progress_distance": 0.0025,
+    "min_heading_change_degrees": 0.0,
+    "command_index": 1,
+    "measured_delta": {
+     "distance": 0.32878140154211893,
+     "dx": 0.03950000000000031,
+     "dy": -0.3264,
+     "heading_change_degrees": 0.0
+    }
+   },
+   {
+    "status": "path_progress",
+    "passed": true,
+    "action": "forward",
+    "path_progress_distance": 0.3852530982941623,
+    "expected_target_heading_degrees": 277.97433159593584,
+    "movement_vector_heading_degrees": 278.4329624748156,
+    "heading_progress": true,
+    "min_progress_distance": 0.0025,
+    "min_heading_change_degrees": 0.0,
+    "command_index": 2,
+    "measured_delta": {
+     "distance": 0.38526544096246157,
+     "dx": 0.05649999999999977,
+     "dy": -0.3811,
+     "heading_change_degrees": 0.0
+    }
+   },
+   {
+    "status": "path_progress",
+    "passed": true,
+    "action": "forward",
+    "path_progress_distance": 0.3948928144378467,
+    "expected_target_heading_degrees": 277.9062516090642,
+    "movement_vector_heading_degrees": 277.4201487295083,
+    "heading_progress": true,
+    "min_progress_distance": 0.0025,
+    "min_heading_change_degrees": 0.0,
+    "command_index": 3,
+    "measured_delta": {
+     "distance": 0.39490702703294606,
+     "dx": 0.051000000000000156,
+     "dy": -0.39159999999999995,
+     "heading_change_degrees": 0.0
+    }
+   },
+   {
+    "status": "path_progress",
+    "passed": true,
+    "action": "forward",
+    "path_progress_distance": 0.3644501481506078,
+    "expected_target_heading_degrees": 277.9934885767914,
+    "movement_vector_heading_degrees": 276.64740012461607,
+    "heading_progress": true,
+    "min_progress_distance": 0.0025,
+    "min_heading_change_degrees": 0.0,
+    "command_index": 4,
+    "measured_delta": {
+     "distance": 0.3645507509250254,
+     "dx": 0.04220000000000024,
+     "dy": -0.36209999999999987,
+     "heading_change_degrees": 0.0
+    }
+   },
+   {
+    "status": "path_progress",
+    "passed": true,
+    "action": "forward",
+    "path_progress_distance": 0.4855880076732854,
+    "expected_target_heading_degrees": 278.2607330451472,
+    "movement_vector_heading_degrees": 278.3837399822162,
+    "heading_progress": true,
+    "min_progress_distance": 0.0025,
+    "min_heading_change_degrees": 0.0,
+    "command_index": 5,
+    "measured_delta": {
+     "distance": 0.48558912673164334,
+     "dx": 0.0708000000000002,
+     "dy": -0.48039999999999994,
+     "heading_change_degrees": -1.133100000000013
+    }
+   },
+   {
+    "status": "path_progress",
+    "passed": true,
+    "action": "forward",
+    "path_progress_distance": 0.371850499816095,
+    "expected_target_heading_degrees": 278.21650316255807,
+    "movement_vector_heading_degrees": 279.3306254707362,
+    "heading_progress": true,
+    "min_progress_distance": 0.0025,
+    "min_heading_change_degrees": 0.0,
+    "command_index": 6,
+    "measured_delta": {
+     "distance": 0.37192081146394584,
+     "dx": 0.0602999999999998,
+     "dy": -0.367,
+     "heading_change_degrees": 0.0
+    }
+   },
+   {
+    "status": "path_progress",
+    "passed": true,
+    "action": "forward",
+    "path_progress_distance": 0.3567282046997776,
+    "expected_target_heading_degrees": 277.7931160773164,
+    "movement_vector_heading_degrees": 278.54347153451056,
+    "heading_progress": true,
+    "min_progress_distance": 0.0025,
+    "min_heading_change_degrees": 0.0,
+    "command_index": 7,
+    "measured_delta": {
+     "distance": 0.3567587980695082,
+     "dx": 0.052999999999999936,
+     "dy": -0.3528000000000002,
+     "heading_change_degrees": 0.0
+    }
+   },
+   {
+    "status": "path_progress",
+    "passed": true,
+    "action": "forward",
+    "path_progress_distance": 0.37656830444870504,
+    "expected_target_heading_degrees": 277.3626951702037,
+    "movement_vector_heading_degrees": 279.92961430533865,
+    "heading_progress": true,
+    "min_progress_distance": 0.0025,
+    "min_heading_change_degrees": 0.0,
+    "command_index": 8,
+    "measured_delta": {
+     "distance": 0.3769465346703695,
+     "dx": 0.0649999999999995,
+     "dy": -0.3713000000000002,
+     "heading_change_degrees": -1.1075000000000728
+    }
+   },
+   {
+    "status": "path_progress",
+    "passed": true,
+    "action": "forward",
+    "path_progress_distance": 0.19917731214150963,
+    "expected_target_heading_degrees": 273.4266539056604,
+    "movement_vector_heading_degrees": 279.2835528052614,
+    "heading_progress": true,
+    "min_progress_distance": 0.0025,
+    "min_heading_change_degrees": 0.0,
+    "command_index": 9,
+    "measured_delta": {
+     "distance": 0.2002225012330033,
+     "dx": 0.03230000000000022,
+     "dy": -0.1976,
+     "heading_change_degrees": 0.0
+    }
+   }
+  ]
+ },
+ "timing_report": {
+  "service": "motion_dispatch_timing_report",
+  "queue_start_timeout_seconds": 2.0,
+  "write_timeout_seconds": 4.0,
+  "sample_count": 65,
+  "history_capacity": 500,
+  "outcomes": {
+   "completed": 65
+  },
+  "queue_wait_ms": {
+   "min": 0.299,
+   "p50": 0.475,
+   "p95": 188.89,
+   "max": 432.424,
+   "count": 65
+  },
+  "worst_wait_fraction_of_budget": 0.2162,
+  "samples": [
+   {
+    "recorded_at_utc": "2026-09-12T17:06:54.312148+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 1.611,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 249.778
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:06:56.491858+00:00",
+    "command": "send_movement",
+    "is_stop": true,
+    "emergency_stop": true,
+    "outcome": "completed",
+    "queue_wait_ms": 0.843,
+    "queue_budget_seconds": 5.0,
+    "started": true,
+    "write_ms": 177.091
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:00.693509+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 6.903,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 185.124
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:00.965558+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.491,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 70.6
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:01.190891+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 1.213,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 93.931
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:01.906920+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.437,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 611.502
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:02.091346+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.396,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 183.552
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:02.222181+00:00",
+    "command": "send_movement",
+    "is_stop": true,
+    "emergency_stop": true,
+    "outcome": "completed",
+    "queue_wait_ms": 0.444,
+    "queue_budget_seconds": 5.0,
+    "started": true,
+    "write_ms": 129.861
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:05.693358+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 77.617,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 285.093
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:06.006489+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.46,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 111.408
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:06.305809+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.463,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 211.108
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:06.479460+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.352,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 172.846
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:06.595421+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 1.382,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 98.147
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:06.828909+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.495,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 133.771
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:07.004465+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.371,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 109.906
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:07.250570+00:00",
+    "command": "send_movement",
+    "is_stop": true,
+    "emergency_stop": true,
+    "outcome": "completed",
+    "queue_wait_ms": 0.326,
+    "queue_budget_seconds": 5.0,
+    "started": true,
+    "write_ms": 245.358
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:09.915165+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 257.962,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 299.385
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:10.226731+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.565,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 110.101
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:10.616740+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.475,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 300.276
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:10.925320+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.328,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 307.8
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:11.025033+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.299,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 99.026
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:11.230856+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.328,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 205.088
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:11.445917+00:00",
+    "command": "send_movement",
+    "is_stop": true,
+    "emergency_stop": true,
+    "outcome": "completed",
+    "queue_wait_ms": 0.585,
+    "queue_budget_seconds": 5.0,
+    "started": true,
+    "write_ms": 213.936
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:13.883690+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 158.144,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 171.002
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:14.307122+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.476,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 222.224
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:14.577043+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.336,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 269.142
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:14.948361+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.379,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 370.471
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:15.216216+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 1.387,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 265.805
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:15.324533+00:00",
+    "command": "send_movement",
+    "is_stop": true,
+    "emergency_stop": true,
+    "outcome": "completed",
+    "queue_wait_ms": 0.833,
+    "queue_budget_seconds": 5.0,
+    "started": true,
+    "write_ms": 106.89
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:18.891704+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 179.939,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 278.314
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:19.287125+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.566,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 193.349
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:19.486653+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.368,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 193.52
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:19.613888+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.437,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 120.135
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:19.815500+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.473,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 121.904
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:20.102260+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.44,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 208.902
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:20.544268+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.376,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 441.15
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:20.713883+00:00",
+    "command": "send_movement",
+    "is_stop": true,
+    "emergency_stop": true,
+    "outcome": "completed",
+    "queue_wait_ms": 0.432,
+    "queue_budget_seconds": 5.0,
+    "started": true,
+    "write_ms": 168.754
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:24.436826+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 432.424,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 184.199
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:24.850445+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 1.007,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 210.943
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:25.048762+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.546,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 197.183
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:25.240776+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.447,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 191.053
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:25.338485+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.485,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 96.749
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:25.526737+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.408,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 88.351
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:25.764792+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.502,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 125.343
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:25.952973+00:00",
+    "command": "send_movement",
+    "is_stop": true,
+    "emergency_stop": true,
+    "outcome": "completed",
+    "queue_wait_ms": 0.467,
+    "queue_budget_seconds": 5.0,
+    "started": true,
+    "write_ms": 187.186
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:28.432479+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 185.951,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 188.47
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:28.797437+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.35,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 163.486
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:28.927444+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.441,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 93.236
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:29.227638+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.509,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 193.483
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:29.414411+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.405,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 180.402
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:29.620443+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.555,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 186.458
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:29.757559+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.935,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 122.985
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:29.928828+00:00",
+    "command": "send_movement",
+    "is_stop": true,
+    "emergency_stop": true,
+    "outcome": "completed",
+    "queue_wait_ms": 0.516,
+    "queue_budget_seconds": 5.0,
+    "started": true,
+    "write_ms": 170.294
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:33.345242+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 188.89,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 118.427
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:33.814975+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 2.643,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 258.197
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:33.946482+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.365,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 130.649
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:34.120667+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.456,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 173.281
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:34.270465+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.363,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 124.092
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:34.534053+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.421,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 187.253
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:34.651508+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.677,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 104.411
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:34.859834+00:00",
+    "command": "send_movement",
+    "is_stop": true,
+    "emergency_stop": true,
+    "outcome": "completed",
+    "queue_wait_ms": 0.495,
+    "queue_budget_seconds": 5.0,
+    "started": true,
+    "write_ms": 207.267
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:38.457712+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 209.417,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 280.739
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:38.868598+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.448,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 209.543
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:39.102347+00:00",
+    "command": "send_movement",
+    "is_stop": false,
+    "emergency_stop": false,
+    "outcome": "completed",
+    "queue_wait_ms": 0.448,
+    "queue_budget_seconds": 2.0,
+    "started": true,
+    "write_ms": 232.786
+   },
+   {
+    "recorded_at_utc": "2026-09-12T17:07:39.412911+00:00",
+    "command": "send_movement",
+    "is_stop": true,
+    "emergency_stop": true,
+    "outcome": "completed",
+    "queue_wait_ms": 0.408,
+    "queue_budget_seconds": 5.0,
+    "started": true,
+    "write_ms": 309.785
+   }
+  ]
+ },
+ "classification_validation": {
+  "rule": "predeclared: burst boundary at >500 ms gap; burst count cross-checked against that pulse refresh_commands_sent",
+  "must_filter_stops_first": "budget 5.0 samples are emergency-stop dispatches, neither pulse-open nor refresh. Section 10.3 did NOT say this; omitting it gave 12 bursts and a +8 refresh disagreement.",
+  "after_filtering": {
+   "motion_samples": 55,
+   "bursts_found": 11,
+   "pulse_open_inferred": 11,
+   "refresh_inferred": 44
+  },
+  "executor_independent_counts": {
+   "commands_sent": 10,
+   "motion_refresh_commands_sent": 45
+  },
+  "verdict": "off by one: one pulse-open-to-first-refresh gap exceeded 500 ms and split a burst. Total (55) agrees exactly. Predeclared rule NOT changed post-data; the mismatched burst is UNCLASSIFIABLE per section 11.2 (~10%, within the <=20% tolerance)."
+ },
+ "per_class_distribution": {
+  "pulse_open": {
+   "n": 11,
+   "p50_ms": 179.939,
+   "p95_ms": 432.424,
+   "max_ms": 432.424
+  },
+  "refresh": {
+   "n": 44,
+   "p50_ms": 0.456,
+   "p95_ms": 1.382,
+   "max_ms": 2.643
+  },
+  "pooled_p95_ms": 188.89,
+  "W_p95_write_ms": 309.785,
+  "Q_over_W_ratio": 1.396
+ }
+}

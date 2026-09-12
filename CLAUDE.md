@@ -308,6 +308,40 @@ emergency stop is budgeted **5.0 s** against an ordinary pulse's 2.0 — recompu
 by hand over budget-2.0 samples only; a GATT write failing *after* queue start
 records **no sample**, so `outcomes` is not a failure census; the history is
 `maxlen=500` and drops silently, so snapshot per leg.
+🚨 **PHASE 1 HAS NOT RUN. One SETUP leg dispatched 2026-09-12** (unscored,
+excluded from the population by §15, committed before it ran) — `target_reached`
+at **0.0506 m**, 19/19 profile keys echoed, 13/13 gates passed. The session then
+stopped on its own budget rather than start scored legs, because a truncated run
+is **predeclared inconclusive** and would strand the mower for no verdict.
+Record: `docs/findings-setup-leg-and-classifier-validation-20260912.md` +
+`docs/evidence-setup-leg-timing-20260912.json`. **Three corrections came out of
+it, all before any scored data existed:**
+- 🗑️ **The contamination runs OPPOSITE to §10.1/§10.2's prediction.** Refreshes
+  wait ~**0.456 ms** (they fire 200 ms apart and each write takes ~186 ms, so the
+  queue drains first); pulse-opens wait **180–432 ms**, queued behind the
+  previous pulse's stop. Pooling therefore **DEFLATES** p95 ~2.3× (188.89 vs
+  432.424) and masks the tail — it does not inflate it. The `outcomes`
+  conflation and the asymmetry of consequence still stand.
+- 🚨 **§10.4's per-leg estimate is ~2× too high.** Measured **10 pulse-opens for
+  3.4 m**, so a 1.0 m leg yields only ~4. 8 legs banks ~32–48 against the
+  `n ≥ 40` bar. ✅ **Plan ~10–12 legs at 1.0 m, or 1.5 m legs turning back every
+  2.** Sizing only — no threshold moves.
+- ✅ **The classifier was validated**, and 🚨 **stops must be filtered out BEFORE
+  burst-splitting** (budget 5.0 = emergency stop, neither class) — §10.3 omits
+  this and skipping it gave a +8 disagreement. After filtering: 11 bursts vs the
+  executor's own 10 / 45, off by one. 🛑 **The rule was deliberately NOT changed
+  post-data**; that burst is UNCLASSIFIABLE per §11.2.
+⚠️ **Preview only, n = 11, EXCLUDED:** pulse-open p95 **432 ms** fails both §3
+(≥1000) and §4 (≤250) — the §5 **inconclusive** band. Q/W ratio 1.396.
+**If the scored legs look like this, inconclusive is the honest verdict.**
+🔑 **The 65 samples live on the coordinator, not a session** — a Phase 1 session
+will see them in `motion_dispatch_timing_report` and must exclude them.
+🗑️ **`services.yaml` is MISSING `turn_mode` and `vio_turn_max_commands`**, which
+the real voluptuous schema accepts. It does not affect API calls (validation is
+the `schema=` argument; the integration never reads that file) — but filtering a
+payload against it ran `vio_turn_max_commands` at default **8** instead of the
+accepted **4**, caught by the echo check. 🔑 **The UI metadata is not the schema
+either: verify the ECHO, never the request.** Fix deferred; it needs a deploy.
 📋 **Sequencing is decided:** `docs/plan-queue-measurement-then-ble-20260912.md`.
 The measurement runs **before** any BLE proxy work, because legs 7 and 8 failed
 under today's proxy configuration — **the RF environment is frozen until phase 1
