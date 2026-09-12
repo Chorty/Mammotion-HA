@@ -823,3 +823,38 @@ tape measurement on any corridor under a couple of metres, and explicit operator
 go/no-go immediately before dispatch. 🚨 **And the mower is hand- or app-placed,
 so its heading telemetry is stale until it drives** — derive facing two ways
 before the first armed dispatch (§12.2).
+
+---
+
+## 15. PRE-DISPATCH NOTE — the setup leg is EXCLUDED from the §2 population.
+## Written before it was dispatched, while `sample_count` was still 0.
+
+The mower ended up at `map_xy (4.4688, −0.5013)` after the operator cancelled a
+mow — 3.5 m north of §14.2's parked position and unable to satisfy the
+`moderate` band quota there (−62 dBm; 96 strong cells against 1 moderate inside
+its 3.0 m disc). One **unscored setup leg** moves it into the pocket: 3.4 m at
+heading 277.683° (0.0° off the measured facing), target `(4.9234, −3.8708)`.
+
+🚨 **That leg dispatches through `_send_ble_motion_command_confirmed`, so it WILL
+record timing samples and take `sample_count` off 0.** Its status is therefore
+fixed here, before it runs:
+
+✅ **Tagged `leg_role: "setup"` in the evidence file. Its samples are recorded
+in full and EXCLUDED from the §2 population.** Reasons, stated in advance:
+
+- it is **3.4 m**, not the ~1.0 m of §14.2's leg rule, so it carries a
+  different pulse count and a different share of final-approach behaviour;
+- it **starts outside the planned excursion disc**, in the strong band only, so
+  including it would skew the band composition the §14.1 quota exists to
+  balance;
+- it was **not planned under §14.2's geometry** at all — it exists to satisfy
+  §14.2's precondition, not to sample it.
+
+🔑 **This is not a licence to discard inconvenient legs later.** The exclusion
+covers exactly one leg, identified by position and heading above, recorded
+before its data existed. Every leg dispatched *after* the mower reaches the
+pocket is in the population unless it trips an exclusion rule already written in
+§11.1, §11.2 or §13.2.
+
+⚠️ **`sample_count` will be non-zero from this point on**, so no later amendment
+to §2–§14 is legitimate. Those sections are closed.
