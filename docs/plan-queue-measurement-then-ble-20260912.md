@@ -86,9 +86,14 @@ re-provisioned; no change to `motion_refresh_interval_ms`; no change to
 the evidence file at session start** — scanner sources, names and connection
 slots — so any later change is attributable and the session stays reproducible.
 
-**Legs:** ≥ 4 distinct legs, 0.8–1.5 m, in known-good coverage near the dock,
-≥ 2 of them running a turn or calibration-drive phase, each aimed at the live
-`map_facing_degrees`. Target `n ≥ 120` samples at `queue_budget_seconds == 2.0`.
+**Legs — REVISED 2026-09-12, see predeclaration §10–§11.** Plan **~8 legs**,
+0.8–1.5 m, each aimed at the live `map_facing_degrees`; ≥ 4 distinct,
+≥ 2 running a turn or calibration-drive phase, and **≥ 2 sited 6–8 m from the
+dock** (tagged `distance_band: "far"`) so the population is not entirely the
+strongest-link regime. 🚨 **The bar is `n ≥ 40` `pulse_open` samples surviving
+exclusion** — not 120, and not 40 collected. ~86 % of raw samples are refresh
+resends that record identically to pulse-opens; the rate claim needs n ≥ 120 and
+is deferred. 8 legs banks ~56–80 pulse-opens, absorbing ~25 % exclusion.
 
 **Protocol, no exceptions:** explicit operator go/no-go immediately before each
 dispatch; fresh corridor scan against the map; physical tape measurement on any
@@ -117,9 +122,17 @@ ordinary one.
 its own operator decision afterwards, and `motion_refresh_interval_ms` owes its
 own predeclaration and Gate 5 as an accepted profile value.
 
-My prior: §4 is the likely outcome — a tight body with episodic outliers, which
-would mean the constant is fine and the real work is identifying what occupies
-the queue. Written down now so it can be wrong on the record.
+✏️ **My prior, revised 2026-09-12 before any data.** I first recorded §4 as
+likely — a tight body with episodic outliers, constant fine. **Predeclaration
+§10.5 argues the other way:** `_motion_refresh_window`'s own comment banks
+refresh *write* latency at p95 **1029.2 ms** and max **2014.0 ms** across 98
+writes, with 59 % exceeding the 200 ms interval. The queue is serialized, so a
+dispatch behind a ~1 s write inherits that wait, which materially raises the
+chance §3's "p95 ≥ 1000 ms" fires.
+🔑 **If it does, the honest reading may be a third answer neither §3 nor §4
+anticipates — "write latency on this link is the binding constraint" — not
+"raise the constant."** Recorded now so that reading cannot look invented after
+the fact.
 
 ---
 

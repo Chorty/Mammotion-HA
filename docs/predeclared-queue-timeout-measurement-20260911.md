@@ -292,3 +292,267 @@ daylight window, and the per-cell targets (≥ 10 samples per 1 m cell, from the
 §2–§5 thresholds are unchanged and are not reopened by this correction.
 Sequencing and the RF freeze that follows from it:
 `docs/plan-queue-measurement-then-ble-20260912.md`.
+
+---
+
+## 10. 🚨 AMENDMENT — the sample population was contaminated. Restated per class,
+## still at `sample_count: 0`.
+
+Raised by session `mammotion-ha-0f` (which built the instrument) and
+independently confirmed by `mammotion-ha-2b`. **I verified every link myself by
+grep-and-read before accepting any of it**, per this repo's rule that a peer
+summary is a candidate, not a finding. All of it holds.
+
+### 10.1 The defect, verified
+
+Every **refresh resend** records a timing sample **indistinguishable** from a
+pulse-opening dispatch:
+
+- the three resend sites (`services.py` 13699, 15893, 17855) all call
+  `_send_manager_command_with_args(coordinator, "send_movement",
+  prefer_ble=prefer_ble, ...)` — two via `functools.partial`, one via
+  `_resend_turn`;
+- `"send_movement"` is in `RAW_PYMAMMOTION_MOTION_COMMANDS` (line 157);
+- `_send_manager_command_with_args` routes to
+  `_send_ble_motion_command_confirmed` on
+  `prefer_ble and command in RAW_PYMAMMOTION_MOTION_COMMANDS`, and
+  `docs/accepted-profile.json` sets **`prefer_ble: true`**;
+- the recorded fields are therefore identical: `command="send_movement"`,
+  `is_stop=False` (kwargs are never all-zero for a drive),
+  `emergency_stop=False`, `queue_budget_seconds=2.0`.
+
+**Ratio, from the code not an estimate.**
+`max_refreshes = max(int(duration_seconds / interval_seconds), 0)` with the
+accepted profile's `motion_refresh_interval_ms: 200`:
+`int(1300/200) = 6` refreshes per linear pulse, `int(1500/200) = 7` per turn
+pulse. So **6:1 and 7:1 — roughly 86 % of samples are refreshes.**
+
+🚨 **The two classes are asymmetric in consequence, which is what makes this
+misleading rather than merely noisy.**
+A pulse-open failure aborts the leg (`command_failed`). A refresh failure is
+**swallowed** by `_motion_refresh_window`'s `except Exception` — it sets
+`refresh_error` and breaks, because "a half-refreshed window is a shorter drive,
+never a runaway one" (verified verbatim, ~line 6820). **A harmless swallowed
+refresh timeout lands in `outcomes` identically to one that killed a leg**, and
+that census is what §3 would use to justify loosening a safety constant.
+
+🚨 **§5's tripwire cannot catch it.** "> 50 % carry `emergency_stop: true` or
+`queue_budget_seconds != 2.0`" passes cleanly on a 86 %-refresh population,
+because refreshes are non-stop, non-emergency, budget 2.0.
+
+### 10.2 ✏️ Correcting the peer on one point: this IS a criteria change
+
+`mammotion-ha-0f` framed this as a sizing issue and wrote that "§3/§5 do not
+depend on [§6], so this is not a criteria change." **That is wrong, and in the
+direction that matters.** §3 and §5 state their thresholds on
+`p95(queue_wait_ms)` computed over *"`queue_budget_seconds == 2.0` samples"* —
+a population the defect shows is 86 % refreshes. So the **criteria themselves**
+were contaminated, not only the leg count. Refreshes fire on a fixed 200 ms
+cadence *inside an already-open window*, which is a systematically different
+queue state from a pulse-open fired after a stop-settle-measure gap; pooling
+their distributions would have made §3's p95 a statement about refresh latency.
+
+✅ **All of §2–§5 are hereby restated over the `pulse_open` class only.** The
+numeric thresholds (p95 ≥ 1000 ms / ≤ 250 ms, fractions 0.75 / 0.40) are
+**unchanged** — only the population they are computed over is corrected.
+
+### 10.3 Classification, predeclared — no deploy required
+
+The classes are separable from what beta104 already records, so **Phase 1 does
+not wait on a beta105.** `_utc_timestamp()` is
+`datetime.now(UTC).isoformat()` — microsecond resolution.
+
+**Rule, fixed now:** sort a leg's samples by `recorded_at_utc`; a gap
+**> 500 ms** from the previous sample starts a new burst; the **first sample of
+each burst is `pulse_open`**, every later sample in it is `refresh`.
+
+**Why 500 ms separates them with margin on both sides:** within a burst the
+cadence is fixed at 200 ms *measured from window start*, and a write slower than
+the interval yields a **zero** sleep — so within-burst gaps span 0–200 ms, never
+more. Between bursts sit the caller's mandatory stop, a settle, and a position
+measure gated by the device's **~1 Hz** telemetry bundle, so ≥ 1 s.
+
+✅ **Mandatory cross-check, not optional:** for each burst, the inferred refresh
+count **must equal** that pulse's own
+`command_result["motion_refresh"]["refresh_commands_sent"]`, which the executor
+already reports independently. **Any leg where they disagree is excluded from
+the population and the disagreement is reported per-leg.** This is what makes
+the classification verified rather than assumed — the instrument's own
+bookkeeping adjudicates it.
+
+### 10.4 Sizing, restated per class — operator decision taken 2026-09-12
+
+🔑 **The two claims are separated, because they need different n.**
+
+**(A) The §3/§4 verdict — p95 and headroom: `n ≥ 40` `pulse_open` samples, from
+`≥ 4` distinct legs, `≥ 2` with a turn or calibration phase.**
+This is what §3 and §4 actually turn on. ⚠️ At n = 40 the p95 index is
+`round(0.95 × 39) = 37`, leaving only 2 samples above it — **a coarse estimate
+with wide uncertainty, and stated as such.** It still discriminates because
+§3 and §4 are deliberately **4× apart** (1000 ms vs 250 ms): a noisy p95 lands
+clearly in one camp, or in neither — and "neither" is already §5's inconclusive,
+which is a legitimate outcome.
+
+**(B) The rate claim: `n ≥ 120` `pulse_open` samples.** Rule of three gives a
+95 % upper bound of ~2.5 % on an unobserved timeout rate. 🛑 **Explicitly
+DEFERRED unless the session reaches it** — no rate is quoted below 120.
+At n = 40 the honest bound is **3/40 ≈ 7.5 %**, and that is the number to state
+if a rate is mentioned at all.
+
+**Leg count.** ~0.29–0.38 m per linear pulse (1.3 s at the measured sustained
+0.223–0.295 m/s), so a 0.8–1.5 m leg is ~2–5 linear pulses plus ~2 calibration
+and ~3 turn pulses ⇒ **roughly 7–10 pulse-opens per leg**. So **(A) ≈ 6 legs**
+and (B) ≈ 12–17. ⚠️ **These leg counts are CONSERVATIVE**: the per-pulse
+distance uses *sustained* speed while the pulse includes its ramp, so real
+distance per pulse is lower and pulses per leg higher — CLAUDE.md's standing
+"separate the ramp before sizing any window" trap, cutting in the favourable
+direction here.
+
+🗑️ **§6's "4–6 legs should clear n ≥ 120" is withdrawn.** It was only ever
+reachable through refresh inflation. Pooled counting would have hit 120 in
+**~2 legs**, declaring success on two legs' worth of independent information
+while §2's own "≥ 4 distinct legs" rationale did all the real work.
+
+### 10.5 🚨 A banked prior that argues AGAINST my own §4 prediction
+
+`_motion_refresh_window`'s own comment records, from all 98 refresh writes of
+the five real runs of 2026-08-09: **write latency p50 225.6 / p90 572.0 /
+p95 1029.2 / max 2014.0 ms, with 59 % of writes exceeding the 200 ms interval.**
+
+That is *write* duration, not queue-start wait — a different quantity, and it
+does not transfer directly. But the queue is **serialized**, so a dispatch
+enqueued behind an in-flight write of ~1 s inherits that wait. 🔑 **This
+materially raises the prior that §3's "p95 ≥ 1000 ms" could fire** — and for a
+reason that has nothing to do with the 2.0 s bound being miscalibrated.
+
+✏️ **§2 of the plan recorded my prediction that §4 (the constant is fine) was
+the likely outcome. This prior argues the other way, and I am recording that
+before the data rather than after.** If §3 does fire, the honest reading may be
+neither "raise the constant" nor "the constant is fine" but **"write latency on
+this link is the binding constraint"** — a third answer that neither §3 nor §4
+anticipates, and which §5's inconclusive branch should absorb rather than force.
+
+### 10.6 Two smaller items, recorded for the evidence file
+
+⚠️ **`write_ms` is stamped late.** `_dispatch` calls `started.set()` and then
+runs `_ble_link_liveness` — a plain `def` with no awaits — before its first
+yield, so `started_monotonic` is taken *after* that snapshot. Magnitude is
+sub-millisecond against a 2000 ms budget and immaterial, **but the direction
+biases `queue_wait_ms` upward**, which is the direction favouring §3. Note it in
+the evidence file.
+
+🚨 **"Contention accumulates per pulse, not per metre" is an ASSUMPTION, not a
+finding.** It originates with `mammotion-ha-0f`, appears in
+`docs/prompt-issue1-step2-measurement.md`, and is what §6 used to justify short
+legs near the dock. ⚠️ **Short legs near the dock are the strongest-link
+regime**, while legs 7 and 8 failed at −60 to −67 dBm roughly 8 m out. So this
+sizing choice may systematically sample the regime *least* likely to reproduce
+the failure. It is kept — a measurement of normal operation is what §3/§4 ask
+for — but **a null result must not be read as "the failure does not happen",
+only as "it did not happen in the strongest-link regime."**
+
+---
+
+## 11. AMENDMENT, continued — four operator refinements. Still `sample_count: 0`.
+
+### 11.1 🚨 §5's third clause is REPLACED — the old tripwire was untestable
+
+**Withdrawn:** *"`> 50 %` of samples carry `emergency_stop: true` or
+`queue_budget_seconds != 2.0`."*
+
+🔑 **It could not have caught the very defect that motivated this amendment.**
+Refreshes are non-stop, non-emergency, budget 2.0 — the clause passes cleanly on
+a 86 %-refresh population. A falsifier that cannot fire on the actual
+contamination is decoration. §10.1 observed this; this section actually fixes it.
+
+**Replacement — class-based, and it fires on exactly that failure.** Any one of
+these makes the measurement **inconclusive**:
+
+1. **`pulse_open` share outside 8 %–35 % of classified samples.** The code
+   predicts ~1 pulse-open per 7 samples for linear (6 refreshes) and 1 per 8 for
+   turn (7) — i.e. **12.5 %–14.3 %** expected. A share near 100 % means the
+   classification collapsed and every sample was labelled one class (the
+   original defect); a share near 0 % means burst boundaries were missed
+   wholesale. The band is deliberately wide so only a *structural* failure trips
+   it.
+2. **Unclassifiable bursts > 20 % of all bursts** (§11.2).
+3. **`pulse_open` count after exclusions < 40** (§11.4).
+4. **Any leg whose per-burst cross-check disagreements cannot be reconciled**
+   from that leg's own `command_result`.
+
+### 11.2 ✏️ Exclusion is per BURST, not per leg — correcting §10.3
+
+§10.3 said a *leg* whose counts disagree is excluded. **Too coarse, and it
+discards good data.** Restated:
+
+✅ **If a burst's member count does not equal that pulse's
+`motion_refresh.refresh_commands_sent`, the burst is marked `UNCLASSIFIABLE` and
+excluded from BOTH classes.** The boundary is never guessed. Other bursts in the
+same leg are unaffected and still count.
+
+✅ **The excluded burst count and excluded sample count are reported alongside
+`n`, always** — not as a footnote. An `n` quoted without its exclusion count is
+not a reportable figure in this measurement.
+
+### 11.3 `write_ms` bias is a REQUIRED evidence field, not a remark
+
+§10.6 said to "note it in the evidence file". Made concrete:
+
+✅ **`docs/evidence-queue-timeout-measurement-<date>.json` MUST carry a
+top-level `known_biases` object**, present even when empty of anything else,
+containing at least:
+
+```
+"known_biases": {
+  "queue_wait_ms_biased_upward": true,
+  "mechanism": "_dispatch calls started.set() then runs _ble_link_liveness (plain def, no awaits) before its first yield, so started_monotonic is taken after that snapshot",
+  "magnitude": "sub-millisecond against a 2000 ms budget; immaterial in size",
+  "direction_favours": "section 3 (p95 >= 1000 ms justifies raising the constant)"
+}
+```
+
+🔑 **The direction is the point, not the magnitude.** A sub-ms bias that happens
+to push toward loosening a safety constant belongs on the record, so a later
+reader never has to wonder whether it was known at the time.
+
+### 11.4 🔑 `n ≥ 40` is AFTER exclusions — and the leg plan carries headroom
+
+The two decisions interact, and the interaction bites at analysis time:
+**exclusions come off the top**, so a session can satisfy the burst-count rule
+and still land under the bar.
+
+✅ **The bar is `n ≥ 40` `pulse_open` samples surviving exclusion** — not 40
+collected.
+
+✅ **Plan ~8 legs to bank 40, not the bare 4–6.** At ~7–10 pulse-opens per short
+leg, 6 legs yields ~42–60 *before* exclusions, which clears 40 only if almost
+nothing is excluded. 8 legs yields ~56–80, absorbing a ~25 % exclusion rate and
+still clearing. 🚨 **A shortfall discovered at analysis time is unrecoverable
+with the mower already docked** — that is the failure this headroom exists to
+prevent, and it is cheaper to drive two extra short legs than to return an
+inconclusive verdict on arithmetic.
+
+⚠️ §2's independence requirements still bind and are not relaxed by the higher
+leg count: `≥ 4` distinct legs, `≥ 2` with a turn or calibration phase.
+
+### 11.5 The "per pulse, not per metre" assumption — how the legs address it
+
+§10.6 demoted it to an assumption. Making that operational rather than just
+disclaimed:
+
+✅ **Of the ~8 planned legs, at least 2 are sited 6–8 m from the dock**, in
+coverage the map calls good, at a distance comparable to where legs 7 and 8
+failed (−60 to −67 dBm, ~8 m out). They are tagged `distance_band: "far"` in the
+evidence file; the rest are `"near"`.
+
+🔑 **This does not make the session a test of the assumption** — 2 legs decides
+nothing, and no criterion in §2–§5 is conditioned on the split. It exists so the
+population is not *entirely* the strongest-link regime, and so a later session
+has a per-class, per-band starting point instead of nothing.
+🛑 **Both bands remain subject to `plan_aligned_leg.py`'s `--min-rssi-dbm -76`
+rejection and every standing protocol requirement.** "Far" means farther from
+the dock in verified-good coverage — **not** into the weak cells §9 excluded,
+and not a survey leg.
+
+⚠️ **A null result still cannot be read as "the failure does not happen"** — only
+as "it did not happen in these bands at this n."

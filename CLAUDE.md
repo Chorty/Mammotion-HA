@@ -240,11 +240,39 @@ through it yet.
 ✅ **The criteria are already predeclared and committed** —
 `docs/predeclared-queue-timeout-measurement-20260911.md`, written while the
 instrument read zero, so no threshold there can have been chosen after seeing a
-number. n ≥ 120 samples at `queue_budget_seconds == 2.0` from ≥ 4 legs, ≥ 2 with
-a turn or calibration phase. §9 **withdraws part of §8**: survey legs are tagged
-`survey: true` and **excluded** from that population, because a survey
-deliberately enters weak coverage and would inflate the very numbers that
-justify loosening the bound.
+number. §9 **withdraws part of §8** (survey legs tagged `survey: true` and
+excluded — a survey deliberately enters weak coverage and would inflate the very
+numbers that justify loosening the bound).
+🚨 **§10–§11 amend the SAMPLE POPULATION, and this is the part to read first.**
+Every **refresh resend** records a sample **indistinguishable** from a
+pulse-opening dispatch — the three resend sites all call
+`_send_manager_command_with_args(..., "send_movement", prefer_ble=...)`,
+`"send_movement"` is in `RAW_PYMAMMOTION_MOTION_COMMANDS`, and the profile sets
+`prefer_ble: true`. `int(1300/200) = 6` refreshes per linear pulse and
+`int(1500/200) = 7` per turn ⇒ **~86 % of raw samples are refreshes.**
+🔑 **The classes are asymmetric in consequence:** a pulse-open failure aborts the
+leg; a refresh failure is **swallowed** by `_motion_refresh_window`'s
+`except Exception`. So a harmless timeout and a leg-killing one land in
+`outcomes` identically.
+✅ **All criteria are now computed over the pulse-open class only** (thresholds
+unchanged). Classes are separated **post-hoc — no deploy needed**: burst
+boundary at a **> 500 ms** gap, cross-checked against each pulse's own
+`motion_refresh.refresh_commands_sent`; a burst that disagrees is
+**UNCLASSIFIABLE** and excluded from both classes, never guessed.
+✅ **Bar: `n ≥ 40` pulse-open samples SURVIVING EXCLUSION**, from ≥ 4 legs,
+≥ 2 with a turn phase. **Plan ~8 legs** — exclusions come off the top and a
+shortfall found at analysis time is unrecoverable. The n ≥ 120 rate claim is
+**deferred**; below 120 the honest bound is 3/40 ≈ 7.5 %.
+🚨 **§10.5 revises the expected outcome:** banked refresh *write* latency is
+p95 **1029.2 ms**, max **2014.0 ms** (98 writes, 59 % over the 200 ms interval).
+The queue is serialized, so a dispatch behind a ~1 s write inherits the wait —
+**a third answer, "write latency is the binding constraint", may beat both §3
+and §4.**
+⚠️ **"Contention accumulates per pulse, not per metre" is an UNVERIFIED
+assumption** (peer-session origin) that justified short legs near the dock — the
+**strongest-link** regime, while legs 7 and 8 failed ~8 m out. §11.5 sites ≥ 2
+legs at 6–8 m in response. **A null result means "not in these bands at this
+n", never "it does not happen."**
 🚨 **Three traps in the instrument, recorded there before any data exists:**
 `worst_wait_fraction_of_budget` divides `max(waits)` by `min(budgets)` and an
 emergency stop is budgeted **5.0 s** against an ordinary pulse's 2.0 — recompute
