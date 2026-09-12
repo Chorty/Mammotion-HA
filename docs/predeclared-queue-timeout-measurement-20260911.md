@@ -858,3 +858,73 @@ pocket is in the population unless it trips an exclusion rule already written in
 
 ⚠️ **`sample_count` will be non-zero from this point on**, so no later amendment
 to §2–§14 is legitimate. Those sections are closed.
+
+
+---
+
+## 16. PRE-DISPATCH NOTE — Phase 1 run plan, fixed before any scored leg.
+## Operator directed the full run on 2026-09-12 after the budget risk was stated twice.
+
+**Operator decision, recorded as such:** push to finish 10–12 scored legs this
+session. The risk was stated twice — a session-limit truncation is predeclared
+**inconclusive** by §13.2 axis 1 — and the operator chose to proceed. That rule
+is **unchanged**: if the session is cut off before `n ≥ 40` pulse-opens survive
+exclusion, the verdict is inconclusive and is reported as such.
+
+### 16.1 A second setup leg is EXCLUDED, like §15's
+
+The mower is at `(4.45, 0.54)`, 4.38 m north of the pocket. One unscored setup
+leg drives it to the anchor `(4.94, −3.82)`. Tagged `leg_role: "setup"` and
+**excluded from the §2 population**, for §15's reasons. This covers exactly this
+one leg.
+
+### 16.2 Scored targets are ABSOLUTE and fixed now
+
+Each scored leg drives from the live position to a fixed absolute target on the
+N–S axis through the anchor. **Driving TO a fixed target corrects landing drift
+by construction**, so pattern-centre drift cannot accumulate across legs — this
+resolves the drift risk raised for the longer run. Every target is within
+**3.0 m** of the anchor (§14.2's cap). Bands are the coverage-map estimate at the
+target, assigned here so they cannot be chosen after the fact:
+
+| leg | target | offset from anchor | est. RSSI | band | clearance |
+| --- | --- | --- | --- | --- | --- |
+| S1 | (4.94, -4.82) | -1 m | -72.0 | `moderate` | 4.9 m |
+| S2 | (4.94, -5.82) | -2 m | -74.0 | `moderate` | 4.95 m |
+| S3 | (4.94, -6.82) | -3 m | -76.0 | `moderate` | 4.39 m |
+| S4 | (4.94, -5.82) | -2 m | -74.0 | `moderate` | 4.95 m |
+| S5 | (4.94, -4.82) | -1 m | -72.0 | `moderate` | 4.9 m |
+| S6 | (4.94, -3.82) | +0 m | -68.0 | `strong` | 4.85 m |
+| S7 | (4.94, -2.82) | +1 m | -66.0 | `strong` | 3.91 m |
+| S8 | (4.94, -1.82) | +2 m | -66.0 | `strong` | 2.91 m |
+| S9 | (4.94, -2.82) | +1 m | -66.0 | `strong` | 3.91 m |
+| S10 | (4.94, -3.82) | +0 m | -68.0 | `strong` | 4.85 m |
+| S11 | (4.94, -4.82) | -1 m | -72.0 | `moderate` | 4.9 m |
+| S12 | (4.94, -5.82) | -2 m | -74.0 | `moderate` | 4.95 m |
+
+**Band quota (§14.1, ≥ 2 each):** `strong` 5, `moderate` 7. Turn-backs
+fall at S4 (south→north) and S9 (north→south), satisfying "≥ 2 legs with a turn
+phase".
+
+### 16.3 Automatic HALT conditions — any one stops the series
+
+Enforced per leg by the runner before and after dispatch: position not
+`AREA_INSIDE` / wrong zone / not valid; RTK not `Fix`; blade not reported off,
+latched, or any blade blocker; facing confidence `unknown`; corridor leaving the
+area or under **1.0 m** clearance; target excursion over 3.0 m; target band
+missing or below −76 dBm; dry run not `valid`, or with errors, keep-out
+violations, blockers, any failing safety gate, or **any accepted-profile echo
+mismatch**; real `stop_reason` other than `target_reached`.
+🛑 **A HALT is not overridden in-session.** The gate is disarmed and the
+operator decides.
+
+### 16.4 Collection
+
+After every leg the runner saves the leg result and a full
+`motion_dispatch_timing_report` snapshot (§11.3). Classification applies §10.3
+**after filtering out budget-5.0 stop samples**, per §1's budget rule — the gap
+recorded in `docs/findings-setup-leg-and-classifier-validation-20260912.md` §3.
+Setup-leg samples (today's first 65 plus 16.1's) are excluded by timestamp.
+
+⚠️ **Sizing:** 12 legs of ~1.0 m banks roughly 12 × 4 ≈ 48 pulse-opens before
+exclusions — only modest headroom over 40, per the measured ~4 per 1.0 m leg.
