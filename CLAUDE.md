@@ -334,8 +334,10 @@ it, all before any scored data existed:**
 ⚠️ **Preview only, n = 11, EXCLUDED:** pulse-open p95 **432 ms** fails both §3
 (≥1000) and §4 (≤250) — the §5 **inconclusive** band. Q/W ratio 1.396.
 **If the scored legs look like this, inconclusive is the honest verdict.**
-🔑 **The 65 samples live on the coordinator, not a session** — a Phase 1 session
-will see them in `motion_dispatch_timing_report` and must exclude them.
+🔑 **The 65 samples live on the coordinator, not a session — but IN MEMORY ONLY**
+(`deque(maxlen=500)`): an HA restart or reload clears them. Banked in full in the
+evidence file. A Phase 1 session must exclude them if present and must not
+assume they are.
 🗑️ **`services.yaml` is MISSING `turn_mode` and `vio_turn_max_commands`**, which
 the real voluptuous schema accepts. It does not affect API calls (validation is
 the `schema=` argument; the integration never reads that file) — but filtering a

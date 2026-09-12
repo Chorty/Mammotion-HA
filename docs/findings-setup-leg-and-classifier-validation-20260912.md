@@ -141,10 +141,13 @@ operator is docking it.** ⚠️ Off-dock drain is ~4.3 %/h, so it should not si
 overnight.
 
 🔑 **The 65 timing samples live on the HA coordinator, not in any session** — a
-future session reads them with `motion_dispatch_timing_report`. `maxlen` is 500,
-so there is room for roughly 8 more legs before the oldest drop. **They are
-setup-leg samples and are excluded from the §2 population; a Phase 1 session
-must account for them being present in the report.**
+future session reads them with `motion_dispatch_timing_report`. ✏️ **But they are
+IN MEMORY ONLY** (`deque(maxlen=500)` on the coordinator object): **an HA restart
+or integration reload clears them.** They are banked in full in
+`docs/evidence-setup-leg-timing-20260912.json`, so nothing is lost if that
+happens. **Either way they are excluded from the §2 population** — a Phase 1
+session must exclude them if still present, and must not assume they are.
+⚠️ Per-leg snapshots (§11.3) matter more than the deque for that reason.
 
 **No code changed. No deploy. No control-law or profile value moved.
 `_BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS` is still 2.0.**
