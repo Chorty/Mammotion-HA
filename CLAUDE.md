@@ -207,21 +207,51 @@ undecided** — `docs/predeclared-comms-abort-auto-dock-20260911.md`.
 timeout cancelling setup, a documented trap, not new) — recovered cleanly with
 a config-entry reload in ~20 s, mower position confirmed unchanged across it.
 
-⚠️ **Live state was true at 2026-09-11 ~22:41 UTC (queried fresh this session).
-Requery HA and the mower before acting on it.** Mower **docked**, **69%**,
-trickle-charging (battery rose 66→69 over 14 h with ~1-min charge pulses roughly
-hourly; an instantaneous `charge_state: not_charging` read is just the gap
-between pulses — do not read it as off-dock). `ble_link_live: on` at **−62 dBm**,
-`work_mode: MODE_READY`, blade OFF, RTK **Fix**, VIO 80/80 features,
-`map_facing 277.646°` **motion_confirmed** with `safe_to_aim_dispatch: true`.
-Gate **disarmed** (`experimental_motion.enabled: false`, `blockers: []`).
-HA is **2026.9.1**. Only 2 entities unavailable, both camera-related and benign
-(the mower's last-event image and recognized-people sensor).
+🚨 **THE MOWER IS OFF-DOCK AND DRAINING AS OF 2026-09-12T03:24Z. Requery before
+acting — this block is a snapshot, not a source of truth.** `paused` at
+"Backyard Right", **not charging**, **45%** and falling ~4.3%/h (69% at
+2026-09-11T20:34Z). It left the dock at **21:57:23Z** on a brief `mowing`
+transition. `ble_link_live: on` at −58 dBm, `real_motion_ready: off`.
+🚨 **RTK is `single`, `position_level: 0`, fault `1300` (poor positioning)
+standing since 03:05:13Z** — while the mower's own receiver tracks **24
+satellites** and the RTK base reports **0**. A `lawn_mower.dock` on explicit
+operator go at 03:18:07Z was accepted (HTTP 200) and **produced zero motion**;
+it was not retried. Recovery is an operator action. Gate **disarmed**
+(`blockers: ['experimental_motion_disabled', 'rtk_not_precise']`). Dark:
+`vio_brightness: 0`, `vio_tracked_features: 0`. Full record:
+`docs/findings-dock-failure-rtk-and-ble-contention-20260912.md`.
+
+✏️ **The block that stood here was wrong when it was written.** It said "mower
+docked, 69%, trickle-charging ... RTK Fix ... blockers: []" and was committed at
+2026-09-11 18:37 EDT (22:37Z) — but the mower had left the dock at 22:37Z minus
+40 minutes, and the deploy-verification reading it came from was older still.
+🔑 **A live-state paragraph in this file is stale the moment it is committed.
+Requery; never act on it.**
 
 📋 **Issue 1 step 2 is now UNBLOCKED but NOT DONE.** beta104 ships the
 instrument; **the measurement still needs a real session.** Call
-`motion_dispatch_timing_report` after a run to get the distribution. As of the
-deploy it reads `sample_count: 0` — nothing has been dispatched through it yet.
+`motion_dispatch_timing_report` after a run to get the distribution. Confirmed
+still `sample_count: 0` at 2026-09-12T02:5xZ — nothing has been dispatched
+through it yet.
+✅ **The criteria are already predeclared and committed** —
+`docs/predeclared-queue-timeout-measurement-20260911.md`, written while the
+instrument read zero, so no threshold there can have been chosen after seeing a
+number. n ≥ 120 samples at `queue_budget_seconds == 2.0` from ≥ 4 legs, ≥ 2 with
+a turn or calibration phase. §9 **withdraws part of §8**: survey legs are tagged
+`survey: true` and **excluded** from that population, because a survey
+deliberately enters weak coverage and would inflate the very numbers that
+justify loosening the bound.
+🚨 **Three traps in the instrument, recorded there before any data exists:**
+`worst_wait_fraction_of_budget` divides `max(waits)` by `min(budgets)` and an
+emergency stop is budgeted **5.0 s** against an ordinary pulse's 2.0 — recompute
+by hand over budget-2.0 samples only; a GATT write failing *after* queue start
+records **no sample**, so `outcomes` is not a failure census; the history is
+`maxlen=500` and drops silently, so snapshot per leg.
+📋 **Sequencing is decided:** `docs/plan-queue-measurement-then-ble-20260912.md`.
+The measurement runs **before** any BLE proxy work, because legs 7 and 8 failed
+under today's proxy configuration — **the RF environment is frozen until phase 1
+is banked.** The off-dock drain fix runs in parallel as offline code, but its
+idle-release timer is gated behind phase 1.
 
 🗄️ Superseded reading of the same evening below, kept for the correction it
 records:
@@ -489,6 +519,58 @@ has dozed; a mower restart clears it.
 log**, never from a proxy's entity state.
 🗑️ **The mower is NOT paired to `master_bedroom_proxy`** — that inference came
 from "mammotion" appearing in its entity *names* and was wrong.
+
+🔑 **HA already picks the best proxy; there is nothing to build.** The
+integration calls `bluetooth.async_ble_device_from_address(hass, mac, True)`, and
+HA routes through the best-RSSI *connectable* scanner. 🛑 **Do not build
+proxy-switching logic.** BLE has no roaming, so a switch means disconnect +
+reconnect, and reconnect routing is decided from advertisements this mower emits
+~once per 10 min and **not at all while connected**. Five scanners exist
+(`hci0` scan-only; `hot-tub-backyard`, `atom-fireplace`, `p1s-printer`,
+`garage-m5stack` connectable); the mower normally holds `hot-tub-backyard`.
+**Placement is the lever, not selection.** Weak cells measured over 96 h
+(`docs/evidence-ble-coverage-96h-20260912.json`, 27 440 samples, fit RMS
+0.0000 m): north end (x −1..1, y 17..26) median **−84 to −89**, south end
+(x 4..13, y −7..−11) median −77 to −80, east edge (x 13..14, y 1..2) −76 to −82.
+⚠️ **88.7 % of those samples are the single dock cell**, and within-cell RSSI sd
+is **5.5 dB** against a between-cell spread of only **7.3 dB** — position barely
+out-explains standing still, so a single pass cannot characterise a cell. Target
+**≥ 10 samples per 1 m cell**. `scripts/ble_coverage_map.json` was deliberately
+NOT overwritten: `_estimate_rssi` is an unweighted radius mean, so folding in the
+dock dwell would move planner verdicts as a side effect.
+
+🚨 **Another integration saturates the proxies.** `custom_components.omron`
+retries an unrelated device (`F4:07:7B:F5:E8:65`) hard enough to log **121
+`Found 5 connection path(s)` scans per hour**, driving `failures=` to 8–9 on
+every proxy including the one holding the mower. It is **not** the mower's own
+command queue and cannot by itself trip
+`_BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS` — but it is sustained contention on the
+same proxy radio, and it is the first concrete candidate occupant for the queue
+measurement's falsifier branch. ✅ **Record its rate at Phase 1 session start;
+consider disabling it for the measurement.**
+
+🚨 **The mammotion integration logs NOTHING about BLE transport drops.** A
+disconnect it reports as `ble_link_live: off` left **zero** `mammotion`/`luba`
+lines in a 20-minute container-log window spanning it. Do not expect the log to
+explain a link loss.
+✅ **Re-acquisition is faster than the advertisement rate implies**: measured
+**3.5 min** unaided (2026-09-12, n = 1) via the advertisement callback registered
+unconditionally in `__init__.py`.
+
+### RTK
+
+🚨 **The correction path can fail while the mower's own receiver is fine.**
+2026-09-12: mower tracking **24 satellites** yet stuck at `rtk_position: single`
+with `position_level: 0` and fault **`1300`** (poor positioning); RTK base
+reported **0 satellites** and a not_home tracker state. Three fields agreed, so
+this is not a circular read. **A mower with no fix cannot dock** — a
+`lawn_mower.dock` was accepted (HTTP 200) and produced zero motion.
+🔑 **Check this before blaming orientation for a night docking failure** — the
+2026-09-04 §6.6 `1309` diagnosis may have had this underneath it.
+⚠️ **The RTK base station's longitude sensor reads -520.77**, an impossible value —
+at least one field on that device is mis-parsed. Distrust its readings until
+chased down. Record:
+`docs/findings-dock-failure-rtk-and-ble-contention-20260912.md`.
 
 ### The motion gate
 
