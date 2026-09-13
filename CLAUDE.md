@@ -196,6 +196,13 @@ below −76 dBm via `scripts/ble_coverage_map.py` (`a724d2ed`) — built from ba
 `device_tracker` history with a verified lat/lon→`mower_map_xy` transform,
 **0.0000 m RMS fit**. Both worked correctly on every leg they touched; neither
 prevents the queue-timeout failure mode above.
+🗺️ **`scripts/render_ble_coverage_map.py` draws that same field as a map you can
+look at** (writes one standalone HTML file; `--map-json` renders it fully
+offline). It evaluates `plan_aligned_leg`'s own `_estimate_rssi` on a grid, so
+the picture IS the planner's gate rather than a second opinion, and ground with
+no samples near it is left visibly blank instead of interpolated over —
+🔑 **hatched means unverified, never "fine"**. 🚨 It cannot see the queue-timeout
+failure mode either: RSSI cannot see queue occupancy.
 ✏️ **Amendment 1** (`5aeba62f`, committed *before* leg 4) dropped scoring
 condition 3 and moved the gate disarm from per-leg to session-end. **It did not
 rescore legs 2–3.**

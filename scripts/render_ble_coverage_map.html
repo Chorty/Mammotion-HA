@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BLE coverage &middot; mower_map_xy</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --surface-1: #fcfcfb;
+        --page: #f9f9f7;
+        --text-primary: #0b0b0b;
+        --text-secondary: #52514e;
+        --muted: #898781;
+        --grid: #e1e0d9;
+        --axis: #c3c2b7;
+        --border: rgba(11, 11, 11, 0.1);
+        --critical: #d03b3b;
+        --warning: #fab219;
+        --nodata-ink: #c3c2b7;
+        --keepout-ink: #898781;
+        --sample-ink: rgba(11, 11, 11, 0.55);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          color-scheme: dark;
+          --surface-1: #1a1a19;
+          --page: #0d0d0d;
+          --text-primary: #ffffff;
+          --text-secondary: #c3c2b7;
+          --muted: #898781;
+          --grid: #2c2c2a;
+          --axis: #383835;
+          --border: rgba(255, 255, 255, 0.1);
+          --nodata-ink: #52514e;
+          --keepout-ink: #898781;
+          --sample-ink: rgba(255, 255, 255, 0.6);
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding-block: 28px;
+        padding-inline: 20px;
+        background: var(--page);
+        color: var(--text-primary);
+        font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      .wrap {
+        max-width: 1080px;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 4px;
+        letter-spacing: -0.01em;
+      }
+      .sub {
+        color: var(--text-secondary);
+        margin: 0 0 20px;
+      }
+      .panel {
+        background: var(--surface-1);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      .tiles {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+      .tile {
+        background: var(--surface-1);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px 14px;
+      }
+      .tile .k {
+        color: var(--muted);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .tile .v {
+        font-size: 24px;
+        margin-top: 2px;
+      }
+      .tile .n {
+        color: var(--text-secondary);
+        font-size: 12px;
+        margin-top: 2px;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 18px;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+      .controls fieldset {
+        border: 0;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+      }
+      .controls legend {
+        float: left;
+        margin-right: 10px;
+        color: var(--muted);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        line-height: 28px;
+      }
+      .seg {
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--text-secondary);
+        border-radius: 999px;
+        padding: 5px 12px;
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .seg[aria-pressed="true"] {
+        background: var(--text-primary);
+        color: var(--surface-1);
+        border-color: var(--text-primary);
+      }
+      .toggle {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+        color: var(--text-secondary);
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .mapbox {
+        position: relative;
+        overflow-x: auto;
+      }
+      svg {
+        display: block;
+        width: 100%;
+        height: auto;
+        max-width: 100%;
+        touch-action: none;
+      }
+      .cell:hover,
+      .cell:focus {
+        stroke: var(--text-primary);
+        stroke-width: 0.06;
+        outline: none;
+      }
+      #tip {
+        position: absolute;
+        pointer-events: none;
+        background: var(--surface-1);
+        border: 1px solid var(--border);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 12px;
+        line-height: 1.45;
+        white-space: nowrap;
+        opacity: 0;
+        transition: opacity 0.08s;
+        z-index: 5;
+      }
+      #tip b {
+        font-weight: 600;
+      }
+      #tip .muted {
+        color: var(--text-secondary);
+      }
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 20px;
+        margin-top: 14px;
+        font-size: 12.5px;
+        color: var(--text-secondary);
+      }
+      .legend .item {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .sw {
+        width: 15px;
+        height: 15px;
+        border-radius: 3px;
+        border: 1px solid var(--border);
+        flex: none;
+      }
+      .caveats {
+        margin: 0;
+        padding-left: 18px;
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+      .caveats li {
+        margin-bottom: 6px;
+      }
+      .caveats b {
+        color: var(--text-primary);
+      }
+      details {
+        margin-top: 4px;
+      }
+      summary {
+        cursor: pointer;
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+      table {
+        border-collapse: collapse;
+        margin-top: 10px;
+        font-size: 13px;
+        font-variant-numeric: tabular-nums;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 5px 14px 5px 0;
+        border-bottom: 1px solid var(--grid);
+      }
+      th {
+        color: var(--muted);
+        font-weight: 500;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      td.num {
+        text-align: right;
+      }
+      .flag {
+        color: var(--critical);
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>BLE link strength across the yard</h1>
+      <p class="sub" id="subtitle"></p>
+
+      <div class="tiles" id="tiles"></div>
+
+      <div class="panel">
+        <div class="controls">
+          <fieldset id="metric">
+            <legend>Layer</legend>
+            <button class="seg" data-metric="mean" aria-pressed="true">
+              Mean &mdash; the planner&rsquo;s gate
+            </button>
+            <button class="seg" data-metric="worst" aria-pressed="false">
+              Worst sample
+            </button>
+            <button class="seg" data-metric="count" aria-pressed="false">
+              Evidence
+            </button>
+          </fieldset>
+          <label class="toggle"
+            ><input type="checkbox" id="showSamples" /> raw samples</label
+          >
+          <label class="toggle"
+            ><input type="checkbox" id="showKeepOuts" checked /> keep-outs</label
+          >
+        </div>
+
+        <div class="mapbox">
+          <!-- No role="img": the cells are focusable, and role="img" would
+               hide them from assistive tech. The table view below is the
+               non-visual route to the same field. -->
+          <svg id="map" aria-labelledby="maptitle"></svg>
+          <div id="tip" role="status"></div>
+        </div>
+
+        <div class="legend" id="legend"></div>
+
+        <details>
+          <summary>Table view &mdash; the same field as numbers</summary>
+          <table id="table"></table>
+        </details>
+      </div>
+
+      <div class="panel">
+        <ul class="caveats">
+          <li>
+            <b>This is where the link has been sampled, not a propagation
+              model.</b>
+            Hatched ground is <b>unverified</b>, never &ldquo;fine&rdquo; &mdash;
+            the mower has simply never been there with a live link.
+          </li>
+          <li>
+            <b><code>ble_rssi</code> is self-reported and stale</b> &mdash; it
+            read &minus;60&nbsp;dBm straight through a total outage. A dark patch
+            is strong evidence of a problem; a light one is weak evidence of
+            health. Read this map for its dark patches.
+          </li>
+          <li>
+            <b>RSSI does not predict cadence</b> (within-run median
+            r&nbsp;=&nbsp;+0.042 over 24 runs), so this is not a throughput or
+            reliability map.
+          </li>
+          <li>
+            <b>It cannot see the failure mode that actually bit.</b> Legs 7 and 8
+            of the 2026-09-10 series died on the 2.0&nbsp;s BLE command-queue
+            timeout at &minus;60 to &minus;67&nbsp;dBm. RSSI cannot see queue
+            occupancy &mdash; use <code>motion_dispatch_timing_report</code> for
+            that question.
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <script id="payload" type="application/json">
+      __COVERAGE_PAYLOAD__
+    </script>
+    <script>
+      const D = JSON.parse(document.getElementById("payload").textContent);
+      const SVGNS = "http://www.w3.org/2000/svg";
+      const dark = () =>
+        (document.documentElement.dataset.theme || "") === "dark" ||
+        (!document.documentElement.dataset.theme &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches);
+
+      /* Count bins get their own ordinal ramp: evidence density is a different
+         quantity from signal strength and must not borrow its legend. */
+      const COUNT_BINS = [
+        { upper: 2, label: "1 sample", light: "#86b6ef", dark: "#184f95" },
+        { upper: 5, label: "2–4", light: "#5598e7", dark: "#256abf" },
+        { upper: 10, label: "5–9", light: "#2a78d6", dark: "#3987e5" },
+        { upper: 25, label: "10–24", light: "#1c5cab", dark: "#86b6ef" },
+        { upper: Infinity, label: "25 or more", light: "#0d366b", dark: "#cde2fb" },
+      ];
+
+      const METRICS = {
+        mean: { idx: 2, unit: " dBm", name: "Mean RSSI within " + D.radius_m + " m" },
+        worst: { idx: 3, unit: " dBm", name: "Worst sample within " + D.radius_m + " m" },
+        count: { idx: 4, unit: "", name: "Samples within " + D.radius_m + " m" },
+      };
+      let metric = "mean";
+
+      function binOf(metricName, value) {
+        if (metricName === "count") {
+          return COUNT_BINS.find((b) => value < b.upper) || COUNT_BINS[COUNT_BINS.length - 1];
+        }
+        /* RSSI bins are ordered strongest first with inclusive floors, so the
+           first floor the value clears is its band. */
+        for (const b of D.bins) if (value >= b.floor) return b;
+        return D.bins[D.bins.length - 1];
+      }
+      const fill = (b) => (dark() ? b.dark : b.light);
+      const refused = (c) => c[2] < D.planner_min_rssi_dbm;
+      /* Typographic minus, so a negative dBm never reads as a list dash. */
+      const num = (v) => String(v).replace("-", "−");
+
+      /* ---- geometry ------------------------------------------------------ */
+      const [minX, minY, maxX, maxY] = D.bounds;
+      const pad = 1.0;
+      const GUTTER = 1.8; /* below the field, for the scale bar */
+      const W = maxX - minX + pad * 2;
+      const H = maxY - minY + pad * 2 + GUTTER;
+      /* map_xy is y-up; SVG is y-down. Flip once, here, and never again. */
+      const px = (x) => x - minX + pad;
+      const py = (y) => maxY - y + pad;
+      const path = (pts) =>
+        pts.map((p, i) => (i ? "L" : "M") + px(p[0]).toFixed(3) + " " + py(p[1]).toFixed(3)).join(" ") + " Z";
+
+      const svg = document.getElementById("map");
+      const tip = document.getElementById("tip");
+
+      function el(name, attrs, parent) {
+        const n = document.createElementNS(SVGNS, name);
+        for (const k in attrs) n.setAttribute(k, attrs[k]);
+        if (parent) parent.appendChild(n);
+        return n;
+      }
+
+      function defs() {
+        const d = el("defs", {}, svg);
+        const mk = (id, stroke, w) => {
+          const p = el(
+            "pattern",
+            { id, width: 0.7, height: 0.7, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" },
+            d,
+          );
+          el("rect", { width: 0.7, height: 0.7, fill: "transparent" }, p);
+          el("line", { x1: 0, y1: 0, x2: 0, y2: 0.7, stroke, "stroke-width": w }, p);
+        };
+        mk("nodata", "var(--nodata-ink)", 0.12);
+        mk("keepout", "var(--keepout-ink)", 0.18);
+      }
+
+      function draw() {
+        svg.textContent = "";
+        svg.setAttribute("viewBox", `0 0 ${W.toFixed(3)} ${H.toFixed(3)}`);
+        svg.setAttribute("aria-labelledby", "maptitle");
+        el("title", { id: "maptitle" }, svg).textContent =
+          METRICS[metric].name + " across the mowing areas, in mower_map_xy metres.";
+        defs();
+
+        /* 1. Mowing areas, hatched: this is the "no evidence" ground that
+              shows through wherever no cell is painted over it. */
+        const gArea = el("g", {}, svg);
+        for (const a of D.areas) {
+          el("path", { d: path(a.points), fill: "url(#nodata)", stroke: "var(--axis)", "stroke-width": 0.08 }, gArea);
+        }
+
+        /* 2. The field itself. */
+        const gCells = el("g", {}, svg);
+        const s = D.cell_m;
+        for (const c of D.cells) {
+          const v = c[METRICS[metric].idx];
+          const b = binOf(metric, v);
+          const r = el(
+            "rect",
+            {
+              class: "cell",
+              x: px(c[0]).toFixed(3),
+              y: (py(c[1]) - s).toFixed(3),
+              width: s,
+              height: s,
+              fill: fill(b),
+              tabindex: "0",
+            },
+            gCells,
+          );
+          r.__c = c;
+        }
+
+        /* 2b. The planner's wall, drawn as the OUTLINE of the refused region
+               rather than a stroke on every cell in it: a per-cell stroke on
+               hundreds of cells reads as a red grid and buries the ramp
+               underneath it. The threshold is always the mean -- the value the
+               planner actually gates on -- whichever layer is displayed, so
+               the wall sits in the same place on every layer. */
+        if (metric !== "count") contour();
+
+        /* 3. Keep-outs sit above the field: they are hard geometry. */
+        if (document.getElementById("showKeepOuts").checked) {
+          const gKo = el("g", {}, svg);
+          for (const k of D.keep_outs) {
+            el("path", { d: path(k.points), fill: "url(#keepout)", stroke: "var(--keepout-ink)", "stroke-width": 0.1 }, gKo);
+          }
+        }
+
+        /* 4. Raw samples, so the pooling radius never hides how thin the
+              underlying evidence is. */
+        if (document.getElementById("showSamples").checked) {
+          const gS = el("g", {}, svg);
+          for (const p of D.samples) {
+            el("circle", { cx: px(p[0]).toFixed(3), cy: py(p[1]).toFixed(3), r: 0.09, fill: "var(--sample-ink)" }, gS);
+          }
+        }
+
+        scaleBar();
+        legend();
+        table();
+      }
+
+      function contour() {
+        const s = D.cell_m;
+        const key = (x, y) => Math.round(x / s) + "," + Math.round(y / s);
+        const bad = new Set(D.cells.filter(refused).map((c) => key(c[0], c[1])));
+        if (!bad.size) return;
+        const seg = [];
+        for (const c of D.cells) {
+          if (!refused(c)) continue;
+          const [x, y] = c;
+          const edge = (x1, y1, x2, y2) =>
+            seg.push(`M${px(x1).toFixed(3)} ${py(y1).toFixed(3)}L${px(x2).toFixed(3)} ${py(y2).toFixed(3)}`);
+          if (!bad.has(key(x - s, y))) edge(x, y, x, y + s);
+          if (!bad.has(key(x + s, y))) edge(x + s, y, x + s, y + s);
+          if (!bad.has(key(x, y - s))) edge(x, y, x + s, y);
+          if (!bad.has(key(x, y + s))) edge(x, y + s, x + s, y + s);
+        }
+        el(
+          "path",
+          {
+            d: seg.join(""),
+            fill: "none",
+            stroke: "var(--critical)",
+            "stroke-width": 0.16,
+            "stroke-linecap": "square",
+          },
+          svg,
+        );
+      }
+
+      function scaleBar() {
+        const g = el("g", {}, svg);
+        const len = W > 24 ? 10 : 5;
+        const x = 0.6,
+          y = H - 0.8;
+        el("line", { x1: x, y1: y, x2: x + len, y2: y, stroke: "var(--text-secondary)", "stroke-width": 0.09 }, g);
+        for (const t of [0, len]) {
+          el("line", { x1: x + t, y1: y - 0.22, x2: x + t, y2: y + 0.22, stroke: "var(--text-secondary)", "stroke-width": 0.09 }, g);
+        }
+        const label = el("text", { x: x + len / 2, y: y - 0.4, "text-anchor": "middle", fill: "var(--text-secondary)", "font-size": 0.62 }, g);
+        label.textContent = len + " m";
+      }
+
+      /* ---- tooltip ------------------------------------------------------- */
+      const box = svg.parentElement;
+      function show(evt, c) {
+        const verdict = refused(c)
+          ? '<span class="flag">planner refuses here</span>'
+          : c[2] < D.works_above_dbm
+            ? "planner accepts &mdash; marginal band"
+            : "planner accepts";
+        tip.innerHTML =
+          `<b>${c[0].toFixed(1)}, ${c[1].toFixed(1)}</b> m` +
+          `<br>mean <b>${num(c[2].toFixed(1))}</b> dBm &middot; worst <b>${num(c[3].toFixed(0))}</b> dBm` +
+          `<br><span class="muted">${c[4]} sample${c[4] === 1 ? "" : "s"} within ${D.radius_m} m</span>` +
+          `<br>${verdict}`;
+        const r = box.getBoundingClientRect();
+        const ex = (evt.clientX !== undefined ? evt.clientX : r.left + r.width / 2) - r.left;
+        const ey = (evt.clientY !== undefined ? evt.clientY : r.top + r.height / 2) - r.top;
+        tip.style.opacity = 1;
+        tip.style.left = Math.min(ex + 14, box.clientWidth - tip.offsetWidth - 6) + "px";
+        tip.style.top = Math.max(ey - tip.offsetHeight - 10, 4) + "px";
+      }
+      for (const ev of ["mousemove", "focusin"]) {
+        svg.addEventListener(ev, (e) => {
+          const t = e.target;
+          if (t && t.__c) show(e, t.__c);
+          else if (ev === "mousemove") tip.style.opacity = 0;
+        });
+      }
+      svg.addEventListener("mouseleave", () => (tip.style.opacity = 0));
+
+      /* ---- legend, tiles, table ------------------------------------------ */
+      function legend() {
+        const bins = metric === "count" ? COUNT_BINS : D.bins;
+        const items = bins.map(
+          (b) =>
+            `<span class="item"><span class="sw" style="background:${fill(b)}"></span>${b.label}</span>`,
+        );
+        items.push(
+          '<span class="item"><span class="sw" style="background:var(--surface-1);' +
+            'background-image:repeating-linear-gradient(45deg,var(--nodata-ink) 0 1px,transparent 1px 4px)"></span>' +
+            "no evidence &mdash; unverified, not clear</span>",
+        );
+        if (metric !== "count") {
+          items.push(
+            '<span class="item"><span class="sw" style="background:transparent;border:0;' +
+              'border-top:3px solid var(--critical);border-radius:0;height:3px"></span>' +
+              "the &minus;76 dBm wall &mdash; inside it the planner refuses</span>",
+          );
+        }
+        document.getElementById("legend").innerHTML = items.join("");
+      }
+
+      function table() {
+        const bins = metric === "count" ? COUNT_BINS : D.bins;
+        const idx = METRICS[metric].idx;
+        const counts = bins.map((b) => D.cells.filter((c) => binOf(metric, c[idx]) === b).length);
+        const area = D.summary.cells_in_area;
+        const rows = bins
+          .map(
+            (b, i) =>
+              `<tr><td>${b.label}</td><td class="num">${counts[i]}</td>` +
+              `<td class="num">${((counts[i] / area) * 100).toFixed(1)}%</td>` +
+              `<td class="num">${(counts[i] * D.cell_m * D.cell_m).toFixed(1)}</td></tr>`,
+          )
+          .join("");
+        const blank = area - D.cells.length;
+        document.getElementById("table").innerHTML =
+          `<caption style="text-align:left;color:var(--muted);font-size:11px;padding-bottom:6px">` +
+          `${METRICS[metric].name}, over ${area} cells of ${D.cell_m} m inside the mowing areas</caption>` +
+          "<tr><th>Band</th><th>Cells</th><th>Share of area</th><th>m&sup2;</th></tr>" +
+          rows +
+          `<tr><td>no evidence</td><td class="num">${blank}</td>` +
+          `<td class="num">${((blank / area) * 100).toFixed(1)}%</td>` +
+          `<td class="num">${(blank * D.cell_m * D.cell_m).toFixed(1)}</td></tr>`;
+      }
+
+      function tiles() {
+        const s = D.summary;
+        const w = s.worst_cell;
+        const t = [
+          [
+            "Samples banked",
+            s.sample_count,
+            `median ${num(s.rssi_median)} dBm, range ${num(s.rssi_min)} to ${num(s.rssi_max)}`,
+          ],
+          [
+            "Area with evidence",
+            (s.evidence_fraction * 100).toFixed(0) + "%",
+            `${s.cells_with_evidence} of ${s.cells_in_area} cells &mdash; the rest is unverified`,
+          ],
+          [
+            "Would be refused",
+            s.cells_refused,
+            `cells below ${num(D.planner_min_rssi_dbm)} dBm; ${s.cells_marginal} more in the marginal band`,
+          ],
+          [
+            "Worst spot",
+            w ? num(w[2].toFixed(1)) + " dBm" : "&mdash;",
+            w
+              ? `at ${w[0].toFixed(1)}, ${w[1].toFixed(1)} m &middot; worst single sample ${num(w[3].toFixed(0))} dBm`
+              : "no cells",
+          ],
+        ];
+        document.getElementById("tiles").innerHTML = t
+          .map(([k, v, n]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="n">${n}</div></div>`)
+          .join("");
+      }
+
+      function subtitle() {
+        const m = D.meta || {};
+        const bits = [];
+        if (m.generated_at_utc) bits.push(`banked ${m.generated_at_utc.slice(0, 16).replace("T", " ")} UTC`);
+        if (m.window_hours) bits.push(`${m.window_hours} h window`);
+        if (m.transform_fit_rms_m !== undefined)
+          bits.push(`lat/lon→map_xy fit ${m.transform_fit_rms_m.toFixed(4)} m RMS`);
+        bits.push(`${D.cell_m} m cells, pooled within ${D.radius_m} m`);
+        document.getElementById("subtitle").innerHTML =
+          "Coordinates are <code>mower_map_xy</code> metres. " + bits.join(" &middot; ") + ".";
+      }
+
+      for (const b of document.querySelectorAll("#metric .seg")) {
+        b.addEventListener("click", () => {
+          metric = b.dataset.metric;
+          for (const o of document.querySelectorAll("#metric .seg"))
+            o.setAttribute("aria-pressed", String(o === b));
+          draw();
+        });
+      }
+      document.getElementById("showSamples").addEventListener("change", draw);
+      document.getElementById("showKeepOuts").addEventListener("change", draw);
+      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+
+      subtitle();
+      tiles();
+      draw();
+    </script>
+  </body>
+</html>

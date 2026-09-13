@@ -22,6 +22,11 @@ __pycache__
 scripts/advert_log.jsonl
 scripts/state_log.jsonl
 scripts/ble_coverage_map.json
+# Rendered by scripts/render_ble_coverage_map.py from the file above, plus a
+# live export_map. Same reasoning: it is a snapshot of banked history and a
+# committed copy would silently age into a claim about a yard that has moved on.
+scripts/ble_coverage_map.html
+scripts/ble_coverage_map.export.json
 
 # OTA firmware capture (scripts/mitm_ota_capture.py, scripts/fetch_ota_firmware.py,
 # scripts/listen_ota_mqtt.py, scripts/ota_safety_net.py,
