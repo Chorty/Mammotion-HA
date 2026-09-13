@@ -62,3 +62,16 @@ verified from the live API AND raw `core.config_entries`**
 setup leg into the pocket; then S1–S12 per §16.2. Timing samples are in memory
 only — an HA restart clears them; all are banked.
 **No code changed. No deploy. No control-law or profile value moved.**
+
+## 5. Overnight RTK watch — nothing to start, read it tomorrow
+
+2026-09-11 night the correction path failed after dark (`rtk_position: single`,
+`position_level: 0`, fault 1300) while the mower tracked 24 satellites, and it
+was never explained. The recorder is confirmed logging all three entities, so
+this costs nothing: **tomorrow, read HA history from 2026-09-13T00:00Z** for
+`sensor.back_yard_clip_skywalker_rtk_position`,
+`sensor.back_yard_clip_skywalker_position_level` and the RTK base's satellites
+sensor (which read 28 at 2026-09-13T00:4xZ, up from last night's 0).
+**If `single` recurs with the mower docked, it is a night pattern, not a
+one-off.** ⚠️ Docked is not the same arrangement as last night's off-dock
+stranding, so a clean night does not rule the pattern out.
