@@ -701,6 +701,11 @@ own. **Why the correction path failed is still unexplained.**
 impossible `-520.7698523536123` during the fault and a correct
 `-84.7698871238333` after, **same decimals, mangled integer part**. Treat a
 garbage reading as a *symptom*, not as a standing parse bug.
+🚨 **It recurred the next night, docked** (2026-09-13 02:06:25Z → `float`, still
+`float` 4.6 h later), with the RTK base's network-presence device tracker
+flapping home↔unavailable **in the same minute**. Base-station connectivity is now the leading candidate, not darkness
+(n = 2, unproven). ✅ **Check `rtk_position` reads `fix` before any Phase 1
+session.** Record: `docs/findings-dock-failure-rtk-and-ble-contention-20260912.md` §9.
 ⚠️ **`rtk_position: fix` is not sufficient for motion**: docked with a fix, the
 gate still reported `position_not_valid_for_motion` and
 `real_motion_ready: off`. Resolve that before planning legs. Record:

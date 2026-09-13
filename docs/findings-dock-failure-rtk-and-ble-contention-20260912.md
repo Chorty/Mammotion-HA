@@ -245,3 +245,36 @@ connect line named that source — and I read the enumeration lines instead.
 mower's proxy also moves between reconnects (`hot-tub-backyard` / `p1s-printer`),
 so "the proxy holding the mower" was never a fixed thing either.
 Full measurement: `docs/findings-ble-write-latency-mechanism-20260912.md` §4.2.
+
+---
+
+## 9. 🚨 Overnight RTK watch, 2026-09-13 — degradation RECURRED after dark, docked
+
+Read from HA history at 2026-09-13T06:44Z (still dark; sunrise 11:20Z).
+
+| time (Z) | signal |
+| --- | --- |
+| 2026-09-12 14:55 | `rtk_position` → `fix` (previous day's recovery) |
+| 2026-09-13 00:14 | mower docked and charging |
+| **02:06:25** | **`rtk_position` → `float`** |
+| 02:06:32–02:07:50 | **`device_tracker.rtk_backyard` flaps** home ↔ unavailable (6 transitions) |
+| 00:01 → 02:16 | mower `satellites_robot` 24 → 17 |
+| 06:44 | still `float` — **4.6 h, not recovered** |
+
+🔑 **Second night running that the correction path degraded after dark.** It is
+not the same failure: last night went to `single` with `position_level: 0` and
+fault `1300` while stranded off-dock; tonight went to `float` with
+`position_level` still 1 and no new fault, on the dock.
+🔑 **New co-occurring signal: the RTK base dropped off the network for ~80 s at
+the exact minute RTK degraded.** `device_tracker.rtk_backyard` is network
+presence, and corrections reach the mower over the internet via the base's
+relay (standing memory `rtk-corrections-come-from-the-internet`). That makes
+**base-station connectivity the leading candidate**, not darkness itself.
+⚠️ **n = 2 and not proven.** A night-only pattern and a base-connectivity pattern
+are not yet separable, and the base's own `satellites` (28) and `longitude`
+sensors have not changed since 2026-09-12 19:54Z, so they are likely stale and
+should not be read as live.
+✅ **Next:** re-read after sunrise. If `float` persists into daylight, darkness is
+ruled out and the base's network link becomes the thing to instrument (its
+Wi-Fi RSSI read −73 dBm on 2026-09-12). Phase 1 requires RTK `Fix`, so check
+this before the next session.
