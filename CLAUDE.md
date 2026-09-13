@@ -378,8 +378,11 @@ queue timeouts — recorded, **not interpreted** (§5). Axis 1 fails on
 - ⚠️ Tracked features dip below 70 **on turns** (S4 60, S10 69) and halted the
   NEXT leg's runner check twice. Operator hypothesis: sun→shade exposure
   adjustment; untested, threshold unchanged. **Wait ≥ 60 s after a turn leg.**
-- 📋 **Open operator calls:** new predeclaration for a repeat; repeat under the
-  same four proxies or re-enable the new two first.
+- ✅ **Operator decided 2026-09-13: classifier option A (split at stops) and RF
+  option A (same four proxies, freeze held).** The repeat is predeclared in
+  `docs/predeclared-queue-timeout-measurement-repeat-20260913.md`, written before
+  any repeat data. 🚨 **Its §2.8 requires the scorer code + a test reproducing
+  67/67 on the 2026-09-13 evidence to be committed BEFORE the first dispatch.**
 
 🗄️ **Before Phase 1 — one SETUP leg dispatched 2026-09-12** (unscored,
 excluded from the population by §15, committed before it ran) — `target_reached`
