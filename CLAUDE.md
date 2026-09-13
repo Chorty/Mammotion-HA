@@ -207,8 +207,10 @@ undecided** — `docs/predeclared-comms-abort-auto-dock-20260911.md`.
 timeout cancelling setup, a documented trap, not new) — recovered cleanly with
 a config-entry reload in ~20 s, mower position confirmed unchanged across it.
 
-⚠️ **Live state at 2026-09-12T15:26Z — a snapshot, not a source of truth.
-Requery before acting.** ✅ **Recovered:** mower **docked and charging** since
+⚠️ **Live state at 2026-09-13T00:14Z — a snapshot, not a source of truth.
+Requery before acting.** Mower **docked and charging**, 99 %, RTK `fix`; gate
+disarmed (live API + raw). Superseded snapshot follows.
+⚠️ **(2026-09-12T15:26Z)** ✅ **Recovered:** mower **docked and charging** since
 14:49:53Z, **51%** and rising, `rtk_position: fix` since 14:55:04Z,
 `position_level: 1`, VIO 74 features, `ble_link_live: on` at −56 dBm, full
 daylight. Gate **disarmed**.
@@ -338,6 +340,13 @@ it, all before any scored data existed:**
 (`deque(maxlen=500)`): an HA restart or reload clears them. Banked in full in the
 evidence file. A Phase 1 session must exclude them if present and must not
 assume they are.
+🚨 **A SECOND setup leg (same evening) halted `vio_realign_incomplete` — and ran
+~6 min AFTER SUNSET** (23:55Z vs 23:49:30Z), a daylight-protocol lapse: VIO
+collapsed through the leg (`visual_positioning_status` → `signal_none` 11 s
+before the halt) while `vio_brightness`/`camera_brightness` still read good.
+✅ **The leg runner needs a VIO/sun HALT before dispatch.** Also fault **1068
+"vision camera is dirty"** — clean it first. **Still ZERO scored legs.** Record:
+`docs/findings-setup-leg2-dusk-realign-halt-20260912.md`.
 🗑️ **`services.yaml` is MISSING `turn_mode` and `vio_turn_max_commands`**, which
 the real voluptuous schema accepts. It does not affect API calls (validation is
 the `schema=` argument; the integration never reads that file) — but filtering a
