@@ -270,6 +270,20 @@ async def _attach_ble_to_rtk(
         await mammotion.add_ble_to_device(rtk.device_name, ble_device)
 
 
+def _bluetooth_switch_enabled(entry: MammotionConfigEntry, device_name: str) -> bool:
+    """Return False only when this mower's Bluetooth switch is known to be off.
+
+    Runtime data does not exist yet during setup, when the callback must still
+    attach BLE, so an unknown state counts as enabled.
+    """
+    runtime = getattr(entry, "runtime_data", None)
+    for mower in getattr(runtime, "mowers", None) or ():
+        coordinator = getattr(mower, "reporting_coordinator", None)
+        if coordinator is not None and coordinator.device_name == device_name:
+            return bool(coordinator.bluetooth_enabled)
+    return True
+
+
 def _register_ble_reconnect_callback(
     hass: HomeAssistant,
     entry: MammotionConfigEntry,
@@ -285,6 +299,10 @@ def _register_ble_reconnect_callback(
     ) -> None:
         handle = mammotion.mower(device_name)
         if handle is None:
+            return
+        if not _bluetooth_switch_enabled(entry, device_name):
+            # add_ble_to_device would re-create the transport the Bluetooth switch
+            # removed (ported from upstream Mammotion-HA 1f17815a).
             return
         # Always push the freshest BLEDevice into the transport.  add_ble_to_device
         # is idempotent: it calls set_ble_device() if a transport already exists, or

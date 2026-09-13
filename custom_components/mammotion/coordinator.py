@@ -76,6 +76,7 @@ from pymammotion.transport.base import (
     ReLoginRequiredError,
     SessionExpiredError,
     Subscription,
+    TransportError,
     TransportType,
 )
 from pymammotion.transport.ble import BLETransport
@@ -507,11 +508,52 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
                 device.online = True
         await self.manager.set_scheduled_updates(self.device_name, enabled=enabled)
         handle = self.manager.mower(self.device_name)
-        if handle is not None:
-            if enabled:
-                await handle.restart_keep_alive()
-            else:
-                await handle.stop_polling()
+        if handle is None:
+            return
+        if not enabled:
+            await handle.stop_polling()
+            return
+        await self._async_restart_keep_alive(handle)
+
+    async def _async_restart_keep_alive(self, handle: Any) -> None:
+        """Restart pymammotion's keep-alive, tolerating a missed BLE link.
+
+        Ported from upstream Mammotion-HA ``30d76664``. ``restart_keep_alive`` can
+        raise a ``TransportError`` when BLE is in cooldown or its device cache is
+        stale; that must not fail enabling updates or cloud -- polling carries on
+        over MQTT.
+
+        🚨 Unlike upstream, credential errors are re-raised first. In the pinned
+        backend ``AuthError``, ``LoginFailedError``, ``SessionExpiredError`` and
+        ``CheckSessionException`` all subclass ``TransportError``, so a bare
+        ``except TransportError`` would silently swallow the re-auth signal.
+        """
+        try:
+            await handle.restart_keep_alive()
+        except EXPIRED_CREDENTIAL_EXCEPTIONS:
+            raise
+        except TransportError as exc:
+            LOGGER.debug(
+                "%s: keep-alive restart could not reach the device: %s",
+                self.device_name,
+                exc,
+            )
+
+    async def _async_push_ble_advertisement(self, device: Any, handle: Any) -> None:
+        """Push HA's freshest BLE advertisement into the transport, if Bluetooth is on.
+
+        🚨 ``MammotionClient.update_ble_device`` CREATES a BLE transport when none
+        is wired. Called on every tick without this guard, it would re-attach a
+        transport the Bluetooth switch removed within one update.
+        """
+        if not self._bluetooth_enabled or handle is None:
+            return
+        if device.mower_state.ble_mac == "":
+            return
+        if ble_device := bluetooth.async_ble_device_from_address(
+            self.hass, device.mower_state.ble_mac.upper(), True
+        ):
+            await self.manager.update_ble_device(self.device_name, ble_device)
 
     def is_online(self) -> bool:
         """Return True if the device currently has an active transport connection."""
@@ -699,7 +741,10 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         if not enabled:
             handle.set_prefer_ble(value=False)
             try:
-                await handle.disconnect_transport(TransportType.BLE)
+                # Remove, not disconnect (ported from upstream Mammotion-HA
+                # 1f17815a): a merely disconnected BLE transport stays selectable
+                # and gets reconnected, so the switch would not stay off.
+                await handle.remove_transport(TransportType.BLE)
             finally:
                 self._async_refresh_motion_gate_entities()
         else:
@@ -739,7 +784,7 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         if enabled:
             for t_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
                 await handle.connect_transport(t_type)
-            await handle.restart_keep_alive()
+            await self._async_restart_keep_alive(handle)
         else:
             for t_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
                 await handle.disconnect_transport(t_type)
@@ -863,7 +908,9 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
             await handle.restart_keep_alive()
         except EXPIRED_CREDENTIAL_EXCEPTIONS as exc:
             await self.async_refresh_login(exc)
-        except (TimeoutError, OSError, HomeAssistantError) as exc:
+        except (TimeoutError, OSError, HomeAssistantError, TransportError) as exc:
+            # TransportError after the credential clause above, so re-auth still
+            # wins; a BLE miss in restart_keep_alive must not escape.
             LOGGER.debug(
                 "%s: cloud reconnect attempt failed: %s", self.device_name, exc
             )
@@ -2148,11 +2195,7 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
             return self.get_coordinator_data(device)
 
         # Update BLE device address from HA bluetooth scanner if available
-        if device.mower_state.ble_mac != "" and handle is not None:
-            if ble_device := bluetooth.async_ble_device_from_address(
-                self.hass, device.mower_state.ble_mac.upper(), True
-            ):
-                await self.manager.update_ble_device(self.device_name, ble_device)
+        await self._async_push_ble_advertisement(device, handle)
 
         # Don't query the mower while users are doing map changes or it's updating.
         if device.report_data.dev.sys_status in NO_REQUEST_MODES:
@@ -3266,11 +3309,13 @@ class MammotionMapUpdateCoordinator(MammotionBaseUpdateCoordinator[MowerInfo]):
         if device is None:
             return
 
-        if handle := self.manager.mower(self.device_name):
-            handle.watch_field(
-                lambda s: cast(MowerDevice, s.raw).report_data.dev.sys_status,
-                self._on_sys_status_changed_dynamics,
-            )
+        # Deliberately NOT registered (ported from upstream Mammotion-HA 8bc998a2):
+        # pymammotion's own dynamics_line_loop (BLE-gated, saga-active-guarded)
+        # already polls this stream while mowing. Registering
+        # _on_sys_status_changed_dynamics as well ran a second, unguarded 10 s
+        # poller stacking the same CommonDataSaga -- and sagas hold the command
+        # queue exclusively -- during mowing and return-to-dock. The helpers stay
+        # so the HA-side poller can be restored if the library loop is removed.
 
         if not device.enabled or not device.online:
             return

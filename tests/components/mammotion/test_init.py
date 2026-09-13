@@ -77,6 +77,7 @@ async def test_bluetooth_toggle_off_refreshes_gate_entities() -> None:
     handle = SimpleNamespace(
         set_prefer_ble=MagicMock(),
         disconnect_transport=AsyncMock(),
+        remove_transport=AsyncMock(),
     )
     coordinator = SimpleNamespace(
         _bluetooth_enabled=True,
@@ -89,7 +90,9 @@ async def test_bluetooth_toggle_off_refreshes_gate_entities() -> None:
 
     assert coordinator._bluetooth_enabled is False
     handle.set_prefer_ble.assert_called_once_with(value=False)
-    handle.disconnect_transport.assert_awaited_once_with(TransportType.BLE)
+    # Removed, not merely disconnected, so the switch stays off.
+    handle.remove_transport.assert_awaited_once_with(TransportType.BLE)
+    handle.disconnect_transport.assert_not_awaited()
     coordinator._async_refresh_motion_gate_entities.assert_called_once_with()
 
 

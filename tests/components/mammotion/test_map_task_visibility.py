@@ -3115,6 +3115,9 @@ def _short_circuit_self(
         get_coordinator_data=lambda dev: dev,
         hass=SimpleNamespace(),
         clear_update_failures=lambda: None,
+        # The per-tick BLE advertisement push is its own helper now; ble_mac is
+        # empty here so it would be a no-op anyway.
+        _async_push_ble_advertisement=AsyncMock(),
     )
 
 
