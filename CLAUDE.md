@@ -68,6 +68,39 @@ changed, `accepted-profile.json` untouched, no Gate 5 owed**:
   `docs/predeclared-comms-abort-auto-dock-20260911.md`. It does not inherit B's
   or C's approval.
 
+### 🚧 BUILT AND PUSHED, NOT DEPLOYED (as of 2026-09-13) — the host still runs beta104
+
+🚨 **Do not assume the host matches `main`.** Code committed after the beta104
+deploy, pushed to `Chorty/Mammotion-HA` `main` on 2026-09-13 and **not deployed**:
+
+| commit | what | deploy needs |
+| --- | --- | --- |
+| `5d6e17cf` | `scripts/phase1_leg_runner.py` + daylight/VIO halt | nothing — local script |
+| `5beaa9b4` | `services.yaml` / strings document every vector-segment field | deploy (HA UI only) |
+| `b26f8909` | upstream ports: switch stays off, keep-alive tolerance, one dynamics poller | deploy |
+| `683f2e52` | Bluetooth switch reaches all 5 coordinators + persists across restart | deploy |
+
+🛑 **Held until Phase 1 is banked**: `b26f8909` and `683f2e52` change BLE
+connection behaviour, which the Phase 1 plan keeps off the host until the
+measurement is done. The keep-alive and dynamics-poller parts could go sooner
+only on an explicit operator call.
+
+🔑 **PyMammotion has its own pending work, in a separate repo.** Branch
+feat/low-power-get-builder on `Chorty/PyMammotion` (`f1cc983`, `1702dc2`, based
+on release/0.8.12.post3): a read-only low-power GET builder and capture of its
+reply into mower state. **HA cannot use it until** it is merged into a release
+branch, a new wheel is built and published (e.g. chorty-0.8.12.post5), the pin is
+bumped in BOTH `custom_components/mammotion/manifest.json` and
+`requirements_test.txt`, and the integration is changed to read the new fields —
+none of which has happened.
+
+⚠️ **Before the next hardware session:** confirm `rtk_position` reads `fix` (it
+went `float` overnight 2026-09-13, see §RTK), clean the vision camera (fault
+1068), and verify the host version before trusting any beta104 statement above.
+⚠️ PyMammotion's working tree also holds an uncommitted operator edit to its dev
+console script (MCU info capture); it is deliberately not committed or pushed,
+pending an operator decision.
+
 ### Previously: beta103 (deployed 2026-09-05)
 
 ✅ **Bytes verified end to end** — 50/50 files byte-identical, card md5
