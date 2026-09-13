@@ -240,9 +240,10 @@ undecided** — `docs/predeclared-comms-abort-auto-dock-20260911.md`.
 timeout cancelling setup, a documented trap, not new) — recovered cleanly with
 a config-entry reload in ~20 s, mower position confirmed unchanged across it.
 
-⚠️ **Live state at 2026-09-13T00:14Z — a snapshot, not a source of truth.
-Requery before acting.** Mower **docked and charging**, 99 %, RTK `fix`; gate
-disarmed (live API + raw). Superseded snapshot follows.
+⚠️ **Live state at 2026-09-13T22:49Z — a snapshot, not a source of truth.
+Requery before acting.** Mower **docked and charging** after Phase 1, RTK `fix`;
+gate disarmed (live API + raw at 22:43Z). **Two newly added ESPHome proxies are
+disabled by the operator** to hold the frozen RF set. Superseded snapshots follow.
 ⚠️ **(2026-09-12T15:26Z)** ✅ **Recovered:** mower **docked and charging** since
 14:49:53Z, **51%** and rising, `rtk_position: fix` since 14:55:04Z,
 `position_level: 1`, VIO 74 features, `ble_link_live: on` at −56 dBm, full
@@ -267,11 +268,8 @@ docked, 69%, trickle-charging ... RTK Fix ... blockers: []" and was committed at
 🔑 **A live-state paragraph in this file is stale the moment it is committed.
 Requery; never act on it.**
 
-📋 **Issue 1 step 2 is now UNBLOCKED but NOT DONE.** beta104 ships the
-instrument; **the measurement still needs a real session.** Call
-`motion_dispatch_timing_report` after a run to get the distribution. Confirmed
-still `sample_count: 0` at 2026-09-12T02:5xZ — nothing has been dispatched
-through it yet.
+📋 **Issue 1 step 2 RAN 2026-09-13 and is INCONCLUSIVE — still NOT DONE.** See
+the Phase 1 result block below. The constant is still 2.0.
 ✅ **The criteria are already predeclared and committed** —
 `docs/predeclared-queue-timeout-measurement-20260911.md`, written while the
 instrument read zero, so no threshold there can have been chosen after seeing a
@@ -353,7 +351,37 @@ emergency stop is budgeted **5.0 s** against an ordinary pulse's 2.0 — recompu
 by hand over budget-2.0 samples only; a GATT write failing *after* queue start
 records **no sample**, so `outcomes` is not a failure census; the history is
 `maxlen=500` and drops silently, so snapshot per leg.
-🚨 **PHASE 1 HAS NOT RUN. One SETUP leg dispatched 2026-09-12** (unscored,
+🚨 **PHASE 1 RAN 2026-09-13 (22:07–22:43Z) and is INCONCLUSIVE — the classifier
+failed, not the mower.** All 12 §16.2 targets dispatched (11 `target_reached`;
+5 retries after halts, on operator decision); 339 samples, all `completed`, zero
+queue timeouts — recorded, **not interpreted** (§5). Axis 1 fails on
+**unclassifiable bursts > 20 %** under every pairing reading (56.7 % literal;
+47.8 % per burst / 29.9 % per pulse generous). Record:
+`docs/findings-phase1-queue-measurement-20260913.md` +
+`docs/evidence-queue-timeout-measurement-20260913.json`.
+- 🗑️ **§10.3's premise is refuted by data:** it assumed within-pulse gaps never
+  exceed 200 ms; 23 were 503–1058 ms (15 cut a pulse-open from its own
+  refreshes), so the 500 ms rule splits pulses. 🛑 **Today's data is NOT rescored
+  under a better rule** — a repeat needs a new predeclaration first, e.g.
+  delimiting pulses by the executor's own per-pulse counts (they reconciled on
+  all 13 legs).
+- 🚨 **Filter stops on `is_stop`, not budget 5.0:** turn-pulse stops record budget
+  **2.0** with `emergency_stop: false`, exactly one per turn pulse.
+- 🚨 **The BLE link dropped 3× while idle between legs, with both proxies UP**
+  (continuous uptime, no entity unavailable, no API disconnect). The best path
+  HA ranked from this site was **−75 to −77 dBm** — no margin with the four frozen
+  proxies. `ble_link_live` stayed `on` through the drops: judge the link from
+  HA's connection allocations, not that sensor.
+- ⚠️ S1 stopped on final approach in **good light** (sun 20°, 80 features), so
+  setup leg 2's halt was not only dusk. S9 stopped `turn_budget_infeasible` at
+  ~95° of a 172° turn; S9b completed it.
+- ⚠️ Tracked features dip below 70 **on turns** (S4 60, S10 69) and halted the
+  NEXT leg's runner check twice. Operator hypothesis: sun→shade exposure
+  adjustment; untested, threshold unchanged. **Wait ≥ 60 s after a turn leg.**
+- 📋 **Open operator calls:** new predeclaration for a repeat; repeat under the
+  same four proxies or re-enable the new two first.
+
+🗄️ **Before Phase 1 — one SETUP leg dispatched 2026-09-12** (unscored,
 excluded from the population by §15, committed before it ran) — `target_reached`
 at **0.0506 m**, 19/19 profile keys echoed, 13/13 gates passed. The session then
 stopped on its own budget rather than start scored legs, because a truncated run
