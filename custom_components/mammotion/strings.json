@@ -2078,6 +2078,58 @@
         "sample_delays": {
           "name": "Sample delays",
           "description": "Seconds after each command to sample telemetry before continuing."
+        },
+        "allow_degraded_rtk": {
+          "name": "Allow degraded RTK",
+          "description": "Dispatch without an RTK Fix. Only for runs whose result does not depend on centimetre accuracy; a precision run on Float steers against a position that jumps further than its tolerance."
+        },
+        "safety_overrides": {
+          "name": "Safety overrides",
+          "description": "Deliberate per-run safety-gate overrides, by gate name. Unrecognised names are rejected rather than ignored."
+        },
+        "ble_auto_recover": {
+          "name": "BLE auto recover",
+          "description": "Attempt automatic BLE recovery when the link drops during the run."
+        },
+        "motion_refresh_interval_ms": {
+          "name": "Motion refresh interval",
+          "description": "Resend the movement command at this interval while a pulse is open, matching the vendor app. 0 disables refresh."
+        },
+        "turn_mode": {
+          "name": "Turn mode",
+          "description": "Turn strategy: vio (live VIO heading), legacy, or night."
+        },
+        "night_angular_speed": {
+          "name": "Night angular speed",
+          "description": "Angular speed used by the night turn mode."
+        },
+        "toward_mirror_degrees": {
+          "name": "Toward mirror",
+          "description": "Reflection constant converting the compass toward bearing to map facing: map facing = mirror - toward."
+        },
+        "vio_heading_offset_degrees": {
+          "name": "VIO heading offset",
+          "description": "Optional fixed offset between VIO heading and map heading."
+        },
+        "vio_turn_max_commands": {
+          "name": "VIO turn max commands",
+          "description": "Maximum VIO turn commands in one turn phase. The accepted LUBA profile uses 4; the schema default is 8."
+        },
+        "vio_angular_speed": {
+          "name": "VIO angular speed",
+          "description": "Angular speed for VIO-driven turns."
+        },
+        "vio_calibration_pulse_count": {
+          "name": "VIO calibration pulses",
+          "description": "Forward pulses in the VIO calibration drive that independently measures facing before the turn."
+        },
+        "vio_realign_threshold_degrees": {
+          "name": "VIO realign threshold",
+          "description": "Aim error above which a mid-drive realignment turn is triggered."
+        },
+        "vio_max_realignments": {
+          "name": "VIO max realignments",
+          "description": "Maximum mid-drive realignment turns before the leg stops safely. Raising it has been tried twice and reverted twice."
         }
       }
     },

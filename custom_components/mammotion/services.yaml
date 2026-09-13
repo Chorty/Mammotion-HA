@@ -2479,6 +2479,85 @@ raw_pymammotion_execute_vector_segment:
         - 60
       selector:
         object:
+    allow_degraded_rtk:
+      required: false
+      default: false
+      selector:
+        boolean:
+    safety_overrides:
+      required: false
+      selector:
+        object:
+    turn_mode:
+      required: false
+      default: vio
+      selector:
+        select:
+          options:
+            - vio
+            - legacy
+            - night
+    night_angular_speed:
+      required: false
+      default: 500
+      selector:
+        number:
+          min: 1
+          max: 1000
+    toward_mirror_degrees:
+      required: false
+      default: 90.13
+      selector:
+        number:
+          min: 0
+          max: 360
+          step: 0.01
+          unit_of_measurement: °
+    vio_heading_offset_degrees:
+      required: false
+      selector:
+        number:
+          min: -180
+          max: 360
+          step: 0.1
+          unit_of_measurement: °
+    vio_turn_max_commands:
+      required: false
+      default: 8
+      selector:
+        number:
+          min: 1
+          max: 20
+    vio_angular_speed:
+      required: false
+      default: 500
+      selector:
+        number:
+          min: 1
+          max: 1000
+    vio_calibration_pulse_count:
+      required: false
+      default: 2
+      selector:
+        number:
+          min: 1
+          max: 5
+    vio_realign_threshold_degrees:
+      required: false
+      default: 15
+      selector:
+        number:
+          min: 5
+          max: 90
+          step: 0.5
+          unit_of_measurement: °
+    vio_max_realignments:
+      required: false
+      default: 3
+      selector:
+        number:
+          min: 0
+          max: 10
 
 raw_pymammotion_execute_multi_segment:
   description: Guarded chain of up to 4 already-proven one-segment moves (2-8 points), used by the multi-waypoint click/go path builder. Re-validates safety before every segment and stops immediately on the first failure. Set split_leg_target_length_m to have a long leg split into collinear sub-legs.

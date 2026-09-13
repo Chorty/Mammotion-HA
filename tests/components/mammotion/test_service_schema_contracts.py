@@ -902,3 +902,27 @@ def test_lawn_mower_platform_schemas_are_entity_service_schemas(
     schema = getattr(mammotion_lawn_mower, schema_name)
     validated = _validate_entity_service_schema(schema, f"mammotion.{schema_name}")
     assert cv.is_entity_service_schema(validated)
+
+
+def test_vector_segment_schema_fields_are_all_documented() -> None:
+    """Every field the vector executor's schema accepts is in services.yaml and strings.json.
+
+    2026-09-12: services.yaml lacked 11 schema fields, including ``turn_mode`` and
+    ``vio_turn_max_commands``. It does not validate API calls, but a payload
+    filtered against it silently ran ``vio_turn_max_commands`` at its default 8
+    instead of the accepted-profile 4. The service-level test above never looked
+    at fields, so the gap went unnoticed.
+    """
+    package_dir = pathlib.Path(mammotion_services.__file__).parent
+    service = "raw_pymammotion_execute_vector_segment"
+    schema_keys = {
+        str(key.schema)
+        for key in mammotion_services.RAW_PYMAMMOTION_EXECUTE_VECTOR_SEGMENT_SCHEMA.schema
+    }
+    services_yaml = yaml.safe_load((package_dir / "services.yaml").read_text())
+    strings_json = json.loads((package_dir / "strings.json").read_text())
+    en_json = json.loads((package_dir / "translations" / "en.json").read_text())
+
+    assert schema_keys == set(services_yaml[service]["fields"])
+    assert schema_keys == set(strings_json["services"][service]["fields"])
+    assert strings_json["services"][service] == en_json["services"][service]
