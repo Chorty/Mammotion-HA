@@ -62,6 +62,13 @@ p95  1029.2 ms
 p99  2014.0 ms
 ```
 
+✏️ **Correction, 2026-09-13:** these figures do not reproduce from the five banked
+`evidence-beta32-4segment-20260809T*.json` files, which are unmodified since this
+was written. Recomputed: **n = 115, p50 206.5, p90 555.7, p95 783.6, max 2014.0,
+53 % over 200 ms**. The median still exceeds the interval, so the argument below
+stands; p95 was overstated ~31 %. See
+`docs/findings-ble-write-latency-mechanism-20260912.md` §3.
+
 **The median write already exceeds the refresh interval.** Motion continues only
 while refresh writes keep arriving — that is why the app re-sends every 200 ms —
 so a link whose median write costs 226 ms cannot sustain the cadence the motion

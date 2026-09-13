@@ -224,3 +224,24 @@ same benign-once-explained cause.
 note `rtk_not_precise` cleared but a *different* position blocker replaced it.
 **Resolve that before planning Phase 1 legs**, rather than assuming a `fix`
 reading is sufficient.
+
+---
+
+## 8. 🗑️ §2 RETRACTED — omron is off-path (corrected 2026-09-13)
+
+§2 called `custom_components.omron` "sustained contention on the same proxy
+radio that carries the mower's GATT writes" and told Phase 1 to record its rate
+and consider disabling it. **Both are withdrawn.**
+
+The **121/h** figure counted habluetooth `Found 5 connection path(s)` lines —
+**path enumeration, not connect attempts** — and the `failures=` counters are
+accumulated historical score. Every actual omron connect attempt goes
+`via source=D8:3A:DD:C3:CE:CD`, the host's built-in `hci0` adapter: 102 of 102
+in 6 h, **zero** through any ESP32 proxy. On 2026-09-13 01:58Z the omron cuff is
+allocated on `hci0`. The evidence was in §2's own log capture — every omron
+connect line named that source — and I read the enumeration lines instead.
+
+🔑 **Phase 1 must not disable omron**; it does not share the mower's radio. The
+mower's proxy also moves between reconnects (`hot-tub-backyard` / `p1s-printer`),
+so "the proxy holding the mower" was never a fixed thing either.
+Full measurement: `docs/findings-ble-write-latency-mechanism-20260912.md` §4.2.

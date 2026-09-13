@@ -266,8 +266,18 @@ boundary at a **> 500 ms** gap, cross-checked against each pulse's own
 shortfall found at analysis time is unrecoverable. The n ≥ 120 rate claim is
 **deferred**; below 120 the honest bound is 3/40 ≈ 7.5 %.
 🚨 **§10.5 revises the expected outcome:** banked refresh *write* latency is
-p95 **1029.2 ms**, max **2014.0 ms** (98 writes, 59 % over the 200 ms interval).
-The queue is serialized, so a dispatch behind a ~1 s write inherits the wait —
+slow relative to the 200 ms interval, and the queue is serialized, so a dispatch
+behind a slow write inherits the wait —
+✏️ **The "p95 1029.2 ms / 98 writes / 59 %" figure §10.5 quotes DOES NOT
+REPRODUCE.** Recomputed from the five `evidence-beta32-4segment-20260809T*.json`
+files — **unmodified since 2026-08-09** — it is **n = 115, p50 206.5, p95 783.6,
+max 2014.0, 53 % over 200 ms**. No partition gives 98. It originates in the
+beta35 comment at `services.py` `_motion_refresh_window` and
+`docs/PROJECT-GOALS-AND-STATUS.md`, and was relayed into §10.5 unchecked.
+**p95 was overstated by ~31 %, the one number §10.5 leans on.** §10.5 is closed
+to amendment; the correction lives here and in
+`docs/findings-ble-write-latency-mechanism-20260912.md`. Direction stands,
+magnitude does not.
 **a third answer, "write latency is the binding constraint", may beat both §3
 and §4.** ✅ **§12.1 gives that answer a PREDECLARED test** (it was an escape
 hatch without one): `ratio = p95(queue_wait_ms | pulse-open) / p95(write_ms |
@@ -633,7 +643,11 @@ proxy-switching logic.** BLE has no roaming, so a switch means disconnect +
 reconnect, and reconnect routing is decided from advertisements this mower emits
 ~once per 10 min and **not at all while connected**. Five scanners exist
 (`hci0` scan-only; `hot-tub-backyard`, `atom-fireplace`, `p1s-printer`,
-`garage-m5stack` connectable); the mower normally holds `hot-tub-backyard`.
+`garage-m5stack` connectable). ✏️ **The mower does NOT hold a fixed proxy — it
+moves between reconnects**: `hot-tub-backyard` at 2026-09-12 03:0xZ and
+2026-09-13 01:58Z, but `p1s-printer` ranked first at 2026-09-12 17:30Z. Never
+state which proxy it is on without a fresh read of HA's Bluetooth connection
+allocations.
 **Placement is the lever, not selection.** Weak cells measured over 96 h
 (`docs/evidence-ble-coverage-96h-20260912.json`, 27 440 samples, fit RMS
 0.0000 m): north end (x −1..1, y 17..26) median **−84 to −89**, south end
@@ -645,15 +659,18 @@ out-explains standing still, so a single pass cannot characterise a cell. Target
 NOT overwritten: `_estimate_rssi` is an unweighted radius mean, so folding in the
 dock dwell would move planner verdicts as a side effect.
 
-🚨 **Another integration saturates the proxies.** `custom_components.omron`
-retries an unrelated device (`F4:07:7B:F5:E8:65`) hard enough to log **121
-`Found 5 connection path(s)` scans per hour**, driving `failures=` to 8–9 on
-every proxy including the one holding the mower. It is **not** the mower's own
-command queue and cannot by itself trip
-`_BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS` — but it is sustained contention on the
-same proxy radio, and it is the first concrete candidate occupant for the queue
-measurement's falsifier branch. ✅ **Record its rate at Phase 1 session start;
-consider disabling it for the measurement.**
+🗑️ **RETRACTED: "another integration saturates the proxies."** I claimed
+`custom_components.omron` was sustained contention on the mower's proxy radio,
+from its **~121–137/h `Found 5 connection path(s)` log lines** and `failures=`
+counters on every proxy. **Wrong.** Those lines are habluetooth *path
+enumeration*; the counters are accumulated historical score, not live attempts.
+**Every actual omron connect attempt goes `via source=D8:3A:DD:C3:CE:CD` —
+`hci0`, the host's own adapter** (102 of 102 in 6 h, zero via any ESP32 proxy),
+and the omron cuff is allocated on `hci0`, not a backyard proxy (verified
+2026-09-13 01:58Z). 🔑 **It is off-path. Do NOT disable it for Phase 1** — that
+would spend a session controlling for a variable shown not to share the radio.
+Record: `docs/findings-ble-write-latency-mechanism-20260912.md` §4.2.
+⚠️ The ~70 ms per-write floor and the ≥800 ms tail remain unexplained.
 
 🚨 **The mammotion integration logs NOTHING about BLE transport drops.** A
 disconnect it reports as `ble_link_live: off` left **zero** `mammotion`/`luba`

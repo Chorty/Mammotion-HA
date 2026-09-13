@@ -6776,7 +6776,11 @@ async def _motion_refresh_window(
         # That is not a rounding error on this link. Across all 98 refresh
         # writes of the five real runs of 2026-08-09 the write latency was
         # p50 225.6 / p90 572.0 / p95 1029.2 / max 2014.0 ms, and 59% of writes
-        # exceeded the 200 ms interval outright. Sleep-then-await therefore put
+        # exceeded the 200 ms interval outright.
+        # ✏️ 2026-09-13: those figures do not reproduce from the banked
+        # evidence-beta32-4segment-20260809T*.json files (unmodified since).
+        # Recomputed: n=115, p50 206.5 / p90 555.7 / p95 783.6 / max 2014.0,
+        # 53% over 200 ms. The conclusion stands; p95 was overstated ~31%. Sleep-then-await therefore put
         # a MEDIAN of ~426 ms between commands reaching the mower against a
         # 200 ms design, and ~1229 ms at p95 -- long enough for the device-side
         # watchdog to stop the motor mid-pulse. That is the measured mechanism

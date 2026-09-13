@@ -150,6 +150,10 @@ chance §3's "p95 ≥ 1000 ms" fires.
 anticipates — "write latency on this link is the binding constraint" — not
 "raise the constant."** Recorded now so that reading cannot look invented after
 the fact.
+✏️ **Figure corrected 2026-09-13:** the banked data gives **n = 115, p95 783.6 ms**
+(53 % over 200 ms), not 98 / 1029.2. The prior's direction stands; its magnitude
+was overstated ~31 %. See `docs/findings-ble-write-latency-mechanism-20260912.md` §3.
+
 
 ---
 
