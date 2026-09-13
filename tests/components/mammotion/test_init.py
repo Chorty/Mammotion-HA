@@ -84,9 +84,15 @@ async def test_bluetooth_toggle_off_refreshes_gate_entities() -> None:
         device_name="Luba-Test",
         manager=SimpleNamespace(mower=lambda _name: handle),
         _async_refresh_motion_gate_entities=MagicMock(),
+        _propagate_bluetooth_enabled=MagicMock(),
+        _async_persist_bluetooth_enabled=AsyncMock(),
     )
 
     await MammotionBaseUpdateCoordinator.async_set_bluetooth_enabled(coordinator, False)
+
+    # The switch reaches every sibling coordinator and survives a restart.
+    coordinator._propagate_bluetooth_enabled.assert_called_once_with(False)
+    coordinator._async_persist_bluetooth_enabled.assert_awaited_once_with(False)
 
     assert coordinator._bluetooth_enabled is False
     handle.set_prefer_ble.assert_called_once_with(value=False)
@@ -108,6 +114,8 @@ async def test_bluetooth_toggle_on_survives_temporarily_unavailable_link() -> No
             side_effect=BLEUnavailableError("not advertising")
         ),
         _async_refresh_motion_gate_entities=MagicMock(),
+        _propagate_bluetooth_enabled=MagicMock(),
+        _async_persist_bluetooth_enabled=AsyncMock(),
     )
 
     await MammotionBaseUpdateCoordinator.async_set_bluetooth_enabled(coordinator, True)

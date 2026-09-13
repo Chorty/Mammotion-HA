@@ -85,6 +85,7 @@ from pymammotion.utility.device_type import DeviceType
 from pymammotion.utility.plan_id import make_copy_name, new_mower_plan_id
 from webrtc_models import RTCIceServer
 
+from . import connectivity_store
 from .agora_api import SERVICE_IDS, AgoraAPIClient, AgoraResponse
 from .config import MammotionConfigStore
 from .connectivity import CloudConnectivityMonitor, WatchdogAction
@@ -734,6 +735,8 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
     async def async_set_bluetooth_enabled(self, enabled: bool) -> None:
         """Enable or disable Bluetooth transport."""
         self._bluetooth_enabled = enabled
+        self._propagate_bluetooth_enabled(enabled)
+        await self._async_persist_bluetooth_enabled(enabled)
         handle = self.manager.mower(self.device_name)
         if handle is None:
             self._async_refresh_motion_gate_entities()
@@ -764,6 +767,51 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
                 )
             finally:
                 self._async_refresh_motion_gate_entities()
+
+    def _sibling_coordinators(self) -> list[Any]:
+        """Return every coordinator belonging to this mower, including this one."""
+        runtime = getattr(getattr(self, "config_entry", None), "runtime_data", None)
+        for mower in getattr(runtime, "mowers", None) or ():
+            reporting = getattr(mower, "reporting_coordinator", None)
+            if reporting is not None and reporting.device_name == self.device_name:
+                return [
+                    coordinator
+                    for coordinator in (
+                        mower.reporting_coordinator,
+                        mower.maintenance_coordinator,
+                        mower.version_coordinator,
+                        mower.map_coordinator,
+                        mower.error_coordinator,
+                    )
+                    if coordinator is not None
+                ]
+        return []
+
+    def _propagate_bluetooth_enabled(self, enabled: bool) -> None:
+        """Apply the Bluetooth switch to every coordinator of this mower.
+
+        🚨 Each coordinator carries its own ``_bluetooth_enabled`` and all five run
+        ``_async_short_circuit_update``, whose per-tick advertisement push CREATES
+        a BLE transport when none is wired. Flipping only the switch's own
+        coordinator left four others re-attaching BLE every tick.
+        """
+        for coordinator in self._sibling_coordinators():
+            coordinator._bluetooth_enabled = enabled  # noqa: SLF001
+
+    async def _async_persist_bluetooth_enabled(self, enabled: bool) -> None:
+        """Persist the switch so it survives a restart; never fail the toggle."""
+        config_entry = getattr(self, "config_entry", None)
+        hass = getattr(self, "hass", None)
+        if config_entry is None or hass is None:
+            return
+        try:
+            await connectivity_store.async_set_bluetooth_enabled(
+                hass, config_entry.entry_id, self.device_name, enabled
+            )
+        except (OSError, HomeAssistantError) as exc:
+            LOGGER.warning(
+                "%s: could not persist the Bluetooth switch: %s", self.device_name, exc
+            )
 
     @callback
     def _async_refresh_motion_gate_entities(self) -> None:

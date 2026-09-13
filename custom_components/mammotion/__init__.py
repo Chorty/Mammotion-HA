@@ -49,6 +49,7 @@ from pymammotion.transport.base import (
 from pymammotion.utility.device_type import DeviceType
 from Tea.exceptions import UnretryableException
 
+from . import connectivity_store
 from .backend_capability import async_probe_backend_capabilities
 from .const import (
     CONF_ACCOUNTNAME,
@@ -268,6 +269,34 @@ async def _attach_ble_to_rtk(
     )
     if ble_device:
         await mammotion.add_ble_to_device(rtk.device_name, ble_device)
+
+
+async def async_apply_persisted_bluetooth_switch(
+    hass: HomeAssistant,
+    entry: MammotionConfigEntry,
+    mammotion: MammotionClient,
+    device_name: str,
+    coordinators: tuple[Any, ...],
+) -> bool:
+    """Apply a persisted Bluetooth switch before the first connection attempt.
+
+    Returns whether Bluetooth is enabled. When the switch was left off, every
+    coordinator of this mower is marked off, BLE is de-preferred, and the BLE
+    transport attached during setup is removed -- so a switched-off transport is
+    never brought up by a restart.
+    """
+    enabled = await connectivity_store.async_get_bluetooth_enabled(
+        hass, entry.entry_id, device_name
+    )
+    if enabled:
+        return True
+    for coordinator in coordinators:
+        coordinator._bluetooth_enabled = False  # noqa: SLF001
+    mammotion.set_prefer_ble(device_name, prefer_ble=False)
+    if (handle := mammotion.mower(device_name)) is not None:
+        await handle.remove_transport(TransportType.BLE)
+    LOGGER.info("%s: Bluetooth switch was left off; not connecting BLE", device_name)
+    return False
 
 
 def _bluetooth_switch_enabled(entry: MammotionConfigEntry, device_name: str) -> bool:
@@ -539,10 +568,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: MammotionConfigEntry) ->
                 hass, entry, device, mammotion, unique_name=unique_name
             )
 
+            bluetooth_on = await async_apply_persisted_bluetooth_switch(
+                hass,
+                entry,
+                mammotion,
+                device.device_name,
+                (
+                    report_coordinator,
+                    maintenance_coordinator,
+                    version_coordinator,
+                    map_coordinator,
+                    error_coordinator,
+                ),
+            )
+
             await _await_device_connection(
                 mammotion,
                 device.device_name,
-                prefer_ble=(not use_wifi or prefer_ble),
+                prefer_ble=(not use_wifi or prefer_ble) and bluetooth_on,
             )
 
             await report_coordinator.async_restore_data()
@@ -855,6 +898,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: MammotionConfigEntry) -
             key=DOMAIN,
         )
         await store.async_remove()
+        await connectivity_store.async_remove(hass)
         hass.data.pop(DOMAIN, None)
 
 
