@@ -240,10 +240,14 @@ undecided** — `docs/predeclared-comms-abort-auto-dock-20260911.md`.
 timeout cancelling setup, a documented trap, not new) — recovered cleanly with
 a config-entry reload in ~20 s, mower position confirmed unchanged across it.
 
-⚠️ **Live state at 2026-09-13T22:49Z — a snapshot, not a source of truth.
-Requery before acting.** Mower **docked and charging** after Phase 1, RTK `fix`;
+⚠️ **Live state at 2026-09-14T22:34:29Z — a snapshot, not a source of truth.
+Requery before acting.** Mower **docked and charging** after the Phase 1 repeat
+(both sessions), RTK `fix` throughout; gate disarmed (live API + RAW
+`core.config_entries` at 22:34:29Z). Same four frozen proxies as 2026-09-13; the
+two disabled ESPHome proxies remain disabled. Superseded snapshots follow.
+⚠️ **(2026-09-13T22:49Z)** Mower **docked and charging** after Phase 1, RTK `fix`;
 gate disarmed (live API + raw at 22:43Z). **Two newly added ESPHome proxies are
-disabled by the operator** to hold the frozen RF set. Superseded snapshots follow.
+disabled by the operator** to hold the frozen RF set.
 ⚠️ **(2026-09-12T15:26Z)** ✅ **Recovered:** mower **docked and charging** since
 14:49:53Z, **51%** and rising, `rtk_position: fix` since 14:55:04Z,
 `position_level: 1`, VIO 74 features, `ble_link_live: on` at −56 dBm, full
@@ -384,6 +388,38 @@ queue timeouts — recorded, **not interpreted** (§5). Axis 1 fails on
   any repeat data. ✅ **Its §2.8 scorer is committed:** `scripts/score_queue_measurement.py`
   (its test pins 67/67 on the 2026-09-13 evidence, classification only). Score
   the repeat with it UNMODIFIED.
+
+✅ **THE REPEAT RAN 2026-09-14, TWO SESSIONS, AND IS SCORED — the constant still
+does not move.** Full record: `docs/findings-phase1-repeat-20260914.md`.
+- **Session 1 (20:59–21:41Z): INCONCLUSIVE, truncated by BLE transport loss.**
+  From the anchor and from a point ~3.6 m north of it, HA's own path ranking read
+  −76 to −80 dBm on every one of the four frozen proxies — no strong path exists
+  from this spot with this proxy set today, unlike 2026-09-13 where the anchor
+  itself measured `strong`. 219 samples banked, all `completed`, zero timeouts;
+  the classifier held (2/40 unclassifiable) even through the mid-session failure.
+- **Session 2 (22:00–22:34Z): all 12 targets dispatched** (S9 halted
+  `turn_budget_infeasible` mid-turn — the executor's own translation-cap model,
+  same failure mode as 2026-09-13's S9 — and landed on retry S9b). 363 samples,
+  all `completed`, zero `queue_start_timeout`. **Axis 1 fully PASSES**; axis 2's
+  verdict is `4_inconclusive` — `queue_wait_ms` p95 **289.9 ms**, above the 250 ms
+  "fine" bar and well under the 1000 ms "raise" bar, the predeclared middle band
+  itself, not a near-miss or a protocol failure.
+- 🔑 **Protocol changed mid-day, operator instruction:** session 2 ran under a
+  **standing go for S1–S12** instead of a per-leg go, because the per-leg approval
+  wait was itself the idle time the link kept dropping in. Every §16.3 safety
+  check in the runner still ran per leg unchanged; only approval cadence changed.
+  Automatic retries fired only on `ble_client_not_connected` (nothing sent) or a
+  VIO dip with the sun still up — any other halt stopped the sequence, and did
+  (S9). Gate armed immediately before each dispatch, verified disarmed after
+  every leg including the last, in the live API and RAW `core.config_entries`.
+- ⚠️ **Operator raised whether the two backyard proxies
+  (`hot-tub-backyard`/`p1s-printer`) sitting physically adjacent explains the weak
+  link — UNRESOLVED, not adjudicated this session.** Moving or disabling either
+  would break the RF freeze this measurement depends on for comparability with
+  2026-09-10's legs 7/8 failure; any such change needs its own predeclaration
+  first, operator call.
+- 🛑 `_BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS` **stays 2.0.** Two sessions now
+  (2026-09-13, 2026-09-14) have produced no grounds to move it.
 
 🗄️ **Before Phase 1 — one SETUP leg dispatched 2026-09-12** (unscored,
 excluded from the population by §15, committed before it ran) — `target_reached`

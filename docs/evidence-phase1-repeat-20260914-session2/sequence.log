@@ -1,0 +1,79 @@
+21:52:09 session 2 start; scanners recorded
+22:00:18 connected (held 15 s)
+22:00:18 dispatch S1 -> (4.94, -4.82)
+22:00:59 S1 rc=0 halt=None gate_final=False
+22:00:59 {"label": "S1", "role": "scored", "dispatched_utc": "2026-09-14T22:00:19.122555+00:00", "start": [4.872, -3.8536], "target": [4.94, -4.82], "leg_m": 0.969, "corridor_min_clearance_m": 4.79, "excursion_m": 1.0, "band": "moderate", "target_rssi": -72.0, "facing_confidence": "corroborated_not_motion_confirmed", "stop_reason": "target_reached", "landing_error_m": 0.142, "commands_sent": 8, "motion_refresh_commands_sent": 35, "samples_total": 51, "outcomes": {"completed": 51}}
+22:00:59 S1 OK; turn_wait_next=True
+22:01:30 connected (held 15 s)
+22:01:30 waiting 29s after a turn leg
+22:02:08 dispatch S2 -> (4.94, -5.82)
+22:02:29 S2 rc=0 halt=None gate_final=False
+22:02:29 {"label": "S2", "role": "scored", "dispatched_utc": "2026-09-14T22:02:08.680299+00:00", "start": [5.0271, -4.7214], "target": [4.94, -5.82], "leg_m": 1.102, "corridor_min_clearance_m": 4.96, "excursion_m": 2.0, "band": "moderate", "target_rssi": -74.0, "facing_confidence": "motion_confirmed", "stop_reason": "target_reached", "landing_error_m": 0.079, "commands_sent": 4, "motion_refresh_commands_sent": 14, "samples_total": 73, "outcomes": {"completed": 73}}
+22:02:29 S2 OK; turn_wait_next=False
+22:03:00 connected (held 15 s)
+22:03:00 dispatch S3 -> (4.94, -6.82)
+22:03:21 S3 rc=0 halt=None gate_final=False
+22:03:21 {"label": "S3", "role": "scored", "dispatched_utc": "2026-09-14T22:03:00.776347+00:00", "start": [4.9279, -5.7469], "target": [4.94, -6.82], "leg_m": 1.073, "corridor_min_clearance_m": 4.41, "excursion_m": 3.0, "band": "moderate", "target_rssi": -76.0, "facing_confidence": "motion_confirmed", "stop_reason": "target_reached", "landing_error_m": 0.136, "commands_sent": 4, "motion_refresh_commands_sent": 13, "samples_total": 94, "outcomes": {"completed": 94}}
+22:03:21 S3 OK; turn_wait_next=False
+22:03:52 connected (held 15 s)
+22:03:52 dispatch S4 -> (4.94, -5.82)
+22:04:28 S4 rc=0 halt=None gate_final=False
+22:04:28 {"label": "S4", "role": "scored", "dispatched_utc": "2026-09-14T22:03:53.192460+00:00", "start": [4.8265, -6.7505], "target": [4.94, -5.82], "leg_m": 0.937, "corridor_min_clearance_m": 4.48, "excursion_m": 2.0, "band": "moderate", "target_rssi": -74.0, "facing_confidence": "motion_confirmed", "stop_reason": "target_reached", "landing_error_m": 0.086, "commands_sent": 8, "motion_refresh_commands_sent": 28, "samples_total": 138, "outcomes": {"completed": 138}}
+22:04:28 S4 OK; turn_wait_next=True
+22:05:03 connected (held 15 s)
+22:05:03 waiting 25s after a turn leg
+22:05:36 dispatch S5 -> (4.94, -4.82)
+22:05:56 S5 rc=0 halt=None gate_final=False
+22:05:56 {"label": "S5", "role": "scored", "dispatched_utc": "2026-09-14T22:05:36.934295+00:00", "start": [5.0229, -5.8393], "target": [4.94, -4.82], "leg_m": 1.023, "corridor_min_clearance_m": 4.91, "excursion_m": 1.0, "band": "moderate", "target_rssi": -72.0, "facing_confidence": "motion_confirmed", "stop_reason": "target_reached", "landing_error_m": 0.111, "commands_sent": 4, "motion_refresh_commands_sent": 14, "samples_total": 160, "outcomes": {"completed": 160}}
+22:05:56 S5 OK; turn_wait_next=True
+22:06:30 connected (held 15 s)
+22:06:30 waiting 27s after a turn leg
+22:07:05 dropped during turn wait
+22:12:25 allocation vanished during settle
+22:17:50 connected (held 15 s)
+22:17:50 dispatch S6 -> (4.94, -3.82)
+22:18:09 S6 rc=0 halt=None gate_final=False
+22:18:09 {"label": "S6", "role": "scored", "dispatched_utc": "2026-09-14T22:17:50.552671+00:00", "start": [5.0493, -4.8351], "target": [4.94, -3.82], "leg_m": 1.021, "corridor_min_clearance_m": 4.86, "excursion_m": 0.0, "band": "strong", "target_rssi": -68.0, "facing_confidence": "corroborated_not_motion_confirmed", "stop_reason": "target_reached", "landing_error_m": 0.12, "commands_sent": 4, "motion_refresh_commands_sent": 13, "samples_total": 181, "outcomes": {"completed": 181}}
+22:18:09 S6 OK; turn_wait_next=True
+22:18:41 connected (held 15 s)
+22:18:41 waiting 29s after a turn leg
+22:19:21 dispatch S7 -> (4.94, -2.82)
+22:19:41 S7 rc=0 halt=None gate_final=False
+22:19:41 {"label": "S7", "role": "scored", "dispatched_utc": "2026-09-14T22:19:21.429877+00:00", "start": [4.93, -3.9315], "target": [4.94, -2.82], "leg_m": 1.112, "corridor_min_clearance_m": 3.89, "excursion_m": 1.0, "band": "strong", "target_rssi": -66.0, "facing_confidence": "motion_confirmed", "stop_reason": "target_reached", "landing_error_m": 0.116, "commands_sent": 4, "motion_refresh_commands_sent": 13, "samples_total": 202, "outcomes": {"completed": 202}}
+22:19:41 S7 OK; turn_wait_next=False
+22:20:13 connected (held 15 s)
+22:20:13 dispatch S8 -> (4.94, -1.82)
+22:20:36 S8 rc=0 halt=None gate_final=False
+22:20:36 {"label": "S8", "role": "scored", "dispatched_utc": "2026-09-14T22:20:13.296869+00:00", "start": [5.0463, -2.8649], "target": [4.94, -1.82], "leg_m": 1.05, "corridor_min_clearance_m": 2.89, "excursion_m": 2.0, "band": "strong", "target_rssi": -66.0, "facing_confidence": "motion_confirmed", "stop_reason": "target_reached", "landing_error_m": 0.085, "commands_sent": 5, "motion_refresh_commands_sent": 14, "samples_total": 226, "outcomes": {"completed": 226}}
+22:20:36 S8 OK; turn_wait_next=True
+22:21:07 connected (held 15 s)
+22:21:07 waiting 29s after a turn leg
+22:21:44 dispatch S9 -> (4.94, -2.82)
+22:22:04 S9 rc=2 halt=HALT: stop_reason turn_budget_infeasible gate_final=False
+22:22:04 {"label": "S9", "role": "scored", "dispatched_utc": "2026-09-14T22:21:44.507286+00:00", "start": [4.9947, -1.8873], "target": [4.94, -2.82], "leg_m": 0.934, "corridor_min_clearance_m": 2.96, "excursion_m": 1.0, "band": "strong", "target_rssi": -66.0, "facing_confidence": "motion_confirmed", "stop_reason": "turn_budget_infeasible", "landing_error_m": 1.147, "commands_sent": 3, "motion_refresh_commands_sent": 12, "samples_total": 244, "outcomes": {"completed": 244}}
+22:22:04 STOP at S9: HALT: stop_reason turn_budget_infeasible
+22:23:49 session 2 resume at S9 attempt 1
+22:24:20 connected (held 15 s)
+22:24:20 dispatch S9b -> (4.94, -2.82)
+22:24:52 S9b rc=0 halt=None gate_final=False
+22:24:52 {"label": "S9b", "role": "scored", "dispatched_utc": "2026-09-14T22:24:20.716697+00:00", "start": [5.069, -1.6663], "target": [4.94, -2.82], "leg_m": 1.161, "corridor_min_clearance_m": 2.74, "excursion_m": 1.0, "band": "strong", "target_rssi": -66.0, "facing_confidence": "corroborated_not_motion_confirmed", "stop_reason": "target_reached", "landing_error_m": 0.145, "commands_sent": 7, "motion_refresh_commands_sent": 27, "samples_total": 285, "outcomes": {"completed": 285}}
+22:24:52 S9b OK; turn_wait_next=True
+22:25:24 connected (held 15 s)
+22:25:24 waiting 29s after a turn leg
+22:26:01 dispatch S10 -> (4.94, -3.82)
+22:26:25 S10 rc=0 halt=None gate_final=False
+22:26:25 {"label": "S10", "role": "scored", "dispatched_utc": "2026-09-14T22:26:01.253951+00:00", "start": [5.047, -2.7216], "target": [4.94, -3.82], "leg_m": 1.104, "corridor_min_clearance_m": 3.79, "excursion_m": 0.0, "band": "strong", "target_rssi": -68.0, "facing_confidence": "corroborated_not_motion_confirmed", "stop_reason": "target_reached", "landing_error_m": 0.147, "commands_sent": 5, "motion_refresh_commands_sent": 16, "samples_total": 311, "outcomes": {"completed": 311}}
+22:26:25 S10 OK; turn_wait_next=True
+22:26:59 connected (held 15 s)
+22:26:59 waiting 26s after a turn leg
+22:27:36 dispatch S11 -> (4.94, -4.82)
+22:28:04 S11 rc=0 halt=None gate_final=False
+22:28:04 {"label": "S11", "role": "scored", "dispatched_utc": "2026-09-14T22:27:37.210718+00:00", "start": [5.048, -3.9215], "target": [4.94, -4.82], "leg_m": 0.905, "corridor_min_clearance_m": 4.91, "excursion_m": 1.0, "band": "moderate", "target_rssi": -72.0, "facing_confidence": "motion_confirmed", "stop_reason": "target_reached", "landing_error_m": 0.017, "commands_sent": 6, "motion_refresh_commands_sent": 15, "samples_total": 338, "outcomes": {"completed": 338}}
+22:28:04 S11 OK; turn_wait_next=True
+22:28:35 connected (held 15 s)
+22:28:35 waiting 29s after a turn leg
+22:29:12 dispatch S12 -> (4.94, -5.82)
+22:29:37 S12 rc=0 halt=None gate_final=False
+22:29:37 {"label": "S12", "role": "scored", "dispatched_utc": "2026-09-14T22:29:12.781805+00:00", "start": [4.9517, -4.8329], "target": [4.94, -5.82], "leg_m": 0.987, "corridor_min_clearance_m": 4.92, "excursion_m": 2.0, "band": "moderate", "target_rssi": -74.0, "facing_confidence": "motion_confirmed", "stop_reason": "target_reached", "landing_error_m": 0.114, "commands_sent": 5, "motion_refresh_commands_sent": 15, "samples_total": 363, "outcomes": {"completed": 363}}
+22:29:37 S12 OK; turn_wait_next=True
+22:29:45 SEQUENCE COMPLETE through S12; end scanners recorded
