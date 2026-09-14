@@ -108,10 +108,20 @@ def daylight_vio_verdict(
     sun_elevation: float,
     features_window: list[str],
     status_window: list[str],
+    allow_low_sun: bool = False,
 ) -> list[str]:
-    """Return halt reasons; an empty list means daylight and VIO are acceptable."""
+    """Return halt reasons; an empty list means daylight and VIO are acceptable.
+
+    ``allow_low_sun`` is a narrow, explicit operator override of the sun-elevation
+    clause ONLY (docs/findings-phase1-repeat-20260914.md, dusk retest 2026-09-14,
+    operator go on that specific named risk). It must never also relax the
+    vio_tracked_features or visual_positioning_status clauses below: those, not
+    the point-in-time status read, are what actually caught the 2026-09-12
+    collapse (14 features in the 60s window vs the 70 floor, while status read
+    signal_good throughout). Default False; every other caller is unaffected.
+    """
     reasons: list[str] = []
-    if sun_elevation < SUN_MIN_ELEVATION_DEG:
+    if sun_elevation < SUN_MIN_ELEVATION_DEG and not allow_low_sun:
         reasons.append(
             f"sun elevation {sun_elevation:.2f} deg below {SUN_MIN_ELEVATION_DEG}"
         )
@@ -199,6 +209,16 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915
     parser.add_argument("ty", type=float)
     parser.add_argument("role", choices=["setup", "scored"])
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument(
+        "--allow-low-sun",
+        action="store_true",
+        help=(
+            "Operator override of the sun-elevation clause ONLY (2026-09-14 dusk "
+            "retest). vio_tracked_features and visual_positioning_status stay "
+            "enforced -- never pass this without a fresh, explicit operator go on "
+            "that specific risk."
+        ),
+    )
     args = parser.parse_args()
     url, token = os.environ["HA_URL"].rstrip("/"), os.environ["HA_TOKEN"]
     args.out.mkdir(parents=True, exist_ok=True)
@@ -228,9 +248,16 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915
             now,
             VIO_WINDOW_SECONDS,
         ),
+        allow_low_sun=args.allow_low_sun,
     )
     if reasons:
         halt("daylight/VIO: " + "; ".join(reasons))
+    if args.allow_low_sun:
+        print(
+            f"OVERRIDE: sun-elevation clause bypassed by operator go "
+            f"(actual elevation {solar_elevation_degrees(now):.2f} deg); "
+            f"VIO tracked-features and status clauses still enforced and clean."
+        )
 
     target = (args.tx, args.ty)
     cell = min(grid, key=lambda r: math.hypot(r["x"] - target[0], r["y"] - target[1]))
