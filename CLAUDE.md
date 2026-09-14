@@ -240,11 +240,18 @@ undecided** — `docs/predeclared-comms-abort-auto-dock-20260911.md`.
 timeout cancelling setup, a documented trap, not new) — recovered cleanly with
 a config-entry reload in ~20 s, mower position confirmed unchanged across it.
 
-⚠️ **Live state at 2026-09-14T22:34:29Z — a snapshot, not a source of truth.
+⚠️ **Live state at 2026-09-14T23:42:16Z — a snapshot, not a source of truth.
 Requery before acting.** Mower **docked and charging** after the Phase 1 repeat
-(both sessions), RTK `fix` throughout; gate disarmed (live API + RAW
-`core.config_entries` at 22:34:29Z). Same four frozen proxies as 2026-09-13; the
-two disabled ESPHome proxies remain disabled. Superseded snapshots follow.
+(all three sessions), RTK `fix` throughout; gate disarmed (live API + RAW
+`core.config_entries` at 23:42:16Z). 🔑 **RF set CHANGED mid-day:**
+`hot-tub-backyard` was physically powered off by the operator at ~22:39Z and is
+gone from the Bluetooth scanner list — only `p1s-printer`, `garage-m5stack`,
+`atom-fireplace` remain connectable (plus `hci0`, scan-only). The two disabled
+ESPHome proxies from 2026-09-13 remain disabled, separately. **A future session
+must re-verify the scanner list rather than assume the old five.**
+⚠️ **(2026-09-14T22:34:29Z)** Mower docked and charging after sessions 1–2 only,
+RTK `fix`; gate disarmed. Still the old five-proxy set at that point —
+`hot-tub-backyard` was removed afterward, between sessions 2 and 3.
 ⚠️ **(2026-09-13T22:49Z)** Mower **docked and charging** after Phase 1, RTK `fix`;
 gate disarmed (live API + raw at 22:43Z). **Two newly added ESPHome proxies are
 disabled by the operator** to hold the frozen RF set.
@@ -389,8 +396,8 @@ queue timeouts — recorded, **not interpreted** (§5). Axis 1 fails on
   (its test pins 67/67 on the 2026-09-13 evidence, classification only). Score
   the repeat with it UNMODIFIED.
 
-✅ **THE REPEAT RAN 2026-09-14, TWO SESSIONS, AND IS SCORED — the constant still
-does not move.** Full record: `docs/findings-phase1-repeat-20260914.md`.
+✅ **THE REPEAT RAN 2026-09-14, THREE SESSIONS, AND IS SCORED — the constant
+still does not move.** Full record: `docs/findings-phase1-repeat-20260914.md`.
 - **Session 1 (20:59–21:41Z): INCONCLUSIVE, truncated by BLE transport loss.**
   From the anchor and from a point ~3.6 m north of it, HA's own path ranking read
   −76 to −80 dBm on every one of the four frozen proxies — no strong path exists
@@ -412,14 +419,30 @@ does not move.** Full record: `docs/findings-phase1-repeat-20260914.md`.
   VIO dip with the sun still up — any other halt stopped the sequence, and did
   (S9). Gate armed immediately before each dispatch, verified disarmed after
   every leg including the last, in the live API and RAW `core.config_entries`.
-- ⚠️ **Operator raised whether the two backyard proxies
-  (`hot-tub-backyard`/`p1s-printer`) sitting physically adjacent explains the weak
-  link — UNRESOLVED, not adjudicated this session.** Moving or disabling either
-  would break the RF freeze this measurement depends on for comparability with
-  2026-09-10's legs 7/8 failure; any such change needs its own predeclaration
-  first, operator call.
-- 🛑 `_BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS` **stays 2.0.** Two sessions now
-  (2026-09-13, 2026-09-14) have produced no grounds to move it.
+- **Session 3 (23:21–23:42Z, dusk): operator physically removed
+  `hot-tub-backyard`**, leaving three connectable proxies (`p1s-printer`,
+  `garage-m5stack`, `atom-fireplace`) — a new, not-comparable RF configuration,
+  tested on its own terms. 🚨 **Also ran with the sun below the 10° floor
+  throughout, on explicit operator override** (`--allow-low-sun`,
+  `scripts/phase1_leg_runner.py`, `cca228ec`) — skips ONLY the sun-elevation
+  clause; `vio_tracked_features`/`visual_positioning_status` stay fully
+  enforced. Both guards fired for real: a pre-dispatch tracked-feature dip (65,
+  one point below the 70 floor) halted S1 before anything sent, and S9 halted
+  mid-leg `vio_realign_incomplete` (a different mechanism, the executor's own
+  realign, not the runner's window check) — both retried and landed. **11/12
+  targets on the first attempt.** INCONCLUSIVE on axis 1 anyway: the timing
+  history hit its 500-sample cap mid-session and evicted session-3's own
+  earliest samples — a foreseen, accepted risk from not clearing history
+  between same-day sessions, recorded before it happened.
+- ⚠️ **The proxy-adjacency question is RAISED, TESTED, and STILL UNRESOLVED.**
+  Session 3 completed all 12 dispatches with zero BLE reconnect waits after
+  removing `hot-tub-backyard` — but session 2, run the same afternoon on the
+  *unchanged* 5-proxy set, also had zero BLE reconnect waits. The confound
+  (proxy removal vs. a settled start position vs. plain variance across three
+  tries) is not separated by today's data. A repeat holding RF fixed and only
+  varying start position (or vice versa) is what would actually separate this.
+- 🛑 `_BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS` **stays 2.0.** No session today
+  (nor 2026-09-13) has produced grounds to move it.
 
 🗄️ **Before Phase 1 — one SETUP leg dispatched 2026-09-12** (unscored,
 excluded from the population by §15, committed before it ran) — `target_reached`
@@ -742,9 +765,13 @@ integration calls `bluetooth.async_ble_device_from_address(hass, mac, True)`, an
 HA routes through the best-RSSI *connectable* scanner. 🛑 **Do not build
 proxy-switching logic.** BLE has no roaming, so a switch means disconnect +
 reconnect, and reconnect routing is decided from advertisements this mower emits
-~once per 10 min and **not at all while connected**. Five scanners exist
-(`hci0` scan-only; `hot-tub-backyard`, `atom-fireplace`, `p1s-printer`,
-`garage-m5stack` connectable). ✏️ **The mower does NOT hold a fixed proxy — it
+~once per 10 min and **not at all while connected**. 🔑 **As of 2026-09-14
+~22:39Z, `hot-tub-backyard` is physically powered off** (operator, on the
+suspicion that it sat too close to `p1s-printer` to add path diversity —
+`docs/findings-phase1-repeat-20260914.md` §6.3, still unresolved). **Four
+scanners now exist** (`hci0` scan-only; `atom-fireplace`, `p1s-printer`,
+`garage-m5stack` connectable) — was five. Verify the live scanner list before
+trusting this count. ✏️ **The mower does NOT hold a fixed proxy — it
 moves between reconnects**: `hot-tub-backyard` at 2026-09-12 03:0xZ and
 2026-09-13 01:58Z, but `p1s-printer` ranked first at 2026-09-12 17:30Z. Never
 state which proxy it is on without a fresh read of HA's Bluetooth connection

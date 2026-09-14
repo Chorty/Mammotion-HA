@@ -1,12 +1,15 @@
 # FINDINGS — Phase 1 repeat, 2026-09-14
 
-Two sessions, both same-day, same operator, same frozen RF set (`hci0` scan-only,
-`hot-tub-backyard`, `p1s-printer`, `garage-m5stack`, `atom-fireplace`). Scored
-against `docs/predeclared-queue-timeout-measurement-repeat-20260913.md`, using
+Three sessions, same day, same operator. Sessions 1–2 shared the frozen RF set
+(`hci0` scan-only, `hot-tub-backyard`, `p1s-printer`, `garage-m5stack`,
+`atom-fireplace`); session 3 ran after the operator physically removed
+`hot-tub-backyard`. Scored against
+`docs/predeclared-queue-timeout-measurement-repeat-20260913.md`, using
 `scripts/score_queue_measurement.py` **unmodified** (`3cd3b22d`) per its §2.8.
 Pre-dispatch notes, written before each session's first sample:
 `docs/predispatch-note-phase1-repeat-20260914.md` (session 1),
-`docs/predispatch-note-phase1-repeat-session2-20260914.md` (session 2).
+`docs/predispatch-note-phase1-repeat-session2-20260914.md` (session 2),
+`docs/predispatch-note-phase1-repeat-session3-20260914.md` (session 3).
 
 ---
 
@@ -15,17 +18,23 @@ Pre-dispatch notes, written before each session's first sample:
 **Session 1 (20:59–21:41Z): INCONCLUSIVE, truncated by BLE transport loss.**
 **Session 2 (22:00–22:34Z): scored, both axes measured. Axis 1 PASS. Axis 2 verdict
 `4_inconclusive` — the predeclared middle band, not a protocol failure.**
+**Session 3 (23:21–23:42Z, dusk, 3-proxy RF, operator override): all 12 targets
+dispatched, 0/71 unclassifiable, but INCONCLUSIVE on axis 1 — the timing history
+hit its 500-sample cap mid-session and evicted session-3's own earlier samples.**
 
-- 🛑 `_BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS` **stays 2.0.** Neither session
+- 🛑 `_BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS` **stays 2.0.** No session
   produced grounds to move it.
 - Session 2's `queue_wait_ms` p95 (pulse-open class, budget-2.0 samples) is
   **289.9 ms** — above the 250 ms "fine" bar, well under the 1000 ms "raise" bar.
   Per predeclaration §5 that range is defined as inconclusive; it is not a
   near-miss of either side, and no threshold was adjusted to produce this reading.
 - **Recorded, not over-read:** 363 session-2 samples, all `completed`, zero
-  `queue_start_timeout`. Session 1 recorded 219 more before it was truncated,
-  also all `completed`, zero timeouts — banked but never pooled with session 2's,
-  and session 1 is not rescored.
+  `queue_start_timeout`. Session 1 recorded 219 more before it was truncated;
+  session 3 recorded 500 (capped). All `completed`, zero timeouts across every
+  session. None are pooled together, and none is rescored under another
+  session's outcome.
+- **The proxy-adjacency question raised in-session is still unresolved** — see
+  §6.3.
 
 ---
 
@@ -61,12 +70,13 @@ updated normally at 22:12–22:13Z. The halt's own record cites
 
 ## 2. Protocol change mid-day, on operator instruction
 
-Between sessions the operator asked to (a) not stop for a per-leg go, since the
-approval wait was itself the idle time in which the link kept dropping, and (b)
-keep the same four proxies rather than move or disable one, even though two of
-them (`hot-tub-backyard` and `p1s-printer`) sit physically adjacent and offer no
-real path diversity from the backyard. Recorded, not adjudicated here: whether
-that adjacency is the dominant limiter is unresolved — see §5.
+Between sessions 1 and 2 the operator asked to (a) not stop for a per-leg go,
+since the approval wait was itself the idle time in which the link kept
+dropping, and (b) keep the same four proxies rather than move or disable one,
+even though two of them (`hot-tub-backyard` and `p1s-printer`) sit physically
+adjacent and offer no real path diversity from the backyard. Recorded, not
+adjudicated at the time: whether that adjacency was the dominant limiter —
+addressed later in session 3, §6.
 
 Session 2 ran under a **standing go for S1–S12**, predeclared before its first
 dispatch in `docs/predispatch-note-phase1-repeat-session2-20260914.md` §2. Every
@@ -127,7 +137,7 @@ beta104 throughout both sessions.
 
 ---
 
-## 4. Axis 2, in full
+## 4. Axis 2, in full (session 2)
 
 ```
 n_pulse_open_budget_2 = 67
@@ -145,25 +155,112 @@ Per-leg worst-wait fraction of the 2.0 s budget ranged 0.058 (S5) to 0.212 (S6);
 none reached the 0.75 "raise" fraction on any leg. 🔑 **The write-inheritance
 ratio test (§12.1) is not evaluated** — it only fires once Q ≥ 1000 ms, and
 today's Q is 290 ms. Its 0.79 value here is informational only, not a verdict
-input.
+input. Session 1's truncation and session 3's capacity drop both mean axis 1
+failed first, so neither has an axis 2 computed — the scorer never evaluates
+axis 2 unless axis 1 passes.
 
 ---
 
-## 5. What is next (decisions, not actions)
+## 5. Session 3 — dusk retest under the 3-proxy RF set
 
-1. **The queue-start bound question is still open.** Two sessions now: one
-   truncated by transport, one landing squarely in the predeclared inconclusive
-   band. Neither supports moving the 2.0 s constant; neither rules a future
-   measurement finding differently.
-2. **Proxy diversity at the anchor is now a live question, not decided here.**
-   The operator raised it in-session; it is unresolved whether
-   `hot-tub-backyard`/`p1s-printer`'s physical adjacency (no path diversity) or
-   RF interference between them (both 2.4 GHz) is the larger factor, or whether
-   a repositioned proxy would help at all. **Operator call**, and it needs its
-   own predeclaration before any proxy is moved — the RF set was frozen for
-   comparability with 2026-09-10's legs 7/8 failure, and moving a proxy now
-   would start a new, not-yet-comparable configuration.
-3. A further repeat, if wanted, should predeclare the RF change (if any) first,
+**Operator instruction, before the first dispatch:** physically removed
+`hot-tub-backyard` (confirmed `unavailable` in HA at 22:39:27Z, dropped from the
+scanner list by 23:11Z) because it sits adjacent to `p1s-printer` with no real
+path diversity. This makes session 3's RF set **not comparable** to sessions
+1–2's frozen five; it is a new configuration, tested on its own terms. Recorded
+before dispatch in `docs/predispatch-note-phase1-repeat-session3-20260914.md`.
+
+**Also on operator instruction:** the sun was below the runner's 10° floor for
+the whole session (4.75° at first dispatch, below the horizon by S9). A narrow
+`--allow-low-sun` flag was added to `scripts/phase1_leg_runner.py`
+(`cca228ec`), on the operator's explicit go citing the 2026-09-12 VIO-collapse
+precedent. It skips **only** the sun-elevation clause; `vio_tracked_features`
+(≥ 70 over 60s) and `visual_positioning_status` (`signal_good` throughout) stay
+fully enforced.
+
+### 5.1 The VIO guard worked exactly as designed, twice
+
+- **First S1 attempt halted before dispatch**, nothing sent: the tracked-feature
+  window caught a real dip to 65 at 23:19:20Z, one second below the 70 floor,
+  even though point-in-time status read `signal_good` throughout — the same
+  pattern as 2026-09-12 (14 vs 80), just far milder. Retried as S1b 41 s later
+  once the window cleared; landed 0.145 m.
+- **S9 halted mid-leg** with `stop_reason: vio_realign_incomplete`, landing
+  0.172 m short (just past the 0.15 m tolerance) — this is the *executor's own*
+  realignment failing, a different mechanism from the runner's pre-dispatch
+  window check, and not on the sequencer's auto-retry list. The sequence
+  correctly stopped itself; the mower was stationary and safe. Retried on
+  operator go as S9b (a short 0.17 m leg from the failed landing); reached
+  target at 0.133 m.
+- Both events are consistent with degraded VIO reliability at dusk, exactly the
+  named risk. Neither produced an unsafe outcome: the guard caught one before
+  dispatch, and the executor's own realign check caught the other mid-leg.
+
+### 5.2 All 12 targets dispatched, but INCONCLUSIVE on axis 1
+
+| leg | landing (m) | note |
+| --- | --- | --- |
+| S1 (S1b) | 0.145 | pre-dispatch VIO halt, retried |
+| S2 | 0.098 | |
+| S3 | 0.112 | |
+| S4 | 0.127 | turn-around |
+| S5 | 0.114 | |
+| S6 | 0.117 | |
+| S7 | 0.061 | |
+| S8 | 0.117 | |
+| S9 (S9b) | 0.172 halt → 0.133 | mid-leg VIO realign halt, retried |
+| S10 | 0.117 | |
+| S11 | 0.108 | |
+| S12 | 0.021 | |
+
+**11 of 12 targets on the first attempt; both retries succeeded.** 71
+pulse-open samples, 0/71 unclassifiable — the classifier held cleanly even at
+dusk. But the coordinator's `motion_dispatch_timings` deque hit its **500-sample
+cap** partway through (first seen at S5's snapshot) and began evicting
+session-3's own earliest samples, which the committed scorer's own capacity
+check is built to catch (`no_history_capacity_drop: False`) ⇒
+**INCONCLUSIVE (axis 1)**, per protocol, not from any data-quality defect.
+
+🔑 **This was a foreseen and accepted risk, not a surprise.** The session-3
+pre-dispatch note explicitly declined to clear history mid-day (to avoid mixing
+a history-reset variable into the RF-change test) and flagged that eviction
+could occur; it did, on the very next session. A future same-day multi-session
+plan should clear history between sessions whenever a >~450-sample session
+follows another same-day session, unless the pre-dispatch note has a specific
+reason not to (as this one did).
+
+### 5.3 Evidence
+
+`docs/evidence-phase1-repeat-20260914-session3/`.
+
+---
+
+## 6. What is next (decisions, not actions)
+
+1. **The queue-start bound question is still open.** No session today supports
+   moving the 2.0 s constant; none rules a future measurement finding
+   differently. Session 2 remains the only one with a computed axis 2, landing
+   in the predeclared inconclusive band.
+2. **A same-day multi-session plan needs history hygiene built in.** Clear
+   `motion_dispatch_timings` between sessions once the prior session banked
+   more than ~450 samples, unless a specific reason argues against it (as
+   session 3's did, for good reason — but the cost of that choice landed anyway).
+3. **The proxy-adjacency question is raised but not settled — see §6.3 below.**
+4. A further repeat, if wanted, should predeclare the RF change (if any) first,
    and should not assume the anchor itself gives a strong link — session 1 found
    ranked paths of −76 to −80 dBm there today, weaker than 2026-09-13's
    measurement at the same point.
+
+### 6.3 The proxy-adjacency question — still not resolved, and this is why
+
+Informally, session 3 ran all 12 dispatches without a single BLE
+`ble_client_not_connected` retry — no dropped-link wait at any point, unlike
+session 1's repeated drops under the old 5-scanner set. **That alone does not
+establish the removal helped**: session 2, run the same afternoon under the
+*unchanged* 5-scanner set, also completed all 12 targets without a single BLE
+retry. Session 1's drops came right after the mower was freshly parked near the
+anchor; sessions 2 and 3 both started from a position already inside the
+pattern. The confound (proxy removal vs. settled position vs. simple variance
+across three tries) is not separated by today's data. **A repeat that holds RF
+fixed and only varies start position, or vice versa, is the way to actually
+separate these** — not attempted today.
