@@ -1,0 +1,303 @@
+{
+ "_comment": "Capture of the mower's BLE disconnect reason codes, 2026-09-14 01:01-02:15Z. HA logger bleak_esphome=debug via logger.set_level (no proxy change, no restart) from 01:01:33Z to 02:15:40Z. Operator mowed, cancelled, sent the mower toward the dock and cancelled docking so it sat idle at map_xy (5.74, -9.22), 12.6 m from the dock, in the southern weak zone, from about 01:16:26Z until the return at about 02:14Z. Findings: docs/findings-ble-drop-reason-20260914.md.",
+ "debug_window_utc": [
+  "2026-09-14T01:01:33Z",
+  "2026-09-14T02:15:40Z"
+ ],
+ "mower_idle_position": {
+  "map_xy": [
+   5.74,
+   -9.22
+  ],
+  "distance_to_dock_m": 12.6,
+  "area": "Backyard Right",
+  "rtk": "Fix",
+  "lawn_mower_state": "paused from 01:16:26Z",
+  "position_verified_unchanged_through_utc": "01:28:56Z (device_tracker: one point since 01:16:30Z); device_position_type area_inside unchanged through 02:05Z"
+ },
+ "error_code_table_bleak_esphome": {
+  "8": "ESP_GATT_CONN_TIMEOUT: Connection failed due to timeout",
+  "19": "ESP_GATT_CONN_TERMINATE_PEER_USER: Connection terminated by peer user",
+  "22": "ESP_GATT_CONN_TERMINATE_LOCAL_HOST: Connection terminated by local host",
+  "34": "ESP_GATT_CONN_LMP_TIMEOUT",
+  "62": "ESP_GATT_CONN_FAIL_ESTABLISH: Connection failed to establish"
+ },
+ "connection_state_events": [
+  {
+   "utc": "2026-09-14T01:19:33.676978000Z",
+   "device": "Luba-VSPLV397",
+   "mac": "A8:B5:8E:2C:52:40",
+   "proxy": "p1s-printer",
+   "connected": false,
+   "mtu": 0,
+   "error": 8
+  },
+  {
+   "utc": "2026-09-14T01:22:16.795489000Z",
+   "device": "Luba-VSPLV397",
+   "mac": "A8:B5:8E:2C:52:40",
+   "proxy": "p1s-printer",
+   "connected": true,
+   "mtu": 23,
+   "error": 0
+  },
+  {
+   "utc": "2026-09-14T01:28:07.085042000Z",
+   "device": "Luba-VSPLV397",
+   "mac": "A8:B5:8E:2C:52:40",
+   "proxy": "p1s-printer",
+   "connected": false,
+   "mtu": 0,
+   "error": 8
+  },
+  {
+   "utc": "2026-09-14T01:32:21.132670000Z",
+   "device": "Luba-VSPLV397",
+   "mac": "A8:B5:8E:2C:52:40",
+   "proxy": "hot-tub-backyard",
+   "connected": true,
+   "mtu": 23,
+   "error": 0
+  },
+  {
+   "utc": "2026-09-14T01:43:54.854607000Z",
+   "device": "Luba-VSPLV397",
+   "mac": "A8:B5:8E:2C:52:40",
+   "proxy": "hot-tub-backyard",
+   "connected": false,
+   "mtu": 0,
+   "error": 8
+  },
+  {
+   "utc": "2026-09-14T01:47:25.460069000Z",
+   "device": "Luba-VSPLV397",
+   "mac": "A8:B5:8E:2C:52:40",
+   "proxy": "hot-tub-backyard",
+   "connected": true,
+   "mtu": 23,
+   "error": 0
+  },
+  {
+   "utc": "2026-09-14T01:54:15.869824000Z",
+   "device": "SCH130/230",
+   "mac": "5C:02:72:9E:1B:32",
+   "proxy": "hot-tub-backyard",
+   "connected": false,
+   "mtu": 0,
+   "error": 8
+  },
+  {
+   "utc": "2026-09-14T01:54:16.649774000Z",
+   "device": "SCH130/230",
+   "mac": "5C:02:72:9E:1B:32",
+   "proxy": "hot-tub-backyard",
+   "connected": true,
+   "mtu": 23,
+   "error": 0
+  },
+  {
+   "utc": "2026-09-14T02:05:24.090433000Z",
+   "device": "Luba-VSPLV397",
+   "mac": "A8:B5:8E:2C:52:40",
+   "proxy": "hot-tub-backyard",
+   "connected": false,
+   "mtu": 0,
+   "error": 8
+  },
+  {
+   "utc": "2026-09-14T02:07:28.220990000Z",
+   "device": "Luba-VSPLV397",
+   "mac": "A8:B5:8E:2C:52:40",
+   "proxy": "hot-tub-backyard",
+   "connected": true,
+   "mtu": 23,
+   "error": 0
+  }
+ ],
+ "mower_up_down_cycles": [
+  {
+   "from": "2026-09-14T01:19:33.676978000Z",
+   "to": "2026-09-14T01:22:16.795489000Z",
+   "state": "down",
+   "proxy_at_start": "p1s-printer",
+   "seconds": 163.1,
+   "ended_by_error": null
+  },
+  {
+   "from": "2026-09-14T01:22:16.795489000Z",
+   "to": "2026-09-14T01:28:07.085042000Z",
+   "state": "up",
+   "proxy_at_start": "p1s-printer",
+   "seconds": 350.3,
+   "ended_by_error": 8
+  },
+  {
+   "from": "2026-09-14T01:28:07.085042000Z",
+   "to": "2026-09-14T01:32:21.132670000Z",
+   "state": "down",
+   "proxy_at_start": "p1s-printer",
+   "seconds": 254.0,
+   "ended_by_error": null
+  },
+  {
+   "from": "2026-09-14T01:32:21.132670000Z",
+   "to": "2026-09-14T01:43:54.854607000Z",
+   "state": "up",
+   "proxy_at_start": "hot-tub-backyard",
+   "seconds": 693.7,
+   "ended_by_error": 8
+  },
+  {
+   "from": "2026-09-14T01:43:54.854607000Z",
+   "to": "2026-09-14T01:47:25.460069000Z",
+   "state": "down",
+   "proxy_at_start": "hot-tub-backyard",
+   "seconds": 210.6,
+   "ended_by_error": null
+  },
+  {
+   "from": "2026-09-14T01:47:25.460069000Z",
+   "to": "2026-09-14T02:05:24.090433000Z",
+   "state": "up",
+   "proxy_at_start": "hot-tub-backyard",
+   "seconds": 1078.6,
+   "ended_by_error": 8
+  },
+  {
+   "from": "2026-09-14T02:05:24.090433000Z",
+   "to": "2026-09-14T02:07:28.220990000Z",
+   "state": "down",
+   "proxy_at_start": "hot-tub-backyard",
+   "seconds": 124.1,
+   "ended_by_error": null
+  }
+ ],
+ "reconnect_path_rankings": [
+  {
+   "utc": "2026-09-14T01:22:16.580598000Z",
+   "device": "Luba-VSPLV397",
+   "paths": [
+    {
+     "proxy": "p1s-printer",
+     "rssi": -76
+    },
+    {
+     "proxy": "hot-tub-backyard",
+     "rssi": -78
+    },
+    {
+     "proxy": "atom-fireplace",
+     "rssi": -94
+    },
+    {
+     "proxy": "garage-m5stack",
+     "rssi": -97
+    }
+   ]
+  },
+  {
+   "utc": "2026-09-14T01:32:20.650788000Z",
+   "device": "Luba-VSPLV397",
+   "paths": [
+    {
+     "proxy": "hot-tub-backyard",
+     "rssi": -80
+    },
+    {
+     "proxy": "p1s-printer",
+     "rssi": -81
+    },
+    {
+     "proxy": "atom-fireplace",
+     "rssi": -96
+    },
+    {
+     "proxy": "garage-m5stack",
+     "rssi": -96
+    }
+   ]
+  },
+  {
+   "utc": "2026-09-14T01:47:22.575725000Z",
+   "device": "Luba-VSPLV397",
+   "paths": [
+    {
+     "proxy": "hot-tub-backyard",
+     "rssi": -78
+    },
+    {
+     "proxy": "p1s-printer",
+     "rssi": -80
+    },
+    {
+     "proxy": "atom-fireplace",
+     "rssi": -95
+    },
+    {
+     "proxy": "garage-m5stack",
+     "rssi": -95
+    }
+   ]
+  },
+  {
+   "utc": "2026-09-14T02:07:26.571736000Z",
+   "device": "Luba-VSPLV397",
+   "paths": [
+    {
+     "proxy": "hot-tub-backyard",
+     "rssi": -78
+    },
+    {
+     "proxy": "garage-m5stack",
+     "rssi": -91
+    },
+    {
+     "proxy": "p1s-printer",
+     "rssi": -92
+    },
+    {
+     "proxy": "atom-fireplace",
+     "rssi": -94
+    }
+   ]
+  }
+ ],
+ "pymammotion_disconnect_warnings_utc": [
+  "2026-09-14T01:43:54.856194000Z"
+ ],
+ "control_device": {
+  "name": "SCH130/230",
+  "mac": "5C:02:72:9E:1B:32",
+  "proxy": "hot-tub-backyard",
+  "stayed_allocated_at_mower_drops_utc": [
+   "2026-09-14T01:43:54.877Z",
+   "2026-09-14T02:05:24.090Z"
+  ],
+  "evidence": "bleak_esphome slot log 'used=1 ... allocated=[101165582654258]' (= 0x5C02729E1B32) immediately after each mower drop"
+ },
+ "docked_utc": "2026-09-14T02:15:01Z",
+ "battery_at_dock_pct": 50,
+ "raw_log_lines": [
+  "2026-09-14T01:19:33.676978000Z 2026-09-13 21:19:33.673 DEBUG (MainThread) [bleak_esphome.backend.client] p1s-printer [C4:DD:57:A5:77:4E]: Luba-VSPLV397 - A8:B5:8E:2C:52:40: Connection state changed to connected=False mtu=0 error=8",
+  "2026-09-14T01:19:33.677220000Z 2026-09-13 21:19:33.673 DEBUG (MainThread) [bleak_esphome.backend.client] p1s-printer [C4:DD:57:A5:77:4E]: Luba-VSPLV397 - A8:B5:8E:2C:52:40: BLE device disconnected",
+  "2026-09-14T01:22:16.580598000Z 2026-09-13 21:22:16.578 INFO (MainThread) [habluetooth.wrappers] A8:B5:8E:2C:52:40 - Luba-VSPLV397: Found 4 connection path(s), preferred order: p1s-printer (C4:DD:57:A5:77:4E) (RSSI=-76) (failures=0) (in_progress=0) (slots=3/3 free) (score=-76.0), hot-tub-backyard (C4:DD:57:70:B6:96) (RSSI=-78) (failures=0) (in_progress=0) (slots=2/3 free) (score=-78.0), atom-fireplace (DC:54:75:C8:C8:86) (RSSI=-94) (failures=0) (in_progress=0) (slots=3/3 free) (score=-94.0), garage-m5stack (78:21:84:9B:C1:D6) (RSSI=-97) (failures=0) (in_progress=0) (slots=3/3 free) (score=-97.0)",
+  "2026-09-14T01:22:16.795489000Z 2026-09-13 21:22:16.794 DEBUG (MainThread) [bleak_esphome.backend.client] p1s-printer [C4:DD:57:A5:77:4E]: Luba-VSPLV397 - A8:B5:8E:2C:52:40: Connection state changed to connected=True mtu=23 error=0",
+  "2026-09-14T01:28:07.085042000Z 2026-09-13 21:28:07.084 DEBUG (MainThread) [bleak_esphome.backend.client] p1s-printer [C4:DD:57:A5:77:4E]: Luba-VSPLV397 - A8:B5:8E:2C:52:40: Connection state changed to connected=False mtu=0 error=8",
+  "2026-09-14T01:28:07.085427000Z 2026-09-13 21:28:07.084 DEBUG (MainThread) [bleak_esphome.backend.client] p1s-printer [C4:DD:57:A5:77:4E]: Luba-VSPLV397 - A8:B5:8E:2C:52:40: BLE device disconnected",
+  "2026-09-14T01:32:20.650788000Z 2026-09-13 21:32:20.290 INFO (MainThread) [habluetooth.wrappers] A8:B5:8E:2C:52:40 - Luba-VSPLV397: Found 4 connection path(s), preferred order: hot-tub-backyard (C4:DD:57:70:B6:96) (RSSI=-80) (failures=0) (in_progress=0) (slots=2/3 free) (score=-80.0), p1s-printer (C4:DD:57:A5:77:4E) (RSSI=-81) (failures=0) (in_progress=0) (slots=3/3 free) (score=-81.0), atom-fireplace (DC:54:75:C8:C8:86) (RSSI=-96) (failures=0) (in_progress=0) (slots=3/3 free) (score=-96.0), garage-m5stack (78:21:84:9B:C1:D6) (RSSI=-96) (failures=0) (in_progress=0) (slots=3/3 free) (score=-96.0)",
+  "2026-09-14T01:32:21.132670000Z 2026-09-13 21:32:21.131 DEBUG (MainThread) [bleak_esphome.backend.client] hot-tub-backyard [C4:DD:57:70:B6:96]: Luba-VSPLV397 - A8:B5:8E:2C:52:40: Connection state changed to connected=True mtu=23 error=0",
+  "2026-09-14T01:43:54.854607000Z 2026-09-13 21:43:54.853 DEBUG (MainThread) [bleak_esphome.backend.client] hot-tub-backyard [C4:DD:57:70:B6:96]: Luba-VSPLV397 - A8:B5:8E:2C:52:40: Connection state changed to connected=False mtu=0 error=8",
+  "2026-09-14T01:43:54.855832000Z 2026-09-13 21:43:54.854 DEBUG (MainThread) [bleak_esphome.backend.client] hot-tub-backyard [C4:DD:57:70:B6:96]: Luba-VSPLV397 - A8:B5:8E:2C:52:40: BLE device disconnected",
+  "2026-09-14T01:43:54.856194000Z 2026-09-13 21:43:54.854 WARNING (MainThread) [pymammotion.transport.ble] BLETransport: device Luba-VSPLV397 disconnected",
+  "2026-09-14T01:47:22.575725000Z 2026-09-13 21:47:22.573 INFO (MainThread) [habluetooth.wrappers] A8:B5:8E:2C:52:40 - Luba-VSPLV397: Found 4 connection path(s), preferred order: hot-tub-backyard (C4:DD:57:70:B6:96) (RSSI=-78) (failures=0) (in_progress=0) (slots=2/3 free) (score=-78.0), p1s-printer (C4:DD:57:A5:77:4E) (RSSI=-80) (failures=0) (in_progress=0) (slots=3/3 free) (score=-80.0), atom-fireplace (DC:54:75:C8:C8:86) (RSSI=-95) (failures=0) (in_progress=0) (slots=3/3 free) (score=-95.0), garage-m5stack (78:21:84:9B:C1:D6) (RSSI=-95) (failures=0) (in_progress=0) (slots=3/3 free) (score=-95.0)",
+  "2026-09-14T01:47:25.460069000Z 2026-09-13 21:47:25.459 DEBUG (MainThread) [bleak_esphome.backend.client] hot-tub-backyard [C4:DD:57:70:B6:96]: Luba-VSPLV397 - A8:B5:8E:2C:52:40: Connection state changed to connected=True mtu=23 error=0",
+  "2026-09-14T01:54:15.869824000Z 2026-09-13 21:54:15.842 DEBUG (MainThread) [bleak_esphome.backend.client] hot-tub-backyard [C4:DD:57:70:B6:96]: SCH130/230 - 5C:02:72:9E:1B:32: Connection state changed to connected=False mtu=0 error=8",
+  "2026-09-14T01:54:15.870088000Z 2026-09-13 21:54:15.842 DEBUG (MainThread) [bleak_esphome.backend.client] hot-tub-backyard [C4:DD:57:70:B6:96]: SCH130/230 - 5C:02:72:9E:1B:32: BLE device disconnected",
+  "2026-09-14T01:54:15.909549000Z 2026-09-13 21:54:15.907 INFO (MainThread) [habluetooth.wrappers] 5C:02:72:9E:1B:32 - SCH130/230: Found 4 connection path(s), preferred order: hot-tub-backyard (C4:DD:57:70:B6:96) (RSSI=-78) (failures=0) (in_progress=0) (slots=1/3 free) (score=-84.08), atom-fireplace (DC:54:75:C8:C8:86) (RSSI=-86) (failures=0) (in_progress=0) (slots=3/3 free) (score=-86.0), p1s-printer (C4:DD:57:A5:77:4E) (RSSI=-89) (failures=0) (in_progress=0) (slots=3/3 free) (score=-89.0), garage-m5stack (78:21:84:9B:C1:D6) (RSSI=-91) (failures=0) (in_progress=0) (slots=3/3 free) (score=-91.0)",
+  "2026-09-14T01:54:16.649774000Z 2026-09-13 21:54:16.647 DEBUG (MainThread) [bleak_esphome.backend.client] hot-tub-backyard [C4:DD:57:70:B6:96]: SCH130/230 - 5C:02:72:9E:1B:32: Connection state changed to connected=True mtu=23 error=0",
+  "2026-09-14T02:05:24.090433000Z 2026-09-13 22:05:24.089 DEBUG (MainThread) [bleak_esphome.backend.client] hot-tub-backyard [C4:DD:57:70:B6:96]: Luba-VSPLV397 - A8:B5:8E:2C:52:40: Connection state changed to connected=False mtu=0 error=8",
+  "2026-09-14T02:05:24.091497000Z 2026-09-13 22:05:24.089 DEBUG (MainThread) [bleak_esphome.backend.client] hot-tub-backyard [C4:DD:57:70:B6:96]: Luba-VSPLV397 - A8:B5:8E:2C:52:40: BLE device disconnected",
+  "2026-09-14T02:07:26.571736000Z 2026-09-13 22:07:26.569 INFO (MainThread) [habluetooth.wrappers] A8:B5:8E:2C:52:40 - Luba-VSPLV397: Found 4 connection path(s), preferred order: hot-tub-backyard (C4:DD:57:70:B6:96) (RSSI=-78) (failures=0) (in_progress=0) (slots=2/3 free) (score=-78.0), garage-m5stack (78:21:84:9B:C1:D6) (RSSI=-91) (failures=0) (in_progress=0) (slots=3/3 free) (score=-91.0), p1s-printer (C4:DD:57:A5:77:4E) (RSSI=-92) (failures=0) (in_progress=0) (slots=3/3 free) (score=-92.0), atom-fireplace (DC:54:75:C8:C8:86) (RSSI=-94) (failures=0) (in_progress=0) (slots=3/3 free) (score=-94.0)",
+  "2026-09-14T02:07:28.220990000Z 2026-09-13 22:07:28.219 DEBUG (MainThread) [bleak_esphome.backend.client] hot-tub-backyard [C4:DD:57:70:B6:96]: Luba-VSPLV397 - A8:B5:8E:2C:52:40: Connection state changed to connected=True mtu=23 error=0"
+ ]
+}

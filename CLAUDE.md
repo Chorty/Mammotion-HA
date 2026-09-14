@@ -737,13 +737,21 @@ would spend a session controlling for a variable shown not to share the radio.
 Record: `docs/findings-ble-write-latency-mechanism-20260912.md` §4.2.
 ⚠️ The ~70 ms per-write floor and the ≥800 ms tail remain unexplained.
 
-🚨 **The mammotion integration logs NOTHING about BLE transport drops.** A
-disconnect it reports as `ble_link_live: off` left **zero** `mammotion`/`luba`
-lines in a 20-minute container-log window spanning it. Do not expect the log to
-explain a link loss.
-✅ **Re-acquisition is faster than the advertisement rate implies**: measured
-**3.5 min** unaided (2026-09-12, n = 1) via the advertisement callback registered
-unconditionally in `__init__.py`.
+🚨 **Do not rely on the integration's log to detect BLE drops.** On 2026-09-12 a
+disconnect left **zero** mammotion/luba lines; on 2026-09-14 the pymammotion
+"device disconnected" warning appeared for only **1 of 4** captured drops. The
+reliable record is bleak_esphome at debug level (set with HA's logger.set_level
+service — no proxy change, no restart): "Connection state changed to
+connected=False … error=N".
+🔑 **The southern-zone drops are CODE 8 CONNECTION TIMEOUTS — not the mower
+hanging up (19), not a proxy fault (22).** Captured 2026-09-14: 4 of 4 on two
+proxies with the mower stationary at `map_xy (5.74, −9.22)`, best ranked path
+−76 to −80 dBm; a lock on the same proxy timed out independently. Record:
+`docs/findings-ble-drop-reason-20260914.md`.
+✅ **Re-acquisition** measured **3.5 min** unaided (2026-09-12, n = 1) and
+**124–254 s** on four drops (2026-09-14), via the advertisement callback in
+`__init__.py`. 🔑 **The minutes are the mower's rare advertising, not the drop** —
+the lock on the same proxy recovered from its own timeout in 0.8 s.
 
 ### RTK
 
