@@ -381,8 +381,9 @@ queue timeouts — recorded, **not interpreted** (§5). Axis 1 fails on
 - ✅ **Operator decided 2026-09-13: classifier option A (split at stops) and RF
   option A (same four proxies, freeze held).** The repeat is predeclared in
   `docs/predeclared-queue-timeout-measurement-repeat-20260913.md`, written before
-  any repeat data. 🚨 **Its §2.8 requires the scorer code + a test reproducing
-  67/67 on the 2026-09-13 evidence to be committed BEFORE the first dispatch.**
+  any repeat data. ✅ **Its §2.8 scorer is committed:** `scripts/score_queue_measurement.py`
+  (its test pins 67/67 on the 2026-09-13 evidence, classification only). Score
+  the repeat with it UNMODIFIED.
 
 🗄️ **Before Phase 1 — one SETUP leg dispatched 2026-09-12** (unscored,
 excluded from the population by §15, committed before it ran) — `target_reached`
