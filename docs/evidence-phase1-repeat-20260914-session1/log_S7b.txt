@@ -1,0 +1,45 @@
+2026-09-14T21:41:15.602867+00:00 blade rpm 0 latched False []
+Current state:
+  enabled             : False
+  real_motion_allowed : False
+  blockers            : ['experimental_motion_disabled', 'ble_client_not_connected']
+  active_session      : None
+  work_mode           : MODE_READY
+
+Preserving: {"prefer_ble_over_wifi": true, "movement_use_wifi": false, "mow_path_fetch_enabled": false}
+
+State after change:
+  enabled             : True
+  real_motion_allowed : False
+  blockers            : ['ble_client_not_connected']
+  active_session      : None
+  work_mode           : MODE_READY
+
+OK: experimental motion is now ON.
+ARMED 2026-09-14T21:41:15Z
+{"label": "S7b", "role": "scored", "dispatched_utc": "2026-09-14T21:41:15.749578+00:00", "start": [4.872, -3.8536], "target": [4.94, -2.82], "leg_m": 1.036, "corridor_min_clearance_m": 3.89, "excursion_m": 1.0, "band": "strong", "target_rssi": -66.0, "facing_confidence": "corroborated_not_motion_confirmed", "stop_reason": "ble_client_not_connected", "landing_error_m": 1.036, "commands_sent": null, "motion_refresh_commands_sent": null, "samples_total": 219, "outcomes": {"completed": 219}}
+HALT: stop_reason ble_client_not_connected
+RUNNER rc=2 2026-09-14T21:41:15Z
+Current state:
+  enabled             : True
+  real_motion_allowed : False
+  blockers            : ['ble_client_not_connected']
+  active_session      : None
+  work_mode           : MODE_READY
+
+Preserving: {"prefer_ble_over_wifi": true, "movement_use_wifi": false, "mow_path_fetch_enabled": false}
+
+State after change:
+  enabled             : False
+  real_motion_allowed : False
+  blockers            : ['experimental_motion_disabled', 'ble_client_not_connected']
+  active_session      : None
+  work_mode           : MODE_READY
+
+OK: experimental motion is now OFF.
+Current state:
+  enabled             : False
+  real_motion_allowed : False
+  blockers            : ['experimental_motion_disabled', 'ble_client_not_connected']
+  active_session      : None
+  work_mode           : MODE_READY

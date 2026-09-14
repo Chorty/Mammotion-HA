@@ -1,0 +1,481 @@
+{
+ "axis1": {
+  "checks": {
+   "pulse_open_surviving_exclusion_ge_40": {
+    "value": 38,
+    "pass": false
+   },
+   "contributing_legs_ge_4": {
+    "value": 6,
+    "pass": true
+   },
+   "legs_with_turn_or_calibration_ge_2": {
+    "value": 6,
+    "pass": true
+   },
+   "pulse_open_share_8_to_35_pct": {
+    "value": 0.2123,
+    "pass": true
+   },
+   "unclassifiable_segments_le_20_pct_of_expected_pulses": {
+    "value": "2/40",
+    "pass": true
+   },
+   "no_unreconcilable_leg": {
+    "value": [
+     "S6"
+    ],
+    "pass": false
+   },
+   "not_truncated_by_unrelated_cause": {
+    "value": true,
+    "pass": false
+   },
+   "rf_set_unchanged": {
+    "value": true,
+    "pass": true
+   },
+   "no_history_capacity_drop": {
+    "value": true,
+    "pass": true
+   }
+  },
+  "valid": false,
+  "excluded_segments": 2,
+  "excluded_samples": 1
+ },
+ "axis2": null,
+ "result": "INCONCLUSIVE (axis 1)",
+ "legs": [
+  {
+   "label": "S1",
+   "expected_pulses": 15,
+   "expected_segment_sizes": [
+    1,
+    7,
+    7,
+    7,
+    7,
+    7,
+    7,
+    2,
+    7,
+    6,
+    7,
+    7,
+    3,
+    5,
+    3
+   ],
+   "segment_sizes": [
+    1,
+    7,
+    7,
+    7,
+    7,
+    7,
+    7,
+    2,
+    7,
+    6,
+    7,
+    7,
+    3,
+    5,
+    3
+   ],
+   "motion_after_last_stop": 0,
+   "aligned": true,
+   "reconciled": true,
+   "has_turn_or_calibration": true,
+   "segments": [
+    {
+     "segment": 0,
+     "size": 1,
+     "expected": 1,
+     "classifiable": true
+    },
+    {
+     "segment": 1,
+     "size": 7,
+     "expected": 7,
+     "classifiable": true
+    },
+    {
+     "segment": 2,
+     "size": 7,
+     "expected": 7,
+     "classifiable": true
+    },
+    {
+     "segment": 3,
+     "size": 7,
+     "expected": 7,
+     "classifiable": true
+    },
+    {
+     "segment": 4,
+     "size": 7,
+     "expected": 7,
+     "classifiable": true
+    },
+    {
+     "segment": 5,
+     "size": 7,
+     "expected": 7,
+     "classifiable": true
+    },
+    {
+     "segment": 6,
+     "size": 7,
+     "expected": 7,
+     "classifiable": true
+    },
+    {
+     "segment": 7,
+     "size": 2,
+     "expected": 2,
+     "classifiable": true
+    },
+    {
+     "segment": 8,
+     "size": 7,
+     "expected": 7,
+     "classifiable": true
+    },
+    {
+     "segment": 9,
+     "size": 6,
+     "expected": 6,
+     "classifiable": true
+    },
+    {
+     "segment": 10,
+     "size": 7,
+     "expected": 7,
+     "classifiable": true
+    },
+    {
+     "segment": 11,
+     "size": 7,
+     "expected": 7,
+     "classifiable": true
+    },
+    {
+     "segment": 12,
+     "size": 3,
+     "expected": 3,
+     "classifiable": true
+    },
+    {
+     "segment": 13,
+     "size": 5,
+     "expected": 5,
+     "classifiable": true
+    },
+    {
+     "segment": 14,
+     "size": 3,
+     "expected": 3,
+     "classifiable": true
+    }
+   ],
+   "unclassifiable_segments": 0,
+   "unclassifiable_samples": 0
+  },
+  {
+   "label": "S2",
+   "expected_pulses": 5,
+   "expected_segment_sizes": [
+    1,
+    7,
+    2,
+    6,
+    3
+   ],
+   "segment_sizes": [
+    1,
+    7,
+    2,
+    6,
+    3
+   ],
+   "motion_after_last_stop": 0,
+   "aligned": true,
+   "reconciled": true,
+   "has_turn_or_calibration": true,
+   "segments": [
+    {
+     "segment": 0,
+     "size": 1,
+     "expected": 1,
+     "classifiable": true
+    },
+    {
+     "segment": 1,
+     "size": 7,
+     "expected": 7,
+     "classifiable": true
+    },
+    {
+     "segment": 2,
+     "size": 2,
+     "expected": 2,
+     "classifiable": true
+    },
+    {
+     "segment": 3,
+     "size": 6,
+     "expected": 6,
+     "classifiable": true
+    },
+    {
+     "segment": 4,
+     "size": 3,
+     "expected": 3,
+     "classifiable": true
+    }
+   ],
+   "unclassifiable_segments": 0,
+   "unclassifiable_samples": 0
+  },
+  {
+   "label": "S3",
+   "expected_pulses": 5,
+   "expected_segment_sizes": [
+    1,
+    7,
+    3,
+    6,
+    2
+   ],
+   "segment_sizes": [
+    1,
+    7,
+    3,
+    6,
+    2
+   ],
+   "motion_after_last_stop": 0,
+   "aligned": true,
+   "reconciled": true,
+   "has_turn_or_calibration": true,
+   "segments": [
+    {
+     "segment": 0,
+     "size": 1,
+     "expected": 1,
+     "classifiable": true
+    },
+    {
+     "segment": 1,
+     "size": 7,
+     "expected": 7,
+     "classifiable": true
+    },
+    {
+     "segment": 2,
+     "size": 3,
+     "expected": 3,
+     "classifiable": true
+    },
+    {
+     "segment": 3,
+     "size": 6,
+     "expected": 6,
+     "classifiable": true
+    },
+    {
+     "segment": 4,
+     "size": 2,
+     "expected": 2,
+     "classifiable": true
+    }
+   ],
+   "unclassifiable_segments": 0,
+   "unclassifiable_samples": 0
+  },
+  {
+   "label": "S4",
+   "expected_pulses": 7,
+   "expected_segment_sizes": [
+    1,
+    5,
+    5,
+    7,
+    6,
+    7,
+    3
+   ],
+   "segment_sizes": [
+    1,
+    5,
+    5,
+    7,
+    6,
+    7,
+    3
+   ],
+   "motion_after_last_stop": 0,
+   "aligned": true,
+   "reconciled": true,
+   "has_turn_or_calibration": true,
+   "segments": [
+    {
+     "segment": 0,
+     "size": 1,
+     "expected": 1,
+     "classifiable": true
+    },
+    {
+     "segment": 1,
+     "size": 5,
+     "expected": 5,
+     "classifiable": true
+    },
+    {
+     "segment": 2,
+     "size": 5,
+     "expected": 5,
+     "classifiable": true
+    },
+    {
+     "segment": 3,
+     "size": 7,
+     "expected": 7,
+     "classifiable": true
+    },
+    {
+     "segment": 4,
+     "size": 6,
+     "expected": 6,
+     "classifiable": true
+    },
+    {
+     "segment": 5,
+     "size": 7,
+     "expected": 7,
+     "classifiable": true
+    },
+    {
+     "segment": 6,
+     "size": 3,
+     "expected": 3,
+     "classifiable": true
+    }
+   ],
+   "unclassifiable_segments": 0,
+   "unclassifiable_samples": 0
+  },
+  {
+   "label": "S5",
+   "expected_pulses": 3,
+   "expected_segment_sizes": [
+    1,
+    6,
+    5
+   ],
+   "segment_sizes": [
+    1,
+    6,
+    5
+   ],
+   "motion_after_last_stop": 0,
+   "aligned": true,
+   "reconciled": true,
+   "has_turn_or_calibration": true,
+   "segments": [
+    {
+     "segment": 0,
+     "size": 1,
+     "expected": 1,
+     "classifiable": true
+    },
+    {
+     "segment": 1,
+     "size": 6,
+     "expected": 6,
+     "classifiable": true
+    },
+    {
+     "segment": 2,
+     "size": 5,
+     "expected": 5,
+     "classifiable": true
+    }
+   ],
+   "unclassifiable_segments": 0,
+   "unclassifiable_samples": 0
+  },
+  {
+   "label": "S6",
+   "expected_pulses": 2,
+   "expected_segment_sizes": [
+    1,
+    1
+   ],
+   "segment_sizes": [
+    1
+   ],
+   "motion_after_last_stop": 0,
+   "aligned": false,
+   "reconciled": false,
+   "has_turn_or_calibration": true,
+   "segments": [
+    {
+     "segment": 0,
+     "size": 1,
+     "expected": 1,
+     "classifiable": false
+    }
+   ],
+   "unclassifiable_segments": 2,
+   "unclassifiable_samples": 1
+  },
+  {
+   "label": "S6c",
+   "expected_pulses": 3,
+   "expected_segment_sizes": [
+    1,
+    6,
+    5
+   ],
+   "segment_sizes": [
+    1,
+    6,
+    5
+   ],
+   "motion_after_last_stop": 0,
+   "aligned": true,
+   "reconciled": true,
+   "has_turn_or_calibration": true,
+   "segments": [
+    {
+     "segment": 0,
+     "size": 1,
+     "expected": 1,
+     "classifiable": true
+    },
+    {
+     "segment": 1,
+     "size": 6,
+     "expected": 6,
+     "classifiable": true
+    },
+    {
+     "segment": 2,
+     "size": 5,
+     "expected": 5,
+     "classifiable": true
+    }
+   ],
+   "unclassifiable_segments": 0,
+   "unclassifiable_samples": 0
+  }
+ ],
+ "notes": [
+  "S6b: role=scored command_results=0 -- excluded",
+  "S7: role=scored command_results=0 -- excluded",
+  "S7b: role=scored command_results=0 -- excluded"
+ ]
+}

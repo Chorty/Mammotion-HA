@@ -1,0 +1,45 @@
+2026-09-14T21:15:25.642256+00:00 blade rpm 0 latched False []
+Current state:
+  enabled             : False
+  real_motion_allowed : False
+  blockers            : ['experimental_motion_disabled']
+  active_session      : None
+  work_mode           : MODE_READY
+
+Preserving: {"prefer_ble_over_wifi": true, "movement_use_wifi": false, "mow_path_fetch_enabled": false}
+
+State after change:
+  enabled             : True
+  real_motion_allowed : True
+  blockers            : []
+  active_session      : None
+  work_mode           : MODE_READY
+
+OK: experimental motion is now ON.
+ARMED 2026-09-14T21:15:25Z
+{"label": "S6", "role": "scored", "dispatched_utc": "2026-09-14T21:15:25.829444+00:00", "start": [4.902, -4.8791], "target": [4.94, -3.82], "leg_m": 1.06, "corridor_min_clearance_m": 4.86, "excursion_m": 0.0, "band": "strong", "target_rssi": -68.0, "facing_confidence": "motion_confirmed", "stop_reason": "command_failed", "landing_error_m": 0.959, "commands_sent": 2, "motion_refresh_commands_sent": 0, "samples_total": 204, "outcomes": {"completed": 204}}
+HALT: stop_reason command_failed
+RUNNER rc=2 2026-09-14T21:15:35Z
+Current state:
+  enabled             : True
+  real_motion_allowed : False
+  blockers            : ['ble_client_not_connected']
+  active_session      : None
+  work_mode           : MODE_READY
+
+Preserving: {"prefer_ble_over_wifi": true, "movement_use_wifi": false, "mow_path_fetch_enabled": false}
+
+State after change:
+  enabled             : False
+  real_motion_allowed : False
+  blockers            : ['experimental_motion_disabled', 'ble_client_not_connected']
+  active_session      : None
+  work_mode           : MODE_READY
+
+OK: experimental motion is now OFF.
+Current state:
+  enabled             : False
+  real_motion_allowed : False
+  blockers            : ['experimental_motion_disabled', 'ble_client_not_connected']
+  active_session      : None
+  work_mode           : MODE_READY
