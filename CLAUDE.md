@@ -240,15 +240,26 @@ undecided** — `docs/predeclared-comms-abort-auto-dock-20260911.md`.
 timeout cancelling setup, a documented trap, not new) — recovered cleanly with
 a config-entry reload in ~20 s, mower position confirmed unchanged across it.
 
-⚠️ **Live state at 2026-09-14T23:42:16Z — a snapshot, not a source of truth.
-Requery before acting.** Mower **docked and charging** after the Phase 1 repeat
-(all three sessions), RTK `fix` throughout; gate disarmed (live API + RAW
-`core.config_entries` at 23:42:16Z). 🔑 **RF set CHANGED mid-day:**
-`hot-tub-backyard` was physically powered off by the operator at ~22:39Z and is
-gone from the Bluetooth scanner list — only `p1s-printer`, `garage-m5stack`,
-`atom-fireplace` remain connectable (plus `hci0`, scan-only). The two disabled
-ESPHome proxies from 2026-09-13 remain disabled, separately. **A future session
-must re-verify the scanner list rather than assume the old five.**
+⚠️ **Live state at 2026-09-15T22:54:10Z — a snapshot, not a source of truth.
+Requery before acting.** Mower **docked**, gate disarmed (live API + RAW
+`core.config_entries`), RTK `fix` throughout the whole overnight/day session
+(no motion occurred). 🚨 **Battery 54%, `charge_state: not_charging`,
+continuously since ~00:24Z** — check and resolve before the next hardware
+session. 🔑 **RF set is back to all four connectable proxies**
+(`hot-tub-backyard`, `p1s-printer`, `garage-m5stack`, `atom-fireplace`, plus
+`hci0` scan-only) — `p1s-printer` was temporarily removed for the
+2026-09-14/15 BLE test (`docs/findings-ble-proxy-adjacency-test-20260915.md`)
+and restored same session. 🔧 **Both `hot-tub-backyard.yaml` and
+`p1s-printer.yaml` are now running NEW ESPHome firmware**: a `Bluetooth
+Scanning` template switch (confirmed NOT equivalent to removing the proxy —
+see the finding) and LUX/power-sensor `update_interval` slowed 5s→60s on both.
+**A future session must not assume the old two-device firmware or the old
+5-second sensor cadence.**
+⚠️ **(2026-09-14T23:42:16Z)** Mower docked and charging after the Phase 1
+repeat (all three sessions), RTK `fix` throughout; gate disarmed. RF set at
+that point: `hot-tub-backyard` physically powered off, only `p1s-printer`,
+`garage-m5stack`, `atom-fireplace` connectable — superseded by the restoration
+above.
 ⚠️ **(2026-09-14T22:34:29Z)** Mower docked and charging after sessions 1–2 only,
 RTK `fix`; gate disarmed. Still the old five-proxy set at that point —
 `hot-tub-backyard` was removed afterward, between sessions 2 and 3.
@@ -443,6 +454,52 @@ still does not move.** Full record: `docs/findings-phase1-repeat-20260914.md`.
   varying start position (or vice versa) is what would actually separate this.
 - 🛑 `_BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS` **stays 2.0.** No session today
   (nor 2026-09-13) has produced grounds to move it.
+
+✅ **THE PROXY-ADJACENCY QUESTION WAS ACTUALLY TESTED 2026-09-14/15 (passive,
+no motion) — the original hypothesis did NOT hold up, and removing a proxy made
+things WORSE, not better.** Full record:
+`docs/findings-ble-proxy-adjacency-test-20260915.md`.
+- Five windows, no motion/VIO/gate at any point, mower stationary on the dock:
+  A (3 proxies, 20 min, 0 drops), B (5 proxies, 20 min, 2 drops), C (5 proxies,
+  45 min, 0 drops — **same config as B, opposite result**, meaning A vs B/C
+  cannot separate "proxy count" from run-to-run variance), **D (3 proxies,
+  `p1s-printer` disabled, 45 min, 7 drop/reconnect cycles — the worst result of
+  the whole investigation, ~80% disconnected)**, E (4 proxies + firmware
+  changes below, 20 min, 0 drops — clean, but not proof of anything given C's
+  precedent).
+- 🔑 **Window D's mechanism: `hot-tub-backyard` never got a single connection
+  despite being present with the strongest historical signal all night.** The
+  mower advertises only while disconnected, roughly once per ~10 min; with
+  fewer proxies listening, HA can only offer whichever proxy happened to
+  overhear that rare advertisement — not the objectively best signal. This
+  argues for keeping MORE proxies in the pool, the opposite of the hypothesis
+  this investigation started from.
+- 🚨 **Two real reproductions of the `error=8` "CODE 8 CONNECTION TIMEOUT"
+  signature** (`docs/findings-ble-drop-reason-20260914.md`) happened in Window
+  D, both on the weak fallback proxies once `hot-tub-backyard` was
+  unreachable — the first reproduction of that exact signature outside the
+  original finding.
+- 🔧 **A `Bluetooth Scanning` template switch was added and flashed to both
+  `hot-tub-backyard.yaml` and `p1s-printer.yaml`** (calls
+  `esp32_ble_tracker.start_scan`/`stop_scan`) — **tested live and confirmed it
+  does NOT remove a proxy from HA's pool or touch its connections.** It only
+  pauses advertisement scanning; `bluetooth_proxy`'s ability to hold GATT
+  connections has no discovered runtime toggle in stock ESPHome. Useful as a
+  scanning control, not as a stand-in for physically removing/reflashing a
+  proxy.
+- 🔧 **Both proxies' LUX/power-monitor sensors slowed from `update_interval:
+  5s` to `60s`** (both are original ESP32 boards sharing one radio between
+  WiFi and Bluetooth) — on the hypothesis that continuous WiFi chatter competes
+  with BLE scanning for the shared radio. Supporting evidence: `p1s-printer`'s
+  own OTA upload failed twice with connection resets before succeeding, direct
+  evidence of WiFi-side stress on that device. Window E was clean afterward but
+  **is not proof this fix worked** — one 20-minute window can't distinguish it
+  from Window C's clean 45 minutes on the old firmware.
+- ⚠️ **Both proxies are now running new firmware** (switch + slower sensor
+  cadence) as of 2026-09-15 — any future BLE observation is against this new
+  baseline, not what sessions 1–3 of the Phase 1 repeat ran under.
+- ⚠️ **Battery observed stuck at `not_charging`, 54%, while docked continuously
+  from ~00:24Z through ~22:54Z on 2026-09-15** — flagged, not investigated.
 
 🗄️ **Before Phase 1 — one SETUP leg dispatched 2026-09-12** (unscored,
 excluded from the population by §15, committed before it ran) — `target_reached`
@@ -765,13 +822,20 @@ integration calls `bluetooth.async_ble_device_from_address(hass, mac, True)`, an
 HA routes through the best-RSSI *connectable* scanner. 🛑 **Do not build
 proxy-switching logic.** BLE has no roaming, so a switch means disconnect +
 reconnect, and reconnect routing is decided from advertisements this mower emits
-~once per 10 min and **not at all while connected**. 🔑 **As of 2026-09-14
-~22:39Z, `hot-tub-backyard` is physically powered off** (operator, on the
-suspicion that it sat too close to `p1s-printer` to add path diversity —
-`docs/findings-phase1-repeat-20260914.md` §6.3, still unresolved). **Four
-scanners now exist** (`hci0` scan-only; `atom-fireplace`, `p1s-printer`,
-`garage-m5stack` connectable) — was five. Verify the live scanner list before
-trusting this count. ✏️ **The mower does NOT hold a fixed proxy — it
+~once per 10 min and **not at all while connected**. 🔑 **This ~10-min-advert
+mechanism is now DIRECTLY IMPLICATED, not just documented as a fact:** the
+2026-09-14/15 test (`docs/findings-ble-proxy-adjacency-test-20260915.md`) found
+`hot-tub-backyard` sitting idle with free slots but serving ZERO reconnects for
+45 straight minutes once a proxy was removed — it simply never happened to be
+listening at the rare moment the mower advertised, so HA never even offered it
+as a candidate. **Removing a proxy shrinks the odds ANY of them catches the
+next advertisement; it does not remove "interference."** All five original
+scanners are back as of 2026-09-15 (`hci0` scan-only; `hot-tub-backyard`,
+`p1s-printer`, `garage-m5stack`, `atom-fireplace` connectable) — the operator's
+suspicion that `hot-tub-backyard`/`p1s-printer` adjacency was the problem is
+**refuted by testing, not just unresolved**: removing either one made things
+the same or worse, never better. Verify the live scanner list before trusting
+any count, regardless. ✏️ **The mower does NOT hold a fixed proxy — it
 moves between reconnects**: `hot-tub-backyard` at 2026-09-12 03:0xZ and
 2026-09-13 01:58Z, but `p1s-printer` ranked first at 2026-09-12 17:30Z. Never
 state which proxy it is on without a fresh read of HA's Bluetooth connection

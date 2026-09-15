@@ -1,0 +1,40 @@
+{
+ "window": "B",
+ "duration_min": 20.0,
+ "events": [
+  {
+   "t": "2026-09-15T00:51:49.240381+00:00",
+   "proxy": "C4",
+   "event": "start"
+  },
+  {
+   "t": "2026-09-15T00:57:41.931167+00:00",
+   "proxy": null,
+   "event": "disconnect",
+   "was": "C4"
+  },
+  {
+   "t": "2026-09-15T01:02:56.362127+00:00",
+   "proxy": "C4",
+   "event": "reconnect",
+   "was": null
+  },
+  {
+   "t": "2026-09-15T01:06:10.475931+00:00",
+   "proxy": null,
+   "event": "disconnect",
+   "was": "C4"
+  },
+  {
+   "t": "2026-09-15T01:11:17.236104+00:00",
+   "proxy": "C4",
+   "event": "reconnect",
+   "was": null
+  },
+  {
+   "t": "2026-09-15T01:12:03.569856+00:00",
+   "proxy": "C4",
+   "event": "end"
+  }
+ ]
+}
