@@ -19,8 +19,8 @@ esp32:
   variant: esp32
   framework:
     type: esp-idf
-    version: recommended  
-    
+    version: recommended
+
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
@@ -39,12 +39,12 @@ api:
 ota:
   - platform: esphome
 
-   
+
 
 # web_server:
 #   port: 80
 
-# 
+#
 # esp32_ble_tracker:
 
 esp32_ble_tracker:
@@ -106,7 +106,7 @@ light:
   - platform: binary
     name: "Relay1 Left LED"
     id: relay1_led
-    internal: true    
+    internal: true
     output: relay1_led_gpio
   - platform: binary
     name: "Relay2 Right LED"
@@ -143,7 +143,7 @@ sensor:
     current_resistor: ${current_res}
     voltage_divider: ${voltage_div}
     change_mode_every: 3
-    update_interval: 60s    
+    update_interval: 60s
     current:
       name: "${display_name} Amps"
       unit_of_measurement: A
@@ -155,7 +155,7 @@ sensor:
     power:
       name: "${display_name} Watts"
       unit_of_measurement: W
-      accuracy_decimals: 0    
+      accuracy_decimals: 0
       filters:
         - calibrate_linear:
             - 0.0 -> 0.0
@@ -185,8 +185,8 @@ binary_sensor:
     name: ${display_name} Button2
     on_press:
       - switch.toggle: relay2
-
+
 status_led:
   pin:
     number: GPIO5
-    inverted: true  
+    inverted: true
