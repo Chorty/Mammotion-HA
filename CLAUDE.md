@@ -240,21 +240,21 @@ undecided** — `docs/predeclared-comms-abort-auto-dock-20260911.md`.
 timeout cancelling setup, a documented trap, not new) — recovered cleanly with
 a config-entry reload in ~20 s, mower position confirmed unchanged across it.
 
-⚠️ **Live state at 2026-09-15T22:54:10Z — a snapshot, not a source of truth.
-Requery before acting.** Mower **docked**, gate disarmed (live API + RAW
-`core.config_entries`), RTK `fix` throughout the whole overnight/day session
-(no motion occurred). 🚨 **Battery 54%, `charge_state: not_charging`,
-continuously since ~00:24Z** — check and resolve before the next hardware
-session. 🔑 **RF set is back to all four connectable proxies**
-(`hot-tub-backyard`, `p1s-printer`, `garage-m5stack`, `atom-fireplace`, plus
-`hci0` scan-only) — `p1s-printer` was temporarily removed for the
-2026-09-14/15 BLE test (`docs/findings-ble-proxy-adjacency-test-20260915.md`)
-and restored same session. 🔧 **Both `hot-tub-backyard.yaml` and
-`p1s-printer.yaml` are now running NEW ESPHome firmware**: a `Bluetooth
-Scanning` template switch (confirmed NOT equivalent to removing the proxy —
-see the finding) and LUX/power-sensor `update_interval` slowed 5s→60s on both.
-**A future session must not assume the old two-device firmware or the old
-5-second sensor cadence.**
+⚠️ **Live state at 2026-09-15T23:42:15Z — a snapshot, not a source of truth.
+Requery before acting.** Mower **docked and charging** (52%, `charging: on` —
+the earlier `not_charging` flag resolved on its own), gate disarmed (live API
++ RAW `core.config_entries`), RTK `fix` throughout the entire day (one brief
+`Float` episode 23:10–23:16Z, tied to a config-entry reload, self-recovered).
+🔑 **A real S1–S12 click-to-path run completed the same evening, on the new
+firmware, cleanly on the first try** — `docs/findings-phase1-repeat-20260915.md`.
+**RF set is all five scanners** (`hot-tub-backyard`, `p1s-printer`,
+`garage-m5stack`, `atom-fireplace` connectable, plus `hci0` scan-only) —
+`p1s-printer` was temporarily removed earlier the same day for the BLE test
+and restored. 🔧 **Both `hot-tub-backyard.yaml` and `p1s-printer.yaml` are
+running NEW ESPHome firmware**: a `Bluetooth Scanning` template switch
+(confirmed NOT equivalent to removing the proxy) and LUX/power-sensor
+`update_interval` slowed 5s→60s on both. **A future session must not assume
+the old two-device firmware or the old 5-second sensor cadence.**
 ⚠️ **(2026-09-14T23:42:16Z)** Mower docked and charging after the Phase 1
 repeat (all three sessions), RTK `fix` throughout; gate disarmed. RF set at
 that point: `hot-tub-backyard` physically powered off, only `p1s-printer`,
@@ -498,8 +498,35 @@ things WORSE, not better.** Full record:
 - ⚠️ **Both proxies are now running new firmware** (switch + slower sensor
   cadence) as of 2026-09-15 — any future BLE observation is against this new
   baseline, not what sessions 1–3 of the Phase 1 repeat ran under.
-- ⚠️ **Battery observed stuck at `not_charging`, 54%, while docked continuously
-  from ~00:24Z through ~22:54Z on 2026-09-15** — flagged, not investigated.
+- ✅ **`not_charging` at 54% resolved on its own** once properly docked;
+  post-session read `charging: on`, 52%.
+
+✅ **REAL-MOTION RETEST, SAME DAY (2026-09-15 evening) — session 4, the
+cleanest full run of the whole investigation.** Full record:
+`docs/findings-phase1-repeat-20260915.md`.
+- **The two 2026-09-14 BLE-drop failures (S6, S7) both retested clean** under
+  real motion (200 ms refresh cadence — a much harder BLE test than the
+  passive dock windows): `target_reached` at 0.093 m and 0.099 m, zero drops,
+  on the new firmware.
+- **A full fresh S1–S12 run then completed on the FIRST TRY — zero retries,
+  zero halts of any kind, all 12 landings 0.059–0.148 m.** Axis 1 fully
+  PASSES; axis 2's `q_p95` is **254.2 ms — the lowest of any session, only
+  4 ms over the 250 ms "clearly fine" bar**, still formally `4_inconclusive`
+  per the fixed (never-retroactively-moved) threshold.
+- 🚨 **Run entirely after sunset, on explicit operator instruction to
+  disregard the sun-elevation rule for these runs going forward** (after the
+  2026-09-12 precedent was restated). `vio_tracked_features`/
+  `visual_positioning_status` were kept fully enforced regardless — the
+  operator did not ask to relax those, and neither halted once across the
+  whole session.
+- 🔑 **Reloading the integration to clear timing history, then dispatching
+  immediately, cost ~5.5 minutes of RTK `Float` before it self-recovered to
+  `Fix`.** The runner correctly halted on this rather than proceeding. Build
+  in a buffer after any pre-session reload before the first real dispatch.
+- ⚠️ **Still no controlled evidence the WiFi-chatter firmware fix is what
+  made this session clean** — one good run doesn't rule out "today was just
+  a good day," the same caveat Window E carried in the proxy-adjacency test.
+- 🛑 `_BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS` **still stays 2.0.**
 
 🗄️ **Before Phase 1 — one SETUP leg dispatched 2026-09-12** (unscored,
 excluded from the population by §15, committed before it ran) — `target_reached`
