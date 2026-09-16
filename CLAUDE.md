@@ -33,8 +33,8 @@ byte-identical, card md5 `34ed672c` at both serving paths, Lovelace
 `enabled: false` (live API + RAW `core.config_entries`, and still disarmed
 after the dry run), API back in 30 s. Dark-safe dry run `would_send: false`,
 `attempted: false`, `blockers: []`. Record: `docs/deploy-runbook-p0.md`.
-⚠️ **Browser confirmation OWED** — the card footer must be checked to read
-`v0.6.4-beta106`.
+✅ **Browser-confirmed 2026-09-16** — operator reports the card footer reads
+`v0.6.4-beta106`. beta106 is fully verified end to end.
 ⚠️ **The file count moved 51 → 52** — the new
 `custom_components/mammotion/www/ble-coverage.json`. A future deploy comparing
 against "51 files" will look like a mismatch and is not one.

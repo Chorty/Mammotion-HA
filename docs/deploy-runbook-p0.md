@@ -49,9 +49,12 @@ loaded from `/mammotion/` or `/hacsfiles/`. Verified live: that URL returns
 
 Backup taken first: `/config/mammotion-backup-20260916-0751-pre-beta106.tgz`.
 
-⚠️ **Browser confirmation OWED** — the card footer must be checked to read
-`v0.6.4-beta106`. A correct backend deploy with a stale card cache is still a
-failed deployment.
+✅ **Browser-confirmed 2026-09-16** — operator reports the card footer reads
+`v0.6.4-beta106`, so the Lovelace cache key did its job and the browser is not
+serving a stale card. **beta106 is verified end to end.**
+⚠️ **Still unverified: that the BLE overlay actually PAINTS correctly.** The
+version string proves the new card loaded, not that the overlay renders. That
+needs eyes on the map with the toggle switched on.
 ✏️ **0 unavailable entities** this time; earlier deploys recorded five benign
 ones (four `emergency_nudge_*` plus `start_camera_on_mower`). Nothing was done
 to change that — note it, do not treat five as the expected baseline.
