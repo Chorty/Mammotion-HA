@@ -1,0 +1,23 @@
+# tracing while-connected RSSI for 60 min, every 1s, creating /Users/mattjoslin/Documents/Git Projects/Mammotion-HA/scripts/ble_proxy_connected_trace_log.jsonl
+# run a real click-to-path session in parallel -- this script does not drive the mower
+2026-09-16T22:00:28Z  pos=(4.995, -2.9466)  proxy=atom-fireplace (DC:54:75:C8:C8:86) rssi=-86
+2026-09-16T22:00:29Z  pos=(4.995, -2.9466)  proxy=atom-fireplace (DC:54:75:C8:C8:86) rssi=-86
+2026-09-16T22:00:30Z  pos=(4.995, -2.9466)  proxy=atom-fireplace (DC:54:75:C8:C8:86) rssi=-86
+2026-09-16T22:00:31Z  pos=(4.995, -2.9466)  proxy=disconnected     rssi=-86
+2026-09-16T22:00:32Z  pos=(4.995, -2.9466)  proxy=disconnected     rssi=-86
+2026-09-16T22:00:33Z  pos=(4.995, -2.9466)  proxy=disconnected     rssi=-86
+2026-09-16T22:00:34Z  pos=(4.995, -2.9466)  proxy=disconnected     rssi=-86
+2026-09-16T22:00:35Z  pos=(4.995, -2.9466)  proxy=disconnected     rssi=-86
+2026-09-16T22:00:36Z  pos=(4.995, -2.9466)  proxy=disconnected     rssi=-86
+2026-09-16T22:00:37Z  pos=(4.995, -2.9466)  proxy=disconnected     rssi=-86
+2026-09-16T22:00:38Z  pos=(4.995, -2.9466)  proxy=disconnected     rssi=-86
+2026-09-16T22:00:39Z  pos=(4.995, -2.9466)  proxy=disconnected     rssi=-86
+2026-09-16T22:00:40Z  pos=(4.995, -2.9466)  proxy=disconnected     rssi=-86
+2026-09-16T22:00:41Z  pos=(4.995, -2.9466)  proxy=disconnected     rssi=-86
+2026-09-16T22:00:42Z  pos=(4.995, -2.9466)  proxy=disconnected     rssi=-86
+2026-09-16T22:00:43Z  pos=(4.995, -2.9466)  proxy=disconnected     rssi=-86
+2026-09-16T22:00:44Z  pos=(4.995, -2.9466)  proxy=disconnected     rssi=-86
+2026-09-16T22:00:45Z  pos=(4.995, -2.9466)  proxy=disconnected     rssi=-86
+2026-09-16T22:00:46Z  pos=(4.995, -2.9466)  proxy=disconnected     rssi=-86
+2026-09-16T22:00:47Z  pos=(4.995, -2.9466)  proxy=disconnected     rssi=-86
+2026-09-16T22:00:48Z  pos=(4.995, -2.9466)  proxy=disconnected     rssi=-86

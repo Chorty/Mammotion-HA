@@ -101,6 +101,8 @@ class CurrentProxy:
         """Start with no allocation known yet."""
         self.source_mac: str | None = None
         self.name = "?"
+        #: Latest allocation list per scanner source, merged across events.
+        self.allocations: dict[str, list[str]] = {}
 
     def set(self, source_mac: str | None, scanners: dict[str, str]) -> None:
         """Record the mower's current allocation; ``None`` means disconnected."""
@@ -125,8 +127,22 @@ def _handle_allocation_event(
                 scanners[entry.get("source", "")] = entry.get("name", "?")
         return
     if msg.get("id") == 2 and isinstance(event, list):
+        # 🚨 Only the FIRST event is a full snapshot; every later one carries
+        # just the scanner(s) whose allocations changed. Deciding "which proxy
+        # holds the mower" from one event therefore called the mower
+        # disconnected whenever an UNRELATED scanner updated -- measured
+        # 2026-09-16: every row read "disconnected" while HA had it allocated
+        # on atom-fireplace. Merge per source, then look across all of them.
+        for entry in event:
+            source = entry.get("source")
+            if source:
+                current.allocations[source] = list(entry.get("allocated") or [])
         found = next(
-            (a.get("source") for a in event if MOWER_MAC in (a.get("allocated") or [])),
+            (
+                source
+                for source, allocated in current.allocations.items()
+                if MOWER_MAC in allocated
+            ),
             None,
         )
         current.set(found, scanners)

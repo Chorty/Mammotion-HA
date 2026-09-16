@@ -155,3 +155,15 @@ The run is **INVALID** (no coverage claim at all, whatever §5 says) if either:
 - **INVALID §6.1:** the tracer's RSSI source is unfit for coverage mapping; stop
   collecting until a live connection RSSI is found. **INVALID §6.2:** fix
   attribution in the tracer before any repeat.
+
+## 9. Pre-dispatch instrument fix (2026-09-16 22:00Z, before S1)
+
+The tracer was started at 22:00:2xZ and tagged **every** row `disconnected` while
+HA had the mower allocated on `atom-fireplace` (inventory 22:00:20Z). Raw capture:
+`bluetooth/subscribe_connection_allocations` sends a full snapshot first, then
+**one-scanner deltas**; the tracer decided attribution from each event alone, so
+any unrelated scanner's update read as a disconnect. §6.2 would have voided the
+run. Fixed (allocations merged per source) with tests, **before any dispatch**;
+no rule above changed. The pre-fix rows are banked, excluded, as
+`evidence-ble-connected-trace-20260916/aborted_prefix_trace_log.jsonl` and the
+tracer restarted on an empty log.
