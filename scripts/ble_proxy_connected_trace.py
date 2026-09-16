@@ -181,7 +181,11 @@ async def _track_allocations(
             backoff = 2.0
         except AuthRejected:
             raise
-        except aiohttp.ClientError, OSError, TimeoutError:
+        except aiohttp.ClientError, aiohttp.WSMessageTypeError, OSError, TimeoutError:
+            # WSMessageTypeError (a non-TEXT frame, e.g. a CLOSE during a
+            # proxy hiccup) is a TypeError subclass, NOT an
+            # aiohttp.ClientError -- missing it crashed a sibling collector
+            # after 10 minutes on 2026-09-16.
             if time.time() >= deadline:
                 return
             await asyncio.sleep(backoff)

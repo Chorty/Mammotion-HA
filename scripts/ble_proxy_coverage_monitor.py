@@ -266,7 +266,16 @@ async def main(duration_s: float, position_interval_s: float) -> None:
                     except AuthRejected as exc:
                         emit(f"AUTH FAILED (terminal, not retrying): {exc}")
                         raise
-                    except (aiohttp.ClientError, OSError, TimeoutError) as exc:
+                    except (
+                        aiohttp.ClientError,
+                        aiohttp.WSMessageTypeError,
+                        OSError,
+                        TimeoutError,
+                    ) as exc:
+                        # WSMessageTypeError (a non-TEXT frame, e.g. a CLOSE
+                        # during a proxy hiccup) is a TypeError subclass, NOT
+                        # an aiohttp.ClientError -- missing it here crashed a
+                        # live 8h run after 10 minutes on 2026-09-16.
                         if time.time() >= deadline:
                             break
                         emit(
