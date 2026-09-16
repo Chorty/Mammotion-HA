@@ -64,3 +64,40 @@ declared, not relaxed after seeing the numbers.
   the unexplained monotonic turn-rate decline (16.01 → 15.52 → 13.25 °/s).
 - Before S1 the tracer tagged every row `disconnected` (§9) — the allocation
   subscription sends one-scanner deltas after its first snapshot.
+
+---
+
+## Run 2 (2026-09-16 23:47Z) — INSUFFICIENT (truncated at S2 by VIO) — instrument VALID
+
+Rules: §10 (two proxies) and §11 (operator low-sun override, VIO dips not
+retried). Evidence: `evidence-ble-connected-trace-20260916/run2/`
+(`trace_log_run2.jsonl` = rows at/after `tracer_start_utc.txt`, 23:47:02Z).
+
+**Before S1:** the mower had been undocked at 22:57Z without driving, so facing
+was `unknown` (sources 97.5° apart). The operator confirmed by eye that it faced
+south; one 1800 ms forward `manual_velocity_pulse_test` at 23:45:27Z moved it
+**0.656 m due south** and facing became `motion_confirmed`, 175.9° compass, all
+three sources within 0.9°. The gate had been found **armed at rest** at 23:36Z
+(and at ~22:32Z) and was disarmed each time; attribution not established.
+
+| check | result |
+| --- | --- |
+| RF set | `hot-tub-backyard`, `p1s-printer` (+ `hci0` scan-only); mower on **`p1s-printer`** |
+| S1 | `target_reached` 0.121 m (sun −1.5°, override logged by the runner) |
+| S2 | HALT pre-dispatch: `vio_tracked_features min 60 below 70` — not retried (§11); sequence stopped |
+| §6.1 live RSSI | 27 samples in the 30 s motion window = **0.90 /s** — PASS |
+| §6.2 attribution | 0 of 31 rows unattributed — PASS |
+| samples | 62 rows → 45 kept (17 re-reads), all `p1s-printer` |
+| route cells covered | **0 / 6** — both cells hit are off-route (`x 5..6`) |
+
+| cell centre | n | median | min | max |
+| --- | --- | --- | --- | --- |
+| (5.5, -4.5) | 21 | -66 | -76 | -62 |
+| (5.5, -3.5) | 24 | -66 | -70 | -62 |
+
+🔑 **Observation, not a claim:** those same two cells read **−90** median (n 28,
+15) on `atom-fireplace` in run 1, three and a half hours earlier — a **~24 dB**
+difference between proxies at the same spot, well outside the 5.5 dB within-cell
+sd. It is consistent with proxy placement mattering a great deal, and equally
+with `ble_rssi` not being comparable across proxies; two cells and one run each
+cannot separate those.
