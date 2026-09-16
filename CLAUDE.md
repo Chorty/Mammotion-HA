@@ -24,7 +24,34 @@ prose around them is still true. **One grep against the tree beats this file.**
 
 ---
 
-## Current build: beta105 (deployed 2026-09-15; backend `chorty-0.8.12.post4`)
+## Current build: beta106 (deployed 2026-09-16; backend `chorty-0.8.12.post4`)
+
+✅ **beta106 verified end to end 2026-09-16 11:50-12:05 UTC** — **52/52** files
+byte-identical, card md5 `34ed672c` at both serving paths, Lovelace
+`?v=0.6.4-beta106&build=34ed672c`, backend read from inside the container,
+**133 entities, 0 unavailable**, **68 services**, config entry `loaded`, gate
+`enabled: false` (live API + RAW `core.config_entries`, and still disarmed
+after the dry run), API back in 30 s. Dark-safe dry run `would_send: false`,
+`attempted: false`, `blockers: []`. Record: `docs/deploy-runbook-p0.md`.
+⚠️ **Browser confirmation OWED** — the card footer must be checked to read
+`v0.6.4-beta106`.
+⚠️ **The file count moved 51 → 52** — the new
+`custom_components/mammotion/www/ble-coverage.json`. A future deploy comparing
+against "51 files" will look like a mismatch and is not one.
+✅ **`main` was pushed BEFORE triggering the workflow** this time
+(`67a6246a..229034d1`), so the release ran against current code — the beta105
+stale-`origin/main` reconciliation was not repeated. **Keep doing this.**
+
+**What beta106 shipped** — **no motion-control-law value changed,
+`accepted-profile.json` untouched, no Gate 5 owed**:
+- `4e3cca8e` — **BLE coverage as a toggleable overlay on the click-to-go map**,
+  with zoom/pan on that same map, plus the deployed
+  `custom_components/mammotion/www/ble-coverage.json` asset.
+- `59ededaf` — its generator, `scripts/build_ble_coverage_map.py`.
+See the BLE section for the three invariants that keep the overlay from
+silently corrupting click-to-go, each pinned by a test.
+
+### Previously: beta105 (deployed 2026-09-15)
 
 ✅ **beta105 verified end to end 2026-09-15 23:57-23:59 UTC** — 51/51 files
 byte-identical, card md5 `535b3130…` at both serving paths, Lovelace
@@ -259,8 +286,13 @@ undecided** — `docs/predeclared-comms-abort-auto-dock-20260911.md`.
 timeout cancelling setup, a documented trap, not new) — recovered cleanly with
 a config-entry reload in ~20 s, mower position confirmed unchanged across it.
 
-⚠️ **Live state at 2026-09-16T03:32Z — a snapshot, not a source of truth.
-Requery before acting.** Mower **docked and charging** (53%, `charging: on`),
+⚠️ **Live state at 2026-09-16T12:05Z — a snapshot, not a source of truth.
+Requery before acting.** Host runs **beta106** (deployed this session, see
+"Current build"). Mower **docked**, `work_mode: MODE_READY`, gate disarmed
+(live API + RAW `core.config_entries`, re-verified after a dry run), 133
+entities with **0 unavailable**, config entry `loaded`. No motion was commanded
+at any point during the deploy.
+⚠️ **(2026-09-16T03:32Z)** Mower **docked and charging** (53%, `charging: on`),
 gate disarmed (live API + RAW `core.config_entries`), RTK `fix`, after the
 RTK square-return test (03:03–03:18Z, see above) and a clean
 `lawn_mower.dock` that reached `CHARGE_ON` in ~1.5 min. Host runs **beta105**

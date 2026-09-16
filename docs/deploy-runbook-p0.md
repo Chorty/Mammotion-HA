@@ -8,6 +8,60 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### ✅ 2026-09-16 11:50-12:05 UTC — beta106 deployed (BLE coverage overlay on the click-to-go card)
+
+`0.6.4-beta106`, cut from `main` at `45383f43` (version-bump commit, tagged
+`v0.6.4-beta106`). Backend `chorty-0.8.12.post4`, unchanged. Local `main` was
+pushed to `Chorty` BEFORE triggering the workflow (`67a6246a..229034d1`), so
+unlike beta105 the release ran against current code and no merge reconciliation
+was needed.
+
+**What shipped** — two feature commits, **no motion-control-law value changed,
+`docs/accepted-profile.json` untouched, no Gate 5 owed**:
+- `4e3cca8e` — BLE coverage as a toggleable overlay on the click-to-go map,
+  plus zoom/pan on that map. Adds `custom_components/mammotion/www/ble-coverage.json`.
+- `59ededaf` — the generator, `scripts/build_ble_coverage_map.py`.
+
+🔑 **No backend service was added.** `async_setup` already registers
+`StaticPathConfig("/mammotion", WWW_DIR)`, so the card fetches
+`/mammotion/ble-coverage.json` — an absolute path that holds whether the card
+loaded from `/mammotion/` or `/hacsfiles/`. Verified live: that URL returns
+**200 with 30 681 bytes**, matching the file on disk.
+
+**Verification tail (measured, not expected):**
+
+| check | result |
+| --- | --- |
+| archive sha256 | `b8b642dee06384175445f05d218fce073bbf968c8abc43e2e3c30030473c1288`, identical local and host |
+| files byte-identical | **52/52** — ⚠️ up from 51, the new `ble-coverage.json`; not a mismatch |
+| AppleDouble junk | 0 (`COPYFILE_DISABLE=1` held) |
+| card md5 | `34ed672c3bb0928a9219c8bf5e4440cb` at BOTH serving paths, equal to local |
+| host versions | `manifest.json` and `CARD_VERSION` both `0.6.4-beta106` |
+| Lovelace resource | `?v=0.6.4-beta106&build=34ed672c` (read back and verified) |
+| backend | `pymammotion 0.8.12.post4`, read from inside the container |
+| API return | 30 s; 133 entities at 139 s |
+| entities | **133, 0 unavailable** |
+| services | 68 |
+| config entry | `state: loaded`, `disabled_by: null`, `01M1CVFWHYWW527S9BM5M2BDP3` |
+| gate | `enabled: false`, `real_motion_allowed: false`, `active_session: None`; RAW `core.config_entries` options carry no `experimental_motion` key |
+| dark-safe dry run | `raw_pymammotion_motion_probe` at 3000 ms / linear 400: `would_send: false`, `attempted: false`, `blockers: []` |
+| gate after dry run | still disarmed |
+
+Backup taken first: `/config/mammotion-backup-20260916-0751-pre-beta106.tgz`.
+
+⚠️ **Browser confirmation OWED** — the card footer must be checked to read
+`v0.6.4-beta106`. A correct backend deploy with a stale card cache is still a
+failed deployment.
+✏️ **0 unavailable entities** this time; earlier deploys recorded five benign
+ones (four `emergency_nudge_*` plus `start_camera_on_mower`). Nothing was done
+to change that — note it, do not treat five as the expected baseline.
+🗑️ **Two dry-run attempts were wasted on bad parameters before this one:**
+`command: "forward"` is not in the schema (valid: `send_movement`,
+`move_forward`, `move_back`, `move_left`, `move_right`) and returned a bare
+`400: Bad Request`; then `duration_ms: 12000` tripped
+`duration_over_4000ms_requires_max_travel_m`. Keep a verification dry run
+**under 4000 ms** unless `max_travel_m` and in-window sampling are supplied.
+
 ### ✅ 2026-09-15 23:57-23:59 UTC — beta105 deployed (BLE upstream ports + services.yaml field docs)
 
 `0.6.4-beta105`, cut from `main` at `9b7965bc` (merge of the Beta Release
