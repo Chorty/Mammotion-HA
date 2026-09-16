@@ -1,0 +1,4 @@
+2026-09-16T23:50:58Z
+hci0 (D8:3A:DD:C3:CE:CD)
+hot-tub-backyard (C4:DD:57:70:B6:96)
+p1s-printer (C4:DD:57:A5:77:4E) MOWER

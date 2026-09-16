@@ -1,0 +1,1 @@
+HALT: daylight/VIO: vio_tracked_features 59 at dispatch below 70 (not recovered; window min 57)

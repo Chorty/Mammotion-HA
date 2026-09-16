@@ -101,3 +101,29 @@ difference between proxies at the same spot, well outside the 5.5 dB within-cell
 sd. It is consistent with proxy placement mattering a great deal, and equally
 with `ble_rssi` not being comparable across proxies; two cells and one run each
 cannot separate those.
+
+---
+
+## Run 3 (2026-09-16 23:51Z) — INSUFFICIENT; stopped by operator. A mow job took the mower mid-run.
+
+Rules §10–§12 (two proxies, low-sun override, recovered-dip rule). Evidence:
+`evidence-ble-connected-trace-20260916/run3/` (`trace_log_run3.jsonl` = rows at or
+after `tracer_start_utc.txt`, 23:51:08Z).
+
+- Pre-run 23:50:58Z: gate off; facing `motion_confirmed` SSW 195.4° (sources within
+  1.3°); mower on `p1s-printer`.
+- **S1** ended in the same second it started (mower already at the S1 target from
+  run 2). **S2** `target_reached` 0.089 m.
+- **S3** refused before dispatch four times (23:51:49, 23:52:49, 23:53:50,
+  23:54:50Z): tracked features at dispatch 44, 59, 0, 0 — "stays below" per §12,
+  so the sequence stopped. **Nothing was sent for S3.**
+- 🚨 **At 23:53:38Z `lawn_mower` went `mowing`** — a mow job not started from any
+  HA user context (logbook shows no user; source not established: app or
+  schedule). The mower drove from (4.87, −5.77) to (14.42, −15.55) by 23:54:59Z,
+  `MODE_WORKING`, blades reported on, zone hash `3481535603736850863`. The
+  runner's refusals over that window were correct; no run-3 command moved it.
+- The operator called a stop at ~23:55Z. Driver, runner and tracer killed; gate
+  verified `enabled: False`.
+- Trace rows from 23:53:38Z on are the **mow**, not the route; they sit in the
+  shared log but are outside every predeclared motion window. The card asset was
+  **not** regenerated from them.

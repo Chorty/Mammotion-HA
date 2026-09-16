@@ -1,0 +1,17 @@
+Current state:
+  enabled             : True
+  real_motion_allowed : False
+  blockers            : ['ble_client_not_connected', 'blade_reported_on', 'active_mowing_detected', 'active_route_detected']
+  active_session      : None
+  work_mode           : MODE_WORKING
+
+Preserving: {"prefer_ble_over_wifi": true, "movement_use_wifi": false, "mow_path_fetch_enabled": false}
+
+State after change:
+  enabled             : False
+  real_motion_allowed : False
+  blockers            : ['experimental_motion_disabled', 'ble_client_not_connected', 'blade_reported_on', 'active_mowing_detected', 'active_route_detected']
+  active_session      : None
+  work_mode           : MODE_WORKING
+
+OK: experimental motion is now OFF.
