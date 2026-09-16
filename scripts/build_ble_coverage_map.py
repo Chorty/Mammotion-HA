@@ -98,6 +98,51 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+#: Proxy tags that attribute a row to no proxy at all.
+UNATTRIBUTED_PROXIES = frozenset({"", "?", "disconnected"})
+
+
+def normalize_trace_rows(
+    rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Turn raw connected-trace rows into coverage samples, counting each drop.
+
+    🚨 The tracer writes ``ble_rssi``; ``bin_samples`` reads ``rssi``. Before this
+    existed every trace row was silently discarded -- and miscounted as
+    ``dropped_no_position`` -- so a driven collection run could never have
+    reached the map. Rules, predeclared in
+    ``docs/predeclared-ble-connected-trace-collection-20260916.md`` §4:
+
+    * no proxy attribution (``?``/``disconnected``) -> dropped: a per-proxy
+      layer cannot hold an unattributed sample;
+    * ``ble_rssi`` missing or ``0`` (``0`` means the mower dozed) -> dropped;
+    * a row whose ``x``, ``y`` AND ``ble_rssi`` all equal the row before it ->
+      dropped as a re-read. The tracer polls faster than the ~1 Hz report
+      bundle, so an unchanged triple is most likely the same report twice, and
+      counting it would inflate ``n`` toward the >= 10-per-cell bar. A genuinely
+      fresh report that happens to repeat all three is lost too; that errs
+      toward undercounting, which is the safe direction for a sufficiency bar.
+    """
+    kept: list[dict[str, Any]] = []
+    dropped = {"unattributed": 0, "no_rssi": 0, "repeat": 0, "no_position": 0}
+    previous: tuple[Any, Any, Any] | None = None
+    for row in rows:
+        triple = (row.get("x"), row.get("y"), row.get("ble_rssi"))
+        repeat = triple == previous
+        previous = triple
+        if str(row.get("proxy") or "") in UNATTRIBUTED_PROXIES:
+            dropped["unattributed"] += 1
+        elif row.get("ble_rssi") in (None, 0):
+            dropped["no_rssi"] += 1
+        elif row.get("x") is None or row.get("y") is None:
+            dropped["no_position"] += 1
+        elif repeat:
+            dropped["repeat"] += 1
+        else:
+            kept.append({**row, "rssi": row["ble_rssi"]})
+    return kept, dropped
+
+
 def bin_samples(rows: list[dict[str, Any]], source: str) -> list[dict[str, Any]]:
     """Group positioned samples into per-proxy 1 m cells.
 
@@ -160,7 +205,8 @@ def build_payload() -> dict[str, Any]:
     cw, ch = grid_cell_size(grid)
 
     advert_rows = read_jsonl(ADVERT_LOG)
-    trace_rows = read_jsonl(TRACE_LOG)
+    raw_trace_rows = read_jsonl(TRACE_LOG)
+    trace_rows, trace_dropped = normalize_trace_rows(raw_trace_rows)
     advert_cells = bin_samples(advert_rows, "advert")
     trace_cells = bin_samples(trace_rows, "trace")
     per_proxy = advert_cells + trace_cells
@@ -202,7 +248,9 @@ def build_payload() -> dict[str, Any]:
         "other_dark": OTHER_DARK,
         "counts": {
             "advert_rows": len(advert_rows),
-            "trace_rows": len(trace_rows),
+            "trace_rows": len(raw_trace_rows),
+            "trace_samples_kept": len(trace_rows),
+            "trace_dropped": trace_dropped,
             "positioned": positioned,
             "dropped_no_position": len(advert_rows) + len(trace_rows) - positioned,
             "grid_cells": len(grid),
