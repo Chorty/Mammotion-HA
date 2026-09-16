@@ -70,6 +70,7 @@ const {
   BLE_MAX_ZOOM,
   bleDomainFor,
   bleRampColor,
+  blePannedZoom,
   bleZoomedViewBox,
   CARD_VERSION,
   MAX_REAL_SEGMENTS,
@@ -1985,6 +1986,93 @@ test("zoom is applied through the viewBox, never a group transform", () => {
   );
   assert.match(source, /bleZoomedViewBox\(mt\.W, mt\.H, this\._bleZoom\)/);
   assert.match(source, /\$\{vb\.x\} \$\{vb\.y\} \$\{vb\.w\} \$\{vb\.h\}/);
+});
+
+test("drag-to-pan moves the map with the pointer and stays clamped", () => {
+  const W = 600;
+  const H = 400;
+  const start = { k: 4, cx: 300, cy: 200 };
+  // Drag right 40 px on a 600 px wide rect at 4x: the window moves LEFT by
+  // 40 * (150 / 600) = 10 viewBox units, so the map follows the finger.
+  const moved = blePannedZoom(W, H, start, 40, -20, 600, 400);
+  assert.equal(moved.k, 4);
+  assert.equal(moved.cx, 290);
+  assert.equal(moved.cy, 205);
+  // A huge drag clamps instead of leaving the drawn map.
+  const flung = blePannedZoom(W, H, start, 1e6, 1e6, 600, 400);
+  const vb = bleZoomedViewBox(W, H, flung);
+  assert.ok(vb.x >= -1e-9 && vb.y >= -1e-9);
+  // No rect (hidden card) must not produce NaN state.
+  const hidden = blePannedZoom(W, H, start, 40, 40, 0, 0);
+  assert.deepEqual(hidden, { k: 4, cx: 300, cy: 200 });
+});
+
+test("a drag that pans does not also drop a waypoint", () => {
+  const element = card();
+  element._mapT = { W: 600, H: 400 };
+  element._bleZoom = { k: 2, cx: 300, cy: 200 };
+  element._svgPointFromEvent = () => ({ x: 2, y: 3 });
+  element._validateAndPreview = () => {};
+  element._renderMap = () => {};
+  element._q = () => ({
+    getBoundingClientRect: () => ({ width: 600, height: 400 }),
+  });
+
+  element._onMapPointerDown({ pointerId: 1, clientX: 100, clientY: 100 });
+  element._onPointerMove({ pointerId: 1, clientX: 160, clientY: 100 });
+  element._onPointerUp();
+  element._onMapClick({ target: {} });
+  assert.equal(
+    element._waypoints.length,
+    0,
+    "the pan's own click is swallowed",
+  );
+  assert.notEqual(element._bleZoom.cx, 300, "the map actually panned");
+
+  // A still click while zoomed is still a click.
+  element._onMapPointerDown({ pointerId: 2, clientX: 100, clientY: 100 });
+  element._onPointerMove({ pointerId: 2, clientX: 102, clientY: 101 });
+  element._onPointerUp();
+  element._onMapClick({ target: {} });
+  assert.equal(element._waypoints.length, 1);
+});
+
+test("unzoomed, a shaky click is never treated as a pan", () => {
+  const element = card();
+  element._mapT = { W: 600, H: 400 };
+  element._svgPointFromEvent = () => ({ x: 2, y: 3 });
+  element._validateAndPreview = () => {};
+  element._onMapPointerDown({ pointerId: 1, clientX: 100, clientY: 100 });
+  element._onPointerMove({ pointerId: 1, clientX: 140, clientY: 100 });
+  element._onPointerUp();
+  element._onMapClick({ target: {} });
+  assert.equal(element._waypoints.length, 1);
+});
+
+test("the fallback click mapping honours a zoomed viewBox origin", () => {
+  const element = card();
+  element._mapT = { toMX: (sx) => sx, toMY: (sy) => sy };
+  const svg = {
+    getAttribute: () => "150 100 300 200",
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 600, height: 400 }),
+  };
+  element._q = () => svg;
+  const point = element._svgPointFromEvent({ clientX: 300, clientY: 200 });
+  // Centre of the screen is the centre of the zoomed window, not (150, 100).
+  assert.deepEqual(point, { x: 300, y: 200 });
+});
+
+test("zoom, pan and reset keep the zoom percentage label current", () => {
+  const source = readFileSync(
+    "custom_components/mammotion/www/mammotion-custom-path-card.js",
+    "utf8",
+  );
+  const body = source.slice(source.indexOf("  _renderMap() {"));
+  assert.match(
+    body.slice(0, body.indexOf("this._renderBleOverlay(")),
+    /\.zoom-level[\s\S]*textContent/,
+    "_renderMap must refresh the label; zoom buttons never call _render",
+  );
 });
 
 test("the BLE overlay draws under the map and never intercepts clicks", () => {

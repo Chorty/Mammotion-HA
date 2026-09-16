@@ -316,6 +316,28 @@ function bleZoomedViewBox(W, H, zoom) {
   return { x: cx - w / 2, y: cy - h / 2, w, h, k, cx, cy };
 }
 
+// Screen pixels below which a pointer gesture on the map is still a click. A
+// drag past it pans instead and must NOT also drop a waypoint where it ended.
+const MAP_PAN_THRESHOLD_PX = 6;
+
+// Drag-to-pan. Computed from the zoom at the START of the drag plus the total
+// pointer delta, so a long drag cannot accumulate rounding drift. The result
+// goes back through bleZoomedViewBox, so the same clamp that keeps clicks
+// honest applies to a pan too.
+function blePannedZoom(W, H, startZoom, dxPx, dyPx, rectW, rectH) {
+  const vb = bleZoomedViewBox(W, H, startZoom);
+  // The SVG scales uniformly (preserveAspectRatio "meet"), so one factor.
+  const perPx =
+    rectW > 0 && rectH > 0 ? Math.max(vb.w / rectW, vb.h / rectH) : 0;
+  // Dragging right moves the map right, i.e. the window left.
+  const next = bleZoomedViewBox(W, H, {
+    k: vb.k,
+    cx: vb.cx - (Number(dxPx) || 0) * perPx,
+    cy: vb.cy - (Number(dyPx) || 0) * perPx,
+  });
+  return { k: next.k, cx: next.cx, cy: next.cy };
+}
+
 // The exact bounded execution profile that passed supervised LUBA acceptance
 // Gate 4 re-pass on 2026-08-05 (three-write zero stop, bounded straight segment,
 // active-session abort, 176 deg VIO regression, corrected two-leg L path;
@@ -484,6 +506,8 @@ class MammotionCustomPathCard extends HTMLElement {
     this._areaHash = "";
     this._mapT = null;
     this._draggingIndex = null;
+    this._mapPan = null;
+    this._suppressMapClick = false;
     // BLE coverage overlay. "" means off; the ~30 KB asset is fetched lazily on
     // first use, so a session that never opens the overlay never downloads it.
     // Zoom/pan live here too because they are applied to the SVG viewBox.
@@ -1841,14 +1865,17 @@ class MammotionCustomPathCard extends HTMLElement {
       sy = transformed.y;
     } else {
       const rect = svgEl.getBoundingClientRect();
-      const scaleX =
-        Number(svgEl.getAttribute("viewBox")?.split(" ")[2] || rect.width) /
-        rect.width;
-      const scaleY =
-        Number(svgEl.getAttribute("viewBox")?.split(" ")[3] || rect.height) /
-        rect.height;
-      sx = (event.clientX - rect.left) * scaleX;
-      sy = (event.clientY - rect.top) * scaleY;
+      const [vbX, vbY, vbW, vbH] = (svgEl.getAttribute("viewBox") || "")
+        .split(" ")
+        .map(Number);
+      const scaleX = (vbW || rect.width) / rect.width;
+      const scaleY = (vbH || rect.height) / rect.height;
+      // A zoomed viewBox no longer starts at 0,0; without its origin this
+      // fallback would place a zoomed click at its unzoomed position.
+      sx =
+        (Number.isFinite(vbX) ? vbX : 0) + (event.clientX - rect.left) * scaleX;
+      sy =
+        (Number.isFinite(vbY) ? vbY : 0) + (event.clientY - rect.top) * scaleY;
     }
     return { x: mt.toMX(sx), y: mt.toMY(sy) };
   }
@@ -1886,6 +1913,11 @@ class MammotionCustomPathCard extends HTMLElement {
   }
 
   _onMapClick(event) {
+    // The click that ends a pan is not a destination.
+    if (this._suppressMapClick) {
+      this._suppressMapClick = false;
+      return;
+    }
     if (this._motionRunActive()) return;
     if (event.target?.dataset?.pointIndex != null || !this._mapT) return;
     const point = this._svgPointFromEvent(event);
@@ -1923,7 +1955,47 @@ class MammotionCustomPathCard extends HTMLElement {
     event.target.setPointerCapture(event.pointerId);
   }
 
+  _onMapPointerDown(event) {
+    this._suppressMapClick = false;
+    // Waypoint handles stop propagation, so this only sees the background.
+    // Unzoomed there is nothing to pan, and leaving the gesture alone keeps a
+    // slightly shaky click at k=1 behaving exactly as it did before zoom.
+    if (!this._mapT || !((Number(this._bleZoom?.k) || 1) > 1)) return;
+    this._mapPan = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startZoom: { ...this._bleZoom },
+      moved: false,
+    };
+  }
+
   _onPointerMove(event) {
+    const pan = this._mapPan;
+    if (pan && this._draggingIndex == null) {
+      if (event.pointerId !== pan.pointerId) return;
+      const dx = event.clientX - pan.startX;
+      const dy = event.clientY - pan.startY;
+      if (!pan.moved && Math.hypot(dx, dy) < MAP_PAN_THRESHOLD_PX) return;
+      if (!pan.moved) {
+        pan.moved = true;
+        event.currentTarget?.setPointerCapture?.(event.pointerId);
+      }
+      const mt = this._mapT;
+      const rect = this._q("#path-map")?.getBoundingClientRect?.();
+      if (!mt || !rect) return;
+      this._bleZoom = blePannedZoom(
+        mt.W,
+        mt.H,
+        pan.startZoom,
+        dx,
+        dy,
+        rect.width,
+        rect.height,
+      );
+      this._renderMap();
+      return;
+    }
     if (this._draggingIndex == null) return;
     const point = this._svgPointFromEvent(event);
     if (!point) return;
@@ -1934,6 +2006,10 @@ class MammotionCustomPathCard extends HTMLElement {
   }
 
   _onPointerUp() {
+    if (this._mapPan) {
+      this._suppressMapClick = this._mapPan.moved;
+      this._mapPan = null;
+    }
     if (this._draggingIndex == null) return;
     this._draggingIndex = null;
     this._validateAndPreview();
@@ -2949,6 +3025,10 @@ class MammotionCustomPathCard extends HTMLElement {
     const vb = bleZoomedViewBox(mt.W, mt.H, this._bleZoom);
     this._bleZoom = { k: vb.k, cx: vb.cx, cy: vb.cy };
     svgEl.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+    // The toolbar is only rebuilt by a full _render, and zoom/pan/reset only
+    // redraw the map -- so the percentage would otherwise stick at 100%.
+    const zoomLabel = this._q(".map-tools .zoom-level");
+    if (zoomLabel) zoomLabel.textContent = `${Math.round(vb.k * 100)}%`;
 
     const ns = "http://www.w3.org/2000/svg";
     const el = (name, attrs = {}) => {
@@ -3550,6 +3630,9 @@ class MammotionCustomPathCard extends HTMLElement {
     });
     const svgEl = this._q("#path-map");
     svgEl?.addEventListener("click", (event) => this._onMapClick(event));
+    svgEl?.addEventListener("pointerdown", (event) =>
+      this._onMapPointerDown(event),
+    );
     svgEl?.addEventListener("wheel", (event) => this._onMapWheel(event), {
       passive: false,
     });
@@ -3595,6 +3678,7 @@ export {
   BLE_MAX_ZOOM,
   bleDomainFor,
   bleRampColor,
+  blePannedZoom,
   bleZoomedViewBox,
   CARD_VERSION,
   LUBA_ACCEPTANCE_PROFILE,
