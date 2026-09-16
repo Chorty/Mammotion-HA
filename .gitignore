@@ -17,11 +17,15 @@ __pycache__
 .secrets.local
 
 # Diagnostic script output (scripts/ble_advert_monitor.py, scripts/state_sampler.py,
-# scripts/ble_coverage_map.py) -- regenerated from banked HA history, not a fixed
-# point-in-time record, so it must not be committed stale.
+# scripts/ble_coverage_map.py, scripts/ble_proxy_coverage_monitor.py,
+# scripts/ble_proxy_connected_trace.py) -- regenerated from banked HA history
+# or grows across many separate runs, not a fixed point-in-time record, so it
+# must not be committed stale.
 scripts/advert_log.jsonl
 scripts/state_log.jsonl
 scripts/ble_coverage_map.json
+scripts/ble_proxy_coverage_log.jsonl
+scripts/ble_proxy_connected_trace_log.jsonl
 
 # OTA firmware capture (scripts/mitm_ota_capture.py, scripts/fetch_ota_firmware.py,
 # scripts/listen_ota_mqtt.py, scripts/ota_safety_net.py,
