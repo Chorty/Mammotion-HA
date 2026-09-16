@@ -205,3 +205,40 @@ def test_window_values_keeps_the_state_in_force_at_window_start() -> None:
         "80",
         "40",
     ]
+
+
+def _features_verdict(features: list[str], **kwargs: bool) -> list[str]:
+    return daylight_vio_verdict(
+        sun_elevation=45.0,
+        features_window=features,
+        status_window=[VIO_REQUIRED_STATUS],
+        **kwargs,
+    )
+
+
+def test_a_recovered_dip_passes_only_under_the_operator_rule() -> None:
+    """Run 2's S2 halt shape: dipped to 60, back at 80 by dispatch."""
+    window = ["80", "60", "79", "80"]
+    assert _features_verdict(window, allow_recovered_vio_dip=True) == []
+    assert any("min 60" in r for r in _features_verdict(window))
+
+
+def test_a_reading_still_below_the_floor_halts_under_the_operator_rule() -> None:
+    """The floor does not move; only a transient dip is forgiven."""
+    reasons = _features_verdict(["80", "60", "65"], allow_recovered_vio_dip=True)
+    assert any("not recovered" in r for r in reasons)
+
+
+def test_the_2026_09_12_dusk_collapse_still_halts_under_the_operator_rule() -> None:
+    """The collapse that motivated the window clause must not slip through."""
+    when = datetime.datetime.fromisoformat(SETUP2_DISPATCH)
+    reasons = daylight_vio_verdict(
+        sun_elevation=solar_elevation_degrees(when),
+        features_window=window_values(
+            _series(SETUP2_FEATURES), when, VIO_WINDOW_SECONDS
+        ),
+        status_window=window_values(_series(SETUP2_STATUS), when, VIO_WINDOW_SECONDS),
+        allow_low_sun=True,
+        allow_recovered_vio_dip=True,
+    )
+    assert any("vio_tracked_features" in r for r in reasons)

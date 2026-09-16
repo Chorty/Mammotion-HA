@@ -215,3 +215,19 @@ VIO gates, facing confidence, RTK, corridor, excursion, band, dry-run echo.
   facing was `unknown` (sources 97.5° apart) after the mower was undocked
   22:57Z without driving. Facing must be re-derived two ways before S1.
 - Proxy at 23:36Z: `p1s-printer` holds the mower (−62 dBm).
+
+## 12. Amendment — operator VIO-dip rule for run 3 onward (written 2026-09-16, before any run-3 row)
+
+Run 2 stopped at S2 on `vio_tracked_features min 60 below 70` with the reading
+already back up. **Operator rule:** a dip is fine as long as it does not stay
+below. Run 2 is **not** rescored.
+
+- Runner legs pass `--allow-recovered-vio-dip` (`scripts/phase1_leg_runner.py`):
+  the **reading in force at dispatch** must be ≥ 70. A dip earlier in the 60 s
+  window no longer halts. The 70 floor, the `visual_positioning_status` clause
+  and every executor VIO gate are unchanged. Pinned by tests, including that the
+  2026-09-12 dusk collapse still halts (57 at dispatch, window min 14).
+- **"Stays below" is defined now:** if the reading at dispatch is < 70, the
+  driver waits 60 s and re-checks, at most **3** times; still below after that
+  stops the sequence. This replaces §11's no-retry clause for that halt only.
+- `--allow-low-sun` stays in force per §11. Everything else is unchanged.

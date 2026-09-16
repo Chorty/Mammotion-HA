@@ -109,6 +109,7 @@ def daylight_vio_verdict(
     features_window: list[str],
     status_window: list[str],
     allow_low_sun: bool = False,
+    allow_recovered_vio_dip: bool = False,
 ) -> list[str]:
     """Return halt reasons; an empty list means daylight and VIO are acceptable.
 
@@ -128,6 +129,19 @@ def daylight_vio_verdict(
     features = [int(v) for v in features_window if str(v).lstrip("-").isdigit()]
     if not features:
         reasons.append("no numeric vio_tracked_features in the look-back window")
+    elif allow_recovered_vio_dip:
+        # Operator rule, 2026-09-16 (predeclaration
+        # docs/predeclared-ble-connected-trace-collection-20260916.md §12): a
+        # dip inside the window is acceptable once the reading IN FORCE at
+        # dispatch is back at the floor. "Stays below" is the driver's job --
+        # it re-checks after 60 s a bounded number of times, then stops. The
+        # floor itself does not move.
+        if features[-1] < VIO_MIN_TRACKED_FEATURES:
+            reasons.append(
+                f"vio_tracked_features {features[-1]} at dispatch below "
+                f"{VIO_MIN_TRACKED_FEATURES} (not recovered; window min "
+                f"{min(features)})"
+            )
     elif min(features) < VIO_MIN_TRACKED_FEATURES:
         reasons.append(
             f"vio_tracked_features min {min(features)} below "
@@ -219,6 +233,15 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915
             "that specific risk."
         ),
     )
+    parser.add_argument(
+        "--allow-recovered-vio-dip",
+        action="store_true",
+        help=(
+            "Operator rule 2026-09-16: a vio_tracked_features dip inside the "
+            "look-back window is accepted if the reading at dispatch is back at "
+            "the floor. The floor and the status clause are unchanged."
+        ),
+    )
     args = parser.parse_args()
     url, token = os.environ["HA_URL"].rstrip("/"), os.environ["HA_TOKEN"]
     args.out.mkdir(parents=True, exist_ok=True)
@@ -249,6 +272,7 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915
             VIO_WINDOW_SECONDS,
         ),
         allow_low_sun=args.allow_low_sun,
+        allow_recovered_vio_dip=args.allow_recovered_vio_dip,
     )
     if reasons:
         halt("daylight/VIO: " + "; ".join(reasons))
