@@ -8,6 +8,51 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### ✅ 2026-09-16 ~18:50-19:05 UTC — beta107 deployed (card: zoom label + drag-to-pan)
+
+`0.6.4-beta107`, cut from `main` at `cd275948` (version bump, tagged
+`v0.6.4-beta107`) on top of `518a6c71`. Backend `chorty-0.8.12.post4`, unchanged.
+`main` was pushed before the workflow ran.
+
+**What shipped** — card only, **no motion-control-law value changed,
+`docs/accepted-profile.json` untouched, no Gate 5 owed**. The operator
+browser-checked the beta106 overlay first: cells paint over the yard, keep-outs
+sit on top, and clicks land where clicked both unzoomed and zoomed. The same
+check confirmed two defects that `518a6c71` fixes:
+- the zoom % label went stale (+/−/Reset/wheel only redraw the map, not the
+  toolbar);
+- a zoomed map could not be panned at all except by wheel zoom-at-cursor, so
+  touch devices could never reach an edge. Drag-to-pan now works while zoomed;
+  a drag past 6 px swallows its own click, so it never drops a waypoint.
+Also fixed: the no-`getScreenCTM` fallback ignored the viewBox origin.
+
+**Verification tail (measured):**
+
+| check | result |
+| --- | --- |
+| gate suite before release | pytest 1142 passed; ruff check/format clean; mypy clean; frontend 102/102; pre-commit all passed |
+| archive sha256 | `dfa2b3fad05034415478fbc22d085593af05196965b30401f6dc589ac5088e50`, identical local and host |
+| files byte-identical | **52/52** |
+| AppleDouble junk | 0 |
+| card md5 | `2d6628424bc32e29f276e5c1fda28184` at BOTH serving paths, equal to local |
+| host versions | `manifest.json` and `CARD_VERSION` both `0.6.4-beta107` |
+| Lovelace resource | `?v=0.6.4-beta107&build=2d662842` (read back and verified) |
+| backend | `pymammotion 0.8.12.post4`, read from inside the container |
+| API return | 45 s; 133 mammotion entities at 162 s (restart script count) |
+| entities | 0 unavailable (132 by `back_yard_clip_skywalker` entity-id match) |
+| services | 68 |
+| config entry | `loaded`, `01M1CVFWHYWW527S9BM5M2BDP3` |
+| gate | `enabled: false`, `real_motion_allowed: false`, `active_session: None`; RAW `core.config_entries` `enable_experimental_motion: false` |
+| coverage asset | `/mammotion/ble-coverage.json` 200, 30 681 bytes |
+| dark-safe dry run | `raw_pymammotion_motion_probe` 3000 ms / linear 400: `would_send: false`, `blockers: []` (`attempted` key absent) |
+| gate after dry run | still disarmed |
+
+Backup taken first: `/config/mammotion-backup-20260916-1500-pre-beta107.tgz`
+(host-local timestamp, EDT).
+⏳ **Browser confirmation owed:** card footer should read `v0.6.4-beta107`, the
+zoom % should track +/−, and dragging a zoomed map should pan without adding a
+waypoint.
+
 ### ✅ 2026-09-16 11:50-12:05 UTC — beta106 deployed (BLE coverage overlay on the click-to-go card)
 
 `0.6.4-beta106`, cut from `main` at `45383f43` (version-bump commit, tagged

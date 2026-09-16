@@ -24,7 +24,27 @@ prose around them is still true. **One grep against the tree beats this file.**
 
 ---
 
-## Current build: beta106 (deployed 2026-09-16; backend `chorty-0.8.12.post4`)
+## Current build: beta107 (deployed 2026-09-16; backend `chorty-0.8.12.post4`)
+
+✅ **beta107 verified 2026-09-16 ~18:50-19:05 UTC** — 52/52 files identical,
+card md5 `2d662842` at both paths, Lovelace `?v=0.6.4-beta107&build=2d662842`,
+0 unavailable, 68 services, entry `loaded`, gate disarmed (live API + RAW),
+dry run `would_send: false`. ⏳ **Browser confirmation owed.** Record:
+`docs/deploy-runbook-p0.md`.
+**What beta107 shipped** (`518a6c71`, card only, no control-law change, no
+Gate 5 owed): the zoom % label now tracks zoom, and a zoomed map can be
+**drag-panned** (a drag past 6 px never drops a waypoint). ✅ **The beta106
+overlay was operator browser-checked the same day** — paints over the yard,
+keep-outs on top, clicks land where clicked unzoomed and zoomed; that check is
+what found both defects.
+⚠️ **Live state 2026-09-16 ~18:00Z (snapshot):** a **scheduled mow of "Backyard
+Hill"** ran 14:45-15:32Z and returned at 17% with fault `5004`; the mower then
+charged to ~45% and **stopped charging on the dock** (`charging` mostly off,
+`lawn_mower` `paused`, flat at 44-45% for ~2 h). RTK `fix`. Check charging
+before planning any driven run.
+
+### Previously: beta106 (deployed 2026-09-16)
+
 
 ✅ **beta106 verified end to end 2026-09-16 11:50-12:05 UTC** — **52/52** files
 byte-identical, card md5 `34ed672c` at both serving paths, Lovelace
