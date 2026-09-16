@@ -196,3 +196,22 @@ implemented in the driver (`evidence-ble-connected-trace-20260916/drive.sh`).
   segment, corridor, excursion and band checks decide whether it may run.
   Facing is derived two ways before S1, because S9 stopped mid-turn.
 - The proxy inventory is recorded at start and end.
+
+## 11. Amendment — run 2 low-sun override (written 2026-09-16 23:43Z, before any run-2 row)
+
+At 23:36Z the sun was at 1.2° and falling. **Operator instruction ("run it")**
+to run run 2 now. Runner legs therefore pass `--allow-low-sun`, which skips
+**only** the sun-elevation clause (as on 2026-09-14 session 3 and 2026-09-15
+session 4). Everything else stays enforced unchanged: `vio_tracked_features`
+≥ 70 over 60 s, `visual_positioning_status` `signal_good`, the executor's own
+VIO gates, facing confidence, RTK, corridor, excursion, band, dry-run echo.
+
+- §7's automatic retry on a tracked-feature dip required "the sun still ≥ 10°".
+  With the sun below that for the whole run, **a tracked-feature dip halt is NOT
+  retried** — it stops the sequence. Only `ble_client_not_connected` retries.
+- A run truncated by VIO loss at dusk is **INSUFFICIENT** per §5, not a data
+  problem to work around.
+- At 23:36Z the gate was found **armed at rest** and disarmed (live API + RAW);
+  facing was `unknown` (sources 97.5° apart) after the mower was undocked
+  22:57Z without driving. Facing must be re-derived two ways before S1.
+- Proxy at 23:36Z: `p1s-printer` holds the mower (−62 dBm).
