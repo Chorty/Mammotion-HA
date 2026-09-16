@@ -1,0 +1,6 @@
+Current state:
+  enabled             : False
+  real_motion_allowed : False
+  blockers            : ['experimental_motion_disabled']
+  active_session      : None
+  work_mode           : MODE_READY

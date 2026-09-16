@@ -1,0 +1,17 @@
+Current state:
+  enabled             : True
+  real_motion_allowed : True
+  blockers            : []
+  active_session      : None
+  work_mode           : MODE_READY
+
+Preserving: {"prefer_ble_over_wifi": true, "movement_use_wifi": false, "mow_path_fetch_enabled": false}
+
+State after change:
+  enabled             : False
+  real_motion_allowed : False
+  blockers            : ['experimental_motion_disabled']
+  active_session      : None
+  work_mode           : MODE_READY
+
+OK: experimental motion is now OFF.

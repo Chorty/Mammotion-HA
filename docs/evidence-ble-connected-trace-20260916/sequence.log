@@ -1,0 +1,41 @@
+22:03:03 S2 pre: battery=48 rtk=fix err_time=2026-09-16T15:31:25+00:00
+22:03:04 S2 dispatch start
+22:03:04 S2 dispatch end rc=2
+HALT: daylight/VIO: vio_tracked_features min 68 below 70 in the last 60s
+22:03:04 S2 predeclared auto-retry (1) after 60s
+22:04:04 S2 pre: battery=48 rtk=fix err_time=2026-09-16T15:31:25+00:00
+22:04:04 S2 dispatch start
+22:04:27 S2 dispatch end rc=0
+{"label": "S2", "role": "scored", "dispatched_utc": "2026-09-16T22:04:04.485626+00:00", "start": [5.0503, -4.7941], "target": [4.94, -5.82], "leg_m": 1.032, "corridor_min_clearance_m": 4.96, "excursion_m": 2.0, "band": "moderate", "target_rssi": -74.0, "facing_confidence": "motion_confirmed", "stop_reason": "target_reached", "landing_error_m": 0.106, "commands_sent": 4, "motion_refresh_commands_sent": 14, "samples_total": 68, "outcomes": {"completed": 68}}
+22:04:27 S3 pre: battery=47 rtk=fix err_time=2026-09-16T15:31:25+00:00
+22:04:27 S3 dispatch start
+22:04:51 S3 dispatch end rc=0
+{"label": "S3", "role": "scored", "dispatched_utc": "2026-09-16T22:04:27.521948+00:00", "start": [5.0095, -5.7438], "target": [4.94, -6.82], "leg_m": 1.078, "corridor_min_clearance_m": 4.41, "excursion_m": 3.0, "band": "moderate", "target_rssi": -76.0, "facing_confidence": "motion_confirmed", "stop_reason": "target_reached", "landing_error_m": 0.118, "commands_sent": 5, "motion_refresh_commands_sent": 16, "samples_total": 94, "outcomes": {"completed": 94}}
+22:04:51 S4 pre: battery=47 rtk=fix err_time=2026-09-16T15:31:25+00:00
+22:04:51 S4 dispatch start
+22:05:24 S4 dispatch end rc=0
+{"label": "S4", "role": "scored", "dispatched_utc": "2026-09-16T22:04:51.386250+00:00", "start": [4.9599, -6.9402], "target": [4.94, -5.82], "leg_m": 1.12, "corridor_min_clearance_m": 4.29, "excursion_m": 2.0, "band": "moderate", "target_rssi": -74.0, "facing_confidence": "motion_confirmed", "stop_reason": "target_reached", "landing_error_m": 0.085, "commands_sent": 7, "motion_refresh_commands_sent": 37, "samples_total": 145, "outcomes": {"completed": 145}}
+22:05:24 wait 60s after turn leg
+22:06:25 S5 pre: battery=47 rtk=fix err_time=2026-09-16T15:31:25+00:00
+22:06:25 S5 dispatch start
+22:06:45 S5 dispatch end rc=0
+{"label": "S5", "role": "scored", "dispatched_utc": "2026-09-16T22:06:25.247508+00:00", "start": [4.9362, -5.9032], "target": [4.94, -4.82], "leg_m": 1.083, "corridor_min_clearance_m": 4.91, "excursion_m": 1.0, "band": "moderate", "target_rssi": -72.0, "facing_confidence": "motion_confirmed", "stop_reason": "target_reached", "landing_error_m": 0.077, "commands_sent": 4, "motion_refresh_commands_sent": 13, "samples_total": 166, "outcomes": {"completed": 166}}
+22:06:45 S6 pre: battery=47 rtk=fix err_time=2026-09-16T15:31:25+00:00
+22:06:45 S6 dispatch start
+22:07:04 S6 dispatch end rc=0
+{"label": "S6", "role": "scored", "dispatched_utc": "2026-09-16T22:06:45.554841+00:00", "start": [4.905, -4.8874], "target": [4.94, -3.82], "leg_m": 1.068, "corridor_min_clearance_m": 4.86, "excursion_m": 0.0, "band": "strong", "target_rssi": -68.0, "facing_confidence": "motion_confirmed", "stop_reason": "target_reached", "landing_error_m": 0.079, "commands_sent": 4, "motion_refresh_commands_sent": 13, "samples_total": 187, "outcomes": {"completed": 187}}
+22:07:04 S7 pre: battery=47 rtk=fix err_time=2026-09-16T15:31:25+00:00
+22:07:04 S7 dispatch start
+22:07:24 S7 dispatch end rc=0
+{"label": "S7", "role": "scored", "dispatched_utc": "2026-09-16T22:07:05.043067+00:00", "start": [4.893, -3.885], "target": [4.94, -2.82], "leg_m": 1.066, "corridor_min_clearance_m": 3.89, "excursion_m": 1.0, "band": "strong", "target_rssi": -66.0, "facing_confidence": "motion_confirmed", "stop_reason": "target_reached", "landing_error_m": 0.093, "commands_sent": 4, "motion_refresh_commands_sent": 12, "samples_total": 207, "outcomes": {"completed": 207}}
+22:07:25 S8 pre: battery=47 rtk=fix err_time=2026-09-16T15:31:25+00:00
+22:07:25 S8 dispatch start
+22:07:41 S8 dispatch end rc=0
+{"label": "S8", "role": "scored", "dispatched_utc": "2026-09-16T22:07:25.218481+00:00", "start": [4.8913, -2.8958], "target": [4.94, -1.82], "leg_m": 1.077, "corridor_min_clearance_m": 2.89, "excursion_m": 2.0, "band": "strong", "target_rssi": -66.0, "facing_confidence": "motion_confirmed", "stop_reason": "target_reached", "landing_error_m": 0.115, "commands_sent": 3, "motion_refresh_commands_sent": 11, "samples_total": 224, "outcomes": {"completed": 224}}
+22:07:41 S9 pre: battery=47 rtk=fix err_time=2026-09-16T15:31:25+00:00
+22:07:41 S9 dispatch start
+22:07:59 S9 dispatch end rc=2
+{"label": "S9", "role": "scored", "dispatched_utc": "2026-09-16T22:07:41.780272+00:00", "start": [4.9025, -1.9242], "target": [4.94, -2.82], "leg_m": 0.897, "corridor_min_clearance_m": 3.0, "excursion_m": 1.0, "band": "strong", "target_rssi": -66.0, "facing_confidence": "motion_confirmed", "stop_reason": "turn_budget_infeasible", "landing_error_m": 1.166, "commands_sent": 4, "motion_refresh_commands_sent": 21, "samples_total": 253, "outcomes": {"completed": 253}}
+HALT: stop_reason turn_budget_infeasible
+HALT at S9 rc=2
+driver exit 2
