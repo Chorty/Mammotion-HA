@@ -8,6 +8,64 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### ✅ 2026-09-15 23:57-23:59 UTC — beta105 deployed (BLE upstream ports + services.yaml field docs)
+
+`0.6.4-beta105`, cut from `main` at `9b7965bc` (merge of the Beta Release
+workflow's version-bump commit `2fe5993a` with the day's Phase 1 repeat /
+BLE-proxy-adjacency session work — no conflicts, the two histories touched
+disjoint files). Backend `chorty-0.8.12.post4`, unchanged.
+
+**What shipped** — three commits, held since 2026-09-13 pending Phase 1 being
+banked (now satisfied: four scored sessions through 2026-09-15, no evidence
+`_BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS` needs to move), no motion-control-law
+value changed, `docs/accepted-profile.json` untouched, no Gate 5 owed:
+- `b26f8909` — upstream ports: the Bluetooth switch now stays off (uses
+  `remove_transport` instead of `disconnect_transport`, which three paths were
+  silently re-attaching); keep-alive restart tolerates a missed BLE link
+  without escaping as an error; one dynamics-line poller instead of two
+  duplicate pollers during a mow.
+- `683f2e52` — the Bluetooth switch reaches all five coordinators and persists
+  its state across a restart.
+- `5beaa9b4` — `services.yaml`/`strings.json` document every
+  `raw_pymammotion_execute_vector_segment` field, including the two missing
+  since 2026-09-12 (`turn_mode`, `vio_turn_max_commands`) that let a UI-driven
+  call silently validate against wrong defaults.
+
+**Measured verification tail:**
+
+| check | measured |
+| --- | --- |
+| archive SHA-256 | `d610279e…` identical local and host |
+| files | **51/51 byte-identical** (normalised for the expect wrapper's CRLF) |
+| AppleDouble `._*` | **0** local archive, **0** on host |
+| card md5 | `535b3130…` — equal at `custom_components/…/www/`, `/config/www/community/mammotion/`, and locally |
+| Lovelace resource | read back as `?v=0.6.4-beta105&build=535b3130` |
+| version quartet | manifest / pyproject / CARD_VERSION `0.6.4-beta105`; `uv.lock` `0.6.4b105` (PEP 440) |
+| backend | `0.8.12.post4` |
+| API return | **51 s**; 133 mammotion entities at **161 s** |
+| entities | 132, **0 unavailable** |
+| services | **68** |
+| gate | `enabled: false`, `real_motion_allowed: false`, `active_session: null` — verified live API and RAW `core.config_entries` |
+| config entry | `loaded`, `disabled_by: null` |
+| dry run | `would_send: false`, `valid: true`, `errors: []`, `blockers: []` (real anchor coordinates) |
+
+Pre-deploy gate: pytest **1142**, ruff, ruff format, mypy, 91 frontend,
+pre-commit clean (fixed trailing newlines on evidence JSON, committed
+separately before the release). Backup at
+`/config/mammotion-backup-20260915-1956-pre-beta105.tgz`.
+
+🔑 **The `Beta Release` workflow ran against `origin/main`, which was several
+commits behind local `main`** (today's Phase 1 repeat / BLE-adjacency session
+work had been committed locally but not yet pushed). Reconciled with a
+regular merge (not rebase, not force-push) so the release commit's hash
+— and its tag/GitHub prerelease — stayed valid; confirmed first that none of
+the unpushed commits touched `custom_components/`, so the beta105 content
+itself was unaffected by the gap. **Push local `main` before triggering the
+release workflow next time**, to avoid this reconciliation step.
+
+⚠️ **Browser confirmation still owed.** Ask the operator to confirm the card
+footer reads `v0.6.4-beta105`.
+
 ### ✅ 2026-09-11 22:31-22:41 UTC — beta104 deployed (comms-abort recovery + queue-start instrument)
 
 `0.6.4-beta104`, cut from `main` at `fe8ee55c` (PR #16, all checks green:

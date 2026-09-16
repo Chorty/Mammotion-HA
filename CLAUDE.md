@@ -24,15 +24,47 @@ prose around them is still true. **One grep against the tree beats this file.**
 
 ---
 
-## Current build: beta104 (deployed 2026-09-11; backend `chorty-0.8.12.post4`)
+## Current build: beta105 (deployed 2026-09-15; backend `chorty-0.8.12.post4`)
+
+✅ **beta105 verified end to end 2026-09-15 23:57-23:59 UTC** — 51/51 files
+byte-identical, card md5 `535b3130…` at both serving paths, Lovelace
+`?v=0.6.4-beta105&build=535b3130`, backend read from inside the container,
+**132 entities, 0 unavailable**, **68 services**, gate `enabled: false` (live
+API + RAW `core.config_entries`), API back in 51 s. Dry run `would_send:
+false` on real anchor coordinates. Record: `docs/deploy-runbook-p0.md`.
+⚠️ **Browser confirmation still owed** — ask the operator to confirm the card
+footer reads `v0.6.4-beta105`.
+🔑 **The release workflow ran against a stale `origin/main`** — today's Phase 1
+repeat / BLE-adjacency session commits were local-only when triggered.
+Reconciled with a merge (not rebase), confirmed first that none of the
+unpushed commits touched `custom_components/`. **Push local `main` before
+triggering `Beta Release` in future**, to skip this step.
+
+**What beta105 shipped** — three commits, **no motion-control-law value
+changed, `accepted-profile.json` untouched, no Gate 5 owed**, held since
+2026-09-13 until Phase 1 was banked (now satisfied: four scored sessions
+through 2026-09-15, no evidence the 2.0 s queue-start bound needs to move):
+- `b26f8909` — upstream ports: the Bluetooth switch now stays off for real
+  (`remove_transport`, not `disconnect_transport`, which three paths were
+  silently re-attaching); keep-alive restart tolerates a missed BLE link
+  instead of escaping as an error; one dynamics-line poller instead of two.
+- `683f2e52` — the Bluetooth switch reaches all five coordinators and
+  persists across a restart.
+- `5beaa9b4` — `services.yaml`/`strings.json` finally document every
+  `raw_pymammotion_execute_vector_segment` field, closing the gap (missing
+  `turn_mode`, `vio_turn_max_commands`) that let a UI-driven call silently
+  validate against the wrong defaults since 2026-09-12.
+
+### Previously: beta104 (deployed 2026-09-11)
 
 ✅ **beta104 verified end to end 2026-09-11 22:31-22:41 UTC** — 50/50 files
 byte-identical, card md5 `99126fb2` at both serving paths, Lovelace
 `?v=0.6.4-beta104&build=99126fb2`, backend read from inside the container,
 **133 entities, 0 unavailable**, **68 services**, gate `enabled: false`, API back
 in 30 s. Dry run `would_send: false`. Record: `docs/deploy-runbook-p0.md`.
-⚠️ **Browser confirmation still owed** (card text unchanged from beta103, but the
-resource URL moved).
+⚠️ **No record that browser confirmation was ever done** — it was flagged as
+owed at deploy time and no later note closes it out. Superseded by beta105
+now anyway; not worth chasing retroactively.
 
 **What beta104 shipped** (PR #16, `fe8ee55c`) — **no motion-control-law value
 changed, `accepted-profile.json` untouched, no Gate 5 owed**:
@@ -68,38 +100,25 @@ changed, `accepted-profile.json` untouched, no Gate 5 owed**:
   `docs/predeclared-comms-abort-auto-dock-20260911.md`. It does not inherit B's
   or C's approval.
 
-### 🚧 BUILT AND PUSHED, NOT DEPLOYED (as of 2026-09-13) — the host still runs beta104
+### ✅ All previously-held commits are now DEPLOYED, as of beta105 (2026-09-15)
 
-🚨 **Do not assume the host matches `main`.** Code committed after the beta104
-deploy, pushed to `Chorty/Mammotion-HA` `main` on 2026-09-13 and **not deployed**:
+`5beaa9b4`, `b26f8909`, `683f2e52` — see "What beta105 shipped" above.
+`5d6e17cf` (`scripts/phase1_leg_runner.py` + daylight/VIO halt) never needed a
+deploy — it is a local script, already in effect since it was committed.
 
-| commit | what | deploy needs |
-| --- | --- | --- |
-| `5d6e17cf` | `scripts/phase1_leg_runner.py` + daylight/VIO halt | nothing — local script |
-| `5beaa9b4` | `services.yaml` / strings document every vector-segment field | deploy (HA UI only) |
-| `b26f8909` | upstream ports: switch stays off, keep-alive tolerance, one dynamics poller | deploy |
-| `683f2e52` | Bluetooth switch reaches all 5 coordinators + persists across restart | deploy |
-
-🛑 **Held until Phase 1 is banked**: `b26f8909` and `683f2e52` change BLE
-connection behaviour, which the Phase 1 plan keeps off the host until the
-measurement is done. The keep-alive and dynamics-poller parts could go sooner
-only on an explicit operator call.
-
-🔑 **PyMammotion has its own pending work, in a separate repo.** Branch
-feat/low-power-get-builder on `Chorty/PyMammotion` (`f1cc983`, `1702dc2`, based
-on release/0.8.12.post3): a read-only low-power GET builder and capture of its
-reply into mower state. **HA cannot use it until** it is merged into a release
-branch, a new wheel is built and published (e.g. chorty-0.8.12.post5), the pin is
-bumped in BOTH `custom_components/mammotion/manifest.json` and
-`requirements_test.txt`, and the integration is changed to read the new fields —
-none of which has happened.
-
-⚠️ **Before the next hardware session:** confirm `rtk_position` reads `fix` (it
-went `float` overnight 2026-09-13, see §RTK), clean the vision camera (fault
-1068), and verify the host version before trusting any beta104 statement above.
-⚠️ PyMammotion's working tree also holds an uncommitted operator edit to its dev
-console script (MCU info capture); it is deliberately not committed or pushed,
-pending an operator decision.
+🔑 **PyMammotion has its own pending work, in a separate repo — still not
+usable.** Branch feat/low-power-get-builder on `Chorty/PyMammotion`
+(`f1cc983`, `1702dc2`, based on release/0.8.12.post3): a read-only low-power
+GET builder and capture of its reply into mower state. **HA cannot use it
+until** it is merged into a release branch, a new wheel is built and
+published (e.g. chorty-0.8.12.post5), the pin is bumped in BOTH
+`custom_components/mammotion/manifest.json` and `requirements_test.txt`, and
+the integration is changed to read the new fields — none of which has
+happened, and none of it shipped in beta105.
+⚠️ PyMammotion's working tree also holds an uncommitted operator edit to its
+dev console script (MCU info capture); it is deliberately not committed or
+pushed, pending an operator decision. Not verified since 2026-09-13 — check
+it is still in that state before assuming so.
 
 ### Previously: beta103 (deployed 2026-09-05)
 
@@ -240,21 +259,27 @@ undecided** — `docs/predeclared-comms-abort-auto-dock-20260911.md`.
 timeout cancelling setup, a documented trap, not new) — recovered cleanly with
 a config-entry reload in ~20 s, mower position confirmed unchanged across it.
 
-⚠️ **Live state at 2026-09-15T23:42:15Z — a snapshot, not a source of truth.
-Requery before acting.** Mower **docked and charging** (52%, `charging: on` —
-the earlier `not_charging` flag resolved on its own), gate disarmed (live API
-+ RAW `core.config_entries`), RTK `fix` throughout the entire day (one brief
-`Float` episode 23:10–23:16Z, tied to a config-entry reload, self-recovered).
-🔑 **A real S1–S12 click-to-path run completed the same evening, on the new
-firmware, cleanly on the first try** — `docs/findings-phase1-repeat-20260915.md`.
-**RF set is all five scanners** (`hot-tub-backyard`, `p1s-printer`,
-`garage-m5stack`, `atom-fireplace` connectable, plus `hci0` scan-only) —
-`p1s-printer` was temporarily removed earlier the same day for the BLE test
-and restored. 🔧 **Both `hot-tub-backyard.yaml` and `p1s-printer.yaml` are
-running NEW ESPHome firmware**: a `Bluetooth Scanning` template switch
-(confirmed NOT equivalent to removing the proxy) and LUX/power-sensor
-`update_interval` slowed 5s→60s on both. **A future session must not assume
-the old two-device firmware or the old 5-second sensor cadence.**
+⚠️ **Live state at 2026-09-15T23:59:00Z — a snapshot, not a source of truth.
+Requery before acting.** **Host just deployed beta105** — see "Current
+build" above for the full verification tail. Mower **docked and charging**
+(was 52%/`charging: on` before the restart; battery entity not rechecked
+post-restart), gate disarmed (live API + RAW `core.config_entries`,
+`enable_experimental_motion: false`), config entry `loaded`. RTK `fix`
+throughout the day's real-motion session (one brief `Float` episode
+23:10–23:16Z, tied to a config-entry reload, self-recovered) — **not
+rechecked since the beta105 restart; verify fresh before any real motion.**
+🔑 **A real S1–S12 click-to-path run completed earlier the same evening, on
+the pre-beta105 firmware, cleanly on the first try** —
+`docs/findings-phase1-repeat-20260915.md`. **RF set is all five scanners**
+(`hot-tub-backyard`, `p1s-printer`, `garage-m5stack`, `atom-fireplace`
+connectable, plus `hci0` scan-only) — `p1s-printer` was temporarily removed
+earlier the same day for the BLE test and restored. 🔧 **Both
+`hot-tub-backyard.yaml` and `p1s-printer.yaml` are running NEW ESPHome
+firmware** (unrelated to beta105 — that's the HA integration; these are
+separate proxy devices): a `Bluetooth Scanning` template switch (confirmed
+NOT equivalent to removing the proxy) and LUX/power-sensor `update_interval`
+slowed 5s→60s on both. **A future session must not assume the old
+two-device firmware or the old 5-second sensor cadence.**
 ⚠️ **(2026-09-14T23:42:16Z)** Mower docked and charging after the Phase 1
 repeat (all three sessions), RTK `fix` throughout; gate disarmed. RF set at
 that point: `hot-tub-backyard` physically powered off, only `p1s-printer`,
