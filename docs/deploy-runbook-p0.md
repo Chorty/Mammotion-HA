@@ -63,8 +63,8 @@ the unpushed commits touched `custom_components/`, so the beta105 content
 itself was unaffected by the gap. **Push local `main` before triggering the
 release workflow next time**, to avoid this reconciliation step.
 
-⚠️ **Browser confirmation still owed.** Ask the operator to confirm the card
-footer reads `v0.6.4-beta105`.
+✅ **Browser-confirmed 2026-09-16** — operator reports the card footer reads
+`v0.6.4-beta105`.
 
 ### ✅ 2026-09-11 22:31-22:41 UTC — beta104 deployed (comms-abort recovery + queue-start instrument)
 
@@ -105,10 +105,9 @@ Pre-deploy gate: pytest **1105**, ruff, ruff format, mypy, 91 frontend,
 pre-commit **10/10**. Backup at
 `/config/mammotion-backup-20260911-1831-pre-beta104.tgz`.
 
-⚠️ **Browser confirmation still owed.** The card's own text is unchanged from
-beta103, but the resource URL moved, so the operator should confirm the footer
-reads `v0.6.4-beta104`. A correct backend deploy with a stale card cache is
-still a failed deployment.
+⚠️ **No record that browser confirmation was ever done** — flagged as owed at
+deploy time, no later note closes it out. Superseded by beta105 (browser-
+confirmed 2026-09-16); not worth chasing retroactively.
 
 ### 🚨 RESTORE — 2026-09-08 23:03-23:07 UTC — HACS overwrote beta103 with upstream; beta103 redeployed
 

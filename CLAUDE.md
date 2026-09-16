@@ -32,8 +32,8 @@ byte-identical, card md5 `535b3130…` at both serving paths, Lovelace
 **132 entities, 0 unavailable**, **68 services**, gate `enabled: false` (live
 API + RAW `core.config_entries`), API back in 51 s. Dry run `would_send:
 false` on real anchor coordinates. Record: `docs/deploy-runbook-p0.md`.
-⚠️ **Browser confirmation still owed** — ask the operator to confirm the card
-footer reads `v0.6.4-beta105`.
+✅ **Browser-confirmed** — operator reports the card footer reads
+`v0.6.4-beta105`.
 🔑 **The release workflow ran against a stale `origin/main`** — today's Phase 1
 repeat / BLE-adjacency session commits were local-only when triggered.
 Reconciled with a merge (not rebase), confirmed first that none of the
