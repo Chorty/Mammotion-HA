@@ -167,3 +167,32 @@ run. Fixed (allocations merged per source) with tests, **before any dispatch**;
 no rule above changed. The pre-fix rows are banked, excluded, as
 `evidence-ble-connected-trace-20260916/aborted_prefix_trace_log.jsonl` and the
 tracer restarted on an empty log.
+
+## 10. Amendment — run 2 under a changed RF set (written 2026-09-16 ~22:20Z, before any run-2 row)
+
+Run 1 is banked and scored (`docs/findings-ble-connected-trace-collection-20260916.md`,
+INSUFFICIENT, instrument valid). **Nothing here rescores it.**
+
+**What changed, by operator action after run 1:** the BLE proxy was removed from
+`atom-fireplace` (the proxy that held run 1). At 22:16:10Z HA's scanner list was
+`hot-tub-backyard`, `p1s-printer` (connectable) and `hci0` (scan-only);
+**`garage-m5stack` was also absent**, cause not established. Operator decision:
+run with the two connectable proxies. This **replaces §1 for run 2 only**, and
+knowingly accepts the Window D risk (fewer listeners, slower reconnects).
+
+**Unchanged for run 2:** §2 route (S1–S12), §3 procedure, §4 data rules, §5 bars,
+§6 falsifiers, §7 stop rules, §8 outcomes — including the predeclared retries, now
+implemented in the driver (`evidence-ble-connected-trace-20260916/drive.sh`).
+
+**Run-2 specifics:**
+- The tracer **appends** to the same log so the card map keeps run 1's layer.
+  **Run-2 rows are exactly those with `t_utc` at or after the run-2 tracer start**,
+  recorded in `evidence-ble-connected-trace-20260916/run2/`. §5 and §6 are
+  evaluated on run-2 rows only; run-1 samples are never pooled into run 2's bar.
+- **P** is determined from run-2 samples alone. A sample tagged `atom-fireplace`
+  in run 2 would mean the removal did not take, and is reported, not counted.
+- **Start** is wherever the mower stands after run 1's S9 halt (≈ (4.97, −1.65),
+  inside the area). S1 is then a ~3.2 m leg rather than ~1.9 m; the runner's own
+  segment, corridor, excursion and band checks decide whether it may run.
+  Facing is derived two ways before S1, because S9 stopped mid-turn.
+- The proxy inventory is recorded at start and end.
