@@ -929,6 +929,29 @@ moves between reconnects**: `hot-tub-backyard` at 2026-09-12 03:0xZ and
 2026-09-13 01:58Z, but `p1s-printer` ranked first at 2026-09-12 17:30Z. Never
 state which proxy it is on without a fresh read of HA's Bluetooth connection
 allocations.
+🚨 **PASSIVE ADVERTISEMENT COLLECTION CANNOT BUILD A PER-PROXY COVERAGE MAP —
+measured, not predicted.** `scripts/ble_proxy_coverage_monitor.py` ran a full
+**8-hour** window starting 2026-09-16 03:20Z with all five scanners registered
+and caught **exactly ONE mower advertisement** (−93 dBm via `garage-m5stack` at
+`map_xy (5.25, −3.82)`), against a CONTROL of **31 423 advertisements from all
+other devices** in the same window. The stream was emphatically alive; the mower
+simply was not talking. ⚠️ **Connection state was not independently logged across
+the window**, so "connected nearly throughout" is the leading explanation (the
+documented no-advertising-while-connected mechanism) rather than a proven one —
+but either way the operational conclusion holds: **at ~1 sample per 8 h, the
+≥10-samples-per-1 m-cell bar is unreachable passively.** Per-proxy coverage has
+to come from `scripts/ble_proxy_connected_trace.py` on a driven run, which
+yields **one proxy per run** (whichever HA allocated), so covering several
+proxies means several runs.
+✅ **`scripts/build_ble_coverage_map.py` renders whatever has been collected** —
+a local self-contained HTML viewer (`docs/ble-coverage-map.html`, gitignored)
+with a per-proxy toggle, wheel/drag zoom+pan, hover tooltips, a table view and
+a dark mode. It draws the 724-cell siting grid as a **clearly-labelled baseline
+layer** and keeps it switchable rather than merged: that grid is **aggregate
+RSSI with no proxy attribution**, and folding it into a per-proxy layer would
+invent attribution the data does not have. 🔑 **Its ramp domain is computed per
+layer**; two shared-domain attempts were rendered and rejected because a single
+−93 outlier flattened the 724-cell layer to one indistinguishable blue.
 **Placement is the lever, not selection.** Weak cells measured over 96 h
 (`docs/evidence-ble-coverage-96h-20260912.json`, 27 440 samples, fit RMS
 0.0000 m): north end (x −1..1, y 17..26) median **−84 to −89**, south end

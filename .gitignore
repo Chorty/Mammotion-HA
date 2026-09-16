@@ -26,6 +26,11 @@ scripts/state_log.jsonl
 scripts/ble_coverage_map.json
 scripts/ble_proxy_coverage_log.jsonl
 scripts/ble_proxy_connected_trace_log.jsonl
+# The coverage viewer is built FROM the two logs above. Since those are never
+# committed, a committed copy of the page could not be reproduced or checked by
+# anyone else, and would silently go stale as the logs grow. Rebuild it with
+# `.venv/bin/python scripts/build_ble_coverage_map.py`.
+docs/ble-coverage-map.html
 
 # OTA firmware capture (scripts/mitm_ota_capture.py, scripts/fetch_ota_firmware.py,
 # scripts/listen_ota_mqtt.py, scripts/ota_safety_net.py,
