@@ -943,15 +943,41 @@ but either way the operational conclusion holds: **at ~1 sample per 8 h, the
 to come from `scripts/ble_proxy_connected_trace.py` on a driven run, which
 yields **one proxy per run** (whichever HA allocated), so covering several
 proxies means several runs.
-✅ **`scripts/build_ble_coverage_map.py` renders whatever has been collected** —
-a local self-contained HTML viewer (`docs/ble-coverage-map.html`, gitignored)
-with a per-proxy toggle, wheel/drag zoom+pan, hover tooltips, a table view and
-a dark mode. It draws the 724-cell siting grid as a **clearly-labelled baseline
-layer** and keeps it switchable rather than merged: that grid is **aggregate
-RSSI with no proxy attribution**, and folding it into a per-proxy layer would
-invent attribution the data does not have. 🔑 **Its ramp domain is computed per
-layer**; two shared-domain attempts were rendered and rejected because a single
-−93 outlier flattened the 724-cell layer to one indistinguishable blue.
+✅ **The coverage map is an OVERLAY ON THE CLICK-TO-GO CARD, not a separate
+page.** `scripts/build_ble_coverage_map.py` emits two things:
+- `custom_components/mammotion/www/ble-coverage.json` (~30 KB, **committed and
+  deployed with the card**) — the card's overlay data.
+- `docs/ble-coverage-map.html` (gitignored) — a standalone viewer kept for
+  offline analysis. ✏️ **Built first by mistake**: the ask was always an overlay
+  on the card's own map, and a standalone page did not answer it.
+🔑 **The card fetches `/mammotion/ble-coverage.json`** — `async_setup` already
+registers `StaticPathConfig("/mammotion", WWW_DIR)`, so that absolute path holds
+whether the card was loaded from `/mammotion/` or `/hacsfiles/`. **No backend
+service was added**; the fetch is lazy, so a session that never opens the
+overlay never downloads it, and any failure switches the overlay off rather than
+breaking the map.
+🚨 **Three invariants, each pinned by a test** — break one and the card
+misbehaves silently:
+- **Zoom moves the SVG `viewBox`, never a `<g transform>`.** `_svgPointFromEvent`
+  resolves clicks through `svgEl.getScreenCTM()`, which sees the viewBox but
+  **not** a child group's transform — so a `<g>` would leave every click landing
+  at its unzoomed position, placing waypoints where nobody clicked. The pan is
+  clamped so the box can never leave the drawn map.
+- **Coverage paints FIRST and carries `pointer-events: none`** — under the areas
+  and keep-outs (a keep-out hidden behind a cell is the 2026-08-20 trampoline
+  failure) and transparent to clicks.
+- **`_getAllPoints()` must never see coverage cells**, or toggling the overlay
+  would rescale and shift the whole map.
+🔑 **The ramp domain is computed per layer**; two shared-domain attempts were
+rendered and rejected because a single −93 outlier flattened the 724-cell layer
+to one indistinguishable blue. The 724-cell siting grid is a **clearly-labelled
+baseline layer, kept switchable rather than merged**: it is **aggregate RSSI
+with no proxy attribution**, and folding it into a per-proxy layer would invent
+attribution the data does not have. The asset carries **coverage values only** —
+the card keeps drawing its own geometry from live `export_map`, so a months-old
+evidence snapshot can never put a second, disagreeing outline on the map.
+⚠️ **Today the overlay is essentially the baseline layer alone** — the per-proxy
+layer holds the single collected sample.
 **Placement is the lever, not selection.** Weak cells measured over 96 h
 (`docs/evidence-ble-coverage-96h-20260912.json`, 27 440 samples, fit RMS
 0.0000 m): north end (x −1..1, y 17..26) median **−84 to −89**, south end

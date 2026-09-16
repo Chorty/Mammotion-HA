@@ -67,6 +67,10 @@ const {
   ACCEPTED_PROFILE_ACCEPTED_ON,
   LUBA_ACCEPTANCE_PROFILE,
   MAX_NIGHT_SEGMENT_METRES,
+  BLE_MAX_ZOOM,
+  bleDomainFor,
+  bleRampColor,
+  bleZoomedViewBox,
   CARD_VERSION,
   MAX_REAL_SEGMENTS,
   MAX_REAL_SEGMENT_METRES,
@@ -1914,5 +1918,112 @@ test("a crossing leg stays red even after a run says the segment passed", () => 
   assert.ok(
     crossingAt > verdictAt,
     "the keep-out colour must be applied AFTER the run verdict, or it is overwritten",
+  );
+});
+
+test("bleDomainFor scales to each layer, and survives a single-value layer", () => {
+  assert.deepEqual(bleDomainFor([{ rssi: -80 }, { rssi: -56 }]), [-81, -55]);
+  // 🚨 A layer whose cells all hold one value would divide by zero in the
+  // ramp. The n=1 per-proxy layer is exactly that case today.
+  assert.deepEqual(bleDomainFor([{ rssi: -93 }]), [-96, -90]);
+  assert.deepEqual(bleDomainFor([]), [-90, -55]);
+  assert.deepEqual(bleDomainFor(null), [-90, -55]);
+  assert.deepEqual(bleDomainFor([{ rssi: "nonsense" }]), [-90, -55]);
+});
+
+test("the RSSI ramp is sequential: stronger signal reads darker, and clamps", () => {
+  const domain = [-95, -55];
+  const luminance = (hex) =>
+    parseInt(hex.slice(1, 3), 16) +
+    parseInt(hex.slice(3, 5), 16) +
+    parseInt(hex.slice(5, 7), 16);
+  const weak = bleRampColor(-95, domain);
+  const strong = bleRampColor(-55, domain);
+  assert.ok(
+    luminance(strong) < luminance(weak),
+    "a stronger signal must render darker, not lighter",
+  );
+  // Out-of-domain values clamp rather than falling off the ramp.
+  assert.equal(bleRampColor(-400, domain), weak);
+  assert.equal(bleRampColor(999, domain), strong);
+  assert.equal(bleRampColor(Number.NaN, domain), weak);
+});
+
+test("zoom can never pan the viewBox off the drawn map", () => {
+  // 🚨 This is the guard that keeps clicks honest. The viewBox IS the click
+  // coordinate system (`getScreenCTM`), so a box that escapes the map would
+  // put waypoints somewhere the operator never clicked.
+  const W = 600;
+  const H = 400;
+  for (const k of [-5, 0, 1, 2, 4, 8, 50]) {
+    for (const cx of [-9999, -1, 0, 300, 600, 9999]) {
+      for (const cy of [-9999, 0, 200, 400, 9999]) {
+        const vb = bleZoomedViewBox(W, H, { k, cx, cy });
+        const why = `k=${k} cx=${cx} cy=${cy}`;
+        assert.ok(vb.k >= 1 && vb.k <= BLE_MAX_ZOOM, `zoom clamped: ${why}`);
+        assert.ok(vb.x >= -1e-9, `left edge: ${why}`);
+        assert.ok(vb.y >= -1e-9, `top edge: ${why}`);
+        assert.ok(vb.x + vb.w <= W + 1e-9, `right edge: ${why}`);
+        assert.ok(vb.y + vb.h <= H + 1e-9, `bottom edge: ${why}`);
+      }
+    }
+  }
+  const unzoomed = bleZoomedViewBox(W, H, { k: 1, cx: null, cy: null });
+  assert.deepEqual(
+    [unzoomed.x, unzoomed.y, unzoomed.w, unzoomed.h],
+    [0, 0, W, H],
+    "at k=1 the viewBox must be exactly the full map",
+  );
+});
+
+test("zoom is applied through the viewBox, never a group transform", () => {
+  // A <g transform> would be invisible to `getScreenCTM()` on the <svg>, so
+  // every click would resolve to its UNZOOMED position -- silently wrong.
+  const source = readFileSync(
+    "custom_components/mammotion/www/mammotion-custom-path-card.js",
+    "utf8",
+  );
+  assert.match(source, /bleZoomedViewBox\(mt\.W, mt\.H, this\._bleZoom\)/);
+  assert.match(source, /\$\{vb\.x\} \$\{vb\.y\} \$\{vb\.w\} \$\{vb\.h\}/);
+});
+
+test("the BLE overlay draws under the map and never intercepts clicks", () => {
+  const source = readFileSync(
+    "custom_components/mammotion/www/mammotion-custom-path-card.js",
+    "utf8",
+  );
+  const body = source.slice(source.indexOf("  _renderMap() {"));
+  const overlayAt = body.indexOf("this._renderBleOverlay(");
+  const areasAt = body.indexOf("area_polygons");
+  const keepOutAt = body.indexOf("_keepOutPolygons()");
+  assert.ok(overlayAt > 0, "the overlay must be drawn in _renderMap");
+  assert.ok(
+    overlayAt < areasAt,
+    "coverage must paint BEFORE areas, or it covers them",
+  );
+  assert.ok(
+    overlayAt < keepOutAt,
+    "coverage must paint BEFORE keep-outs -- a hidden obstacle is the 2026-08-20 trampoline failure",
+  );
+  assert.match(
+    source.slice(source.indexOf("  _renderBleOverlay(")),
+    /"pointer-events": "none"/,
+    "overlay cells must not swallow map clicks",
+  );
+});
+
+test("the coverage overlay never changes the map's own scale", () => {
+  // `_getAllPoints` drives the bounds. If coverage cells leaked in, toggling
+  // the overlay would rescale and shift the whole map under the operator.
+  const source = readFileSync(
+    "custom_components/mammotion/www/mammotion-custom-path-card.js",
+    "utf8",
+  );
+  const start = source.indexOf("  _getAllPoints() {");
+  const body = source.slice(start, source.indexOf("\n  }", start));
+  assert.ok(start > 0, "_getAllPoints must exist");
+  assert.ok(
+    !/ble|coverage/i.test(body),
+    "_getAllPoints must not reference coverage data",
   );
 });

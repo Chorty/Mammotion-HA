@@ -41,6 +41,13 @@ SITING = REPO / "docs" / "evidence-phase1-siting-20260912.json"
 ADVERT_LOG = REPO / "scripts" / "ble_proxy_coverage_log.jsonl"
 TRACE_LOG = REPO / "scripts" / "ble_proxy_connected_trace_log.jsonl"
 DEFAULT_OUT = REPO / "docs" / "ble-coverage-map.html"
+# 🔑 The click-to-go card reads this at runtime. The integration already serves
+# WWW_DIR at "/mammotion" (see async_setup in __init__.py), so the card fetches
+# it from "/mammotion/ble-coverage.json" -- an absolute path that holds whether
+# the card itself was loaded from /mammotion/ or /hacsfiles/. Unlike the HTML
+# viewer this asset IS committed: it is deployed to the host with the card, and
+# its own input (the siting evidence JSON) is committed too.
+CARD_ASSET = REPO / "custom_components" / "mammotion" / "www" / "ble-coverage.json"
 
 # One metre, matching the "target >= 10 samples per 1 m cell" rule in CLAUDE.md.
 BIN_M = 1.0
@@ -139,7 +146,9 @@ def grid_cell_size(grid: list[dict[str, Any]]) -> tuple[float, float]:
     def pitch(values: list[float]) -> float:
         uniq = sorted({round(v, 4) for v in values})
         diffs = [b - a for a, b in zip(uniq, uniq[1:], strict=False) if b - a > 1e-6]
-        return min(diffs) if diffs else 1.0
+        # Rounded: the raw subtraction yields values like 0.4999999999999996,
+        # and this figure ships inside a committed, deployed asset.
+        return round(min(diffs), 4) if diffs else 1.0
 
     return pitch([c["x"] for c in grid]), pitch([c["y"] for c in grid])
 
@@ -198,6 +207,43 @@ def build_payload() -> dict[str, Any]:
             "dropped_no_position": len(advert_rows) + len(trace_rows) - positioned,
             "grid_cells": len(grid),
         },
+    }
+
+
+def card_asset_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Trim the viewer payload down to what the click-to-go card needs.
+
+    🚨 Every piece of MAP GEOMETRY is dropped here on purpose -- the area
+    polygon, the keep-out polygons, the dock and park landmarks. The card
+    already draws all of that from the live ``export_map`` service, and this
+    file's copy came from a months-old evidence snapshot. Shipping both would
+    put two disagreeing outlines on one map, and the stale one would look just
+    as authoritative. The card gets coverage VALUES only and keeps its own
+    geometry as the single source of truth.
+    """
+    return {
+        "generated_at_utc": payload["generated_at_utc"],
+        "frame": payload["frame"],
+        "bin_m": payload["bin_m"],
+        "bands": payload["bands"],
+        "grid_cell": payload["grid_cell"],
+        "grid_source": payload["grid_source"],
+        "baseline": [
+            {"x": c["x"], "y": c["y"], "rssi": c["rssi"], "n": c.get("nsamp", 0)}
+            for c in payload["grid"]
+        ],
+        "per_proxy": [
+            {
+                "proxy": c["proxy"],
+                "x": c["x"],
+                "y": c["y"],
+                "rssi": c["rssi"],
+                "n": c["n"],
+            }
+            for c in payload["per_proxy"]
+        ],
+        "proxies": payload["proxies"],
+        "counts": payload["counts"],
     }
 
 
@@ -698,9 +744,14 @@ def main() -> None:
 
     payload = build_payload()
     args.out.write_text(render(payload))
+    CARD_ASSET.write_text(
+        json.dumps(card_asset_payload(payload), separators=(",", ":"), sort_keys=True)
+        + "\n"
+    )
 
     counts = payload["counts"]
     print(f"wrote {args.out}")  # noqa: T201
+    print(f"wrote {CARD_ASSET} ({CARD_ASSET.stat().st_size / 1024:.0f} KB)")  # noqa: T201
     print(  # noqa: T201
         f"  baseline grid   : {counts['grid_cells']} cells (aggregate, no proxy attribution)"
     )
