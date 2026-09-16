@@ -259,15 +259,16 @@ undecided** — `docs/predeclared-comms-abort-auto-dock-20260911.md`.
 timeout cancelling setup, a documented trap, not new) — recovered cleanly with
 a config-entry reload in ~20 s, mower position confirmed unchanged across it.
 
-⚠️ **Live state at 2026-09-15T23:59:00Z — a snapshot, not a source of truth.
-Requery before acting.** **Host just deployed beta105** — see "Current
-build" above for the full verification tail. Mower **docked and charging**
-(was 52%/`charging: on` before the restart; battery entity not rechecked
-post-restart), gate disarmed (live API + RAW `core.config_entries`,
-`enable_experimental_motion: false`), config entry `loaded`. RTK `fix`
-throughout the day's real-motion session (one brief `Float` episode
-23:10–23:16Z, tied to a config-entry reload, self-recovered) — **not
-rechecked since the beta105 restart; verify fresh before any real motion.**
+⚠️ **Live state at 2026-09-16T03:32Z — a snapshot, not a source of truth.
+Requery before acting.** Mower **docked and charging** (53%, `charging: on`),
+gate disarmed (live API + RAW `core.config_entries`), RTK `fix`, after the
+RTK square-return test (03:03–03:18Z, see above) and a clean
+`lawn_mower.dock` that reached `CHARGE_ON` in ~1.5 min. Host runs **beta105**
+— see "Current build" for its verification tail.
+🚨 **RTK spent 02:01:59–02:48:19Z in `Float` (47 min) before that run** — the
+**third** night-time Float episode (2026-09-12, 2026-09-13, now). It recovered
+on its own. Base-station connectivity remains the leading candidate; still
+unproven. **Check `rtk_position` reads `fix` before any real motion.**
 🔑 **A real S1–S12 click-to-path run completed earlier the same evening, on
 the pre-beta105 firmware, cleanly on the first try** —
 `docs/findings-phase1-repeat-20260915.md`. **RF set is all five scanners**
@@ -552,6 +553,42 @@ cleanest full run of the whole investigation.** Full record:
   made this session clean** — one good run doesn't rule out "today was just
   a good day," the same caveat Window E carried in the proxy-adjacency test.
 - 🛑 `_BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS` **still stays 2.0.**
+
+✅ **RTK SQUARE-RETURN TEST RAN 2026-09-16 (03:03–03:18Z), FULLY DARK, ON RAW
+PULSES — consistent with RTK being accurate, but it does NOT bound the error.**
+Record: `docs/findings-rtk-square-return-20260916.md` + evidence dir.
+Predeclared `688f5714`, runner `c9467099` committed before the first pulse.
+- 🔑 **A VIO-free motion path exists and works.** `manual_velocity_pulse_test`
+  has **no VIO gate and no heading requirement** (only BLE liveness, blades,
+  off-dock, valid position) — so raw timed pulses drive fine with
+  `vio_tracked_features` at 0, when the vector executor and both VIO turn
+  paths correctly refuse. It **is** wrapped by `_wrap_exclusive_manual_motion`,
+  so the gate must still be armed and `rtk_not_precise` still blocks.
+- 🔑 **Heading can be recovered from RTK alone** — the bearing driven on a leg
+  is `atan2(dy, dx)` across it, so each turn's true angle is measurable once
+  the next leg exists. No compass, no camera. That self-calibration worked.
+- **Distance repeatability is good:** identical two-pulse commands gave
+  2.709 / 2.681 / 2.780 m on legs 1–3 (~1%); per-pulse 1.334 vs 1.324 m on
+  consecutive legs. Stationary RTK read-to-read jitter ~**2 mm**.
+- 🔑 **NEW pure-rotation calibration at angular 202, linear 0: 16.01 / 15.52 /
+  13.25 °/s** across three turns. Banked points were 9.175 (angular 120) and
+  13.431 °/s (angular 180), both *with* linear 300 — these are the first
+  pure-rotation figures. ⚠️ **The rate declined monotonically** even though
+  each turn was calibrated from the previous one. Cause untested; it bears
+  directly on the `turn_budget_infeasible` halts.
+- 🚨 **Implementation error cost the headline number: the runner drove four
+  legs but only THREE turns**, against an operator design (and a
+  predeclaration §0) that said four. That left ~100° of residual rotation, so
+  every body point displaced by a different amount and the tape-vs-RTK
+  comparison inherited the unknown antenna position. Operator tape (front-left
+  46.5″ = 1.181 m, rear-right 44″ = 1.118 m) vs RTK's 0.828 m **reconciles
+  cleanly** under rigid-body geometry with the antenna ~10–15 cm off the
+  wheelbase centre — consistent, but an RTK error of 10–20 cm would fit just
+  as well. **A repeat with four turns restores heading, making one tape
+  measurement directly equal RTK's number.**
+- 🛑 **Standing decision 3 (accuracy CLOSED) is untouched** — this measured raw
+  RTK position with no VIO and no correction, not click-to-path landing
+  accuracy. Do not quote it as one.
 
 🗄️ **Before Phase 1 — one SETUP leg dispatched 2026-09-12** (unscored,
 excluded from the population by §15, committed before it ran) — `target_reached`
