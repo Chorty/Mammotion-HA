@@ -34,3 +34,10 @@ run-to-run variation on one configuration.
 ## Also recorded
 Where the link was down (positions of disconnected rows), the mow's zone hash,
 battery at start and end, and the scanner list at start and end.
+
+## Note added during the mow (02:3xZ) — recorded, rules unchanged
+The operator reports this mow uses **wider paths and a higher mowing speed**
+than 2026-09-16. Expected effects, stated before scoring: more ground covered
+per minute but **fewer samples per 1 m cell** (the report rate stays ~1 Hz), so
+fewer cells will reach n ≥ 10; and the disconnect-share comparison is further
+confounded by route and speed. The §Reading thresholds are **not** changed.
