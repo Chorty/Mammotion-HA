@@ -24,7 +24,17 @@ prose around them is still true. **One grep against the tree beats this file.**
 
 ---
 
-## Current build: beta107 (deployed 2026-09-16; backend `chorty-0.8.12.post4`)
+## Current build: beta108 (deployed 2026-09-17; backend `chorty-0.8.12.post4`)
+
+✅ **beta108 verified 2026-09-17 ~00:52-01:00 UTC** — 52/52 identical, card md5
+`ed5c41d1` both paths, 0 unavailable, 68 services, gate disarmed (API + RAW), dry
+run `would_send: false`. ⏳ Browser confirmation owed. **Only the coverage asset
+changed:** `p1s-printer` now fills **133 cells** (74 with n ≥ 10) from a traced
+mow, plus run 1's `atom-fireplace` cells. Record:
+`docs/findings-ble-connected-trace-collection-20260916.md` (three driven runs,
+all INSUFFICIENT, instrument valid; ~24 dB between proxies at the same cells).
+
+### Previously: beta107 (deployed 2026-09-16)
 
 ✅ **beta107 verified 2026-09-16 ~18:50-19:05 UTC** — 52/52 files identical,
 card md5 `2d662842` at both paths, Lovelace `?v=0.6.4-beta107&build=2d662842`,
