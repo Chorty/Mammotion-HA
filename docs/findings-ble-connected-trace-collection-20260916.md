@@ -127,3 +127,28 @@ after `tracer_start_utc.txt`, 23:51:08Z).
 - Trace rows from 23:53:38Z on are the **mow**, not the route; they sit in the
   shared log but are outside every predeclared motion window. The card asset was
   **not** regenerated from them.
+
+---
+
+## Mow trace (2026-09-16 23:53:38Z – 2026-09-17 00:49:45Z) — observational, operator-requested
+
+The operator's app-started mow was traced read-only at their request ("track the
+ble signal while it is mowing … use the data to fill the map"). **No predeclared
+bar applies and no sufficiency verdict is given**; the data rules of §4 were
+applied unmodified. Evidence: `evidence-ble-connected-trace-20260916/mow/`
+(`trace_log_mow.jsonl`). The tracer was not running 23:55–00:09:26Z (between
+run 3's stop and the mow trace start), so that stretch of the mow is missing.
+
+| | |
+| --- | --- |
+| rows | 2 501 → **1 675 samples** (684 unattributed, 22 RSSI 0, 120 re-reads) |
+| proxy | **`p1s-printer` only** — every attributed row |
+| link down | **27.3 %** of rows `disconnected` (e.g. from ~00:10:50Z near (10.2, −18.9)) |
+| cells | **132** (1 m), **74 with n ≥ 10**; extent x 0..15, y −23..4 |
+| cell medians (n ≥ 10) | median **−72**, range **−82 to −56** dBm |
+
+⚠️ **Unattributed rows are where the link was DOWN, and the map does not draw
+them** — a blank cell can mean "never visited" or "visited while disconnected".
+Their positions are in the raw log if a disconnect layer is wanted later.
+The card asset was regenerated from the whole log (run 1, run 2, run 3's first
+minutes, and this mow).
