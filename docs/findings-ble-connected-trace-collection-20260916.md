@@ -152,3 +152,11 @@ them** — a blank cell can mean "never visited" or "visited while disconnected"
 Their positions are in the raw log if a disconnect layer is wanted later.
 The card asset was regenerated from the whole log (run 1, run 2, run 3's first
 minutes, and this mow).
+
+✏️ **Correction (operator, 2026-09-17):** `garage-m5stack` was **disabled by the
+operator** at ~22:14Z along with `atom-fireplace` — §10's "cause not established"
+is resolved. So **runs 2, 3 and the mow all ran on two connectable proxies**
+(`hot-tub-backyard`, `p1s-printer`), and `garage-m5stack` cannot have caused the
+mow's 27 % disconnected time. It remains implicated in earlier drops: Window D
+(2026-09-15) put nearly every connection and both `error=8` timeouts on it, and
+HA's logs ranked it the preferred path 4 of 22 times in 72 h at −94 to −97 dBm.
