@@ -1476,6 +1476,9 @@
     },
     "start_task_unsupported_on_spino": {
       "message": "A Spino medencetisztító nem támogatja az ütemezés kérésre történő indítását — a firmware nem rendelkezik „azonnali futtatás” paranccsal a tárolt ütemezésekhez."
+    },
+    "running_job_unreadable": {
+      "message": "Nem sikerült beolvasni a futó feladat beállításait a fűnyíróról, ezért a módosítás nem lett elküldve a feladatnak. A HA által indított következő feladatnál lesz használva."
     }
   }
 }

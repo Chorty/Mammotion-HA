@@ -1476,6 +1476,9 @@
     },
     "start_task_unsupported_on_spino": {
       "message": "Avviare una pianificazione su richiesta non è supportato sul robot piscina Spino — il firmware non offre un comando di esecuzione immediata per le pianificazioni memorizzate."
+    },
+    "running_job_unreadable": {
+      "message": "Impossibile leggere le impostazioni del lavoro in corso dal rasaerba, quindi la modifica non è stata inviata al lavoro. Verrà usata per il prossimo lavoro avviato da HA."
     }
   }
 }

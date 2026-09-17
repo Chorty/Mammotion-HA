@@ -182,10 +182,10 @@ LUBA_WORKING_ENTITIES: tuple[MammotionConfigNumberEntityDescription, ...] = (
         set_fn=lambda coordinator, value: setattr(
             coordinator.operation_settings, "blade_height", int(value)
         ),
-        set_async_fn=lambda coordinator, value: (
-            coordinator.async_modify_plan_if_mowing()
+        set_async_fn=lambda coordinator, value: coordinator.async_apply_working_setting(
+            "blade_height"
         ),
-        get_fn=lambda coordinator: coordinator.operation_settings.blade_height,
+        get_fn=lambda coordinator: coordinator.working_setting_value("blade_height"),
     ),
 )
 
@@ -198,12 +198,13 @@ NUMBER_WORKING_ENTITIES: tuple[MammotionConfigNumberEntityDescription, ...] = (
         native_step=0.1,
         native_min_value=0.2,
         native_max_value=0.6,
-        set_async_fn=lambda coordinator, value: (
-            coordinator.async_modify_plan_if_mowing()
+        set_async_fn=lambda coordinator, value: coordinator.async_apply_working_setting(
+            "speed"
         ),
         set_fn=lambda coordinator, value: setattr(
             coordinator.operation_settings, "speed", value
         ),
+        get_fn=lambda coordinator: round(coordinator.working_setting_value("speed"), 2),
     ),
     MammotionConfigNumberEntityDescription(
         key="path_spacing",
@@ -212,9 +213,12 @@ NUMBER_WORKING_ENTITIES: tuple[MammotionConfigNumberEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfLength.CENTIMETERS,
         native_min_value=20,
         native_max_value=35,
+        # Not applied to a running job: the app's in-job editor does not send
+        # it either. A change here waits for the next job HA plans.
         set_fn=lambda coordinator, value: setattr(
             coordinator.operation_settings, "channel_width", value
         ),
+        get_fn=lambda coordinator: coordinator.working_setting_value("channel_width"),
     ),
 )
 
@@ -356,7 +360,11 @@ class MammotionConfigNumberEntity(MammotionBaseEntity, RestoreNumber):
 
 
 class MammotionWorkingNumberEntity(MammotionConfigNumberEntity):
-    """Mammotion working number entity."""
+    """Mammotion working number entity.
+
+    Shows the running job's value once HA has read it from the mower, and HA's
+    own next-job plan otherwise; the ``value_source`` attribute says which.
+    """
 
     def __init__(
         self,
@@ -380,10 +388,41 @@ class MammotionWorkingNumberEntity(MammotionConfigNumberEntity):
         if self.entity_description.get_fn is not None:
             self._attr_native_value = self.entity_description.get_fn(self.coordinator)
 
-        native_val = self._attr_native_value
-        native_min = self._attr_native_min_value
-        if native_val is not None and native_min is not None:
-            self._attr_native_value = max(native_val, native_min)
+        self._clamp_plan_value()
+
+    def _clamp_plan_value(self) -> None:
+        """Keep HA's plan inside the model's limits, in the plan and not just shown.
+
+        The plan is what HA sends when it plans a job, so a value clamped only
+        for display (pymammotion's default blade_height 0 shown as 25) would
+        still be sent as 0. A running job's value is never rewritten here.
+        """
+        value = self._attr_native_value
+        if value is None:
+            return
+        clamped = value
+        if (native_min := self._attr_native_min_value) is not None:
+            clamped = max(clamped, native_min)
+        if (native_max := self._attr_native_max_value) is not None:
+            clamped = min(clamped, native_max)
+        if clamped == value:
+            return
+        self._attr_native_value = clamped
+        if (
+            self.entity_description.set_fn is not None
+            and self.coordinator.working_setting_source() == "next_job_plan"
+        ):
+            self.entity_description.set_fn(self.coordinator, clamped)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str]:
+        """Say whether the value is the running job's or HA's next-job plan."""
+        return {"value_source": self.coordinator.working_setting_source()}
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the last plan value, then keep it inside the model's limits."""
+        await super().async_added_to_hass()
+        self._clamp_plan_value()
 
     @property
     def native_min_value(self) -> float:

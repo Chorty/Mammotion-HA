@@ -1476,6 +1476,9 @@
     },
     "start_task_unsupported_on_spino": {
       "message": "Start af en plan på forespørgsel understøttes ikke på Spino-poolrobotten — enhedens firmware har ingen 'kør nu'-kommando for gemte planer."
+    },
+    "running_job_unreadable": {
+      "message": "Kunne ikke læse den igangværende opgaves indstillinger fra plæneklipperen, så ændringen blev ikke sendt til opgaven. Den bruges til den næste opgave, HA starter."
     }
   }
 }

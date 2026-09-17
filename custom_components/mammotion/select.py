@@ -338,7 +338,9 @@ async def async_setup_entry(
                 "ultra_wave",
                 _enum_member(DetectionStrategy, value).value,
             ),
-            async_set_fn=lambda coordinator: coordinator.async_modify_plan_if_mowing(),
+            async_set_fn=lambda coordinator: coordinator.async_apply_working_setting(
+                "ultra_wave"
+            ),
         )
         entities.append(
             MammotionConfigSelectEntity(mower.reporting_coordinator, bypass_mode_desc)

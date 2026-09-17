@@ -1476,6 +1476,9 @@
     },
     "start_task_unsupported_on_spino": {
       "message": "Een schema op aanvraag starten wordt niet ondersteund op de Spino zwembadrobot — de firmware heeft geen 'nu uitvoeren' commando voor opgeslagen schema's."
+    },
+    "running_job_unreadable": {
+      "message": "De instellingen van de lopende taak konden niet van de maaier worden gelezen, dus de wijziging is niet naar de taak gestuurd. Ze wordt gebruikt voor de volgende taak die HA start."
     }
   }
 }

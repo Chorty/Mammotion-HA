@@ -1476,6 +1476,9 @@
     },
     "start_task_unsupported_on_spino": {
       "message": "Att starta ett schema på begäran stöds inte på Spino-poolroboten — enhetens firmware har inget 'kör nu'-kommando för sparade scheman."
+    },
+    "running_job_unreadable": {
+      "message": "Det gick inte att läsa det pågående jobbets inställningar från gräsklipparen, så ändringen skickades inte till jobbet. Den används för nästa jobb som HA startar."
     }
   }
 }

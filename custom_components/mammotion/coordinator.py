@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 import dataclasses
 import datetime
 import json
@@ -56,6 +57,7 @@ from pymammotion.data.model.device_config import OperationSettings, create_path_
 from pymammotion.data.model.hash_list import Plan, SvgMessage
 from pymammotion.data.model.pool_state import PoolPlan, SpinoToggle
 from pymammotion.data.model.report_info import Maintain, NetUsedType
+from pymammotion.data.model.work import CurrentTaskSettings
 from pymammotion.data.mqtt.event import DeviceNotificationEventParams, ThingEventMessage
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import StatusType, ThingStatusMessage
@@ -90,6 +92,7 @@ from .agora_api import SERVICE_IDS, AgoraAPIClient, AgoraResponse
 from .config import MammotionConfigStore
 from .connectivity import CloudConnectivityMonitor, WatchdogAction
 from .const import (
+    COMMAND_EXCEPTIONS,
     CONF_ACCOUNTNAME,
     CONF_CONNECT_DATA,
     CONF_HAS_CLOUD_ACCOUNT,
@@ -121,6 +124,16 @@ _FACING_POSITION_CHANGE_M = 0.05
 # observed hanging 32.7s on this hardware, 2026-07-14). Reconnecting is
 # best-effort -- cloud transport still serves the update -- so cap it and move on.
 _BLE_RECONNECT_TIMEOUT_SECONDS = 15.0
+
+#: Working-setting entity field (``OperationSettings``) -> the same setting on the
+#: running job as the mower reports it (``CurrentTaskSettings``, from
+#: NavReqCoverPath). Units match: mm, m/s, cm; ultra_wave is the detection mode.
+_RUNNING_JOB_FIELDS = {
+    "blade_height": "knife_height",
+    "speed": "speed",
+    "channel_width": "channel_width",
+    "ultra_wave": "ultra_wave",
+}
 
 MAINTENANCE_INTERVAL = timedelta(minutes=60)
 DEFAULT_INTERVAL = timedelta(minutes=30)
@@ -182,6 +195,10 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         )
         self.manager: MammotionClient = mammotion
         self._operation_settings = OperationSettings()
+        # The running job's settings as last READ from the mower (sub_cmd=2),
+        # keyed by the report's path_hash so a later job never inherits them:
+        # (path_hash, settings, changed_by_ha_since_read).
+        self._running_job_settings: tuple[int, CurrentTaskSettings, bool] | None = None
         self.update_failures = 0
         # Monotonic timestamps of CommandTimeoutError raised out of
         # `async_send_command`, the single funnel every queued command passes
@@ -2010,8 +2027,17 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
             operation_settings.job_id = work.job_id
             operation_settings.job_version = work.job_ver
 
-        route_information = self.generate_route_information(operation_settings)
+        return await self._async_send_modified_route(operation_settings)
 
+    async def _async_send_modified_route(
+        self, operation_settings: OperationSettings
+    ) -> bool | None:
+        """Re-issue the running route (NavReqCoverPath sub_cmd=3) as given.
+
+        sub_cmd=3 carries every route field, so whatever is in
+        ``operation_settings`` becomes the running job's setting.
+        """
+        route_information = self.generate_route_information(operation_settings)
         return await self.async_send_command(
             "modify_route_information", generate_route_information=route_information
         )
@@ -2140,14 +2166,163 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         """Return operation settings for planning."""
         return self._operation_settings
 
-    async def async_modify_plan_if_mowing(self) -> None:
-        """Re-plan the current mow route if the device is actively mowing."""
-        _mdata = cast(MowingDevice, self.data)
+    def _is_route_job_active(self) -> bool:
+        """Return True while a route job is working or paused and not complete."""
+        data = cast(MowingDevice | None, self.data)
+        if data is None:
+            return False
+        return (
+            data.report_data.dev.sys_status
+            in (WorkMode.MODE_WORKING.value, WorkMode.MODE_PAUSE.value)
+            and (data.report_data.work.area >> 16) != 100
+        )
+
+    def running_job_settings(self) -> CurrentTaskSettings | None:
+        """Return the running job's settings as last read, if still that job.
+
+        None until HA has read the job (see ``_async_read_running_job``), once
+        the mower leaves the job, or once the report's path_hash changes.
+        """
+        if self._running_job_settings is None or not self._is_route_job_active():
+            return None
+        path_hash, settings, _changed = self._running_job_settings
+        if path_hash != cast(MowingDevice, self.data).report_data.work.path_hash:
+            return None
+        return settings
+
+    def working_setting_source(self) -> str:
+        """Say what the working-setting entities are showing.
+
+        ``running_job``: read from the mower. ``running_job_after_ha_change``:
+        read from the mower, then HA re-issued it with one field changed (the
+        change is not read back). ``next_job_plan``: HA's own value, which it
+        will send when it plans the next job.
+        """
+        if self.running_job_settings() is None or self._running_job_settings is None:
+            return "next_job_plan"
+        if self._running_job_settings[2]:
+            return "running_job_after_ha_change"
+        return "running_job"
+
+    def working_setting_value(self, field: str) -> float:
+        """Return a working setting: the running job's if read, else HA's plan."""
+        if (job := self.running_job_settings()) is not None:
+            return cast(float, getattr(job, _RUNNING_JOB_FIELDS[field]))
+        return cast(float, getattr(self._operation_settings, field))
+
+    async def _async_read_running_job(self) -> CurrentTaskSettings:
+        """Read the running job's route settings from the mower (sub_cmd=2).
+
+        This is what the app does before its in-job editor re-issues the route.
+        Raises rather than returning anything partial: a missing or zero field
+        would be re-sent to the mower as a real setting.
+        """
+        try:
+            response = await self.manager.send_command_and_wait(
+                self.device_name,
+                "query_generate_route_information",
+                "bidire_reqconver_path",
+                prefer_ble=self._bluetooth_enabled,
+            )
+        except (
+            *COMMAND_EXCEPTIONS,
+            *EXPIRED_CREDENTIAL_EXCEPTIONS,
+            CommandTimeoutError,
+            ConcurrentRequestError,
+            DeviceOfflineException,
+            GatewayTimeoutException,
+            KeyError,
+            TooManyRequestsException,
+        ) as exc:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="running_job_unreadable"
+            ) from exc
+
+        reply = getattr(getattr(response, "nav", None), "bidire_reqconver_path", None)
+        if reply is None:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="running_job_unreadable"
+            )
+        job = CurrentTaskSettings(
+            **{
+                field.name: getattr(reply, field.name)
+                for field in dataclasses.fields(CurrentTaskSettings)
+                if hasattr(reply, field.name)
+            }
+        )
+        job.zone_hashs = [int(zone) for zone in job.zone_hashs]
         if (
-            int(_mdata.report_data.work.bp_hash) in _mdata.work.zone_hashs
-            and (_mdata.report_data.work.area >> 16) != 100
+            not job.zone_hashs
+            or job.speed <= 0
+            or job.channel_width <= 0
+            or (job.knife_height <= 0 and not DeviceType.is_yuka(self.device_name))
         ):
-            await self.async_modify_plan_route(self.operation_settings)
+            LOGGER.warning(
+                "Running job read back incomplete, not re-issuing it: zones=%d "
+                "speed=%s channel_width=%s knife_height=%s",
+                len(job.zone_hashs),
+                job.speed,
+                job.channel_width,
+                job.knife_height,
+            )
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="running_job_unreadable"
+            )
+        return job
+
+    def _settings_for_running_job(self, job: CurrentTaskSettings) -> OperationSettings:
+        """Build route settings that match the running job, on a copy of the plan."""
+        settings = copy.deepcopy(self._operation_settings)
+        settings.areas = list(dict.fromkeys(job.zone_hashs))
+        settings.job_mode = job.job_mode
+        settings.job_id = job.job_id
+        settings.job_version = job.job_ver
+        settings.mowing_laps = job.edge_mode
+        settings.blade_height = job.knife_height
+        settings.speed = job.speed
+        settings.channel_width = job.channel_width
+        settings.channel_mode = job.channel_mode
+        settings.ultra_wave = job.ultra_wave
+        settings.toward_mode = job.toward_mode
+        # The app zeroes toward when toward_mode is 0 before a sub_cmd=3 re-issue
+        # (MACommandHelper.modifyGenerateRouteInformation).
+        settings.toward = job.toward if job.toward_mode != 0 else 0
+        settings.toward_included_angle = job.toward_included_angle
+        if job.reserved:
+            path_order = GenerateRouteInformation.decode_path_order(job.reserved)
+            settings.border_mode = path_order.edge_mode
+            settings.obstacle_laps = path_order.obstacle_laps
+            settings.start_progress = path_order.start_progress
+            if path_order.collect_grass_freq:
+                settings.collect_grass_frequency = path_order.collect_grass_freq
+        return settings
+
+    async def async_apply_working_setting(self, field: str) -> None:
+        """Apply one working-setting change to a running job, and only that one.
+
+        Idle, the change stays in the plan for the next job and nothing is sent.
+        While a job runs, Luba 2 and newer re-issue the running route
+        (sub_cmd=3) with every other field read fresh from the mower; the
+        original Luba 1 changes blade height directly and nothing else. Both
+        mirror the app (HomeMapFragment WorkingOptionView.onConfirm).
+        """
+        if not self._is_route_job_active():
+            return
+        value = getattr(self._operation_settings, field)
+        if not DeviceType.is_luba_pro(self.device_name):
+            if field == "blade_height":
+                await self.async_blade_height(int(value))
+            return
+
+        job = await self._async_read_running_job()
+        settings = self._settings_for_running_job(job)
+        setattr(settings, field, value)
+        await self._async_send_modified_route(settings)
+        self._running_job_settings = (
+            cast(MowingDevice, self.data).report_data.work.path_hash,
+            dataclasses.replace(job, **{_RUNNING_JOB_FIELDS[field]: value}),
+            True,
+        )
 
     async def async_restore_data(self) -> None:
         """Restore saved data."""

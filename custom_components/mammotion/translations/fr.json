@@ -1476,6 +1476,9 @@
     },
     "start_task_unsupported_on_spino": {
       "message": "Démarrer un programme à la demande n'est pas pris en charge sur le robot de piscine Spino — le firmware ne propose aucune commande d'exécution immédiate pour les programmes enregistrés."
+    },
+    "running_job_unreadable": {
+      "message": "Impossible de lire les réglages de la tâche en cours sur le robot : la modification n'a pas été envoyée à la tâche. Elle sera utilisée pour la prochaine tâche lancée par HA."
     }
   }
 }

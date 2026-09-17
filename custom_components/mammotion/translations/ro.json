@@ -1476,6 +1476,9 @@
     },
     "start_task_unsupported_on_spino": {
       "message": "Pornirea unui program la cerere nu este acceptată pe robotul de piscină Spino — firmware-ul nu oferă o comandă de execuție imediată pentru programele stocate."
+    },
+    "running_job_unreadable": {
+      "message": "Setările lucrării în curs nu au putut fi citite de pe mașina de tuns iarba, așa că modificarea nu a fost trimisă lucrării. Va fi folosită pentru următoarea lucrare pornită de HA."
     }
   }
 }

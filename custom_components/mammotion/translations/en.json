@@ -2669,6 +2669,9 @@
     },
     "start_task_unsupported_on_spino": {
       "message": "Starting a schedule on demand is not supported on the Spino pool cleaner — the device firmware has no execute-now command for stored plans."
+    },
+    "running_job_unreadable": {
+      "message": "Could not read the running job's settings from the mower, so the change was not sent to the job. It will be used for the next job HA starts."
     }
   }
 }

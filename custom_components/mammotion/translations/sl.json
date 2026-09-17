@@ -1476,6 +1476,9 @@
     },
     "start_task_unsupported_on_spino": {
       "message": "Zagon urnika na zahtevo ni podprt na bazenskem robotu Spino — vdelana programska oprema ne ponuja ukaza za takojšen zagon shranjenih urnikov."
+    },
+    "running_job_unreadable": {
+      "message": "Nastavitev tekočega opravila ni bilo mogoče prebrati s kosilnice, zato sprememba ni bila poslana opravilu. Uporabljena bo za naslednje opravilo, ki ga zažene HA."
     }
   }
 }

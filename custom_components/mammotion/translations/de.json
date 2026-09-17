@@ -1476,6 +1476,9 @@
     },
     "start_task_unsupported_on_spino": {
       "message": "Das Starten eines Zeitplans auf Abruf wird vom Spino-Poolreiniger nicht unterstützt — die Geräte-Firmware hat keinen 'jetzt ausführen'-Befehl für gespeicherte Pläne."
+    },
+    "running_job_unreadable": {
+      "message": "Die Einstellungen des laufenden Auftrags konnten nicht vom Mähroboter gelesen werden, daher wurde die Änderung nicht an den Auftrag gesendet. Sie wird für den nächsten von HA gestarteten Auftrag verwendet."
     }
   }
 }

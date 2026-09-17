@@ -1476,6 +1476,9 @@
     },
     "start_task_unsupported_on_spino": {
       "message": "Spuštění plánu na vyžádání není u bazénového čističe Spino podporováno — firmware nemá příkaz pro okamžité spuštění uloženého plánu."
+    },
+    "running_job_unreadable": {
+      "message": "Nastavení probíhající úlohy se nepodařilo načíst ze sekačky, proto změna nebyla do úlohy odeslána. Použije se pro další úlohu spuštěnou z HA."
     }
   }
 }

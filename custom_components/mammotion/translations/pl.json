@@ -1476,6 +1476,9 @@
     },
     "start_task_unsupported_on_spino": {
       "message": "Uruchomienie planu na żądanie nie jest obsługiwane na robocie basenowym Spino — firmware urządzenia nie ma polecenia natychmiastowego uruchomienia zapisanego planu."
+    },
+    "running_job_unreadable": {
+      "message": "Nie udało się odczytać ustawień bieżącego zadania z kosiarki, więc zmiana nie została wysłana do zadania. Zostanie użyta przy następnym zadaniu uruchomionym przez HA."
     }
   }
 }
