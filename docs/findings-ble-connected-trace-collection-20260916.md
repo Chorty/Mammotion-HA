@@ -117,9 +117,9 @@ after `tracer_start_utc.txt`, 23:51:08Z).
 - **S3** refused before dispatch four times (23:51:49, 23:52:49, 23:53:50,
   23:54:50Z): tracked features at dispatch 44, 59, 0, 0 — "stays below" per §12,
   so the sequence stopped. **Nothing was sent for S3.**
-- 🚨 **At 23:53:38Z `lawn_mower` went `mowing`** — a mow job not started from any
-  HA user context (logbook shows no user; source not established: app or
-  schedule). The mower drove from (4.87, −5.77) to (14.42, −15.55) by 23:54:59Z,
+- **At 23:53:38Z `lawn_mower` went `mowing`** — ✏️ **the operator started it from
+  the Mammotion app** (confirmed by the operator; the HA logbook showed no user,
+  as expected for an app start). The mower drove from (4.87, −5.77) to (14.42, −15.55) by 23:54:59Z,
   `MODE_WORKING`, blades reported on, zone hash `3481535603736850863`. The
   runner's refusals over that window were correct; no run-3 command moved it.
 - The operator called a stop at ~23:55Z. Driver, runner and tracer killed; gate
