@@ -1,0 +1,195 @@
+{
+ "predeclaration": "docs/predeclared-rtk-square-return-20260916.md",
+ "started_utc": "2026-09-17T22:50:32.050254+00:00",
+ "dry_run": true,
+ "start_position": [
+  5.2552,
+  -4.1545
+ ],
+ "parameters": {
+  "speed": 0.6,
+  "pulse_ms": 4000,
+  "refresh_ms": 200,
+  "leg_target_m": 2.0,
+  "turn_target_deg": 90.0
+ },
+ "legs": [
+  {
+   "label": "leg1",
+   "start": [
+    5.2552,
+    -4.1545
+   ],
+   "started_utc": "2026-09-17T22:50:32.054807+00:00",
+   "pulses": [
+    {
+     "index": 1,
+     "utc": "2026-09-17T22:50:32.365516+00:00",
+     "ok": true,
+     "why": "dry run ok",
+     "position": [
+      5.2552,
+      -4.1545
+     ],
+     "travelled_m": 0.0,
+     "rtk": "Fix"
+    }
+   ],
+   "end": [
+    5.2552,
+    -4.1545
+   ],
+   "length_m": 0.0,
+   "bearing_deg": null
+  },
+  {
+   "label": "leg2",
+   "start": [
+    5.2552,
+    -4.1545
+   ],
+   "started_utc": "2026-09-17T22:50:32.979730+00:00",
+   "pulses": [
+    {
+     "index": 1,
+     "utc": "2026-09-17T22:50:33.389693+00:00",
+     "ok": true,
+     "why": "dry run ok",
+     "position": [
+      5.2552,
+      -4.1545
+     ],
+     "travelled_m": 0.0,
+     "rtk": "Fix"
+    }
+   ],
+   "end": [
+    5.2552,
+    -4.1545
+   ],
+   "length_m": 0.0,
+   "bearing_deg": null
+  },
+  {
+   "label": "leg3",
+   "start": [
+    5.2552,
+    -4.1545
+   ],
+   "started_utc": "2026-09-17T22:50:33.599680+00:00",
+   "pulses": [
+    {
+     "index": 1,
+     "utc": "2026-09-17T22:50:33.930748+00:00",
+     "ok": true,
+     "why": "dry run ok",
+     "position": [
+      5.2552,
+      -4.1545
+     ],
+     "travelled_m": 0.0,
+     "rtk": "Fix"
+    }
+   ],
+   "end": [
+    5.2552,
+    -4.1545
+   ],
+   "length_m": 0.0,
+   "bearing_deg": null
+  },
+  {
+   "label": "leg4",
+   "start": [
+    5.2552,
+    -4.1545
+   ],
+   "started_utc": "2026-09-17T22:50:34.241036+00:00",
+   "pulses": [
+    {
+     "index": 1,
+     "utc": "2026-09-17T22:50:34.552326+00:00",
+     "ok": true,
+     "why": "dry run ok",
+     "position": [
+      5.2552,
+      -4.1545
+     ],
+     "travelled_m": 0.0,
+     "rtk": "Fix"
+    }
+   ],
+   "end": [
+    5.2552,
+    -4.1545
+   ],
+   "length_m": 0.0,
+   "bearing_deg": null
+  }
+ ],
+ "turns": [
+  {
+   "label": "turn1",
+   "started_utc": "2026-09-17T22:50:32.365619+00:00",
+   "assumed_rate_deg_s": 15.0,
+   "commanded_ms": 6000,
+   "pulses": [
+    {
+     "utc": "2026-09-17T22:50:32.975586+00:00",
+     "ms": 4000,
+     "ok": true,
+     "why": "dry run ok"
+    }
+   ]
+  },
+  {
+   "label": "turn2",
+   "started_utc": "2026-09-17T22:50:33.389747+00:00",
+   "assumed_rate_deg_s": 15.0,
+   "commanded_ms": 6000,
+   "pulses": [
+    {
+     "utc": "2026-09-17T22:50:33.595477+00:00",
+     "ms": 4000,
+     "ok": true,
+     "why": "dry run ok"
+    }
+   ]
+  },
+  {
+   "label": "turn3",
+   "started_utc": "2026-09-17T22:50:33.930839+00:00",
+   "assumed_rate_deg_s": 15.0,
+   "commanded_ms": 6000,
+   "pulses": [
+    {
+     "utc": "2026-09-17T22:50:34.237183+00:00",
+     "ms": 4000,
+     "ok": true,
+     "why": "dry run ok"
+    }
+   ]
+  },
+  {
+   "label": "turn4",
+   "started_utc": "2026-09-17T22:50:34.552376+00:00",
+   "assumed_rate_deg_s": 15.0,
+   "commanded_ms": 6000,
+   "pulses": [
+    {
+     "utc": "2026-09-17T22:50:35.059684+00:00",
+     "ms": 4000,
+     "ok": true,
+     "why": "dry run ok"
+    }
+   ]
+  }
+ ],
+ "end_position": [
+  5.2552,
+  -4.1545
+ ],
+ "rtk_closure_m": 0.0,
+ "ended_utc": "2026-09-17T22:50:35.063142+00:00",
+ "final_rtk": "Fix"
+}

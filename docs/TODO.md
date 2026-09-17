@@ -41,10 +41,26 @@ elsewhere.
 3. Verified on hardware: start a mow from the app, change speed in HA, confirm
    the blade height is unchanged at the mower.
 
-**Status 2026-09-17:** mechanism confirmed from HA's recorder (blade 60 → 25 mm
-within 20 s of HA's speed write) and fixed on branch
-`fix/operation-settings-running-job-sync`, **not deployed**; hardware check (done
-item 3) not run. Record: `docs/findings-operation-settings-sync-20260917.md`.
+**✅ RESOLVED 2026-09-17.** Fixed, deployed as **beta111**, and **verified on
+hardware the same evening**: during an app-started mow (blade 55 mm, 0.7 ft/s) the
+operator changed Working speed 1.61 → 1.2 ft/s; the blade held **55 mm across 157
+consecutive samples over 13 min** while the ground speed moved to the new value,
+and all three entities switched from HA's plan to the job's real values. All three
+"done means" items are met. Records:
+`docs/findings-operation-settings-sync-20260917.md` (cause + fix),
+`docs/findings-operation-settings-hardware-20260917.md` (the hardware run).
+
+**Still open, smaller, tracked here:**
+- HA does not read an app-started job on its own, so the entities show HA's plan
+  (labelled `next_job_plan`) until the first change in HA. The app queries the
+  route on entry to working; HA should too.
+- 🚨 The blade-height slider steps **1 inch** in US units, and its top position
+  (3.0 in) converts to **76 mm, above the device max ~70 mm**. HA validates the
+  display value and converts afterwards; the beta111 clamp runs only at startup
+  and restore, not on a user write.
+- `lawn_mower.start_mow` with `modify: true` still fills unspecified fields from
+  HA's plan — the same stale-fill hazard, on a different path.
+- The fail-closed path (`running_job_unreadable`) has never been seen on hardware.
 
 **Until fixed:** don't change mowing settings in HA while a job started from the
 app is running; change them in the app.

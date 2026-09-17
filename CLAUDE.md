@@ -24,7 +24,31 @@ prose around them is still true. **One grep against the tree beats this file.**
 
 ---
 
-## Current build: beta110 (deployed 2026-09-17; backend `chorty-0.8.12.post4`)
+## Current build: beta111 (deployed 2026-09-17; backend `chorty-0.8.12.post4`)
+
+✅ **beta111 verified 2026-09-17 ~21:25-21:33 UTC** — 52/52 identical, card md5
+`d0dc81f6` both paths, **0 unavailable**, 68 services, entry `loaded`, gate
+disarmed (API + RAW). ⏳ Browser confirmation owed (card code unchanged from
+beta110). ✏️ No dry run: this change does not touch the motion path, and a real
+four-turn square-return run drove on this build the same evening.
+🏆 **It ships the mowing-settings fix, and it was VERIFIED ON HARDWARE the same
+evening** — during an app-started mow (blade 55 mm, 0.7 ft/s) the operator changed
+Working speed 1.61 → 1.2 ft/s: the blade held **55 mm across 157 consecutive
+samples over 13 min** while ground speed moved to the new value, and the entities
+switched from HA's plan to the job's real values. Record:
+`docs/findings-operation-settings-hardware-20260917.md`; cause and fix in
+`docs/findings-operation-settings-sync-20260917.md`.
+🔑 **Mid-job setting changes now RE-READ the job first** (`query_generate_route_information`,
+sub_cmd=2) and change only the edited field; an unreadable or zero-filled reply
+sends **nothing** and raises `running_job_unreadable`. The three number entities
+carry a **`value_source`** attribute: `running_job`, `running_job_after_ha_change`
+or `next_job_plan`.
+⚠️ **HA still does not read an app-started job on its own** — the entities show
+HA's plan until the first change in HA. 🚨 **The blade-height slider steps 1 inch
+in US units and its top position converts to 76 mm, above the ~70 mm device max.**
+Both tracked in `docs/TODO.md`.
+
+### Previously: beta110 (deployed 2026-09-17)
 
 ✅ **beta110 verified 2026-09-17 ~04:17-04:25 UTC** — 52/52 identical, card md5
 `367455c4` both paths, 0 unavailable, 68 services, gate disarmed (API + RAW), dry
@@ -668,6 +692,33 @@ Predeclared `688f5714`, runner `c9467099` committed before the first pulse.
 - 🛑 **Standing decision 3 (accuracy CLOSED) is untouched** — this measured raw
   RTK position with no VIO and no correction, not click-to-path landing
   accuracy. Do not quote it as one.
+
+🔁 **THE REPEAT RAN 2026-09-17 (22:54–23:11Z) WITH ALL FOUR TURNS — and is
+INCONCLUSIVE AGAIN, for a different reason: the start marker was lost in the
+grass.** Record: `docs/findings-rtk-square-return-repeat-20260917.md` + evidence
+dir. The runner defect is FIXED (`fa520e29`, committed before the first pulse,
+with tests that fail on the old `if index < 3`).
+- **The run itself was clean:** 4 legs, 4 turns, no aborts, RTK `Fix` throughout,
+  gate armed once and verified disarmed (API + RAW). Heading came back to within
+  **~3.5°**, so a tape measurement *would* have been directly comparable — the
+  method is now right; only the measurement failed. RTK claims **0.288 m**.
+- 🗑️ **The UniFi before/after frames are NOT a substitute and no number is quoted
+  from them.** The camera provably did not move (scene registers to 0 px / 1 px)
+  and the mower template-matches **~14 px** away, but every ruler failed: the
+  mower's shell measures 91 px in one frame and 130 px in the other (25 min of
+  sun change), and stripe period disagrees with itself (50 / 40 / 83 px).
+  ⚠️ **Unresolved hint only:** 14 px against a ~0.5–0.6 m body would be ~8–11 cm,
+  i.e. RTK **overstating** its error. A hypothesis for the next run, not a result.
+- 🔑 **The monotonic turn-rate decline did NOT reproduce**: 14.447 → 15.434 →
+  14.358 °/s tonight vs 16.01 → 15.52 → 13.25 °/s on 2026-09-16, same command
+  (angular 202, pure rotation). **Battery sag is weakened as an explanation.**
+  Six pure-rotation points now span 13.25–16.01 °/s. Do not fit a law to them.
+- **Leg repeatability** 2.566 / 2.843 / 2.786 / 2.727 m; the short leg was leg 1
+  tonight and leg 4 last time, so **which leg is short is not consistent** —
+  variance, not a position effect.
+- 🚨 **The next attempt must not use a ground marker.** Tape from **two permanent
+  landmarks** (fence post, hot tub corner) to one named body point, before and
+  after. Nothing to lose in the grass, and more precise than chalk.
 
 🗄️ **Before Phase 1 — one SETUP leg dispatched 2026-09-12** (unscored,
 excluded from the population by §15, committed before it ran) — `target_reached`

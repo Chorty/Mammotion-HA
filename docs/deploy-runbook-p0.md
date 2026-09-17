@@ -8,6 +8,38 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### ✅ 2026-09-17 ~21:25-21:33 UTC — beta111 deployed (mowing-settings fix)
+
+`0.6.4-beta111`, released from `main` at `39f77483` (fix `dd49e3b6` + docs
+`29f0a224`, merged forward). Ships the mid-job settings fix: changing Working
+speed, Blade height or Obstacle detection during a running job now re-reads the
+job from the mower first and changes only the edited field. **No
+motion-control-law value changed, `accepted-profile.json` untouched, no Gate 5
+owed.** Backend pin unchanged (`pymammotion 0.8.12.post4`).
+
+| check | result |
+| --- | --- |
+| Beta Release run | 35276567631, success |
+| version quartet | manifest / pyproject / `CARD_VERSION` `0.6.4-beta111`, uv.lock `0.6.4b111` |
+| archive SHA-256 | `c145b16c308be7fa2b70b30b8df0bb4dace1103c5883cb6f432cebf670df5946`, identical local and host |
+| AppleDouble files | 0 |
+| files | **52/52 byte-identical** |
+| card md5 | `d0dc81f6` at both serving paths and locally |
+| Lovelace | `?v=0.6.4-beta111&build=d0dc81f6`, read back verified |
+| restart | API up in **30 s**, 133 entities in 141 s |
+| entities | 132 Mammotion, **0 unavailable** (17 `unknown`: buttons and never-fired `last_*` sensors) |
+| services | **68** |
+| config entry | `loaded`, `disabled_by: None` |
+| gate | `enabled: False`, `real_motion_allowed: False`, `active_session: None` |
+| backup | `/config/mammotion-backup-20260917-1727-pre-beta111.tgz` |
+
+⏳ **Browser confirmation owed** (card code is unchanged from beta110, so nothing
+new is expected visually). ✏️ **No dry run was taken** — this change does not
+touch the motion path, and a real four-turn square-return run was driven on this
+build the same evening instead (`docs/findings-rtk-square-return-repeat-20260917.md`).
+🏆 **Verified on hardware the same evening** — see
+`docs/findings-operation-settings-hardware-20260917.md`.
+
 ### ✅ 2026-09-17 ~04:17-04:25 UTC — beta110 deployed (coverage map from three traced mows)
 
 `0.6.4-beta110`, version bump on top of `f03258e7`. **beta109 was released but never
