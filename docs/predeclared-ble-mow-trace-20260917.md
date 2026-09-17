@@ -41,3 +41,9 @@ than 2026-09-16. Expected effects, stated before scoring: more ground covered
 per minute but **fewer samples per 1 m cell** (the report rate stays ~1 Hz), so
 fewer cells will reach n ≥ 10; and the disconnect-share comparison is further
 confounded by route and speed. The §Reading thresholds are **not** changed.
+
+## Note added during the mow (02:46Z) — recorded, rules unchanged
+The `paused` intervals at 02:40:24–02:40:46, 02:41:35–02:41:56 and
+02:44:46–02:45:33Z were **manual pauses by the operator from the app**, not
+device stops or link artefacts. The measure already counts only rows while
+`lawn_mower` reads `mowing`, so they fall outside it by construction.
