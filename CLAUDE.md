@@ -24,7 +24,23 @@ prose around them is still true. **One grep against the tree beats this file.**
 
 ---
 
-## Current build: beta108 (deployed 2026-09-17; backend `chorty-0.8.12.post4`)
+## Current build: beta110 (deployed 2026-09-17; backend `chorty-0.8.12.post4`)
+
+✅ **beta110 verified 2026-09-17 ~04:17-04:25 UTC** — 52/52 identical, card md5
+`367455c4` both paths, 0 unavailable, 68 services, gate disarmed (API + RAW), dry
+run `would_send: false`. ⏳ Browser confirmation owed. **beta109 was released but
+never installed.** Only the coverage asset changed: `p1s-printer` now 348 cells
+from three traced mows. Records: `docs/findings-ble-mow-trace-20260917.md`,
+`docs/findings-ble-mow-trace-20260917-backyard-right.md`.
+🔑 **Opening the Mammotion app takes the mower's BLE link from HA** (while HA still
+lists the old proxy); closing it returns the link in ~10 s. Keep the app closed
+during HA-driven or traced sessions.
+🔑 **Measure BLE loss with `ble_link_live`, not the tracer's `disconnected` tag** —
+on 2026-09-17 a further 30.5 % of mowing time was a dead link HA had not released.
+📋 **`docs/TODO.md` now exists** — first entry: HA's mowing-settings entities are
+local defaults, and changing one mid-mow re-sends the stale rest (blade height 1″).
+
+### Previously: beta108 (deployed 2026-09-17)
 
 ✅ **beta108 verified 2026-09-17 ~00:52-01:00 UTC** — 52/52 identical, card md5
 `ed5c41d1` both paths, 0 unavailable, 68 services, gate disarmed (API + RAW), dry

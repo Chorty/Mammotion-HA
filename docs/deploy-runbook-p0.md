@@ -8,6 +8,33 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### ✅ 2026-09-17 ~04:17-04:25 UTC — beta110 deployed (coverage map from three traced mows)
+
+`0.6.4-beta110`, version bump on top of `f03258e7`. **beta109 was released but never
+installed**: it was cut before the Backyard Right mow's data existed, and the
+install was held while that mow ran. Only `ble-coverage.json` changed in
+`custom_components/` besides the version quartet — no motion-control-law value,
+`accepted-profile.json` untouched, no Gate 5 owed. `p1s-printer` layer: 348 cells,
+6 175 samples.
+
+| check | result |
+| --- | --- |
+| gate suite | pytest 1150 passed; ruff check/format clean; mypy clean; frontend 102/102; pre-commit all passed |
+| archive sha256 | `7223d4807b5c5448415a3cb745766760f52fcfbbae2cd161fcae064af069773d`, identical local and host |
+| files byte-identical | **52/52**; AppleDouble junk 0 |
+| card md5 | `367455c4fa8b9089e1eb442d7c788923` at BOTH serving paths |
+| coverage asset | `/mammotion/ble-coverage.json` 200, 52 969 bytes (= local) |
+| versions | host `manifest.json` `0.6.4-beta110`; Lovelace `?v=0.6.4-beta110&build=367455c4` verified |
+| backend | `pymammotion 0.8.12.post4` from inside the container |
+| API return | 31 s; 133 mammotion entities at 140 s; 0 unavailable |
+| services / entry | 68 / `loaded` |
+| gate | `enabled: false`, `real_motion_allowed: false`; RAW `enable_experimental_motion: False` |
+| dry run | `would_send: false`, `blockers: []` |
+
+Mower docked (`charge_on`) throughout. Backup:
+`/config/mammotion-backup-20260917-0017-pre-beta110.tgz` (host-local EDT).
+⏳ Browser confirmation owed (beta107 zoom/pan and beta108 layers also unconfirmed).
+
 ### ✅ 2026-09-17 ~00:52-01:00 UTC — beta108 deployed (BLE coverage filled from traced runs + a mow)
 
 `0.6.4-beta108`, version bump on top of `f06fa1c9`. Backend `chorty-0.8.12.post4`,
