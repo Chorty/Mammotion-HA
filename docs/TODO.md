@@ -41,5 +41,10 @@ elsewhere.
 3. Verified on hardware: start a mow from the app, change speed in HA, confirm
    the blade height is unchanged at the mower.
 
+**Status 2026-09-17:** mechanism confirmed from HA's recorder (blade 60 → 25 mm
+within 20 s of HA's speed write) and fixed on branch
+`fix/operation-settings-running-job-sync`, **not deployed**; hardware check (done
+item 3) not run. Record: `docs/findings-operation-settings-sync-20260917.md`.
+
 **Until fixed:** don't change mowing settings in HA while a job started from the
 app is running; change them in the app.
