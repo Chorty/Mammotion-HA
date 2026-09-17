@@ -2140,13 +2140,186 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         """Return operation settings for planning."""
         return self._operation_settings
 
-    async def async_modify_plan_if_mowing(self) -> None:
-        """Re-plan the current mow route if the device is actively mowing."""
+    def _is_route_job_running(self) -> bool:
+        """Return True while a route mow is underway and not yet complete.
+
+        The mower's current breakpoint (``report_data.work.bp_hash``) is one of
+        the active job's zones (``work.zone_hashs``) and its progress
+        (``area >> 16``) is not 100.  Ported from upstream, which factored this
+        out of the inline condition ``async_modify_plan_if_mowing`` used to
+        carry.  It does not distinguish a scheduled job from a manual one, nor a
+        job started in the app from one started here.
+        """
         _mdata = cast(MowingDevice, self.data)
-        if (
+        return (
             int(_mdata.report_data.work.bp_hash) in _mdata.work.zone_hashs
             and (_mdata.report_data.work.area >> 16) != 100
+        )
+
+    def _running_job_settings_are_known(self) -> bool:
+        """Return True when ``data.work`` looks like a real job's parameters.
+
+        ``CurrentTaskSettings`` defaults every field to zero
+        (``pymammotion/data/model/work.py:9``) and is only ever filled by a
+        ``bidire_reqconver_path`` message (``state_reducer.py:408-411``) --
+        never by the ~1 Hz report, which only ever *clears* ``zone_hashs``.  An
+        untouched record is therefore indistinguishable from a real one at the
+        field level, and seeding a route re-issue from it would push
+        ``speed=0.0``, ``channel_width=0`` and ``knife_height=0`` at a mower
+        that is mowing.
+
+        ``speed`` and ``channel_width`` are the discriminators: both are
+        meaningless at zero for every device this integration supports.
+        ``knife_height`` deliberately is not -- a Yuka reports 0, and
+        ``generate_route_information`` forces it to -10 there
+        (``coordinator.py:1940-1941``).
+        """
+        work = cast(MowingDevice, self.data).work
+        return bool(work.zone_hashs) and work.speed > 0 and work.channel_width > 0
+
+    async def _async_refresh_running_job_settings(self) -> bool:
+        """Ask the device to re-report the running job's route parameters.
+
+        ``query_generate_route_information`` is ``NavReqCoverPath(sub_cmd=2)``
+        (``pymammotion/mammotion/commands/messages/navigation.py:585``); the
+        reply arrives as ``bidire_reqconver_path`` and the reducer rebinds
+        ``device.work`` from it.  Without this, a job started from the vendor
+        app is never described to Home Assistant at all: the only other sender
+        is the breakpoint resume path in ``lawn_mower.py``.
+
+        ``async_send_and_wait`` swallows its own transport timeouts and returns
+        ``None`` either way, so success cannot be read from an exception.  It is
+        read from the record afterwards instead.
+        """
+        await self.async_send_and_wait(
+            "query_generate_route_information", "bidire_reqconver_path"
+        )
+        return self._running_job_settings_are_known()
+
+    def _seed_operation_settings_from_running_job(self) -> None:
+        """Copy the running job's parameters into the local operation settings.
+
+        The vendor app seeds its in-job editor from the active route and
+        re-sends the whole parameter set with only the edited field changed --
+        there is no partial update on the wire, ``modify_route_information``
+        always carries every field
+        (``pymammotion/mammotion/commands/messages/navigation.py:556-575``).
+
+        ``async_modify_plan_route`` already seeded the first eight of these.
+        The three the operator can actually edit -- ``speed``,
+        ``channel_width`` and ``blade_height`` -- were the ones it omitted,
+        which is how a mid-mow speed change reset the blade height to Home
+        Assistant's slider floor.
+
+        Upstream also seeds ``auto_change_direction``; that field does not exist
+        on ``CurrentTaskSettings`` in the pinned pymammotion 0.8.12.post4 and is
+        deliberately not carried here.
+        """
+        work = cast(MowingDevice, self.data).work
+        settings = self._operation_settings
+        settings.areas = list(dict.fromkeys(work.zone_hashs))
+        settings.toward = work.toward
+        settings.toward_mode = work.toward_mode
+        settings.toward_included_angle = work.toward_included_angle
+        settings.mowing_laps = work.edge_mode
+        settings.job_mode = work.job_mode
+        settings.job_id = work.job_id
+        settings.job_version = work.job_ver
+        settings.speed = work.speed
+        settings.channel_width = work.channel_width
+        settings.ultra_wave = work.ultra_wave
+        settings.channel_mode = work.channel_mode
+        settings.blade_height = work.knife_height
+
+    async def _async_apply_route_field_if_working(self, field: str) -> None:
+        """Re-issue the running job's route with a single route field changed.
+
+        Refuses to send anything unless the device has just described the job it
+        is running.  Pushing a guess at a running mower's blade height is worse
+        than doing nothing: the operator's report of 2026-09-17 is what that
+        looks like on the ground.
+        """
+        if not self._is_route_job_running():
+            return
+        new_value = getattr(self._operation_settings, field)
+        if not await self._async_refresh_running_job_settings():
+            LOGGER.warning(
+                "%s: not applying %s to the running job -- the device did not "
+                "report the job's own settings, and re-sending local defaults "
+                "would change settings nobody asked to change",
+                self.device_name,
+                field,
+            )
+            return
+        self._seed_operation_settings_from_running_job()
+        setattr(self._operation_settings, field, new_value)
+        await self.async_modify_plan_route(self._operation_settings)
+
+    async def async_change_blade_height_if_working(self) -> None:
+        """Apply a mid-job blade-height change, preserving the rest of the job.
+
+        Mirrors the vendor app's ``WorkingOptionView.onConfirm``: Luba 2 and
+        newer re-issue the running route (``sub_cmd=3``) so the new height binds
+        to the active job, while the original Luba 1 nudges the blade motor
+        directly.  An idle change is baked into the plan when the next job
+        starts, so nothing is sent in that case.
+        """
+        if not self._is_route_job_running():
+            return
+        if not DeviceType.is_luba_pro(self.device_name):
+            await self.async_blade_height(self._operation_settings.blade_height)
+            return
+        await self._async_apply_route_field_if_working("blade_height")
+
+    async def async_change_speed_if_working(self) -> None:
+        """Apply a mid-job speed change, preserving the rest of the job.
+
+        The original Luba 1's in-job editor only changes blade height, so a
+        mid-job speed change sends nothing there.
+        """
+        if not DeviceType.is_luba_pro(self.device_name):
+            return
+        await self._async_apply_route_field_if_working("speed")
+
+    async def async_change_path_spacing_if_working(self) -> None:
+        """Apply a mid-job path-spacing change, preserving the rest of the job."""
+        if not DeviceType.is_luba_pro(self.device_name):
+            return
+        await self._async_apply_route_field_if_working("channel_width")
+
+    def running_job_setting(self, field: str) -> float | None:
+        """Return the running job's value for one operation-settings field.
+
+        ``None`` means "the device has not told us", which is the honest answer
+        whenever no route job is running or ``data.work`` is an untouched
+        record.  Callers show their own staged value in that case rather than
+        presenting a default as though the mower had reported it.
+
+        ``blade_height`` prefers ``report_data.work.knife_height``: that is
+        ``RptWork`` field 20, carried in the ~1 Hz report stream, so it is live
+        rather than cached.  ``speed`` and ``channel_width`` have no equivalent
+        in the report -- ``man_run_speed`` is the manual-drive speed and
+        ``cutter_width`` is the physical deck width, neither of which is the
+        job's setting -- so they can only come from ``data.work``.
+        """
+        if (
+            not self._is_route_job_running()
+            or not self._running_job_settings_are_known()
         ):
+            return None
+        _mdata = cast(MowingDevice, self.data)
+        if field == "blade_height":
+            live = _mdata.report_data.work.knife_height
+            return live if live > 0 else _mdata.work.knife_height
+        if field == "speed":
+            return _mdata.work.speed
+        if field == "channel_width":
+            return _mdata.work.channel_width
+        return None
+
+    async def async_modify_plan_if_mowing(self) -> None:
+        """Re-plan the current mow route if the device is actively mowing."""
+        if self._is_route_job_running():
             await self.async_modify_plan_route(self.operation_settings)
 
     async def async_restore_data(self) -> None:

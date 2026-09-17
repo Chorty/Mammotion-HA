@@ -170,6 +170,36 @@ YUKA_NUMBER_ENTITIES: tuple[MammotionConfigNumberEntityDescription, ...] = (
     ),
 )
 
+#: Number-entity key -> the ``OperationSettings`` field it edits.  Only these
+#: three describe a running job; every other number entity here is plan-only.
+_SETTING_FIELDS: dict[str, str] = {
+    "blade_height": "blade_height",
+    "working_speed": "speed",
+    "path_spacing": "channel_width",
+}
+
+
+def _job_or_staged(
+    coordinator: MammotionBaseUpdateCoordinator[Any], field: str
+) -> float | None:
+    """Return the running job's value for *field*, else the staged local one.
+
+    ``operation_settings`` is a plan builder, not a mirror of the mower: it is
+    created from pymammotion's dataclass defaults and nothing fills it from the
+    device.  Showing it unqualified is what made Home Assistant claim a blade
+    height the mower had never been set to.  ``running_job_setting`` returns
+    ``None`` unless a route job is underway *and* the device has described it,
+    so the fall-through is a value Home Assistant would send, not one it read.
+
+    ``MammotionWorkingNumberEntity`` exposes which of the two it is through the
+    ``value_source`` attribute.
+    """
+    job_value = coordinator.running_job_setting(field)
+    if job_value is not None:
+        return job_value
+    return getattr(coordinator.operation_settings, field)
+
+
 LUBA_WORKING_ENTITIES: tuple[MammotionConfigNumberEntityDescription, ...] = (
     MammotionConfigNumberEntityDescription(
         key="blade_height",
@@ -183,9 +213,9 @@ LUBA_WORKING_ENTITIES: tuple[MammotionConfigNumberEntityDescription, ...] = (
             coordinator.operation_settings, "blade_height", int(value)
         ),
         set_async_fn=lambda coordinator, value: (
-            coordinator.async_modify_plan_if_mowing()
+            coordinator.async_change_blade_height_if_working()
         ),
-        get_fn=lambda coordinator: coordinator.operation_settings.blade_height,
+        get_fn=lambda coordinator: _job_or_staged(coordinator, "blade_height"),
     ),
 )
 
@@ -199,11 +229,12 @@ NUMBER_WORKING_ENTITIES: tuple[MammotionConfigNumberEntityDescription, ...] = (
         native_min_value=0.2,
         native_max_value=0.6,
         set_async_fn=lambda coordinator, value: (
-            coordinator.async_modify_plan_if_mowing()
+            coordinator.async_change_speed_if_working()
         ),
         set_fn=lambda coordinator, value: setattr(
             coordinator.operation_settings, "speed", value
         ),
+        get_fn=lambda coordinator: _job_or_staged(coordinator, "speed"),
     ),
     MammotionConfigNumberEntityDescription(
         key="path_spacing",
@@ -215,6 +246,10 @@ NUMBER_WORKING_ENTITIES: tuple[MammotionConfigNumberEntityDescription, ...] = (
         set_fn=lambda coordinator, value: setattr(
             coordinator.operation_settings, "channel_width", value
         ),
+        set_async_fn=lambda coordinator, value: (
+            coordinator.async_change_path_spacing_if_working()
+        ),
+        get_fn=lambda coordinator: _job_or_staged(coordinator, "channel_width"),
     ),
 )
 
@@ -384,6 +419,25 @@ class MammotionWorkingNumberEntity(MammotionConfigNumberEntity):
         native_min = self._attr_native_min_value
         if native_val is not None and native_min is not None:
             self._attr_native_value = max(native_val, native_min)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Say whether the displayed value came from the mower or from here.
+
+        ``running_job`` means the device reported this setting for the job it is
+        running now.  ``staged`` means it is the value Home Assistant would send
+        when a job next starts -- a local default or the last value typed here,
+        which is not necessarily what the mower is doing.
+        """
+        field = _SETTING_FIELDS.get(self.entity_description.key)
+        if field is None:
+            return {}
+        source = (
+            "running_job"
+            if self.coordinator.running_job_setting(field) is not None
+            else "staged"
+        )
+        return {"value_source": source}
 
     @property
     def native_min_value(self) -> float:
