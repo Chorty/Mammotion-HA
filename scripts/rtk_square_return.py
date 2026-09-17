@@ -333,13 +333,19 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915
                     emit(
                         f"  turn {index} achieved {achieved:+.1f} deg -> rate {rate:.2f} deg/s"
                     )
-            if index < 3:
-                turn = drive_turn(
-                    url, token, f"turn{index + 1}", rate, record, dry_run=args.dry_run
-                )
-                if turn.get("abort"):
-                    emit(f"ABORT on {turn['label']}: {turn['abort']}")
-                    break
+            # 🚨 A turn after EVERY leg, including the last. The 2026-09-16 run
+            # stopped after turn 3, so the mower closed on its start *position*
+            # ~100 deg off its start *heading*: every body point displaced by a
+            # different amount and the tape-vs-RTK comparison inherited the
+            # unknown antenna offset. With heading restored, one tape
+            # measurement equals RTK's closure directly. The predeclaration
+            # (§0) always said four turns; only the runner disagreed.
+            turn = drive_turn(
+                url, token, f"turn{index + 1}", rate, record, dry_run=args.dry_run
+            )
+            if turn.get("abort"):
+                emit(f"ABORT on {turn['label']}: {turn['abort']}")
+                break
     finally:
         if not args.dry_run:
             set_gate(url, token, on=False)
