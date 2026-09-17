@@ -33,7 +33,11 @@ install was held while that mow ran. Only `ble-coverage.json` changed in
 
 Mower docked (`charge_on`) throughout. Backup:
 `/config/mammotion-backup-20260917-0017-pre-beta110.tgz` (host-local EDT).
-⏳ Browser confirmation owed (beta107 zoom/pan and beta108 layers also unconfirmed).
+✅ **Browser-confirmed 2026-09-17** — operator reports the card footer reads
+`v0.6.4-beta110`, so the browser is not serving a stale card. That also puts
+beta107's card code (zoom label + drag-to-pan) and beta108's overlay layers in
+front of the operator; their **behaviour** checks (zoom % tracks, drag pans,
+per-proxy layer paints) are still owed.
 
 ### ✅ 2026-09-17 ~00:52-01:00 UTC — beta108 deployed (BLE coverage filled from traced runs + a mow)
 

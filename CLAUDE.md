@@ -28,7 +28,8 @@ prose around them is still true. **One grep against the tree beats this file.**
 
 ✅ **beta110 verified 2026-09-17 ~04:17-04:25 UTC** — 52/52 identical, card md5
 `367455c4` both paths, 0 unavailable, 68 services, gate disarmed (API + RAW), dry
-run `would_send: false`. ⏳ Browser confirmation owed. **beta109 was released but
+run `would_send: false`. ✅ **Browser-confirmed 2026-09-17** (card footer reads
+`v0.6.4-beta110`); the zoom/pan and overlay **behaviour** checks are still owed. **beta109 was released but
 never installed.** Only the coverage asset changed: `p1s-printer` now 348 cells
 from three traced mows. Records: `docs/findings-ble-mow-trace-20260917.md`,
 `docs/findings-ble-mow-trace-20260917-backyard-right.md`.
