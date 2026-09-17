@@ -1,9 +1,11 @@
 """The mowing settings HA shows, and what a mid-mow change actually sends.
 
 Reported by the operator 2026-09-17: a mow was started from the vendor app at
-blade height 2.2" and 2 ft/s; Home Assistant's Working speed / Blade height /
+blade height 2.2" and 1.3 ft/s; Home Assistant's Working speed / Blade height /
 Path spacing entities showed none of it, and changing *speed* in HA dropped the
 mower's blade to 1" -- Home Assistant's own slider floor, a value nobody chose.
+(The job's speed was first reported as 2 ft/s and corrected to 1.3 ft/s the same
+day; the fixtures below carry the corrected figure.)
 
 Root cause and per-field evidence:
 ``docs/findings-operation-settings-sync-20260917.md``.
@@ -35,12 +37,13 @@ from custom_components.mammotion.number import (
     NUMBER_WORKING_ENTITIES,
 )
 
-#: The app-started job in the operator's report: 2.2" blade, 2 ft/s, 25 cm
-#: spacing.  None of these equals a slider floor, so "read from the job"
-#: cannot be confused with "fell back to a default".
+#: The app-started job in the operator's report: 2.2" blade (55.88 mm), 1.3 ft/s
+#: (0.3962 m/s), 25 cm spacing.  None of these equals a slider floor, so "read
+#: from the job" cannot be confused with "fell back to a default" -- which is
+#: the one property these fixtures have to have.
 JOB_ZONE = 987_654_321
 JOB_BLADE_MM = 56
-JOB_SPEED_MS = 0.61
+JOB_SPEED_MS = 0.3962
 JOB_SPACING_CM = 25
 
 

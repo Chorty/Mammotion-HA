@@ -22,7 +22,7 @@ additions that change the shape of the fix:
 | --- | --- |
 | All three entities read/write a local `OperationSettings()` never filled from the device | ✅ **Confirmed** (§1, §2) |
 | A mid-mow change re-sends the *whole* local settings object | ⚠️ **Confirmed but incomplete** — `async_modify_plan_route` already re-seeds **8** fields from the running job. The three that matter are exactly the three it omits (§3) |
-| Units are worth checking; 2 ft/s ≈ 0.61 m/s exceeds HA's 0.6 m/s maximum | ✅ **Confirmed** — HA cannot represent the speed the job was started at (§5) |
+| Units are worth checking; 2 ft/s ≈ 0.61 m/s exceeds HA's 0.6 m/s maximum | 🗑️ **RETRACTED — the premise was a wrong number.** The operator corrected the job's speed to **1.3 ft/s = 0.3962 m/s**, comfortably inside every candidate range (§5) |
 
 Two things the prior reading did not have:
 
@@ -152,8 +152,9 @@ On a fresh install with no restored state, a mid-mow speed change would send
 
 ### 2.2 The reported incident, reconstructed
 
-1. Operator starts a mow **from the app** at blade 2.2″ (55.9 mm), 2 ft/s
-   (0.61 m/s). Nothing in this integration learns those numbers (§4).
+1. Operator starts a mow **from the app** at blade 2.2″ (**55.88 mm**),
+   **1.3 ft/s** (**0.3962 m/s**). Nothing in this integration learns those
+   numbers (§4).
 2. HA's `operation_settings` holds `blade_height = 25` (restored, §1.1),
    `channel_width = 20`, `speed` = whatever was last set in HA.
 3. Operator changes **Working speed** in HA. `number.py:204-206` writes
@@ -295,11 +296,38 @@ entity registry option at `:525-540`. Unlike sensors, numbers are *not*
 auto-converted by the unit system. Either way `async_set_native_value` receives
 the **native** value, so US display units cannot themselves corrupt what is sent.
 
-🚨 **But the range is genuinely wrong for this job.** 2 ft/s = **0.6096 m/s**,
-above the 0.6 m/s maximum at `number.py:200`. If the static bounds are in force,
-**HA cannot represent, let alone preserve, the speed the operator started the
-mow at** — any HA-side speed edit necessarily lands below it. Blade height is
-fine: 2.2″ = 55.9 mm, inside 25–70 mm.
+### 5.1 ✅ Amendment 1 (operator, 2026-09-17) — the range concern is RETRACTED
+
+🗑️ **This section originally claimed "the range is genuinely wrong for this
+job", on the strength of 2 ft/s = 0.6096 m/s exceeding the 0.6 m/s maximum at
+`number.py:200`. The operator has since corrected the job's speed to
+**1.3 ft/s**.** That is **0.3962 m/s** — inside the static 0.2–0.6 m/s bound and
+inside the `DeviceLimits` 0.2–1.2 m/s bound alike. Blade height was right the
+first time: 2.2″ = **55.88 mm**, inside both 25–70 and 30–70 mm.
+
+🔑 **So both of the job's settings are representable in Home Assistant, and
+the diagnosis never depended on this.** The range observation was always
+secondary to §1–§3; nothing in the write path, the read path or the fix changes.
+
+⚠️ **One residual oddity, deliberately NOT resolved by inference.** The original
+report also said the operator changed Working speed **from 2 to 1.6** in HA. A
+displayed 2 is not reconcilable with a 0.6 m/s maximum under either US speed
+unit — 2 ft/s is 0.6096 m/s and 2 mph is 0.8941 m/s, both above it. Three
+readings survive and this evidence does not separate them:
+
+1. the effective maximum is the `DeviceLimits` **1.2 m/s** (3.937 ft/s), not the
+   static 0.6, and the static value never applies on this device;
+2. the display unit is not what §5 assumes (2 km/h is 0.5556 m/s, which *does*
+   fit a 0.6 maximum — though the operator reports US units);
+3. the remembered figures are approximate.
+
+🛑 **Not guessed.** HA raises `ServiceValidationError` on an out-of-range
+*service* call (`homeassistant/components/number/__init__.py:105-118`) but
+`async_set_native_value` on the entity does not range-check, and `RestoreNumber`
+will put back a stored state regardless — so a displayed 2 has more than one
+mechanism behind it and cannot be used to pin the live maximum. ✅ **One read of
+the entity's own `max` and `unit_of_measurement` settles all three at once**
+(§9 item 2).
 
 ---
 
@@ -390,9 +418,11 @@ fix deployed, no other session driving the mower.
 1. Record HA's `number.working_speed`, `number.blade_height`,
    `number.path_spacing` — state, `value_source` attribute, `min`, `max`, `unit`.
 2. Start a mow **from the Mammotion app** at a blade height and speed that are
-   both distinctive and **not** equal to any HA slider minimum (e.g. 45 mm and
-   0.4 m/s — never 25 mm, never 0.2 m/s: a floor value cannot distinguish "read
-   correctly" from "defaulted").
+   both distinctive and **not** equal to any HA slider minimum **and not equal
+   to the values already in play** (e.g. 38 mm and 0.5 m/s — never 25 mm, never
+   0.2 m/s: a floor value cannot distinguish "read correctly" from "defaulted";
+   and not 56 mm / 0.4 m/s either, which are this incident's own numbers and so
+   cannot distinguish a fresh read from a leftover one).
 3. Within 60 s, re-read all three. **Pass:** each reads the app's value and
    `value_source: running_job`.
 4. Change **Working speed only** in HA, by one step.
@@ -421,10 +451,12 @@ if the chosen value happens to equal the default.
    was available. **The fix does not depend on the answer** — it refreshes
    explicitly — but the answer would say whether the refresh is usually a no-op.
 2. **The effective min/max on the operator's mower.** `number.py:370-372` takes
-   them from `DeviceLimits` at runtime; the static 0.2–0.6 m/s and the LUBA table's
-   0.2–1.2 m/s disagree, and which one is live decides whether §5's "HA cannot
-   represent 2 ft/s" holds on this device. **One read of the entity's `max`
-   attribute settles it** and was deliberately not taken — see 4.
+   them from `DeviceLimits` at runtime; the static 0.2–0.6 m/s and the product-key
+   table's 0.2–1.2 m/s disagree. §5.1 shows the disagreement is still open after
+   Amendment 1 and lists the three readings that survive. ✅ **One read of the
+   entity's `max` and `unit_of_measurement` settles it** and was deliberately not
+   taken — see 4. 🔑 **It no longer gates anything:** with the job at 1.3 ft/s
+   both candidate ranges hold it, so the fix is correct either way.
 3. **What the operator's entities actually read at the time.** Reconstructed
    from code in §2.2, not observed.
 4. **No live HA access from this session.** `.env` is gitignored and absent from

@@ -9,8 +9,9 @@ was observed, what is known about the cause, and what "done" means.
 
 **Observed:**
 - The mow was started from the Mammotion app at **blade height 2.2″** and
-  **working speed 2 ft/s**. HA's *Working speed*, *Blade height* and *Path
-  spacing* entities did not show those values.
+  **working speed 1.3 ft/s** (✏️ corrected by the operator 2026-09-17; first
+  recorded as 2 ft/s). HA's *Working speed*, *Blade height* and *Path spacing*
+  entities did not show those values.
 - The operator changed **Working speed 2 → 1.6** in HA mid-mow. The mower's
   **blade height then changed to 1″** — the value HA's entity was showing, not
   one anyone chose.
@@ -77,10 +78,16 @@ Branch `claude/mammotion-operation-settings-sync-slr559`. **Not deployed.**
   `channel_width = 20` (HA's spacing floor). The operator only saw the blade.
 - 🚨 **`path_spacing` had no `set_async_fn` at all**, so a mid-mow spacing
   change silently never reached the device. Now wired.
-- ⚠️ **Units:** 2 ft/s = 0.6096 m/s, above `working_speed`'s 0.6 m/s maximum
-  (`number.py:200`). If the static bounds are in force, **HA cannot represent
-  the speed the mow was started at.** Whether they are depends on the runtime
-  `DeviceLimits` and **was not established** — no HA access from that session.
+- 🗑️ **Units: the range concern is RETRACTED.** It rested on 2 ft/s; the
+  operator corrected the job to **1.3 ft/s = 0.3962 m/s**, inside the static
+  0.2–0.6 m/s bound *and* the `DeviceLimits` 0.2–1.2 m/s bound. Blade 2.2″ =
+  55.88 mm, inside both. **Both job settings are representable in HA and the
+  diagnosis never depended on this** (findings §5.1).
+- ⚠️ **Still open, and no longer gating:** which of those two ranges is live.
+  The report's "changed speed from 2 to 1.6" is not reconcilable with a 0.6 m/s
+  maximum under either US speed unit, but a displayed value has more than one
+  mechanism behind it, so 🛑 **it was NOT used to infer the limit.** One read
+  of the entity's `max` and `unit_of_measurement` settles it.
 - **Done means 1 and 2 are covered by 17 tests**
   (`tests/components/mammotion/test_operation_settings_sync.py`); the reported
   incident reproduces on the pre-fix tree as `assert 25 == 56`.
