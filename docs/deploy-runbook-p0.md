@@ -8,6 +8,59 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### ✅ 2026-09-18 ~02:48-02:53 UTC — beta113 deployed (slider units + stale job snapshot)
+
+`0.6.4-beta113` from `8d1f01c1`. Two operator-found fixes: the blade-height
+slider offered only 0/1/2/3 in US units (`953bc297`), and a second mow on the
+same route showed the previous job's settings (`8d1f01c1`). **No
+motion-control-law value changed, `accepted-profile.json` untouched, no Gate 5
+owed.** Backend unchanged (`pymammotion 0.8.12.post4`).
+
+| check | result |
+| --- | --- |
+| Beta Release run | 35300825954, success |
+| version quartet | `0.6.4-beta113`, uv.lock `0.6.4b113` |
+| archive SHA-256 | `23186fb6065addb4…`, identical local and host |
+| files | **52/52 byte-identical**, 0 AppleDouble |
+| card md5 | `e61cf755` at both serving paths and locally |
+| Lovelace | `?v=0.6.4-beta113&build=e61cf755`, read back verified |
+| restart | API up in **51 s**, 133 entities in 158 s |
+| entities | 132 Mammotion, **0 unavailable** |
+| services | **68** |
+| gate | `enabled: False`, `active_session: None` |
+| backup | `/config/mammotion-backup-20260917-2249-pre-beta113.tgz` |
+
+✅ **Slider fix verified live:** blade height now `min 0.9 max 2.8 step 0.1` in,
+path spacing `7.8-13.8 step 0.1`.
+⚠️ **The gate was found ARMED at the pre-deploy check** (`enabled: True`, no
+session). ✏️ **The operator had enabled experimental motion themselves** — not a
+defect sighting, the standing count stays at six. It was disarmed before the
+deploy and verified off afterwards.
+⏳ Browser confirmation owed.
+
+### ✅ 2026-09-18 ~01:47-01:55 UTC — beta112 deployed (read the running job on job start)
+
+`0.6.4-beta112` from `29553b92`. HA now reads the running job's settings when
+the mower enters a job, so the entities show real values without anyone
+changing a control. **No motion-control-law value changed, no Gate 5 owed.**
+
+| check | result |
+| --- | --- |
+| Beta Release run | 35296957907, success |
+| version quartet | `0.6.4-beta112`, uv.lock `0.6.4b112` |
+| archive SHA-256 | `83c6fc9d9f769623…`, identical local and host |
+| files | **52/52 byte-identical**, 0 AppleDouble |
+| card md5 | `0ace640d` at both paths |
+| Lovelace | `?v=0.6.4-beta112&build=0ace640d`, verified |
+| restart | API up in **25 s**, 133 entities in 132 s |
+| entities | 132 Mammotion, **0 unavailable** |
+| services | **68** |
+| gate | `enabled: False`, `active_session: None` |
+| backup | `/config/mammotion-backup-20260917-2151-pre-beta112.tgz` |
+
+🏆 **Verified on hardware the same night** and it exposed two bugs, both fixed in
+beta113: `docs/findings-auto-read-job-start-20260918.md`.
+
 ### ✅ 2026-09-17 ~21:25-21:33 UTC — beta111 deployed (mowing-settings fix)
 
 `0.6.4-beta111`, released from `main` at `39f77483` (fix `dd49e3b6` + docs

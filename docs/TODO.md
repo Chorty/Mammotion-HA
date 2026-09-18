@@ -65,6 +65,15 @@ and all three entities switched from HA's plan to the job's real values. All thr
   Now 0.9–2.8 in in 0.1 steps (7.8–13.8 in for path spacing), the job's 60 mm
   reads 2.4 in rather than 2.0, and every write is clamped to the model's native
   limits. Metric is unchanged at 25–70 mm in 1 mm steps.
+  **Deployed in beta113 and verified live 2026-09-18.**
+- ✅ **Fixed in beta113:** a second mow on the same route showed the first job's
+  settings (`path_hash` names the route, not the run). Found by the operator.
+- ⚠️ **Open, small:** a change refused by the fail-closed path is kept in HA's
+  plan but the entity keeps showing the running job's value, so the slider looks
+  like it snapped back and the error toast is the only signal.
+- ⚠️ **Open, untested:** whether a settings change made in the APP mid-job
+  reaches HA. The read fires once per job and re-reads only when the job ends or
+  the route changes.
 - `lawn_mower.start_mow` with `modify: true` still fills unspecified fields from
   HA's plan — the same stale-fill hazard, on a different path.
 - The fail-closed path (`running_job_unreadable`) has never been seen on hardware.

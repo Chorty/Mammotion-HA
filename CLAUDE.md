@@ -24,7 +24,32 @@ prose around them is still true. **One grep against the tree beats this file.**
 
 ---
 
-## Current build: beta111 (deployed 2026-09-17; backend `chorty-0.8.12.post4`)
+## Current build: beta113 (deployed 2026-09-18; backend `chorty-0.8.12.post4`)
+
+✅ **beta113 verified 2026-09-18 ~02:48-02:53 UTC** — 52/52 identical, card md5
+`e61cf755` both paths, **0 unavailable**, 68 services, gate disarmed. ⏳ Browser
+confirmation owed. It ships two **operator-found** fixes on top of beta112's
+auto-read, both verified the same night:
+🔑 **HA now READS the running job when the mower enters one** (beta112), so the
+entities show the job's real blade height, speed and spacing without anyone
+touching a control — `value_source: running_job`. Confirmed on an app-started
+mow at −76 dBm.
+🚨 **A second mow on the SAME route used to show the FIRST job's settings.**
+`path_hash` names the route, not the run, and the snapshot was only hidden while
+idle, never cleared. Fixed: it is discarded when the mower leaves a job. **The
+first job of a session always read correctly — test the SECOND mow.**
+🚨 **The blade-height slider offered only 0/1/2/3 in US units**, and its top
+position converted to 76 mm against a ~70 mm device max. HA never unit-converts
+the step, and takes the displayed range's precision from the native value's
+decimals. Now **0.9–2.8 in in 0.1 steps** (path spacing 7.8–13.8), with every
+write clamped to the model's native limits.
+✅ **The fail-closed path fired for real** at −82 dBm: the job could not be read,
+**nothing was sent**, and the operator got the translated message. Record:
+`docs/findings-auto-read-job-start-20260918.md`.
+⚠️ **A test where the job and HA's plan share a value proves nothing** — that
+cost a false alarm when a 25 mm job looked like the old push-the-plan defect.
+
+### Previously: beta111 (deployed 2026-09-17; backend `chorty-0.8.12.post4`)
 
 ✅ **beta111 verified 2026-09-17 ~21:25-21:33 UTC** — 52/52 identical, card md5
 `d0dc81f6` both paths, **0 unavailable**, 68 services, entry `loaded`, gate
