@@ -131,6 +131,10 @@ def _coordinator(
     coordinator.async_send_and_wait = AsyncMock()
     coordinator._job_read_state = None  # noqa: SLF001
     coordinator._job_read_task = None  # noqa: SLF001
+    coordinator._job_was_active = sys_status in (  # noqa: SLF001
+        WorkMode.MODE_WORKING,
+        WorkMode.MODE_PAUSE,
+    )
     coordinator.async_update_listeners = MagicMock()
     coordinator.hass = SimpleNamespace()
     coordinator.config_entry = SimpleNamespace(
@@ -581,3 +585,43 @@ async def test_the_bottom_of_the_slider_cannot_send_less_than_the_device_min() -
     await entity.async_set_native_value(0.9 * 25.4)
 
     assert coordinator.operation_settings.blade_height == 25
+
+
+async def test_a_second_job_on_the_same_route_is_read_again() -> None:
+    """Operator, 2026-09-18: a new app-started mow showed the previous job's values.
+
+    `path_hash` identifies the ROUTE, not the run, so mowing the same area again
+    reuses it. The snapshot was only hidden while idle, never cleared, so it
+    reappeared — label and all — when the next job started on the same route.
+    """
+    coordinator = _coordinator()
+    await _set(coordinator, "blade_height", 50)
+    assert coordinator.working_setting_source() == "running_job_after_ha_change"
+
+    # The mow ends...
+    coordinator.data.report_data.dev.sys_status = WorkMode.MODE_READY
+    coordinator._schedule_running_job_read()  # noqa: SLF001
+    assert coordinator.working_setting_source() == "next_job_plan"
+
+    # ...and a new one starts on the same route, at a different blade height.
+    coordinator.data.report_data.dev.sys_status = WorkMode.MODE_WORKING
+    coordinator.manager.send_command_and_wait.return_value = _job_reply(knife_height=25)
+
+    assert coordinator._should_read_running_job() is True  # noqa: SLF001
+    await coordinator._async_read_running_job_snapshot()  # noqa: SLF001
+
+    assert coordinator.working_setting_source() == "running_job"
+    assert _description("blade_height").get_fn(coordinator) == 25
+
+
+async def test_pausing_and_resuming_does_not_discard_the_job() -> None:
+    """A pause is still the same job, so it must not cost another read."""
+    coordinator = _coordinator()
+    await coordinator._async_read_running_job_snapshot()  # noqa: SLF001
+
+    coordinator.data.report_data.dev.sys_status = WorkMode.MODE_PAUSE
+    coordinator._schedule_running_job_read()  # noqa: SLF001
+    coordinator.data.report_data.dev.sys_status = WorkMode.MODE_WORKING
+
+    assert coordinator.working_setting_source() == "running_job"
+    assert coordinator._should_read_running_job() is False  # noqa: SLF001

@@ -211,6 +211,7 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         # every pushed report.
         self._job_read_state: tuple[int, int, float] | None = None
         self._job_read_task: asyncio.Task[None] | None = None
+        self._job_was_active = False
         self.update_failures = 0
         # Monotonic timestamps of CommandTimeoutError raised out of
         # `async_send_command`, the single funnel every queued command passes
@@ -2395,7 +2396,18 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         self.async_update_listeners()
 
     def _schedule_running_job_read(self) -> None:
-        """Start the automatic read, off the report-handling path."""
+        """Forget a finished job, then start the automatic read if one is due."""
+        active = self._is_route_job_active()
+        if self._job_was_active and not active:
+            # 🚨 Discard the whole snapshot, do not merely stop showing it.
+            # `path_hash` identifies the ROUTE, not the run, so mowing the same
+            # area again reuses it: a snapshot kept across the gap reappeared —
+            # label and all — for the NEXT job, showing the previous job's
+            # settings against a mower running different ones (operator,
+            # 2026-09-18).
+            self._running_job_settings = None
+            self._job_read_state = None
+        self._job_was_active = active
         if not self._should_read_running_job():
             return
         self._job_read_task = self.config_entry.async_create_background_task(
