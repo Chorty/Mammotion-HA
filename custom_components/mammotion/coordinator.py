@@ -2218,9 +2218,12 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
 
     def working_setting_value(self, field: str) -> float:
         """Return a working setting: the running job's if read, else HA's plan."""
+        # float(), deliberately: HA rounds the displayed state to the decimal
+        # count of the native value's string, so an int 55 mm reads "2.0 in"
+        # where the real value is 2.2 in.
         if (job := self.running_job_settings()) is not None:
-            return cast(float, getattr(job, _RUNNING_JOB_FIELDS[field]))
-        return cast(float, getattr(self._operation_settings, field))
+            return float(getattr(job, _RUNNING_JOB_FIELDS[field]))
+        return float(getattr(self._operation_settings, field))
 
     async def _async_read_running_job(self) -> CurrentTaskSettings:
         """Read the running job's route settings from the mower (sub_cmd=2).

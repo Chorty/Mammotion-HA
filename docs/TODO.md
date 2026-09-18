@@ -58,10 +58,13 @@ and all three entities switched from HA's plan to the job's real values. All thr
   on every pushed report. ⏳ **Needs a deploy and a hardware check**: start a mow
   from the app and confirm the three entities read the job's values with
   `value_source: running_job` without touching anything.
-- 🚨 The blade-height slider steps **1 inch** in US units, and its top position
-  (3.0 in) converts to **76 mm, above the device max ~70 mm**. HA validates the
-  display value and converts afterwards; the beta111 clamp runs only at startup
-  and restore, not on a user write.
+- ✅ **Fixed 2026-09-18, not yet deployed:** the blade-height slider offered only
+  0/1/2/3 in US units and its top position converted to 76 mm against a ~70 mm
+  device max. Two HA behaviours caused it: the step is never unit-converted, and
+  the displayed min/max take their precision from the native value's decimals.
+  Now 0.9–2.8 in in 0.1 steps (7.8–13.8 in for path spacing), the job's 60 mm
+  reads 2.4 in rather than 2.0, and every write is clamped to the model's native
+  limits. Metric is unchanged at 25–70 mm in 1 mm steps.
 - `lawn_mower.start_mow` with `modify: true` still fills unspecified fields from
   HA's plan — the same stale-fill hazard, on a different path.
 - The fail-closed path (`running_job_unreadable`) has never been seen on hardware.

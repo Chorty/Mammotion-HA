@@ -376,8 +376,16 @@ class MammotionWorkingNumberEntity(MammotionConfigNumberEntity):
         super().__init__(coordinator, entity_description)
 
         if limits is not None and hasattr(limits, entity_description.key):
-            self._attr_native_min_value = getattr(limits, entity_description.key).min
-            self._attr_native_max_value = getattr(limits, entity_description.key).max
+            # float(), deliberately: HA derives the precision of the DISPLAYED
+            # min/max from the decimal count of the native value's string
+            # (number/__init__.py `_convert_to_state_value`). An int 25 mm floors
+            # to "0.0 in"; 25.0 floors to "0.9 in", which is the real limit.
+            self._attr_native_min_value = float(
+                getattr(limits, entity_description.key).min
+            )
+            self._attr_native_max_value = float(
+                getattr(limits, entity_description.key).max
+            )
         elif (
             entity_description.native_min_value is not None
             and entity_description.native_max_value is not None
@@ -390,6 +398,14 @@ class MammotionWorkingNumberEntity(MammotionConfigNumberEntity):
 
         self._clamp_plan_value()
 
+    def _clamped(self, value: float) -> float:
+        """Return *value* held inside the model's native limits."""
+        if (native_min := self._attr_native_min_value) is not None:
+            value = max(value, native_min)
+        if (native_max := self._attr_native_max_value) is not None:
+            value = min(value, native_max)
+        return value
+
     def _clamp_plan_value(self) -> None:
         """Keep HA's plan inside the model's limits, in the plan and not just shown.
 
@@ -400,11 +416,7 @@ class MammotionWorkingNumberEntity(MammotionConfigNumberEntity):
         value = self._attr_native_value
         if value is None:
             return
-        clamped = value
-        if (native_min := self._attr_native_min_value) is not None:
-            clamped = max(clamped, native_min)
-        if (native_max := self._attr_native_max_value) is not None:
-            clamped = min(clamped, native_max)
+        clamped = self._clamped(value)
         if clamped == value:
             return
         self._attr_native_value = clamped
@@ -413,6 +425,22 @@ class MammotionWorkingNumberEntity(MammotionConfigNumberEntity):
             and self.coordinator.working_setting_source() == "next_job_plan"
         ):
             self.entity_description.set_fn(self.coordinator, clamped)
+
+    @property
+    def native_step(self) -> float | None:
+        """Return a step that makes sense in the unit actually being shown.
+
+        🚨 HA never converts the step (`_calculate_step`), so this entity's 1 mm
+        step reads as 1 INCH once the operator picks US units: a 25-70 mm blade
+        range then offers 0, 1, 2 and 3 on the slider and nothing between.
+        Reported by the operator 2026-09-18. In a converted unit, step by a
+        tenth instead -- 0.1 in is 2.5 mm, finer than the 5 mm the device is
+        observed to quantise to.
+        """
+        native_unit = self.entity_description.native_unit_of_measurement
+        if native_unit is not None and self.unit_of_measurement != native_unit:
+            return 0.1
+        return self.entity_description.native_step
 
     @property
     def extra_state_attributes(self) -> dict[str, str]:
@@ -441,7 +469,14 @@ class MammotionWorkingNumberEntity(MammotionConfigNumberEntity):
         return max_value
 
     async def async_set_native_value(self, value: float) -> None:
-        """Set native value for number and call update_fn if defined."""
+        """Set native value for number and call update_fn if defined.
+
+        The value is clamped to the model's own limits first. HA validates the
+        number the operator picked against the DISPLAYED range and converts it
+        afterwards, and the displayed maximum is rounded outward: 2.8 in comes
+        back as 71.1 mm against a 70 mm device limit.
+        """
+        value = self._clamped(value)
         if self._attr_native_value == value:
             return
         self._attr_native_value = value

@@ -489,3 +489,95 @@ async def test_an_automatic_read_never_overwrites_a_user_change() -> None:
 
     assert coordinator.working_setting_source() == "running_job_after_ha_change"
     assert _description("working_speed").get_fn(coordinator) == pytest.approx(0.5)
+
+
+# --- what the slider offers in US units -------------------------------------
+#
+# Operator, 2026-09-18: "blade height should be 1\" to 2.8\" but you can only
+# select 0, 1, 2 or 3 on the slider". Two separate HA behaviours cause that:
+# the step is NEVER unit-converted (number/__init__.py `_calculate_step`), so a
+# 1 mm step reads as 1 INCH; and the displayed min/max are floored/ceiled to the
+# decimal count of the NATIVE value's string, so an int 25 mm floors to 0.0 in.
+
+
+def _working_entity(key: str, coordinator: Any, *, inches: bool) -> Any:
+    limits = DeviceLimits(
+        blade_height=RangeLimit(min=25, max=70),
+        working_speed=RangeLimit(min=0.2, max=1.2),
+        path_spacing=RangeLimit(min=20, max=35),
+    )
+    entity = MammotionWorkingNumberEntity(coordinator, _description(key), limits)
+    if inches:
+        # What the entity registry sets when the user picks US units.
+        entity._number_option_unit_of_measurement = (  # noqa: SLF001
+            "in" if key != "working_speed" else "ft/s"
+        )
+    entity.async_write_ha_state = lambda: None
+    return entity
+
+
+def test_blade_height_in_inches_offers_the_real_range_and_a_usable_step() -> None:
+    """0.9-2.8 in in 0.1 steps, not 0/1/2/3."""
+    entity = _working_entity(
+        "blade_height", _coordinator(sys_status=WorkMode.MODE_READY), inches=True
+    )
+
+    assert entity.min_value == 0.9
+    assert entity.max_value == 2.8
+    assert entity.step == 0.1
+
+
+def test_blade_height_in_millimetres_keeps_its_1_mm_step() -> None:
+    """Metric users are unaffected: 25-70 mm in 1 mm steps."""
+    entity = _working_entity(
+        "blade_height", _coordinator(sys_status=WorkMode.MODE_READY), inches=False
+    )
+    entity._number_option_unit_of_measurement = "mm"  # noqa: SLF001
+
+    assert entity.min_value == 25
+    assert entity.max_value == 70
+    assert entity.step == 1
+
+
+def test_path_spacing_in_inches_offers_a_usable_step() -> None:
+    """The same defect hit path spacing: 20-35 cm showed as 7-14 in, step 1.
+
+    7.8 in is 19.8 cm and 13.8 in is 35.05 cm: HA rounds the displayed range
+    outward, which is why writes are clamped to the native limits.
+    """
+    entity = _working_entity(
+        "path_spacing", _coordinator(sys_status=WorkMode.MODE_READY), inches=True
+    )
+
+    assert entity.min_value == 7.8
+    assert entity.max_value == 13.8
+    assert entity.step == 0.1
+
+
+async def test_the_jobs_blade_height_reads_to_one_decimal() -> None:
+    """The job's 60 mm is 2.4 in — it read 2.0 while the state rounded to inches."""
+    coordinator = _coordinator()
+    await coordinator._async_read_running_job_snapshot()  # noqa: SLF001
+    entity = _working_entity("blade_height", coordinator, inches=True)
+
+    assert entity.value == 2.4
+
+
+async def test_the_top_of_the_slider_cannot_send_more_than_the_device_max() -> None:
+    """2.8 in converts to 71.1 mm; the device maximum is 70."""
+    coordinator = _coordinator(sys_status=WorkMode.MODE_READY)
+    entity = _working_entity("blade_height", coordinator, inches=True)
+
+    await entity.async_set_native_value(2.8 * 25.4)
+
+    assert coordinator.operation_settings.blade_height == 70
+
+
+async def test_the_bottom_of_the_slider_cannot_send_less_than_the_device_min() -> None:
+    """The mirror case, so a rounded-down display value cannot underflow either."""
+    coordinator = _coordinator(sys_status=WorkMode.MODE_READY)
+    entity = _working_entity("blade_height", coordinator, inches=True)
+
+    await entity.async_set_native_value(0.9 * 25.4)
+
+    assert coordinator.operation_settings.blade_height == 25
