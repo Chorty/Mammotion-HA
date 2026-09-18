@@ -247,7 +247,7 @@ const NIGHT_GO_PROFILE = Object.freeze({
 });
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
-const CARD_VERSION = "0.6.4-beta112";
+const CARD_VERSION = "0.6.4-beta113";
 
 // ---- BLE coverage overlay ---------------------------------------------------
 // 🔑 Served by the integration itself: `async_setup` registers a StaticPathConfig
