@@ -22,11 +22,11 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from homeassistant.exceptions import HomeAssistantError
-from pymammotion.data.model.device import MowingDevice
+from pymammotion.data.model.device import MowerInfo, MowingDevice
 from pymammotion.data.model.device_config import OperationSettings
 from pymammotion.data.model.device_limits import DeviceLimits, RangeLimit
 from pymammotion.data.model.work import CurrentTaskSettings
@@ -34,6 +34,9 @@ from pymammotion.proto import LubaMsg, MctlNav, NavReqCoverPath
 from pymammotion.transport.base import CommandTimeoutError
 from pymammotion.utility.constant import WorkMode
 
+from custom_components.mammotion.coordinator import (
+    _RUNNING_JOB_READ_MAX_ATTEMPTS as MAX_READ_ATTEMPTS,
+)
 from custom_components.mammotion.coordinator import MammotionReportUpdateCoordinator
 from custom_components.mammotion.number import (
     LUBA_WORKING_ENTITIES,
@@ -126,7 +129,24 @@ def _coordinator(
     coordinator.manager = SimpleNamespace(send_command_and_wait=send_and_wait)
     coordinator.async_send_command = AsyncMock()
     coordinator.async_send_and_wait = AsyncMock()
+    coordinator._job_read_state = None  # noqa: SLF001
+    coordinator._job_read_task = None  # noqa: SLF001
+    coordinator.async_update_listeners = MagicMock()
+    coordinator.hass = SimpleNamespace()
+    coordinator.config_entry = SimpleNamespace(
+        async_create_background_task=MagicMock(
+            side_effect=lambda _hass, target, _name: _closed(target)
+        )
+    )
     return coordinator
+
+
+def _closed(coro: Any) -> Any:
+    """Close a coroutine the stub will never run, and hand back a done task."""
+    coro.close()
+    task = MagicMock()
+    task.done.return_value = True
+    return task
 
 
 async def _set(coordinator: Any, key: str, value: float) -> None:
@@ -356,3 +376,116 @@ def test_out_of_range_plan_values_are_clamped_into_the_plan_not_just_the_display
     assert coordinator.operation_settings.blade_height == 30
     assert spacing.native_value == 14
     assert coordinator.operation_settings.channel_width == 14
+
+
+# --- reading the job when a mow starts, without being asked ------------------
+
+
+async def test_a_running_job_is_read_once_the_mower_enters_it() -> None:
+    """The app queries the route on entry to working; HA must too."""
+    coordinator = _coordinator()
+
+    assert coordinator._should_read_running_job() is True  # noqa: SLF001
+    await coordinator._async_read_running_job_snapshot()  # noqa: SLF001
+
+    assert coordinator.working_setting_source() == "running_job"
+    assert _description("blade_height").get_fn(coordinator) == JOB_KNIFE_MM
+    assert _description("path_spacing").get_fn(coordinator) == JOB_WIDTH_CM
+    coordinator.async_update_listeners.assert_called_once()
+
+
+async def test_the_same_job_is_not_read_twice() -> None:
+    """One read per job, not one per report — the feed pushes ~1/s while mowing."""
+    coordinator = _coordinator()
+    await coordinator._async_read_running_job_snapshot()  # noqa: SLF001
+
+    assert coordinator._should_read_running_job() is False  # noqa: SLF001
+
+
+async def test_a_new_job_is_read_again() -> None:
+    """A different path_hash is a different job, so its settings are read fresh."""
+    coordinator = _coordinator()
+    await coordinator._async_read_running_job_snapshot()  # noqa: SLF001
+
+    coordinator.data.report_data.work.path_hash = PATH_HASH + 1
+
+    assert coordinator._should_read_running_job() is True  # noqa: SLF001
+
+
+def test_nothing_is_read_while_idle() -> None:
+    """Docked or ready: no query, the same as before this existed."""
+    coordinator = _coordinator(sys_status=WorkMode.MODE_READY)
+
+    assert coordinator._should_read_running_job() is False  # noqa: SLF001
+
+
+def test_nothing_is_read_without_a_path_hash() -> None:
+    """path_hash 0 means the device has no route to report yet."""
+    coordinator = _coordinator()
+    coordinator.data.report_data.work.path_hash = 0
+
+    assert coordinator._should_read_running_job() is False  # noqa: SLF001
+
+
+async def test_a_failed_read_is_silent_and_backs_off() -> None:
+    """A dead link must not raise into the UI, nor re-query every report."""
+    coordinator = _coordinator(reply=CommandTimeoutError("bidire_reqconver_path", 1))
+
+    await coordinator._async_read_running_job_snapshot()  # noqa: SLF001
+
+    assert coordinator.working_setting_source() == "next_job_plan"
+    coordinator.async_update_listeners.assert_not_called()
+    assert coordinator._should_read_running_job() is False  # noqa: SLF001
+
+
+async def test_a_failed_read_retries_after_the_backoff_then_gives_up() -> None:
+    """Bounded retries: a mow-long dead link costs a few queries, not hundreds."""
+    coordinator = _coordinator(reply=CommandTimeoutError("bidire_reqconver_path", 1))
+
+    for _ in range(MAX_READ_ATTEMPTS):
+        await coordinator._async_read_running_job_snapshot()  # noqa: SLF001
+        path_hash, attempts, _last = coordinator._job_read_state  # noqa: SLF001
+        coordinator._job_read_state = (path_hash, attempts, 0.0)  # noqa: SLF001
+
+    assert coordinator._should_read_running_job() is False  # noqa: SLF001
+    assert coordinator.manager.send_command_and_wait.await_count == MAX_READ_ATTEMPTS
+
+
+def test_a_read_in_flight_is_not_started_again() -> None:
+    """The report feed pushes while the query is still waiting for its reply."""
+    coordinator = _coordinator()
+    in_flight = MagicMock()
+    in_flight.done.return_value = False
+    coordinator._job_read_task = in_flight  # noqa: SLF001
+
+    assert coordinator._should_read_running_job() is False  # noqa: SLF001
+
+
+def test_a_coordinator_holding_other_data_never_reads() -> None:
+    """The hook is on the shared base class; only mower data can be a job."""
+    coordinator = _coordinator()
+    coordinator.data = MowerInfo()
+
+    assert coordinator._should_read_running_job() is False  # noqa: SLF001
+
+
+async def test_an_automatic_read_never_overwrites_a_user_change() -> None:
+    """If a change lands mid-query, its label survives — it knows about the edit."""
+    coordinator = _coordinator()
+
+    fired = False
+
+    async def _apply_meanwhile(*_a: Any, **_k: Any) -> LubaMsg:
+        # Fires once: the nested user-initiated read must reach the plain reply.
+        nonlocal fired
+        if not fired:
+            fired = True
+            await _set(coordinator, "working_speed", 0.5)
+        return _job_reply()
+
+    coordinator.manager.send_command_and_wait.side_effect = _apply_meanwhile
+
+    await coordinator._async_read_running_job_snapshot()  # noqa: SLF001
+
+    assert coordinator.working_setting_source() == "running_job_after_ha_change"
+    assert _description("working_speed").get_fn(coordinator) == pytest.approx(0.5)

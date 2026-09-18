@@ -51,9 +51,13 @@ and all three entities switched from HA's plan to the job's real values. All thr
 `docs/findings-operation-settings-hardware-20260917.md` (the hardware run).
 
 **Still open, smaller, tracked here:**
-- HA does not read an app-started job on its own, so the entities show HA's plan
-  (labelled `next_job_plan`) until the first change in HA. The app queries the
-  route on entry to working; HA should too.
+- ✅ **Fixed 2026-09-17, not yet deployed:** HA now reads the running job itself
+  when the mower enters one, so the entities show real values without anyone
+  changing anything. Once per job (keyed on `path_hash`), silent on failure,
+  and bounded at 3 attempts with a 60 s backoff so a dead link cannot re-query
+  on every pushed report. ⏳ **Needs a deploy and a hardware check**: start a mow
+  from the app and confirm the three entities read the job's values with
+  `value_source: running_job` without touching anything.
 - 🚨 The blade-height slider steps **1 inch** in US units, and its top position
   (3.0 in) converts to **76 mm, above the device max ~70 mm**. HA validates the
   display value and converts afterwards; the beta111 clamp runs only at startup

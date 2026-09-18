@@ -128,6 +128,13 @@ _BLE_RECONNECT_TIMEOUT_SECONDS = 15.0
 #: Working-setting entity field (``OperationSettings``) -> the same setting on the
 #: running job as the mower reports it (``CurrentTaskSettings``, from
 #: NavReqCoverPath). Units match: mm, m/s, cm; ultra_wave is the detection mode.
+#: A failed running-job read waits this long before trying the same job again,
+#: and stops after this many attempts. The report feed pushes roughly once a
+#: second while mowing, so without both bounds a dead link would re-query on
+#: every push for the length of the mow.
+_RUNNING_JOB_READ_RETRY_SECONDS = 60.0
+_RUNNING_JOB_READ_MAX_ATTEMPTS = 3
+
 _RUNNING_JOB_FIELDS = {
     "blade_height": "knife_height",
     "speed": "speed",
@@ -199,6 +206,11 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         # keyed by the report's path_hash so a later job never inherits them:
         # (path_hash, settings, changed_by_ha_since_read).
         self._running_job_settings: tuple[int, CurrentTaskSettings, bool] | None = None
+        # (path_hash, attempts, monotonic timestamp) of the automatic read, so a
+        # job is read once and a failing link backs off instead of retrying on
+        # every pushed report.
+        self._job_read_state: tuple[int, int, float] | None = None
+        self._job_read_task: asyncio.Task[None] | None = None
         self.update_failures = 0
         # Monotonic timestamps of CommandTimeoutError raised out of
         # `async_send_command`, the single funnel every queued command passes
@@ -2168,8 +2180,8 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
 
     def _is_route_job_active(self) -> bool:
         """Return True while a route job is working or paused and not complete."""
-        data = cast(MowingDevice | None, self.data)
-        if data is None:
+        data = self.data
+        if not isinstance(data, MowingDevice):
             return False
         return (
             data.report_data.dev.sys_status
@@ -2322,6 +2334,71 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
             cast(MowingDevice, self.data).report_data.work.path_hash,
             dataclasses.replace(job, **{_RUNNING_JOB_FIELDS[field]: value}),
             True,
+        )
+
+    def _should_read_running_job(self) -> bool:
+        """Return True when the running job's settings are worth reading now.
+
+        Cheap by design: this is consulted on every pushed report.
+        """
+        if not self._is_route_job_active():
+            return False
+        path_hash = cast(MowingDevice, self.data).report_data.work.path_hash
+        if not path_hash:
+            return False
+        if self.running_job_settings() is not None:
+            return False
+        if self._job_read_task is not None and not self._job_read_task.done():
+            return False
+        if self._job_read_state is not None:
+            last_hash, attempts, last_at = self._job_read_state
+            if last_hash == path_hash and (
+                attempts >= _RUNNING_JOB_READ_MAX_ATTEMPTS
+                or time.monotonic() - last_at < _RUNNING_JOB_READ_RETRY_SECONDS
+            ):
+                return False
+        return True
+
+    async def _async_read_running_job_snapshot(self) -> None:
+        """Read the running job's settings so the entities can show them.
+
+        The app does this whenever the mower enters working state
+        (``HomeMapFragment`` on device state 13); without it HA shows its own
+        plan for a job someone else started. Best effort: a failure leaves the
+        entities showing the plan, labelled as the plan, and never raises -- no
+        operator asked for this read, so it must not surface as an error.
+        """
+        path_hash = cast(MowingDevice, self.data).report_data.work.path_hash
+        previous_hash, attempts, _last_at = self._job_read_state or (path_hash, 0, 0.0)
+        attempts = attempts + 1 if previous_hash == path_hash else 1
+        self._job_read_state = (path_hash, attempts, time.monotonic())
+        try:
+            job = await self._async_read_running_job()
+        except HomeAssistantError as exc:
+            LOGGER.debug(
+                "Could not read the running job for %s (attempt %d/%d): %s",
+                self.device_name,
+                attempts,
+                _RUNNING_JOB_READ_MAX_ATTEMPTS,
+                exc,
+            )
+            return
+        if self.running_job_settings() is not None:
+            # A user-initiated change read this same job while this query was
+            # waiting for its reply. That snapshot knows an edit was applied,
+            # so it must not be replaced with this plain read.
+            return
+        self._running_job_settings = (path_hash, job, False)
+        self.async_update_listeners()
+
+    def _schedule_running_job_read(self) -> None:
+        """Start the automatic read, off the report-handling path."""
+        if not self._should_read_running_job():
+            return
+        self._job_read_task = self.config_entry.async_create_background_task(
+            self.hass,
+            self._async_read_running_job_snapshot(),
+            name=f"{DOMAIN}_{self.device_name}_read_running_job",
         )
 
     async def async_restore_data(self) -> None:
@@ -2539,6 +2616,7 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         """Push updated device data to HA."""
         cast(Any, self.device).online = True
         self.async_set_updated_data(cast(DataT, snapshot.raw))
+        self._schedule_running_job_read()
 
     def find_entity_by_attribute_in_registry(
         self, attribute_name: str, attribute_value: Any
