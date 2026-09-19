@@ -2026,21 +2026,30 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         )
 
     async def async_modify_plan_route(
-        self, operation_settings: OperationSettings
+        self, route_overrides: dict[str, Any] | None = None
     ) -> bool | None:
-        """Modify plan mow."""
+        """Change named settings on the RUNNING job, and only those.
 
-        if work := cast(MowingDevice, self.data).work:
-            operation_settings.areas = list(dict.fromkeys(work.zone_hashs))
-            operation_settings.toward = work.toward
-            operation_settings.toward_mode = work.toward_mode
-            operation_settings.toward_included_angle = work.toward_included_angle
-            operation_settings.mowing_laps = work.edge_mode
-            operation_settings.job_mode = work.job_mode
-            operation_settings.job_id = work.job_id
-            operation_settings.job_version = work.job_ver
+        ``sub_cmd=3`` carries every route field, so anything not read fresh from
+        the mower is silently re-asserted. This used to fill from
+        ``self.data.work`` -- a cached report snapshot covering only eight
+        fields -- and take speed, blade height, cutting width, ultrasonic mode
+        and the rest from whatever the caller happened to pass, which for a
+        service call meant the schema's defaults.
 
-        return await self._async_send_modified_route(operation_settings)
+        So it now uses the same fail-closed read-merge-write the number entities
+        have used since beta111: read the running job (``sub_cmd=2``), build the
+        settings from that reply, apply only the caller's named overrides, and
+        send. An unreadable or zero-filled reply raises
+        ``running_job_unreadable`` and sends NOTHING, rather than pushing a
+        plan the mower never asked for.
+        """
+        job = await self._async_read_running_job()
+        settings = self._settings_for_running_job(job)
+        for key, value in (route_overrides or {}).items():
+            if hasattr(settings, key):
+                setattr(settings, key, value)
+        return await self._async_send_modified_route(settings)
 
     async def _async_send_modified_route(
         self, operation_settings: OperationSettings

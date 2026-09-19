@@ -39,47 +39,29 @@ SERVICE_SET_BLADE_WARNING_TIME = "set_blade_warning_time"
 START_MOW_SCHEMA: VolDictType = {
     vol.Optional("modify", default=False): cv.boolean,
     vol.Optional("plan_only", default=False): cv.boolean,
-    vol.Optional("is_mow", default=True): cv.boolean,
-    vol.Optional("is_dump", default=True): cv.boolean,
-    vol.Optional("is_edge", default=False): cv.boolean,
-    vol.Optional("collect_grass_frequency", default=10): vol.All(
+    vol.Optional("is_mow"): cv.boolean,
+    vol.Optional("is_dump"): cv.boolean,
+    vol.Optional("is_edge"): cv.boolean,
+    vol.Optional("collect_grass_frequency"): vol.All(
         vol.Coerce(int), vol.Range(min=5, max=100)
     ),
-    vol.Optional("border_mode", default=1): vol.All(vol.Coerce(int), vol.In([0, 1])),
-    vol.Optional("job_version", default=0): vol.Coerce(int),
-    vol.Optional("job_id", default=0): vol.Coerce(int),
-    vol.Optional("speed", default=0.3): vol.All(
-        vol.Coerce(float), vol.Range(min=0.2, max=1.2)
-    ),
-    vol.Optional("ultra_wave", default=2): vol.All(
-        vol.Coerce(int), vol.In([0, 1, 2, 10, 11])
-    ),
-    vol.Optional("channel_mode", default=0): vol.All(
-        vol.Coerce(int), vol.In([0, 1, 2, 3])
-    ),
-    vol.Optional("channel_width", default=25): vol.All(
-        vol.Coerce(int), vol.Range(min=5, max=35)
-    ),
-    vol.Optional("rain_tactics", default=1): vol.All(vol.Coerce(int), vol.In([0, 1])),
-    vol.Optional("blade_height", default=25): vol.All(
-        vol.Coerce(int), vol.Range(min=15, max=100)
-    ),
-    vol.Optional("toward", default=0): vol.All(
+    vol.Optional("border_mode"): vol.All(vol.Coerce(int), vol.In([0, 1])),
+    vol.Optional("job_version"): vol.Coerce(int),
+    vol.Optional("job_id"): vol.Coerce(int),
+    vol.Optional("speed"): vol.All(vol.Coerce(float), vol.Range(min=0.2, max=1.2)),
+    vol.Optional("ultra_wave"): vol.All(vol.Coerce(int), vol.In([0, 1, 2, 10, 11])),
+    vol.Optional("channel_mode"): vol.All(vol.Coerce(int), vol.In([0, 1, 2, 3])),
+    vol.Optional("channel_width"): vol.All(vol.Coerce(int), vol.Range(min=5, max=35)),
+    vol.Optional("rain_tactics"): vol.All(vol.Coerce(int), vol.In([0, 1])),
+    vol.Optional("blade_height"): vol.All(vol.Coerce(int), vol.Range(min=15, max=100)),
+    vol.Optional("toward"): vol.All(vol.Coerce(int), vol.Range(min=-180, max=180)),
+    vol.Optional("toward_included_angle"): vol.All(
         vol.Coerce(int), vol.Range(min=-180, max=180)
     ),
-    vol.Optional("toward_included_angle", default=0): vol.All(
-        vol.Coerce(int), vol.Range(min=-180, max=180)
-    ),
-    vol.Optional("toward_mode", default=0): vol.All(vol.Coerce(int), vol.In([0, 1, 2])),
-    vol.Optional("mowing_laps", default=1): vol.All(
-        vol.Coerce(int), vol.In([0, 1, 2, 3, 4])
-    ),
-    vol.Optional("obstacle_laps", default=1): vol.All(
-        vol.Coerce(int), vol.In([0, 1, 2, 3, 4])
-    ),
-    vol.Optional("start_progress", default=0): vol.All(
-        vol.Coerce(int), vol.Range(min=0, max=100)
-    ),
+    vol.Optional("toward_mode"): vol.All(vol.Coerce(int), vol.In([0, 1, 2])),
+    vol.Optional("mowing_laps"): vol.All(vol.Coerce(int), vol.In([0, 1, 2, 3, 4])),
+    vol.Optional("obstacle_laps"): vol.All(vol.Coerce(int), vol.In([0, 1, 2, 3, 4])),
+    vol.Optional("start_progress"): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
     vol.Optional("areas", default=[]): vol.All(cv.ensure_list, [cv.entity_id]),
 }
 
@@ -234,6 +216,8 @@ class MammotionLawnMowerEntity(MammotionBaseEntity, LawnMowerEntity):
 
         await self.coordinator.async_ensure_fresh_state()
 
+        route_overrides: dict[str, Any] = {}
+
         if kwargs:
             entity_ids = kwargs.pop("areas", [])
             attributes: list[int] = []
@@ -251,6 +235,15 @@ class MammotionLawnMowerEntity(MammotionBaseEntity, LawnMowerEntity):
                     )
             modify_plan = kwargs.pop("modify", False)
             plan_only = kwargs.pop("plan_only", False)
+
+            # Whatever is left in kwargs was named by the caller. The schema no
+            # longer supplies defaults for the route fields, so an absent key
+            # means "leave this alone" rather than "reset it to the schema's
+            # idea of normal" -- which is what makes the merge below, and the
+            # read-merge-write in async_modify_plan_route, actually work.
+            route_overrides.update(kwargs)
+            if attributes:
+                route_overrides["areas"] = list(dict.fromkeys(attributes))
 
             # Merge onto coordinator's restored settings so UI-configured values
             # (speed, blade_height, etc.) are preserved when not explicitly provided.
@@ -285,7 +278,7 @@ class MammotionLawnMowerEntity(MammotionBaseEntity, LawnMowerEntity):
         ):
             try:
                 if modify_plan:
-                    await self.coordinator.async_modify_plan_route(operational_settings)
+                    await self.coordinator.async_modify_plan_route(route_overrides)
                     return
 
                 if kwargs:
