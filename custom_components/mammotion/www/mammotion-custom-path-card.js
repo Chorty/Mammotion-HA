@@ -3122,6 +3122,38 @@ class MammotionCustomPathCard extends HTMLElement {
       svgEl.appendChild(marker);
     }
 
+    // 🟦 The RUNNING job's planned route, from `export_map`'s `mow_path`
+    // (device x/y, same frame as the areas). Drawn AFTER areas/keep-outs so it
+    // reads on top of the yard, but BEFORE the user's clicked path and
+    // waypoints so a plan never hides what the operator is composing. Every
+    // segment carries pointer-events:none, and these points are deliberately
+    // excluded from `_getAllPoints`, so the route neither swallows clicks nor
+    // rescales the map when it appears or clears.
+    const mowPath = Array.isArray(this._mapData?.mow_path)
+      ? this._mapData.mow_path
+      : [];
+    for (const line of mowPath) {
+      if (!Array.isArray(line) || line.length < 2) continue;
+      svgEl.appendChild(
+        el("polyline", {
+          points: line
+            .map(
+              (point) =>
+                `${mt.toSX(point.x).toFixed(1)},${mt.toSY(point.y).toFixed(1)}`,
+            )
+            .join(" "),
+          fill: "none",
+          stroke: "#38bdf8",
+          "stroke-width": "1.5",
+          "stroke-opacity": "0.7",
+          "stroke-dasharray": "2,3",
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round",
+          "pointer-events": "none",
+        }),
+      );
+    }
+
     const start = this._currentPositionPoint();
     // ⚠️ Draw and colour against the SPLIT path, not [start, ...waypoints].
     // `runResult.segments` is one entry per DRIVEN leg, so once a split turns

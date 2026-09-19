@@ -2158,6 +2158,36 @@ def _area_polygons(
     return polygons
 
 
+def _mow_path_polylines(
+    coordinator: MammotionReportUpdateCoordinator,
+) -> list[list[dict[str, float]]]:
+    """Return the RUNNING job's planned mow path as map-local x/y polylines.
+
+    ``map.current_mow_path`` is fetched by PyMammotion's ``MowPathSaga`` (auto-
+    triggered on a ``path_hash`` change) and holds ``MowPathPacket.data_couple``
+    points in the SAME device-local x/y frame as ``map.area`` -- so a consumer
+    (the click-to-go card) can draw the real planned route with no coordinate
+    conversion, exactly as it draws the area and keep-out polygons.
+
+    One polyline per path packet, ordered by frame then packet, so a multi-frame
+    path stays contiguous. Empty when no job path is cached.
+    """
+    device_data = coordinator.data
+    lines: list[list[dict[str, float]]] = []
+    frames_by_txn = getattr(device_data.map, "current_mow_path", {}) or {}
+    for frames_by_index in frames_by_txn.values():
+        for _index, mow_path in sorted(frames_by_index.items(), key=lambda kv: kv[0]):
+            for packet in getattr(mow_path, "path_packets", []) or []:
+                points = [
+                    {"x": float(point.x), "y": float(point.y)}
+                    for point in getattr(packet, "data_couple", []) or []
+                    if hasattr(point, "x") and hasattr(point, "y")
+                ]
+                if len(points) >= 2:
+                    lines.append(points)
+    return lines
+
+
 #: `HashList` fields holding KEEP-OUT geometry, in the same map-local x/y frame
 #: as `area`. Every one is a polygon the mower must not enter.
 #:
@@ -2622,6 +2652,11 @@ def _export_mower_map(coordinator: MammotionReportUpdateCoordinator) -> dict[str
                 # lat/lon, which is why the card could draw them while
                 # containment could not check them.
                 "keep_out_polygons": _keep_out_polygons(coordinator),
+                # The running job's planned route, same x/y frame as the areas.
+                # Empty unless a job path is cached (MowPathSaga has run). The
+                # card draws it as a planned-route overlay; a consumer that does
+                # not want it just ignores the key.
+                "mow_path": _mow_path_polylines(coordinator),
                 "raw": {
                     "area": map_dict.get("area", {}),
                     "svg": map_dict.get("svg", {}),
