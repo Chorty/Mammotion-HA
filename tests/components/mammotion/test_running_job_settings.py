@@ -25,6 +25,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import voluptuous as vol
 from homeassistant.exceptions import HomeAssistantError
 from pymammotion.data.model.device import MowerInfo, MowingDevice
 from pymammotion.data.model.device_config import OperationSettings
@@ -38,6 +39,7 @@ from custom_components.mammotion.coordinator import (
     _RUNNING_JOB_READ_MAX_ATTEMPTS as MAX_READ_ATTEMPTS,
 )
 from custom_components.mammotion.coordinator import MammotionReportUpdateCoordinator
+from custom_components.mammotion.lawn_mower import START_MOW_SCHEMA
 from custom_components.mammotion.number import (
     LUBA_WORKING_ENTITIES,
     NUMBER_WORKING_ENTITIES,
@@ -625,3 +627,89 @@ async def test_pausing_and_resuming_does_not_discard_the_job() -> None:
 
     assert coordinator.working_setting_source() == "running_job"
     assert coordinator._should_read_running_job() is False  # noqa: SLF001
+
+
+# --- lawn_mower.start_mow(modify=true) ------------------------------------
+#
+# The same defect on a second path. ``async_modify_plan_route`` filled from
+# ``self.data.work`` (a cached report snapshot, eight fields) and took the rest
+# from whatever the caller passed. START_MOW_SCHEMA gave every route field a
+# default, so a service call always arrived fully populated and pushed schema
+# defaults -- speed 0.3, blade 25 mm, width 25 cm -- onto the running job.
+
+
+async def test_start_mow_modify_keeps_the_jobs_untouched_settings() -> None:
+    """Changing speed via start_mow(modify=true) must not move blade or spacing."""
+    coordinator = _coordinator()
+
+    await coordinator.async_modify_plan_route({"speed": 1.6 * FT_PER_S})
+
+    route = _sent_route(coordinator)
+    assert route.speed == pytest.approx(1.6 * FT_PER_S)
+    # From the running job, NOT from data.work (50 mm / 25 cm) or the schema.
+    assert route.blade_height == JOB_KNIFE_MM
+    assert route.channel_width == JOB_WIDTH_CM
+    assert route.one_hashs == [ZONE]
+
+
+async def test_start_mow_modify_reads_the_running_job_first() -> None:
+    """The running job is re-read (sub_cmd=2) before anything is re-issued."""
+    coordinator = _coordinator()
+
+    await coordinator.async_modify_plan_route({"blade_height": 45})
+
+    coordinator.manager.send_command_and_wait.assert_awaited_once()
+    args, _ = coordinator.manager.send_command_and_wait.await_args
+    assert args[1] == "query_generate_route_information"
+    assert _sent_route(coordinator).blade_height == 45
+
+
+async def test_start_mow_modify_with_no_overrides_re_issues_the_job_as_read() -> None:
+    """No named field means re-issue the job exactly as the mower reports it."""
+    coordinator = _coordinator()
+
+    await coordinator.async_modify_plan_route({})
+
+    route = _sent_route(coordinator)
+    assert route.speed == pytest.approx(JOB_SPEED)
+    assert route.blade_height == JOB_KNIFE_MM
+    assert route.channel_width == JOB_WIDTH_CM
+
+
+async def test_start_mow_modify_sends_nothing_when_the_job_cannot_be_read() -> None:
+    """Fail closed: an unreadable job must not push HA's plan to the mower."""
+    coordinator = _coordinator(reply=CommandTimeoutError("bidire_reqconver_path", 1))
+
+    with pytest.raises(HomeAssistantError) as err:
+        await coordinator.async_modify_plan_route({"speed": 0.5})
+
+    assert err.value.translation_key == "running_job_unreadable"
+    coordinator.async_send_command.assert_not_awaited()
+
+
+async def test_start_mow_modify_sends_nothing_on_a_zero_filled_job() -> None:
+    """A zero-filled reply is unreadable too — zeros are not real settings."""
+    coordinator = _coordinator(
+        reply=_job_reply(knife_height=0, speed=0.0, channel_width=0)
+    )
+
+    with pytest.raises(HomeAssistantError) as err:
+        await coordinator.async_modify_plan_route({"speed": 0.5})
+
+    assert err.value.translation_key == "running_job_unreadable"
+    coordinator.async_send_command.assert_not_awaited()
+
+
+def test_start_mow_schema_does_not_default_the_route_fields() -> None:
+    """Route fields must have no schema default, or absent == "reset to normal".
+
+    Only the two control flags and ``areas`` keep a default; every route field
+    must be absent from kwargs when the caller did not name it, which is what
+    lets async_modify_plan_route tell "change this" from "leave this alone".
+    """
+    defaulted = {
+        str(key.schema)
+        for key in START_MOW_SCHEMA
+        if isinstance(key, vol.Optional) and key.default is not vol.UNDEFINED
+    }
+    assert defaulted == {"modify", "plan_only", "areas"}
