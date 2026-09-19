@@ -2115,3 +2115,65 @@ test("the coverage overlay never changes the map's own scale", () => {
     "_getAllPoints must not reference coverage data",
   );
 });
+
+// ---------------------------------------------------------------------------
+// Planned-route overlay (export_map `mow_path`)
+//
+// The running job's real planned path, in the same device x/y frame as the
+// areas, drawn as a thin dashed line so the operator sees where the mower will
+// actually go. The invariants mirror the coverage overlay's: it must not
+// swallow clicks, must not rescale the map, and must sit in the right paint
+// layer -- over the yard, under what the operator is composing.
+// ---------------------------------------------------------------------------
+
+test("the planned route paints after keep-outs and before the user path", () => {
+  const source = readFileSync(
+    "custom_components/mammotion/www/mammotion-custom-path-card.js",
+    "utf8",
+  );
+  const body = source.slice(source.indexOf("  _renderMap() {"));
+  const keepOutAt = body.indexOf("_keepOutPolygons()");
+  const routeAt = body.indexOf("this._mapData?.mow_path");
+  const userPathAt = body.indexOf("const plannedSplit = this._plannedSplit()");
+  assert.ok(routeAt > 0, "the planned route must be drawn in _renderMap");
+  assert.ok(
+    keepOutAt < routeAt,
+    "the route must paint AFTER keep-outs, so an obstacle is never hidden by it",
+  );
+  assert.ok(
+    routeAt < userPathAt,
+    "the route must paint BEFORE the user's clicked path and waypoints",
+  );
+});
+
+test("the planned route does not swallow map clicks", () => {
+  const source = readFileSync(
+    "custom_components/mammotion/www/mammotion-custom-path-card.js",
+    "utf8",
+  );
+  // The block from the route loop to the next section must set pointer-events.
+  const from = source.indexOf("const mowPath = Array.isArray");
+  const to = source.indexOf("const start = this._currentPositionPoint()", from);
+  assert.ok(from > 0 && to > from, "the mow_path render block must exist");
+  assert.match(
+    source.slice(from, to),
+    /"pointer-events": "none"/,
+    "planned-route segments must be transparent to clicks",
+  );
+});
+
+test("the planned route never changes the map's own scale", () => {
+  // Same invariant as coverage: _getAllPoints drives the bounds, so if the
+  // route leaked in, a job starting/finishing would rescale the whole map.
+  const source = readFileSync(
+    "custom_components/mammotion/www/mammotion-custom-path-card.js",
+    "utf8",
+  );
+  const start = source.indexOf("  _getAllPoints() {");
+  const body = source.slice(start, source.indexOf("\n  }", start));
+  assert.ok(start > 0, "_getAllPoints must exist");
+  assert.ok(
+    !/mow_path/i.test(body),
+    "_getAllPoints must not reference the planned route",
+  );
+});

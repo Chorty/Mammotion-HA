@@ -34,6 +34,7 @@ from custom_components.mammotion.services import (
     _export_mower_tasks,
     _export_runtime_state,
     _manual_velocity_quality_degradation,
+    _mow_path_polylines,
     _normalize_mower_areas,
     _normalize_mower_tasks,
     _point_on_segment,
@@ -155,6 +156,56 @@ def test_export_map_includes_area_polygons_and_raw_map_data() -> None:
     ]
     assert "area" in export["raw"]
     assert "area_name" in export["raw"]
+
+
+def test_export_map_includes_planned_mow_path_when_cached() -> None:
+    """A cached running-job mow path is exported as x/y polylines in export_map."""
+    coordinator = _coordinator()
+    # current_mow_path[transaction_id][frame_index] = MowPath-like with packets.
+    coordinator.data.map.current_mow_path = {
+        7001: {
+            0: SimpleNamespace(
+                path_packets=[
+                    SimpleNamespace(
+                        data_couple=[
+                            SimpleNamespace(x=1.0, y=2.0),
+                            SimpleNamespace(x=3.0, y=4.0),
+                            SimpleNamespace(x=5.0, y=6.0),
+                        ]
+                    )
+                ]
+            )
+        }
+    }
+
+    lines = _mow_path_polylines(coordinator)
+    assert lines == [[{"x": 1.0, "y": 2.0}, {"x": 3.0, "y": 4.0}, {"x": 5.0, "y": 6.0}]]
+
+    export = _export_mower_map(coordinator)
+    assert export["mow_path"] == lines
+
+
+def test_export_map_mow_path_empty_without_a_job() -> None:
+    """No cached path -> mow_path is an empty list, not missing or an error."""
+    coordinator = _coordinator()
+    coordinator.data.map.current_mow_path = {}
+    export = _export_mower_map(coordinator)
+    assert export["mow_path"] == []
+
+
+def test_mow_path_polylines_drops_degenerate_packets() -> None:
+    """A packet with fewer than two points is not a drawable line."""
+    coordinator = _coordinator()
+    coordinator.data.map.current_mow_path = {
+        1: {
+            0: SimpleNamespace(
+                path_packets=[
+                    SimpleNamespace(data_couple=[SimpleNamespace(x=1.0, y=1.0)])
+                ]
+            )
+        }
+    }
+    assert _mow_path_polylines(coordinator) == []
 
 
 def test_export_tasks_includes_counts_and_sync_metadata() -> None:
