@@ -26,7 +26,12 @@ from custom_components.mammotion.coordinator import (
 from custom_components.mammotion.sensor import WORK_SENSOR_TYPES
 
 LOCALES = ("cs", "da", "de", "en", "fr", "hu", "it", "nl", "pl", "ro", "sl", "sv")
-NEW_SENSOR_KEYS = ("cloud_sends_24h", "cloud_send_limit", "command_timeouts_24h")
+NEW_SENSOR_KEYS = (
+    "cloud_sends_24h",
+    "cloud_send_limit",
+    "command_timeouts_24h",
+    "active_route_hash",
+)
 NEW_BUTTON_KEY = "refresh_status"
 
 

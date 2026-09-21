@@ -498,6 +498,9 @@
       },
       "zone_hash": {
         "name": "Zone hash"
+      },
+      "active_route_hash": {
+        "name": "Active route hash"
       }
     },
     "button": {

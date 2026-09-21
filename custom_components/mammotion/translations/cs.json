@@ -486,6 +486,9 @@
       },
       "zone_hash": {
         "name": "Hash zóny"
+      },
+      "active_route_hash": {
+        "name": "Hash aktivní trasy"
       }
     },
     "button": {

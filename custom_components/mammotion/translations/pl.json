@@ -486,6 +486,9 @@
       },
       "zone_hash": {
         "name": "Skrót strefy"
+      },
+      "active_route_hash": {
+        "name": "Hash aktywnej trasy"
       }
     },
     "button": {

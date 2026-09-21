@@ -486,6 +486,9 @@
       },
       "zone_hash": {
         "name": "Zonhash"
+      },
+      "active_route_hash": {
+        "name": "Hash för aktiv rutt"
       }
     },
     "button": {

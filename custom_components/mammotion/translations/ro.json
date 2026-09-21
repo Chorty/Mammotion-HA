@@ -486,6 +486,9 @@
       },
       "zone_hash": {
         "name": "Hash zonă"
+      },
+      "active_route_hash": {
+        "name": "Hash traseu activ"
       }
     },
     "button": {

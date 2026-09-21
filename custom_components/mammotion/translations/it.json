@@ -486,6 +486,9 @@
       },
       "zone_hash": {
         "name": "Hash della zona"
+      },
+      "active_route_hash": {
+        "name": "Hash del percorso attivo"
       }
     },
     "button": {

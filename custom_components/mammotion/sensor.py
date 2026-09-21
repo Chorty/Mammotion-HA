@@ -717,6 +717,17 @@ WORK_SENSOR_TYPES: tuple[MammotionWorkSensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     MammotionWorkSensorEntityDescription(
+        key="active_route_hash",
+        state_class=None,
+        native_unit_of_measurement=None,
+        # Hashes can exceed a recorder's exact numeric range, so expose the
+        # protocol value as text rather than a measurement.
+        value_fn=lambda _coordinator, mower_data: str(
+            mower_data.report_data.work.path_hash
+        ),
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionWorkSensorEntityDescription(
         key="map_sync_status",
         state_class=None,
         device_class=SensorDeviceClass.ENUM,
