@@ -501,6 +501,9 @@
       "refresh_status": {
         "name": "Status vernieuwen"
       },
+      "refresh_active_job_settings": {
+        "name": "Instellingen actieve taak vernieuwen"
+      },
       "resync_rtk_dock": {
         "name": "Synchroniseer RTK en laadstation"
       },

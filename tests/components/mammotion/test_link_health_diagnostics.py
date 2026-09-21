@@ -32,7 +32,7 @@ NEW_SENSOR_KEYS = (
     "command_timeouts_24h",
     "active_route_hash",
 )
-NEW_BUTTON_KEY = "refresh_status"
+NEW_BUTTON_KEYS = ("refresh_status", "refresh_active_job_settings")
 
 
 def _integration_json(name: str) -> dict[str, Any]:
@@ -70,9 +70,8 @@ def test_new_entities_are_named_in_every_locale() -> None:
         doc = _integration_json(filename)
         buttons = doc.get("entity", {}).get("button", {})
         sensors = doc.get("entity", {}).get("sensor", {})
-        assert buttons.get(NEW_BUTTON_KEY, {}).get("name"), (
-            f"{filename}: button.{NEW_BUTTON_KEY}"
-        )
+        for key in NEW_BUTTON_KEYS:
+            assert buttons.get(key, {}).get("name"), f"{filename}: button.{key}"
         for key in NEW_SENSOR_KEYS:
             assert sensors.get(key, {}).get("name"), f"{filename}: sensor.{key}"
 
@@ -101,16 +100,17 @@ def test_non_english_locales_are_not_english_placeholders() -> None:
             assert doc["sensor"][key]["name"] != english["sensor"][key]["name"], (
                 f"{loc}: sensor.{key} is still the English string"
             )
-        assert (
-            doc["button"][NEW_BUTTON_KEY]["name"]
-            != english["button"][NEW_BUTTON_KEY]["name"]
-        ), f"{loc}: button.{NEW_BUTTON_KEY} is still the English string"
+        for key in NEW_BUTTON_KEYS:
+            assert doc["button"][key]["name"] != english["button"][key]["name"], (
+                f"{loc}: button.{key} is still the English string"
+            )
 
 
 def test_new_entities_have_icons() -> None:
     """An icon-less diagnostic entity is hard to find in a long entity list."""
     icons = _integration_json("icons.json")["entity"]
-    assert icons["button"][NEW_BUTTON_KEY]["default"]
+    for key in NEW_BUTTON_KEYS:
+        assert icons["button"][key]["default"]
     for key in NEW_SENSOR_KEYS:
         assert icons["sensor"][key]["default"], key
 
@@ -122,7 +122,7 @@ def test_the_entities_are_registered() -> None:
     """Translations without a registered entity are dead weight, and vice versa."""
     sensor_keys = {d.key for d in WORK_SENSOR_TYPES}
     assert set(NEW_SENSOR_KEYS) <= sensor_keys
-    assert NEW_BUTTON_KEY in {d.key for d in BUTTON_SENSORS}
+    assert set(NEW_BUTTON_KEYS) <= {d.key for d in BUTTON_SENSORS}
 
 
 def test_enum_sensor_declares_its_options() -> None:

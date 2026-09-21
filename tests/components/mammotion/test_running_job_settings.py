@@ -35,6 +35,7 @@ from pymammotion.proto import LubaMsg, MctlNav, NavReqCoverPath
 from pymammotion.transport.base import CommandTimeoutError
 from pymammotion.utility.constant import WorkMode
 
+from custom_components.mammotion.button import BUTTON_SENSORS
 from custom_components.mammotion.coordinator import (
     _RUNNING_JOB_READ_MAX_ATTEMPTS as MAX_READ_ATTEMPTS,
 )
@@ -398,6 +399,86 @@ async def test_a_running_job_is_read_once_the_mower_enters_it() -> None:
     assert _description("blade_height").get_fn(coordinator) == JOB_KNIFE_MM
     assert _description("path_spacing").get_fn(coordinator) == JOB_WIDTH_CM
     coordinator.async_update_listeners.assert_called_once()
+
+
+def test_refresh_active_job_button_is_available_only_during_a_route_job() -> None:
+    """The diagnostic stays hidden until it can perform a meaningful read."""
+    description = next(
+        item for item in BUTTON_SENSORS if item.key == "refresh_active_job_settings"
+    )
+    assert description.available_fn is not None
+    assert description.available_fn(_coordinator()) is True
+    assert (
+        description.available_fn(_coordinator(sys_status=WorkMode.MODE_READY)) is False
+    )
+
+
+async def test_manual_refresh_replaces_the_active_jobs_cached_settings() -> None:
+    """An operator can pull app-side changes without sending a route update."""
+    coordinator = _coordinator(reply=_job_reply(speed=0.49, knife_height=55))
+    coordinator._running_job_settings = (  # noqa: SLF001
+        PATH_HASH,
+        CurrentTaskSettings(
+            knife_height=60, speed=JOB_SPEED, channel_width=JOB_WIDTH_CM
+        ),
+        True,
+    )
+
+    await coordinator.async_refresh_running_job_settings()
+
+    coordinator.manager.send_command_and_wait.assert_awaited_once()
+    coordinator.async_send_command.assert_not_awaited()
+    assert coordinator.working_setting_source() == "running_job"
+    assert _description("working_speed").get_fn(coordinator) == pytest.approx(0.49)
+    assert _description("blade_height").get_fn(coordinator) == 55
+    coordinator.async_update_listeners.assert_called_once()
+
+
+async def test_manual_refresh_preserves_an_ha_edit_that_lands_during_the_read() -> None:
+    """A concurrent HA edit has a newer snapshot than the requested refresh."""
+    coordinator = _coordinator()
+
+    async def _apply_ha_edit(*_args: Any, **_kwargs: Any) -> LubaMsg:
+        coordinator._running_job_settings = (  # noqa: SLF001
+            PATH_HASH,
+            CurrentTaskSettings(knife_height=60, speed=0.5, channel_width=JOB_WIDTH_CM),
+            True,
+        )
+        return _job_reply()
+
+    coordinator.manager.send_command_and_wait.side_effect = _apply_ha_edit
+
+    await coordinator.async_refresh_running_job_settings()
+
+    assert coordinator.working_setting_source() == "running_job_after_ha_change"
+    assert _description("working_speed").get_fn(coordinator) == pytest.approx(0.5)
+    coordinator.async_update_listeners.assert_not_called()
+
+
+async def test_manual_refresh_discards_a_reply_after_the_job_changes() -> None:
+    """A reply for the prior route must never become the new route's snapshot."""
+    coordinator = _coordinator()
+
+    async def _change_route(*_args: Any, **_kwargs: Any) -> LubaMsg:
+        coordinator.data.report_data.work.path_hash = PATH_HASH + 1
+        return _job_reply()
+
+    coordinator.manager.send_command_and_wait.side_effect = _change_route
+
+    await coordinator.async_refresh_running_job_settings()
+
+    assert coordinator.running_job_settings() is None
+    coordinator.async_update_listeners.assert_not_called()
+
+
+async def test_manual_refresh_does_not_query_when_no_route_job_is_active() -> None:
+    """An unavailable diagnostic button must be inert if pressed programmatically."""
+    coordinator = _coordinator(sys_status=WorkMode.MODE_READY)
+
+    await coordinator.async_refresh_running_job_settings()
+
+    coordinator.manager.send_command_and_wait.assert_not_awaited()
+    coordinator.async_update_listeners.assert_not_called()
 
 
 async def test_the_same_job_is_not_read_twice() -> None:

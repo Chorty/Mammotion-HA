@@ -501,6 +501,9 @@
       "refresh_status": {
         "name": "Actualiser l'état"
       },
+      "refresh_active_job_settings": {
+        "name": "Actualiser les paramètres de la tâche active"
+      },
       "resync_rtk_dock": {
         "name": "Synchroniser RTK et base"
       },

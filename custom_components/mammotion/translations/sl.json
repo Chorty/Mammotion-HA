@@ -501,6 +501,9 @@
       "refresh_status": {
         "name": "Osveži stanje"
       },
+      "refresh_active_job_settings": {
+        "name": "Osveži nastavitve aktivnega opravila"
+      },
       "resync_rtk_dock": {
         "name": "Sinhronizacija položaja RTK in polnilne postaje"
       },

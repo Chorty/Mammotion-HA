@@ -501,6 +501,9 @@
       "refresh_status": {
         "name": "Odśwież stan"
       },
+      "refresh_active_job_settings": {
+        "name": "Odśwież ustawienia aktywnego zadania"
+      },
       "resync_rtk_dock": {
         "name": "Zsynchronizuj RTK i stację ładującą"
       },

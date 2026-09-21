@@ -513,6 +513,9 @@
       "refresh_status": {
         "name": "Refresh status"
       },
+      "refresh_active_job_settings": {
+        "name": "Refresh active job settings"
+      },
       "resync_rtk_dock": {
         "name": "Sync RTK and dock"
       },
