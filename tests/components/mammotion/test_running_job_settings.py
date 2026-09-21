@@ -658,10 +658,56 @@ async def test_start_mow_modify_reads_the_running_job_first() -> None:
 
     await coordinator.async_modify_plan_route({"blade_height": 45})
 
-    coordinator.manager.send_command_and_wait.assert_awaited_once()
-    args, _ = coordinator.manager.send_command_and_wait.await_args
-    assert args[1] == "query_generate_route_information"
+    assert coordinator.manager.send_command_and_wait.await_count == 2
+    for args, _ in coordinator.manager.send_command_and_wait.await_args_list:
+        assert args[1] == "query_generate_route_information"
     assert _sent_route(coordinator).blade_height == 45
+
+
+async def test_start_mow_modify_refreshes_the_running_job_snapshot() -> None:
+    """A confirmed route change replaces HA's pre-change snapshot."""
+    coordinator = _coordinator()
+    readback = _job_reply(knife_height=56, speed=0.21336, channel_width=27)
+    coordinator.manager.send_command_and_wait.side_effect = [_job_reply(), readback]
+    coordinator.async_send_command.return_value = True
+
+    result = await coordinator.async_modify_plan_route(
+        {"blade_height": 56, "speed": 0.21336, "channel_width": 27}
+    )
+
+    assert result is True
+    assert coordinator.manager.send_command_and_wait.await_count == 2
+    coordinator.async_send_command.assert_awaited_once()
+    snapshot = coordinator.running_job_settings()
+    assert snapshot is not None
+    assert snapshot.knife_height == 56
+    assert snapshot.speed == pytest.approx(0.21336)
+    assert snapshot.channel_width == 27
+    assert coordinator.working_setting_source() == "running_job"
+    coordinator.async_update_listeners.assert_called_once()
+
+
+async def test_start_mow_modify_keeps_previous_snapshot_when_readback_fails() -> None:
+    """A failed confirmation never changes a successfully queued command to an error."""
+    coordinator = _coordinator()
+    previous = CurrentTaskSettings(
+        knife_height=JOB_KNIFE_MM,
+        speed=JOB_SPEED,
+        channel_width=JOB_WIDTH_CM,
+        zone_hashs=[ZONE],
+    )
+    coordinator._running_job_settings = (PATH_HASH, previous, False)  # noqa: SLF001
+    coordinator.manager.send_command_and_wait.side_effect = [
+        _job_reply(),
+        CommandTimeoutError("bidire_reqconver_path", 1),
+    ]
+    coordinator.async_send_command.return_value = True
+
+    result = await coordinator.async_modify_plan_route({"speed": 0.5})
+
+    assert result is True
+    assert coordinator.running_job_settings() is previous
+    coordinator.async_update_listeners.assert_not_called()
 
 
 async def test_start_mow_modify_with_no_overrides_re_issues_the_job_as_read() -> None:

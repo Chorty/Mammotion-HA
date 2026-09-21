@@ -2049,7 +2049,33 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         for key, value in (route_overrides or {}).items():
             if hasattr(settings, key):
                 setattr(settings, key, value)
-        return await self._async_send_modified_route(settings)
+        sent = await self._async_send_modified_route(settings)
+        if not sent:
+            return sent
+
+        # The regular report does not carry the route settings. Confirm the
+        # queued change with the same read the app uses, rather than presenting
+        # the requested values as though the mower had confirmed them. A
+        # readback failure must not turn a successfully queued route change
+        # into a failed HA service call, so keep the previous snapshot then.
+        try:
+            readback = await self._async_read_running_job()
+        except HomeAssistantError:
+            LOGGER.debug(
+                "Modified running route for %s but could not read it back",
+                self.device_name,
+            )
+            return sent
+
+        if not self._is_route_job_active():
+            return sent
+        self._running_job_settings = (
+            cast(MowingDevice, self.data).report_data.work.path_hash,
+            readback,
+            False,
+        )
+        self.async_update_listeners()
+        return sent
 
     async def _async_send_modified_route(
         self, operation_settings: OperationSettings
