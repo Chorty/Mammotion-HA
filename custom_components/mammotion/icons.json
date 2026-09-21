@@ -165,6 +165,9 @@
       "zone_hash": {
         "default": "mdi:vector-square"
       },
+      "active_route_hash": {
+        "default": "mdi:identifier"
+      },
       "cloud_sends_24h": {
         "default": "mdi:cloud-upload-outline"
       },

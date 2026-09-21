@@ -488,7 +488,7 @@
         "name": "Hachage de zone"
       },
       "active_route_hash": {
-        "name": "Active route hash"
+        "name": "Hachage de l’itinéraire actif"
       }
     },
     "button": {

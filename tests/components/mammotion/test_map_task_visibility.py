@@ -2875,10 +2875,9 @@ def test_diagnostic_sensor_values_match_map_and_task_data() -> None:
     assert (
         descriptions["map_area_name_count"].value_fn(coordinator, coordinator.data) == 1
     )
-    assert (
-        descriptions["active_route_hash"].value_fn(coordinator, coordinator.data)
-        == str(coordinator.data.report_data.work.path_hash)
-    )
+    assert descriptions["active_route_hash"].value_fn(
+        coordinator, coordinator.data
+    ) == str(coordinator.data.report_data.work.path_hash)
     assert descriptions["last_map_sync"].value_fn(coordinator, coordinator.data) is None
     assert (
         descriptions["last_task_sync"].value_fn(coordinator, coordinator.data) is None

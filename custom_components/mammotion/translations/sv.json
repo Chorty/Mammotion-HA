@@ -488,7 +488,7 @@
         "name": "Zonhash"
       },
       "active_route_hash": {
-        "name": "Active route hash"
+        "name": "Hash för aktiv rutt"
       }
     },
     "button": {

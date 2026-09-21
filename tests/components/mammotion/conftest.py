@@ -94,7 +94,10 @@ def _coordinator(plan: Plan | None = None) -> SimpleNamespace:
         area={LARGE_HASH: SimpleNamespace(data=[object(), object()])},
         area_name=[SimpleNamespace(hash=LARGE_HASH, name="Front Main")],
     )
-    data = SimpleNamespace(map=mower_map)
+    data = SimpleNamespace(
+        map=mower_map,
+        report_data=SimpleNamespace(work=SimpleNamespace(path_hash=123456789)),
+    )
     return SimpleNamespace(
         data=data,
         last_map_sync=None,
