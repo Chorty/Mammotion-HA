@@ -486,6 +486,9 @@
       },
       "zone_hash": {
         "name": "Zgoščena vrednost cone"
+      },
+      "active_route_hash": {
+        "name": "Active route hash"
       }
     },
     "button": {
