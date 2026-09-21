@@ -501,6 +501,9 @@
       "refresh_status": {
         "name": "Reîmprospătează starea"
       },
+      "refresh_active_job_settings": {
+        "name": "Reîmprospătează setările sarcinii active"
+      },
       "resync_rtk_dock": {
         "name": "Sincronizați RTK și docul"
       },

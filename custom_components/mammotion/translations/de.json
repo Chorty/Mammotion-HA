@@ -501,6 +501,9 @@
       "refresh_status": {
         "name": "Status aktualisieren"
       },
+      "refresh_active_job_settings": {
+        "name": "Einstellungen des aktiven Auftrags aktualisieren"
+      },
       "resync_rtk_dock": {
         "name": "Synchronisiere RTK und Ladestation"
       },

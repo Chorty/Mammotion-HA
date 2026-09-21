@@ -501,6 +501,9 @@
       "refresh_status": {
         "name": "Aggiorna stato"
       },
+      "refresh_active_job_settings": {
+        "name": "Aggiorna impostazioni attività attiva"
+      },
       "resync_rtk_dock": {
         "name": "Sincronizza base e RTK"
       },

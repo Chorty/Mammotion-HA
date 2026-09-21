@@ -2225,6 +2225,12 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
             and (data.report_data.work.area >> 16) != 100
         )
 
+    def has_active_route_job(self) -> bool:
+        """Return whether a route job with an identifiable path is active."""
+        return self._is_route_job_active() and bool(
+            cast(MowingDevice, self.data).report_data.work.path_hash
+        )
+
     def running_job_settings(self) -> CurrentTaskSettings | None:
         """Return the running job's settings as last read, if still that job.
 
@@ -2374,6 +2380,37 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
             dataclasses.replace(job, **{_RUNNING_JOB_FIELDS[field]: value}),
             True,
         )
+
+    async def async_refresh_running_job_settings(self) -> None:
+        """Read active-route settings on demand without changing the mower.
+
+        Device reports do not identify a job revision, so an app-side edit to
+        an existing route is not discoverable from push data alone. This
+        explicit read lets an operator refresh the three working-setting
+        entities. If the job changes while the query is in flight, discard the
+        reply rather than applying one job's settings to another.
+        """
+        if not self.has_active_route_job():
+            return
+        path_hash = cast(MowingDevice, self.data).report_data.work.path_hash
+        snapshot_before_read = self._running_job_settings
+        job = await self._async_read_running_job()
+        if (
+            not self.has_active_route_job()
+            or cast(MowingDevice, self.data).report_data.work.path_hash != path_hash
+        ):
+            return
+        if (
+            self._running_job_settings is not snapshot_before_read
+            and self._running_job_settings is not None
+            and self._running_job_settings[0] == path_hash
+            and self._running_job_settings[2]
+        ):
+            # An HA-side edit landed while the read was in flight. Its cached
+            # snapshot is newer and is explicitly labelled as such.
+            return
+        self._running_job_settings = (path_hash, job, False)
+        self.async_update_listeners()
 
     def _should_read_running_job(self) -> bool:
         """Return True when the running job's settings are worth reading now.

@@ -501,6 +501,9 @@
       "refresh_status": {
         "name": "Állapot frissítése"
       },
+      "refresh_active_job_settings": {
+        "name": "Aktív feladat beállításainak frissítése"
+      },
       "resync_rtk_dock": {
         "name": "RTK és dokk szinkronizálása"
       },

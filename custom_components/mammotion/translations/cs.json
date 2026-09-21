@@ -501,6 +501,9 @@
       "refresh_status": {
         "name": "Obnovit stav"
       },
+      "refresh_active_job_settings": {
+        "name": "Obnovit nastavení aktivní úlohy"
+      },
       "resync_rtk_dock": {
         "name": "Synchronizovat RTK a dok"
       },

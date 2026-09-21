@@ -501,6 +501,9 @@
       "refresh_status": {
         "name": "Uppdatera status"
       },
+      "refresh_active_job_settings": {
+        "name": "Uppdatera inställningar för aktiv uppgift"
+      },
       "resync_rtk_dock": {
         "name": "Synkronisera RTK och laddstationen"
       },

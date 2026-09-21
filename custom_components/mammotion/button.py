@@ -178,6 +178,15 @@ BUTTON_SENSORS: tuple[MammotionButtonSensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     MammotionButtonSensorEntityDescription(
+        # The report stream does not expose an active job revision, so it
+        # cannot reveal app-side setting edits to the same route. This is a
+        # read-only route-information query for an operator to request.
+        key="refresh_active_job_settings",
+        press_fn=lambda coordinator: coordinator.async_refresh_running_job_settings(),
+        available_fn=lambda coordinator: coordinator.has_active_route_job(),
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionButtonSensorEntityDescription(
         key="resync_rtk_dock",
         press_fn=lambda coordinator: coordinator.async_rtk_dock_location(),
         entity_category=EntityCategory.CONFIG,
