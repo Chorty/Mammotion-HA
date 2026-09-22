@@ -8,6 +8,49 @@ in `setup_error` with no auto-retry, needing a manual entry reload.
 
 ## What the host is running now
 
+### ✅ 2026-09-22 ~16:12-16:35 UTC — beta114 deployed (MQTT options relabel + pymammotion post7)
+
+`0.6.4-beta114` from `099a7ce4` (Beta Release run 35753037821). Two changes:
+relabeled four misleading Wi-Fi/BLE transport option strings and removed the
+dead `full_map_fetch_enabled` option (PR #23,
+`docs/findings-firmware-mqtt-options-20260919.md`); bumped the `pymammotion`
+pin from `chorty-0.8.12.post4` to `chorty-0.8.12.post7`. **No
+motion-control-law value changed, `accepted-profile.json` untouched, no Gate 5
+owed.**
+
+⚠️ **The post7 wheel needed its own investigation before this deploy.** A
+first release, `chorty-0.8.12.post6`, was cut from `PyMammotion`'s `main` to
+carry a new MQTT→BLE send fallback (PyMammotion#3) — but `main` and the
+previously-pinned `post4` had diverged and never reconverged, so `main` was
+missing several fixes present in `post4`, including a safety-relevant one
+(BLE teardown failure-atomicity) and a rate-limit gate fix. `post6` was
+deleted, unreleased. A real merge reconciled the branches (PyMammotion#4),
+and `post7` was cut from the reconciled history — a strict superset of
+`post4`, not a lateral move. Full detail in
+`docs/findings-firmware-mqtt-options-20260919.md`.
+
+| check | result |
+| --- | --- |
+| Beta Release run | 35753037821, success |
+| version quartet | `0.6.4-beta114`, uv.lock `0.6.4b114` |
+| archive SHA-256 | `e8bca824aa128e11…`, identical local and host |
+| files | **52/52 byte-identical**, 0 AppleDouble (one extra file on the host, the pre-existing inert talkback-probe module, untouched by this deploy) |
+| card md5 | `e9b98b10` at both serving paths and locally |
+| Lovelace | `?v=0.6.4-beta114&build=e9b98b10`, read back verified |
+| restart | API up in **46 s**, 135 entities logged in 175 s |
+| entities | **150 registered** for the mammotion config entry; **9 unavailable** — 1 by design (`button.clip_skywalker_refresh_active_job_settings`, `available_fn` requires an active route job; mower was docked/idle), 8 orphaned registry rows from abandoned experimental branches whose code no longer exists in this tree (`sensor.clip_skywalker_{soc_uptime,usb_disconnect_count,mcu_uptime,soc_temperature,soc_core_dump_count,process_restart_count,active_job_revision}`, `sensor.back_yard_luba_vsplv397_task_area_path`) — confirmed by grep, none of those keys exist in the deployed `sensor.py`/`button.py`; pre-existing, not a regression from this deploy |
+| services | **68** |
+| gate | `enabled: False`, `real_motion_allowed: False`, `active_session: None` |
+| backend | `pymammotion 0.8.12.post7` confirmed in-container |
+| preflight gates 2-4 | backend verified, `missing=[]`; BLE/zone/position blockers are the expected dock-idle state (`CHARGE_ON`, `zone_hash=0`) |
+| dark-safe dry run | `mammotion_raw_motion_calibration.py --probe linear_plus_400`: `dry_run: true`, `status: no_motion_detected`, delta all-zero |
+| backup | `/config/mammotion-backup-20260922-1218-pre-beta114.tgz` |
+
+⚠️ **The 8 orphaned entities should be cleaned up** (remove from
+`core.entity_registry` on the host) as a separate, deliberate housekeeping
+task — not folded into this deploy's verification.
+⏳ Browser confirmation owed.
+
 ### ✅ 2026-09-18 ~02:48-02:53 UTC — beta113 deployed (slider units + stale job snapshot)
 
 `0.6.4-beta113` from `8d1f01c1`. Two operator-found fixes: the blade-height

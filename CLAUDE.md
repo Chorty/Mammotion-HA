@@ -24,7 +24,39 @@ prose around them is still true. **One grep against the tree beats this file.**
 
 ---
 
-## Current build: beta113 (deployed 2026-09-18; backend `chorty-0.8.12.post4`)
+## Current build: beta114 (deployed 2026-09-22; backend `chorty-0.8.12.post7`)
+
+✅ **beta114 verified 2026-09-22 ~16:12-16:35 UTC** — 52/52 identical, card md5
+`e9b98b10` both paths, 150 registered entities / **9 unavailable** (1 by
+design — `refresh_active_job_settings` requires an active route job and the
+mower was docked; 8 orphaned registry rows from abandoned experimental
+branches whose code is no longer in the tree, confirmed by grep, pre-existing
+and not a regression), 68 services, gate disarmed
+(`real_motion_allowed: false`), dark-safe dry run `dry_run: true` /
+`status: no_motion_detected`. ⏳ Browser confirmation owed. **No
+motion-control-law value changed, `accepted-profile.json` untouched, no
+Gate 5 owed.** Two changes:
+🔑 **Relabeled four misleading Wi-Fi/BLE transport option strings and removed
+the dead `full_map_fetch_enabled` option** (Chorty#23) — `use_wifi` actually
+enables Mammotion cloud, not the mower's own Wi-Fi; `prefer_ble_over_wifi` and
+`movement_use_wifi` promised a transport override that PyMammotion's
+`active_transport()` doesn't provide (`prefer_ble` is inert for selection — a
+connected BLE always wins regardless). Record:
+`docs/findings-firmware-mqtt-options-20260919.md`.
+🚨 **Bumped `pymammotion` from `chorty-0.8.12.post4` to `chorty-0.8.12.post7`,
+adding a real MQTT→BLE send fallback** (PyMammotion#3) — a rate-limited
+pre-check, a cloud 429, or a generic transport error on the cloud transport
+now retries over an already-connected BLE link, mirroring the BLE→MQTT
+fallback that already existed. **A first release, `post6`, had to be
+discarded**: PyMammotion's `main` and the previously-pinned `post4` had
+diverged and never reconverged, so `main` was missing fixes present in
+`post4`, including a safety-relevant one (BLE teardown failure-atomicity) and
+a rate-limit gate fix. Reconciled via a real merge (PyMammotion#4); `post7`
+is a strict superset of `post4`, cut from the reconciled history.
+⚠️ **8 orphaned entity-registry rows found, not cleaned up this session** —
+flagged in the deploy record as a separate housekeeping task.
+
+### Previously: beta113 (deployed 2026-09-18; backend `chorty-0.8.12.post4`)
 
 ✅ **beta113 verified 2026-09-18 ~02:48-02:53 UTC** — 52/52 identical, card md5
 `e61cf755` both paths, **0 unavailable**, 68 services, gate disarmed. ⏳ Browser

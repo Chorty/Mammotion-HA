@@ -12,6 +12,7 @@
 # name in the prose, so they are listed like any other rename.
 
 # --- renamed or removed, where the doc now records what happened ---
+full_map_fetch_enabled                          # removed in beta114 (PR #23): dead option, never read at runtime or presented in the options flow schema; CLAUDE.md's beta114 entry records the removal
 _VIO_TURN_MODES                                 # renamed -> _SEGMENT_TURN_MODES; value gained "night" (night v1). Annotated at all 4 mention sites 2026-08-14
 _VIO_TURN_CONSERVATIVE_MAX_DEGREES_PER_SECOND   # removed in beta37; the beta31/32 sections that discuss it are annotated as history
 per_command_translation_bound_m                 # renamed -> translation_bound_m_per_degree (beta20)
