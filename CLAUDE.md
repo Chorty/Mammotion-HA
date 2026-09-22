@@ -61,6 +61,23 @@ never-committed local edit. Removed via new
 registered, **1 unavailable** — `refresh_active_job_settings`, by design
 (requires an active route job; mower was docked). Detail:
 `docs/deploy-runbook-p0.md`.
+✅ **The `post7` pin also lit up two features that had been dormant since
+2026-09-19:** PyMammotion #2 (`deviceOtherInfo` retention) + Mammotion-HA #18
+(privacy-whitelisted health diagnostics) — config-entry diagnostics now show
+real `soc_tmp`, coredump counters, `process_restart_count`, and subsystem
+version strings for the first time. And PR #19's planned-route overlay is now
+**browser-confirmed**: during an operator-started mow, the dashed blue route
+rendered correctly inside the area boundary, under the position marker,
+boundary still legible. 🔑 **Two live readings during that mow explained by
+static firmware inspection, no code/deploy change needed:**
+`process_restart_count` jumped +49 in the first minutes (the on-device
+watchdog, `agl_monitor_process.sh`, increments it once per relaunch across
+~17 processes, most of which only run while mowing — burst-then-flat, not
+ongoing instability) and `vision_proxy: "fopen error!"` (the `system_io`
+binary tries to open a `mower_vision_proxy` version file that doesn't exist
+anywhere in this firmware image — a packaging gap, not a fault; the real
+vision pipeline reports healthy real version strings in the same payload).
+Full detail: `docs/session-state-firmware-capability-work-20260919.md`.
 
 ### Previously: beta113 (deployed 2026-09-18; backend `chorty-0.8.12.post4`)
 

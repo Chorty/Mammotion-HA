@@ -80,6 +80,8 @@ disabled_by                                      # a field on HA core's own Conf
 # --- gitignored OTA capture paths, intentionally absent from the tree ---
 ota_work                                         # a local OTA-capture working directory (2026-09-05); gitignored by design (holds a 213MB firmware copy) so it never appears in the tree. Its sibling `ota_tls_probe` resolves only because scripts/ota_tls_probe.py exists; this one has no in-tree file on purpose.
 ota_serve_probe                                  # an inert serve-mode OTA toolkit (2026-09-07) that lives in the SEPARATE repo `/Users/mattjoslin/Documents/Luba 2 OTA`, not this one -- standing decision 6 keeps all OTA analysis out of this tree, so this name is deliberately unresolvable here
+system_io                                        # the mower's own ARM binary (pkgs/system_io/system_io) inside the gitignored ota_work/ recovered firmware image -- not code in this repo's tree by design
+mower_vision_proxy                               # a firmware package path (pkgs/vision/mower_vision_proxy) that CLAUDE.md's beta114 entry names to record that it does NOT exist in the recovered 1.30.29.24 firmware image -- the whole point of the note is that this name is unresolvable, on the device as well as in this tree
 
 # --- ESPHome component actions, defined in the ESPHome add-on's YAML configs on the HA host, not in this repo's tree ---
 start_scan                                       # esp32_ble_tracker.start_scan action, added 2026-09-15 to hot-tub-backyard.yaml/p1s-printer.yaml on the HA host's ESPHome add-on (docs/findings-ble-proxy-adjacency-test-20260915.md) -- ESPHome's own component, not Python in this tree
