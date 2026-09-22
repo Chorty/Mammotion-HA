@@ -46,10 +46,24 @@ and `post7` was cut from the reconciled history — a strict superset of
 | dark-safe dry run | `mammotion_raw_motion_calibration.py --probe linear_plus_400`: `dry_run: true`, `status: no_motion_detected`, delta all-zero |
 | backup | `/config/mammotion-backup-20260922-1218-pre-beta114.tgz` |
 
-⚠️ **The 8 orphaned entities should be cleaned up** (remove from
-`core.entity_registry` on the host) as a separate, deliberate housekeeping
-task — not folded into this deploy's verification.
-⏳ Browser confirmation owed.
+✅ **Browser-confirmed 2026-09-22** — operator reports the card footer reads
+`v0.6.4-beta114`.
+✅ **The 8 orphaned entities were removed 2026-09-22**, same session, via the
+new `scripts/ha_remove_orphaned_entities.py` (`config/entity_registry/remove`
+websocket command; dry-run by default, explicit entity list rather than a
+blanket unavailable-entity sweep). Origin traced before removal: 6 keys
+(`soc_temperature`, `soc_uptime`, `mcu_uptime`, `usb_disconnect_count`,
+`process_restart_count`, `soc_coredump_count`) to the unmerged branch
+`feat/device-health-diagnostics` (tip `544515d4`), deployed here for its own
+test session and never merged to `main`; `active_job_revision` to
+`feat/active-job-revision`, added and reverted in the same upstream session
+(`9d025c13` → `4ee7608c`) once `WorkData` turned out not to carry a job ID or
+revision, deployed in between; `task_area_path` to an uncommitted local edit
+with no git history anywhere, reachable or dangling. Verified removed both via
+the live websocket list and a raw `.storage/core.entity_registry` re-read
+(142 registered, down from 150). Post-removal: **1 unavailable** —
+`button.clip_skywalker_refresh_active_job_settings`, by design
+(`available_fn` requires an active route job; mower was docked/idle).
 
 ### ✅ 2026-09-18 ~02:48-02:53 UTC — beta113 deployed (slider units + stale job snapshot)
 

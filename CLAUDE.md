@@ -27,15 +27,11 @@ prose around them is still true. **One grep against the tree beats this file.**
 ## Current build: beta114 (deployed 2026-09-22; backend `chorty-0.8.12.post7`)
 
 ✅ **beta114 verified 2026-09-22 ~16:12-16:35 UTC** — 52/52 identical, card md5
-`e9b98b10` both paths, 150 registered entities / **9 unavailable** (1 by
-design — `refresh_active_job_settings` requires an active route job and the
-mower was docked; 8 orphaned registry rows from abandoned experimental
-branches whose code is no longer in the tree, confirmed by grep, pre-existing
-and not a regression), 68 services, gate disarmed
+`e9b98b10` both paths, 68 services, gate disarmed
 (`real_motion_allowed: false`), dark-safe dry run `dry_run: true` /
-`status: no_motion_detected`. ⏳ Browser confirmation owed. **No
-motion-control-law value changed, `accepted-profile.json` untouched, no
-Gate 5 owed.** Two changes:
+`status: no_motion_detected`. ✅ **Browser-confirmed** (card footer reads
+`v0.6.4-beta114`). **No motion-control-law value changed,
+`accepted-profile.json` untouched, no Gate 5 owed.** Two changes:
 🔑 **Relabeled four misleading Wi-Fi/BLE transport option strings and removed
 the dead `full_map_fetch_enabled` option** (Chorty#23) — `use_wifi` actually
 enables Mammotion cloud, not the mower's own Wi-Fi; `prefer_ble_over_wifi` and
@@ -53,8 +49,18 @@ diverged and never reconverged, so `main` was missing fixes present in
 `post4`, including a safety-relevant one (BLE teardown failure-atomicity) and
 a rate-limit gate fix. Reconciled via a real merge (PyMammotion#4); `post7`
 is a strict superset of `post4`, cut from the reconciled history.
-⚠️ **8 orphaned entity-registry rows found, not cleaned up this session** —
-flagged in the deploy record as a separate housekeeping task.
+🔑 **8 orphaned entity-registry rows found and removed same session**
+(`sensor.clip_skywalker_{soc_temperature,soc_uptime,mcu_uptime,usb_disconnect_count,
+process_restart_count,soc_coredump_count,active_job_revision}`,
+`sensor.back_yard_luba_vsplv397_task_area_path`) — none backed by code in the
+deployed tree; traced to the unmerged `feat/device-health-diagnostics` branch,
+one immediately-reverted `feat/active-job-revision` commit, and one
+never-committed local edit. Removed via new
+`scripts/ha_remove_orphaned_entities.py`
+(`config/entity_registry/remove`, dry-run by default). Post-removal: 150→142
+registered, **1 unavailable** — `refresh_active_job_settings`, by design
+(requires an active route job; mower was docked). Detail:
+`docs/deploy-runbook-p0.md`.
 
 ### Previously: beta113 (deployed 2026-09-18; backend `chorty-0.8.12.post4`)
 
