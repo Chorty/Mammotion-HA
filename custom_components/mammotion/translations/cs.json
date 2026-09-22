@@ -27,7 +27,7 @@
       },
       "reconfigure": {
         "data": {
-          "use_wifi": "Použít Wi-Fi",
+          "use_wifi": "Použít cloud Mammotion",
           "account_name": "Mammotion e-mail nebo číslo účtu",
           "password": "Mammotion heslo k účtu"
         }
@@ -41,7 +41,7 @@
       },
       "wifi": {
         "data": {
-          "use_wifi": "Použít Wi-Fi (odškrtněte a odešlete pro použití Bluetooth)",
+          "use_wifi": "Použít cloud Mammotion (odškrtněte a odešlete pro použití pouze Bluetooth)",
           "account_name": "Mammotion e-mail nebo číslo účtu",
           "password": "Heslo k účtu Mammotion"
         },
@@ -56,10 +56,9 @@
         "data": {
           "title": "Aktualizovat konfiguraci",
           "stay_connected_bluetooth": "Udržovat připojení Bluetooth",
-          "prefer_ble_over_wifi": "Upřednostňovat Bluetooth před Wi-Fi, je-li dostupné",
-          "movement_use_wifi": "Odesílat příkazy pohybu přes Wi-Fi",
-          "mow_path_fetch_enabled": "Povolit načítání cesty sekání (cloud)",
-          "full_map_fetch_enabled": "Povolit úplné načítání mapy (cloud) — pokud vypnuto, načítají se pouze názvy oblastí"
+          "prefer_ble_over_wifi": "Připojit a upřednostňovat Bluetooth, je-li dostupné",
+          "movement_use_wifi": "Nepřipojovat Bluetooth pro příkazy pohybu (cloud se použije pouze pokud Bluetooth ještě není připojeno)",
+          "mow_path_fetch_enabled": "Povolit načítání cesty sekání přes cloud"
         }
       }
     }

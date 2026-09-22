@@ -27,7 +27,7 @@
       },
       "reconfigure": {
         "data": {
-          "use_wifi": "WLAN verwenden",
+          "use_wifi": "Mammotion-Cloud verwenden",
           "account_name": "Mammotion-ID oder E-Mail-Adresse",
           "password": "Mammotion-Kennwort"
         }
@@ -41,7 +41,7 @@
       },
       "wifi": {
         "data": {
-          "use_wifi": "WLAN verwenden (abwählen und senden, um Bluetooth zu nutzen)",
+          "use_wifi": "Mammotion-Cloud verwenden (abwählen und senden, um nur Bluetooth zu nutzen)",
           "account_name": "Mammotion-ID oder E-Mail-Adresse",
           "password": "Mammotion-Kennwort"
         },
@@ -56,10 +56,9 @@
         "data": {
           "title": "Konfiguration aktualisieren",
           "stay_connected_bluetooth": "Bluetooth-Verbindung aufrechterhalten",
-          "prefer_ble_over_wifi": "Wenn möglich, Bluetooth statt WLAN verwenden",
-          "movement_use_wifi": "Bewegungsbefehle über WLAN senden",
-          "mow_path_fetch_enabled": "Mähpfad-Abruf aktivieren (Cloud)",
-          "full_map_fetch_enabled": "Vollständigen Kartenabruf aktivieren (Cloud) — wenn aus, werden nur Bereichsnamen abgerufen"
+          "prefer_ble_over_wifi": "Verbinden und Bluetooth bevorzugen, wenn verfügbar",
+          "movement_use_wifi": "Bluetooth für Bewegungsbefehle nicht erneut verbinden (nutzt die Cloud nur, wenn Bluetooth nicht bereits verbunden ist)",
+          "mow_path_fetch_enabled": "Mähpfad-Abruf über die Cloud zulassen"
         }
       }
     }

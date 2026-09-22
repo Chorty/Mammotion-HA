@@ -27,7 +27,7 @@
       },
       "reconfigure": {
         "data": {
-          "use_wifi": "Utilisez le Wi-Fi",
+          "use_wifi": "Utiliser le cloud Mammotion",
           "account_name": "E-mail ou numéro de compte Mammotion",
           "password": "Mot de passe du compte Mammotion"
         }
@@ -41,7 +41,7 @@
       },
       "wifi": {
         "data": {
-          "use_wifi": "Utiliser le Wi-Fi (décocher et confirmer pour utiliser le Bluetooth)",
+          "use_wifi": "Utiliser le cloud Mammotion (décocher et confirmer pour utiliser uniquement le Bluetooth)",
           "account_name": "E-mail ou numéro de compte Mammotion",
           "password": "Mot de passe du compte Mammotion"
         },
@@ -56,10 +56,9 @@
         "data": {
           "title": "Mettre à jour la configuration",
           "stay_connected_bluetooth": "Garder le Bluetooth connecté",
-          "prefer_ble_over_wifi": "Préférer le Bluetooth au Wi-Fi si disponible",
-          "movement_use_wifi": "Envoyer les commandes de mouvement via Wi-Fi",
-          "mow_path_fetch_enabled": "Activer la récupération du chemin de tonte (cloud)",
-          "full_map_fetch_enabled": "Activer la récupération complète de la carte (cloud) — désactivé, seuls les noms de zones sont récupérés"
+          "prefer_ble_over_wifi": "Se connecter et préférer le Bluetooth si disponible",
+          "movement_use_wifi": "Éviter de reconnecter le Bluetooth pour les commandes de mouvement (utilise le cloud uniquement si le Bluetooth n'est pas déjà connecté)",
+          "mow_path_fetch_enabled": "Autoriser la récupération du chemin de tonte via le cloud"
         }
       }
     }

@@ -27,7 +27,7 @@
       },
       "reconfigure": {
         "data": {
-          "use_wifi": "Użyj Wi-Fi",
+          "use_wifi": "Użyj chmury Mammotion",
           "account_name": "E-mail lub numer konta Mammotion",
           "password": "Hasło do konta Mammotion"
         }
@@ -41,7 +41,7 @@
       },
       "wifi": {
         "data": {
-          "use_wifi": "Użyj Wi-Fi",
+          "use_wifi": "Użyj chmury Mammotion (odznacz i wyślij, aby używać tylko Bluetooth)",
           "account_name": "E-mail lub numer konta Mammotion",
           "password": "Hasło do konta Mammotion"
         },
@@ -56,10 +56,9 @@
         "data": {
           "title": "Aktualizuj konfigurację",
           "stay_connected_bluetooth": "Użyj połączenia Bluetooth",
-          "prefer_ble_over_wifi": "Preferuj Bluetooth zamiast Wi-Fi, gdy dostępne",
-          "movement_use_wifi": "Wysyłaj polecenia ruchu przez Wi-Fi",
-          "mow_path_fetch_enabled": "Włącz pobieranie ścieżki koszenia (chmura)",
-          "full_map_fetch_enabled": "Włącz pełne pobieranie mapy (chmura) — gdy wyłączone, pobierane są tylko nazwy obszarów"
+          "prefer_ble_over_wifi": "Połącz i preferuj Bluetooth, gdy dostępne",
+          "movement_use_wifi": "Nie łącz ponownie Bluetooth dla poleceń ruchu (używa chmury tylko gdy Bluetooth nie jest już połączone)",
+          "mow_path_fetch_enabled": "Zezwól na pobieranie ścieżki koszenia przez chmurę"
         }
       }
     }

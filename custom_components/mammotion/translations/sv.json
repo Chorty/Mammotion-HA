@@ -27,7 +27,7 @@
       },
       "reconfigure": {
         "data": {
-          "use_wifi": "Använd Wi-Fi",
+          "use_wifi": "Använd Mammotion-molnet",
           "account_name": "E-post eller kontonummer för Mammotion",
           "password": "Lösenord för Mammotion-konto"
         }
@@ -41,7 +41,7 @@
       },
       "wifi": {
         "data": {
-          "use_wifi": "Använd Wi-Fi (avmarkera och klicka på skicka för att använda Bluetooth)",
+          "use_wifi": "Använd Mammotion-molnet (avmarkera och skicka för att endast använda Bluetooth)",
           "account_name": "E-post eller kontonummer för Mammotion",
           "password": "Lösenord för Mammotion-konto"
         },
@@ -56,10 +56,9 @@
         "data": {
           "title": "Uppdatera konfigurationen",
           "stay_connected_bluetooth": "Behåll Bluetooth anslutningen aktiv",
-          "prefer_ble_over_wifi": "Föredra Bluetooth framför Wi-Fi när tillgängligt",
-          "movement_use_wifi": "Skicka rörelsekommandon via Wi-Fi",
-          "mow_path_fetch_enabled": "Aktivera hämtning av klippväg (moln)",
-          "full_map_fetch_enabled": "Aktivera fullständig karthämtning (moln) — när av hämtas endast områdesnamn"
+          "prefer_ble_over_wifi": "Anslut och föredra Bluetooth när tillgängligt",
+          "movement_use_wifi": "Undvik att återansluta Bluetooth för rörelsekommandon (använder molnet endast om Bluetooth inte redan är anslutet)",
+          "mow_path_fetch_enabled": "Tillåt hämtning av klippväg via molnet"
         }
       }
     }

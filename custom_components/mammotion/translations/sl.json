@@ -27,7 +27,7 @@
       },
       "reconfigure": {
         "data": {
-          "use_wifi": "Uporabi Wi-fi",
+          "use_wifi": "Uporabi oblak Mammotion",
           "account_name": "E-poštni naslov Mammotion ali številka računa",
           "password": "Geslo Mammotion računa"
         }
@@ -41,7 +41,7 @@
       },
       "wifi": {
         "data": {
-          "use_wifi": "Uporabi Wi-fi (obkljukajte in pošljite za uporabo bluetooth)",
+          "use_wifi": "Uporabi oblak Mammotion (odkljukajte in pošljite za uporabo samo Bluetootha)",
           "account_name": "E-poštni naslov Mammotion ali številka računa",
           "password": "Geslo Mammotion računa"
         },
@@ -56,10 +56,9 @@
         "data": {
           "title": "Posodobi nastavitev",
           "stay_connected_bluetooth": "Ohrani bluetooth povezavo",
-          "prefer_ble_over_wifi": "Daj prednost Bluetooth pred Wi-Fi, ko je na voljo",
-          "movement_use_wifi": "Pošiljaj ukaze gibanja prek Wi-Fi",
-          "mow_path_fetch_enabled": "Omogoči pridobivanje poti košnje (oblak)",
-          "full_map_fetch_enabled": "Omogoči pridobivanje celotnega zemljevida (oblak) — če izklopljeno, se pridobijo samo imena območij"
+          "prefer_ble_over_wifi": "Poveži se in daj prednost Bluetoothu, ko je na voljo",
+          "movement_use_wifi": "Ne ponovno povezuj Bluetootha za ukaze gibanja (uporabi oblak samo, če Bluetooth še ni povezan)",
+          "mow_path_fetch_enabled": "Dovoli pridobivanje poti košnje prek oblaka"
         }
       }
     }

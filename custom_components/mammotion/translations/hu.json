@@ -27,7 +27,7 @@
       },
       "reconfigure": {
         "data": {
-          "use_wifi": "Wi-Fi használata",
+          "use_wifi": "Mammotion felhő használata",
           "account_name": "Mammotion e-mail vagy fiókszám",
           "password": "Mammotion fiók jelszava"
         }
@@ -41,7 +41,7 @@
       },
       "wifi": {
         "data": {
-          "use_wifi": "Wi-Fi használata (pipát ki és küldd el a Bluetooth használatához)",
+          "use_wifi": "Mammotion felhő használata (pipát ki és küldd el, hogy csak Bluetooth-ot használj)",
           "account_name": "Mammotion e-mail vagy fiókszám",
           "password": "Mammotion fiók jelszava"
         },
@@ -56,10 +56,9 @@
         "data": {
           "title": "Konfiguráció frissítése",
           "stay_connected_bluetooth": "Bluetooth maradjon csatlakoztatva",
-          "prefer_ble_over_wifi": "Bluetooth előnyben részesítése Wi-Fi helyett, ha elérhető",
-          "movement_use_wifi": "Mozgatási parancsok küldése Wi-Fi-n",
-          "mow_path_fetch_enabled": "Nyírási útvonal lekérésének engedélyezése (felhő)",
-          "full_map_fetch_enabled": "Teljes térkép lekérésének engedélyezése (felhő) — kikapcsolva csak a területnevek kerülnek lekérésre"
+          "prefer_ble_over_wifi": "Csatlakozás és Bluetooth előnyben részesítése, ha elérhető",
+          "movement_use_wifi": "Ne csatlakoztassa újra a Bluetooth-ot mozgatási parancsokhoz (csak akkor használja a felhőt, ha a Bluetooth még nincs csatlakoztatva)",
+          "mow_path_fetch_enabled": "Nyírási útvonal lekérésének engedélyezése a felhőn keresztül"
         }
       }
     }

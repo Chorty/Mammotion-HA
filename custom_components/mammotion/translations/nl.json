@@ -27,7 +27,7 @@
       },
       "reconfigure": {
         "data": {
-          "use_wifi": "Gebruik Wi-Fi",
+          "use_wifi": "Gebruik Mammotion-cloud",
           "account_name": "Mammotion e-mailadres of accountnummer",
           "password": "Mammotion account wachtwoord"
         }
@@ -41,7 +41,7 @@
       },
       "wifi": {
         "data": {
-          "use_wifi": "Gebruik Wi-Fi (haal het vinkje weg en klik \"ga verder\" om Bluetooth te gebruiken)",
+          "use_wifi": "Gebruik Mammotion-cloud (haal het vinkje weg en klik verder om alleen Bluetooth te gebruiken)",
           "account_name": "Mammotion e-mailadres of accountnummer",
           "password": "Mammotion account wachtwoord"
         },
@@ -56,10 +56,9 @@
         "data": {
           "title": "Configuratie bijwerken",
           "stay_connected_bluetooth": "Houd Bluetooth verbonden",
-          "prefer_ble_over_wifi": "Bluetooth verkiezen boven Wi-Fi indien beschikbaar",
-          "movement_use_wifi": "Bewegingsopdrachten via Wi-Fi verzenden",
-          "mow_path_fetch_enabled": "Maaipad ophalen inschakelen (cloud)",
-          "full_map_fetch_enabled": "Volledig kaart ophalen inschakelen (cloud) — wanneer uit worden alleen gebiednamen opgehaald"
+          "prefer_ble_over_wifi": "Verbinden en Bluetooth verkiezen indien beschikbaar",
+          "movement_use_wifi": "Bluetooth niet opnieuw verbinden voor bewegingsopdrachten (gebruikt cloud alleen als Bluetooth nog niet verbonden is)",
+          "mow_path_fetch_enabled": "Maaipad ophalen via de cloud toestaan"
         }
       }
     }
