@@ -27,7 +27,7 @@
       },
       "reconfigure": {
         "data": {
-          "use_wifi": "Brug Wi-fi",
+          "use_wifi": "Brug Mammotion-sky",
           "account_name": "Mammotion e-mail eller kontonummer",
           "password": "Mammotion adgangskode"
         }
@@ -41,7 +41,7 @@
       },
       "wifi": {
         "data": {
-          "use_wifi": "Brug Wi-Fi (fjern markeringen, for at bruge Bluetooth)",
+          "use_wifi": "Brug Mammotion-sky (fjern markeringen for kun at bruge Bluetooth)",
           "account_name": "Mammotion e-mail eller kontonummer",
           "password": "Mammotion adgangskode"
         },
@@ -56,10 +56,9 @@
         "data": {
           "title": "Opdater konfiguration",
           "stay_connected_bluetooth": "Hold Bluetooth-forbindelsen",
-          "prefer_ble_over_wifi": "Foretræk Bluetooth frem for Wi-Fi, når det er tilgængeligt",
-          "movement_use_wifi": "Send bevægelseskommandoer via Wi-Fi",
-          "mow_path_fetch_enabled": "Aktivér hentning af klippesti (sky)",
-          "full_map_fetch_enabled": "Aktivér fuld korthentning (sky) — når slået fra, hentes kun områdenavne"
+          "prefer_ble_over_wifi": "Opret forbindelse og foretræk Bluetooth, når det er tilgængeligt",
+          "movement_use_wifi": "Undgå at genoprette Bluetooth-forbindelse til bevægelseskommandoer (bruger kun sky, hvis Bluetooth ikke allerede er forbundet)",
+          "mow_path_fetch_enabled": "Tillad hentning af klippesti via skyen"
         }
       }
     }

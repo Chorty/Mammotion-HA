@@ -27,7 +27,7 @@
       },
       "reconfigure": {
         "data": {
-          "use_wifi": "Folosește Wi-Fi",
+          "use_wifi": "Folosește cloud-ul Mammotion",
           "account_name": "Email sau număr de cont Mammotion",
           "password": "Parola contului Mammotion"
         }
@@ -41,7 +41,7 @@
       },
       "wifi": {
         "data": {
-          "use_wifi": "Folosește Wi-Fi (debifează și trimite pentru a folosi Bluetooth)",
+          "use_wifi": "Folosește cloud-ul Mammotion (debifează și trimite pentru a folosi doar Bluetooth)",
           "account_name": "Email sau număr de cont Mammotion",
           "password": "Parola contului Mammotion"
         },
@@ -56,10 +56,9 @@
         "data": {
           "title": "Actualizarea configurației",
           "stay_connected_bluetooth": "Mențineți bluetooth-ul conectat",
-          "prefer_ble_over_wifi": "Preferați Bluetooth față de Wi-Fi când este disponibil",
-          "movement_use_wifi": "Trimiteți comenzi de mișcare prin Wi-Fi",
-          "mow_path_fetch_enabled": "Activați descărcarea traseului de tuns (cloud)",
-          "full_map_fetch_enabled": "Activați descărcarea completă a hărții (cloud) — când este oprit, se descarcă doar numele zonelor"
+          "prefer_ble_over_wifi": "Conectați-vă și preferați Bluetooth când este disponibil",
+          "movement_use_wifi": "Evitați reconectarea Bluetooth pentru comenzile de mișcare (folosește cloud-ul doar dacă Bluetooth nu este deja conectat)",
+          "mow_path_fetch_enabled": "Permiteți descărcarea traseului de tuns prin cloud"
         }
       }
     }
