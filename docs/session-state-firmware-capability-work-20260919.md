@@ -21,14 +21,29 @@ closed:**
   block in config-entry diagnostics is now populated with real data
   (`soc_tmp`, coredump counters, `process_restart_count`, subsystem version
   strings, etc.) instead of being absent.
-- 🚨 **New finding from this check, not yet investigated:** `process_restart_count`
-  climbed **14,131 → 14,180 (+49) within a few minutes** of live mowing —
-  an actively incrementing counter, not a frozen lifetime stub, and a fast
-  rate. `vision_proxy` reads the literal firmware string `"fopen error!"`
-  in both readings, docked and mowing — persistent, not transient. Neither
-  is explained yet; next step is finding which subsystem restarts map to
-  this counter and whether the `vision_proxy` string is a normal idle/startup
-  state or a real fault.
+- 🔑 **Both new findings explained, same session, via static firmware
+  inspection — no code or deploy change needed.**
+  - `process_restart_count`'s +49 burst traces to
+    `startup/agl_monitor_process.sh`, the on-device watchdog: it monitors
+    ~17 processes (`agilex_navigation`, `mower_vslam_vio`,
+    `mower_perception_node`, `ins_fusion`, lidar mapping, `multimedia`,
+    `embed_service`, `sensorpub`, etc.) and calls its `restart_count_add()`
+    — the exact counter HA surfaces — every time it detects and relaunches a
+    missing one. Most of those processes only run while actively mowing, so
+    starting a job spins up the whole vision/nav/lidar stack at once and the
+    watchdog's polling can catch several mid-startup and "restart" them. A
+    third reading confirmed the counter held flat at 14180 once the mow
+    settled — burst-then-flat, consistent with normal work-start churn, not
+    ongoing instability.
+  - `vision_proxy: "fopen error!"` traces to the `system_io` binary's string
+    table: it `fopen()`s `/app/pkgs/vision/mower_vision_proxy/version` to
+    report that component's version. Neither the path nor the
+    `mower_vision_proxy` package exist anywhere in this firmware image
+    (`1.30.29.24`), confirmed by a full filesystem search — `system_io` is
+    checking for a component this build never shipped. The real vision
+    pipeline is independently confirmed healthy: `perception` and
+    `vslam_vio` in the same payload report real version strings. A firmware
+    packaging gap, not a fault.
 
 ## Five PRs opened this session
 
@@ -84,6 +99,7 @@ commands in `ota_work/handoff/HANDOFF-2026-09-19.md`. Nothing OTA committed here
    `get_device_log_info` are writers, not read-only probes. Static evidence:
    `docs/findings-candidate-capabilities-static-triage-20260919.md`. Revisit
    only with an explicitly approved, reversible device-test plan.
-5. **New, open:** explain `process_restart_count`'s fast live increment and
-   the persistent `vision_proxy: "fopen error!"` string — see the 2026-09-22
-   update at the top of this file.
+5. ✅ **Resolved 2026-09-22, same session as items 2-3:** `process_restart_count`'s
+   burst and `vision_proxy: "fopen error!"` are both explained by static
+   firmware inspection — see the 2026-09-22 update at the top of this file.
+   No code or deploy change needed.
