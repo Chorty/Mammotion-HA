@@ -271,3 +271,94 @@ def test_camera_target_resolves_across_entries() -> None:
         "custom_components.mammotion.services.er.async_get", return_value=registry
     ):
         assert _get_camera_mower(hass, "camera.second") is second
+
+
+@pytest.mark.asyncio
+async def test_overlapping_camera_offers_wait_instead_of_returning_409() -> None:
+    """Overlapping frontend offers queue behind the active negotiation."""
+    camera = object.__new__(MammotionWebRTCCamera)
+    camera._join_lock = asyncio.Lock()
+    camera._agora_handler = SimpleNamespace(candidates=[])
+    camera.entity_description = SimpleNamespace(key="webrtc_camera", target_uid=None)
+    camera._sessions = set()
+    camera._attr_is_streaming = False
+    camera._hass = MagicMock()
+    camera.async_write_ha_state = MagicMock()
+    first_started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def unavailable(*, force):
+        first_started.set()
+        await release.wait()
+        return None, None
+
+    camera.coordinator = SimpleNamespace(
+        async_check_stream_expiry=unavailable,
+        has_active_camera_sessions=False,
+    )
+    first_messages = []
+    second_messages = []
+    first = asyncio.create_task(
+        camera.async_handle_async_webrtc_offer(
+            "offer-1", "session-1", first_messages.append
+        )
+    )
+    await first_started.wait()
+    second = asyncio.create_task(
+        camera.async_handle_async_webrtc_offer(
+            "offer-2", "session-2", second_messages.append
+        )
+    )
+    await asyncio.sleep(0)
+    assert second_messages == []
+
+    release.set()
+    await asyncio.gather(first, second)
+
+    assert [message.code for message in first_messages + second_messages] == [
+        "503",
+        "503",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_camera_availability_refreshes_on_coordinator_update() -> None:
+    """A camera publishes state when the coordinator reports recovery."""
+    camera = object.__new__(MammotionWebRTCCamera)
+    unsubscribe = MagicMock()
+    camera.coordinator = SimpleNamespace(
+        register_webrtc_session_control=MagicMock(),
+        async_add_listener=MagicMock(return_value=unsubscribe),
+    )
+    camera.entity_description = SimpleNamespace(key="webrtc_camera")
+    camera._hass = MagicMock()
+    camera.async_on_remove = MagicMock()
+    camera.async_write_ha_state = MagicMock()
+    with (
+        patch(
+            "custom_components.mammotion.camera.MammotionCameraBaseEntity.async_added_to_hass",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "custom_components.mammotion.camera.async_register_ice_servers",
+            return_value=MagicMock(),
+        ),
+    ):
+        await camera.async_added_to_hass()
+
+    callback = camera.coordinator.async_add_listener.call_args.args[0]
+    camera.async_on_remove.assert_any_call(unsubscribe)
+    callback()
+    camera.async_write_ha_state.assert_called_once()
+
+
+def test_camera_remains_available_with_live_mqtt_transport() -> None:
+    """A stale mower-offline report does not hide an active MQTT connection."""
+    camera = object.__new__(MammotionWebRTCCamera)
+    camera.coordinator = SimpleNamespace(
+        data=MagicMock(),
+        is_online=lambda: False,
+        mqtt_transport_connected=True,
+    )
+
+    assert camera.available is True

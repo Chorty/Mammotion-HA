@@ -146,8 +146,16 @@ class MammotionWebRTCCamera(MammotionCameraBaseEntity):
         self.coordinator.register_webrtc_session_control(
             self, self.entity_description.key
         )
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self._handle_coordinator_update)
+        )
         unregister = async_register_ice_servers(self.hass, self.get_ice_servers)
         self.async_on_remove(unregister)
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Refresh availability after coordinator or transport recovery."""
+        self.async_write_ha_state()
 
     async def async_will_remove_from_hass(self) -> None:
         """Disconnect this camera without stopping a sibling camera's feed."""
@@ -192,15 +200,17 @@ class MammotionWebRTCCamera(MammotionCameraBaseEntity):
         negotiation directly in Python.
         """
 
-        if self._join_lock.locked():
+        try:
+            await asyncio.wait_for(self._join_lock.acquire(), timeout=45)
+        except TimeoutError:
             _LOGGER.warning(
-                "WebRTC offer already in progress for session %s — ignoring duplicate",
+                "Camera offer timed out waiting for another negotiation (%s)",
                 session_id,
             )
-            send_message(WebRTCError("409", "WebRTC negotiation already in progress"))
+            send_message(WebRTCError("503", "Camera is busy; please retry"))
             return
 
-        async with self._join_lock:
+        try:
             (
                 stream_data,
                 agora_response,
@@ -255,6 +265,8 @@ class MammotionWebRTCCamera(MammotionCameraBaseEntity):
                     self.coordinator.clear_stream_data()
                 _LOGGER.error("WebRTC offer failed: %s", type(ex).__name__)
                 send_message(WebRTCError("500", "WebRTC negotiation failed"))
+        finally:
+            self._join_lock.release()
 
     async def async_on_webrtc_candidate(
         self, session_id: str, candidate: RTCIceCandidateInit
