@@ -1,1 +1,0 @@
-HALT: daylight/VIO: vio_tracked_features min 60 below 70 in the last 60s

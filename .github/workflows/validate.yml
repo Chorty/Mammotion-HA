@@ -57,12 +57,12 @@ jobs:
           python -m pip install -r /tmp/component-requirements.txt
       - name: Ruff
         run: |
-          ruff check custom_components tests
-          ruff format --check custom_components tests
+          ruff check custom_components tests_ha
+          ruff format --check custom_components tests_ha
       - name: Mypy
         run: mypy --follow-imports=skip custom_components/mammotion
       - name: Tests
-        run: pytest --cov=custom_components.mammotion --cov-report=term-missing tests
+        run: pytest --cov=custom_components.mammotion --cov-report=term-missing tests_ha
       - name: Frontend card tests
         run: npm run test:frontend
       - name: Validate JSON

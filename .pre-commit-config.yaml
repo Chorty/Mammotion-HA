@@ -23,11 +23,11 @@ repos:
       - id: ruff-check
         args:
           - --fix
-      # CI runs `ruff format --check custom_components tests`. `scripts/` is
+      # CI runs `ruff format --check custom_components tests_ha`. `scripts/` is
       # left unformatted on purpose so this hook cannot reformat a diagnostic
       # script out from under a half-finished live investigation.
       - id: ruff-format
-        files: ^((custom_components|tests)/.+)?[^/]+\.(py|pyi)$
+        files: ^((custom_components|tests_ha)/.+)?[^/]+\.(py|pyi)$
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.1
     hooks:
@@ -43,18 +43,12 @@ repos:
           # are part of the argument, so the whole skip list was inert and
           # matched nothing. The two HTML files are standalone browser dev
           # tools, not shipped with the integration.
-          # docs/review-journals/ holds VERBATIM adversarial-review agent output,
-          # preserved as evidence. Correcting spelling inside it would falsify a
-          # record, so the directory is skipped rather than edited.
-          - --skip=.*,*.csv,*.json,*.jsonl,*.ambr,uv.lock,svg_map_aligner.html,agora_test.html,docs/review-journals/*
+          - --skip=.*,*.csv,*.json,*.jsonl,*.ambr,uv.lock,svg_map_aligner.html,agora_test.html
           - --quiet-level=2
         exclude_types: [csv, json]
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
-      # Never touch *.patch: trailing whitespace is significant in unified-diff
-      # context lines, so "fixing" it silently corrupts the upstream patches in
-      # docs/upstream-patches/ and they stop applying.
       - id: trailing-whitespace
         exclude: \.patch$
       - id: end-of-file-fixer
@@ -66,7 +60,7 @@ repos:
   # pyupgrade was removed here on 2026-07-31. It crashed on every file under
   # Python 3.14 (`tokenize.cookie_re` is a bytes pattern there, so
   # `_fix_tokens` raises TypeError), and it was redundant anyway: ruff already
-  # selects the "UP" ruleset over custom_components and tests. Re-adding it
+  # selects the "UP" ruleset over custom_components and tests_ha. Re-adding it
   # would restore the crash without adding a single check.
   - repo: https://github.com/adrienverge/yamllint.git
     rev: v1.37.1
@@ -84,7 +78,7 @@ repos:
       # catalogue, services.yaml and manifest.json on every run -- churn across
       # documents whose value is being a faithful record.
       - id: prettier
-        files: ^(custom_components/mammotion/www/.+\.js|tests/frontend/.+\.mjs)$
+        files: ^(custom_components/mammotion/www/.+\.js|tests_ha/frontend/.+\.mjs)$
   - repo: https://github.com/cdce8p/python-typing-update
     rev: v0.7.2
     hooks:
@@ -113,15 +107,3 @@ repos:
       - id: mypy
         args: [--follow-imports=skip, --ignore-missing-imports]
         files: ^custom_components/mammotion/.+\.(py|pyi)$
-  - repo: local
-    hooks:
-      # Session-entry docs are read first by every session, so a stale claim in
-      # them is load-bearing. On 2026-08-14 one caused a session to recommend
-      # redoing work that shipped in beta42. Symbol existence is mechanical;
-      # this checks it. It cannot check whether the PROSE is still true.
-      - id: doc-symbols
-        name: session-entry docs cite code that exists
-        entry: .venv/bin/python scripts/check_doc_symbols.py
-        language: system
-        pass_filenames: false
-        files: ^(CLAUDE\.md|docs/(NEXT-SESSION|CODEX-HANDOFF)\.md|docs/doc-symbol-allowlist\.txt|custom_components/.+|scripts/check_doc_symbols\.py)$

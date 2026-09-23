@@ -1,6 +1,0 @@
-2026-09-16T22:00:20Z
-hci0 (D8:3A:DD:C3:CE:CD) slots 5 free 3
-hot-tub-backyard (C4:DD:57:70:B6:96) slots 3 free 3
-p1s-printer (C4:DD:57:A5:77:4E) slots 3 free 3
-atom-fireplace (DC:54:75:C8:C8:86) slots 3 free 2 MOWER
-garage-m5stack (78:21:84:9B:C1:D6) slots 3 free 2

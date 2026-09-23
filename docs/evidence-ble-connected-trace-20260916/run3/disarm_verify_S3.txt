@@ -1,6 +1,0 @@
-Current state:
-  enabled             : False
-  real_motion_allowed : False
-  blockers            : ['experimental_motion_disabled', 'ble_client_not_connected', 'blade_reported_on', 'active_mowing_detected', 'active_route_detected']
-  active_session      : None
-  work_mode           : MODE_WORKING

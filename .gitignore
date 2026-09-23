@@ -5,6 +5,11 @@
 .secrets.local
 .env
 
+# Local research and operator records are not part of the public fork.
+.claude/
+docs/
+tests/
+
 # Large reverse-engineering artifacts; keep outside commits unless intentionally needed.
 *.apk
 *.xapk

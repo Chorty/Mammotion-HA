@@ -1,1 +1,0 @@
-HALT: daylight/VIO: vio_tracked_features 0 at dispatch below 70 (not recovered; window min 0); visual_positioning_status not all signal_good: ['signal_good', 'signal_none']
