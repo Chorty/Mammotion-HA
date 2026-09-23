@@ -55,6 +55,10 @@ def _coordinator(*responses):
     coordinator._STREAM_TOKEN_TTL = 300.0
     coordinator._agora_response = None
     coordinator._ice_servers = []
+    coordinator._dual_camera_stream_available = False
+    coordinator._active_camera_sessions = {}
+    coordinator._camera_session_lock = asyncio.Lock()
+    coordinator._webrtc_session_controls = {}
     return coordinator
 
 
@@ -191,6 +195,8 @@ async def test_camera_state_tracks_successful_offer() -> None:
     camera = object.__new__(MammotionWebRTCCamera)
     camera._join_lock = asyncio.Lock()
     camera._agora_handler = SimpleNamespace(candidates=[])
+    camera.entity_description = SimpleNamespace(key="webrtc_camera", target_uid=None)
+    camera._sessions = set()
     camera._attr_is_streaming = False
     camera._hass = MagicMock()
     camera.async_write_ha_state = MagicMock()
@@ -199,6 +205,9 @@ async def test_camera_state_tracks_successful_offer() -> None:
     camera.coordinator = SimpleNamespace(
         async_check_stream_expiry=AsyncMock(return_value=(stream_data, agora_response)),
         clear_stream_data=MagicMock(),
+        has_active_camera_sessions=False,
+        dual_camera_stream_available=False,
+        async_register_camera_session=AsyncMock(),
     )
     camera._perform_webrtc_negotiation = AsyncMock(return_value="answer-sdp")
     messages = []
@@ -217,12 +226,16 @@ async def test_camera_offer_reports_temporary_unavailability() -> None:
     camera = object.__new__(MammotionWebRTCCamera)
     camera._join_lock = asyncio.Lock()
     camera._agora_handler = SimpleNamespace(candidates=[])
+    camera.entity_description = SimpleNamespace(key="webrtc_camera", target_uid=None)
+    camera._sessions = set()
     camera._attr_is_streaming = False
     camera._hass = MagicMock()
     camera.async_write_ha_state = MagicMock()
     camera.coordinator = SimpleNamespace(
         async_check_stream_expiry=AsyncMock(return_value=(None, None)),
         clear_stream_data=MagicMock(),
+        has_active_camera_sessions=False,
+        dual_camera_stream_available=False,
     )
     messages = []
 
