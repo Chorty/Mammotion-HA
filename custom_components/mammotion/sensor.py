@@ -170,6 +170,35 @@ def _task_area_value_fn(area_hash: int) -> Callable[[MowingDevice], str | None]:
     return _value
 
 
+_RTK_CORRECTION_SOURCES = {
+    "RTK_USED_LORA": "lora",
+    "RTK_USED_INTERNET": "internet",
+    "RTK_USED_NRTK": "nrtk",
+}
+
+
+def _rtk_correction_source(mower_data: MowingDevice) -> str | None:
+    """Return the mower's active RTK correction source, if it has reported one.
+
+    ``rpt_rtk.mqtt_rtk_info.rtk_switch`` defaults to ``RTK_USED_LORA`` when
+    the device never sent the field, so LoRa is only claimed once some other
+    field of the same message shows it arrived. Unknown beats a false LoRa.
+    """
+    info = mower_data.report_data.rtk.mqtt_rtk_info
+    source = _RTK_CORRECTION_SOURCES.get(info.rtk_switch)
+    if source != "lora":
+        return source
+    reported = (
+        info.rtk_channel,
+        info.rtk_base_num,
+        info.latitude,
+        info.longitude,
+        info.nrtk_map_convert_status,
+        info.nrtk_net_mode,
+    )
+    return source if any(reported) else None
+
+
 def _configure_enum_options(entity: SensorEntity, description: Any) -> None:
     """Override enum options with HA-compliant lowercase values."""
     if description.device_class == SensorDeviceClass.ENUM and description.options:
@@ -561,6 +590,14 @@ SENSOR_TYPES: tuple[MammotionSensorEntityDescription, ...] = (
         value_fn=lambda mower_data: str(
             RTKStatus.from_value(mower_data.report_data.rtk.status)
         ),
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    MammotionSensorEntityDescription(
+        key="rtk_correction_source",
+        state_class=None,
+        device_class=SensorDeviceClass.ENUM,
+        options=list(_RTK_CORRECTION_SOURCES.values()),
+        value_fn=_rtk_correction_source,
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     MammotionSensorEntityDescription(

@@ -326,6 +326,14 @@
           "unknown": "Neznámé"
         }
       },
+      "rtk_correction_source": {
+        "name": "Zdroj korekcí RTK",
+        "state": {
+          "lora": "Základnová stanice LoRa",
+          "internet": "Internet",
+          "nrtk": "Síťové RTK"
+        }
+      },
       "rtk_app_connect_type": {
         "name": "Typ připojení",
         "state": {
