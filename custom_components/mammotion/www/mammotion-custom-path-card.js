@@ -359,7 +359,7 @@ function blePannedZoom(W, H, startZoom, dxPx, dyPx, rectW, rectH) {
 // value came from the acceptance LUBA). Re-derive it for another mower rather
 // than assuming 102.4 transfers.
 // The hardware acceptance this profile currently rests on. Kept beside the
-// profile it describes, and pinned against docs/accepted-profile.json by a
+// profile it describes, and pinned against scripts/accepted-profile.json by a
 // frontend test so the two cannot drift.
 const ACCEPTED_PROFILE_ACCEPTED_ON = "2026-08-18";
 const ACCEPTED_PROFILE_LABEL = `LUBA acceptance profile — Gate 5 passed ${ACCEPTED_PROFILE_ACCEPTED_ON}`;
@@ -2130,7 +2130,7 @@ class MammotionCustomPathCard extends HTMLElement {
   // ⚠️ THIS STRING IS A CLAIM ABOUT HARDWARE AND IT HAS ALREADY GONE STALE ONCE.
   // On 2026-08-17 the un-acceptance was hardcoded here; Gate 5 then passed on
   // 2026-08-18 and the card went on telling the operator the profile "owes a
-  // Gate 5" for hours. The card cannot read docs/accepted-profile.json at
+  // Gate 5" for hours. The card cannot read scripts/accepted-profile.json at
   // runtime, so this constant is the only place the fact lives -- and a
   // frontend test now reads that file and fails if the two disagree. Update
   // both together or the test will stop you.

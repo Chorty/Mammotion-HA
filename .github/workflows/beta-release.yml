@@ -118,6 +118,24 @@ jobs:
           grep -A4 'name = "mammotion-ha"' uv.lock \
             | grep -Fq "version = \"${LOCK_VERSION}\""
 
+      - name: Derive execution-profile acceptance
+        id: profile
+        run: |
+          # The `confirmed_luba_acceptance` input cannot answer this. It gates
+          # this job with an `if:`, so it is true by construction whenever we
+          # get here -- echoing it would print "true" on every release. Derive
+          # the answer from the code instead.
+          #
+          # Runs BEFORE the version bump is committed and tagged: a failure
+          # here must not leave a pushed tag with no release (beta115).
+          python3 scripts/check_accepted_profile.py
+          markdown=$(python3 scripts/check_accepted_profile.py --markdown)
+          {
+            echo 'markdown<<PROFILE_EOF'
+            echo "$markdown"
+            echo 'PROFILE_EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Commit and push version bump
         run: |
           git config user.name "github-actions[bot]"
@@ -132,20 +150,6 @@ jobs:
         run: |
           git tag ${{ steps.version.outputs.tag }}
           git push origin ${{ steps.version.outputs.tag }}
-
-      - name: Derive execution-profile acceptance
-        id: profile
-        run: |
-          # The `confirmed_luba_acceptance` input cannot answer this. It gates
-          # this job with an `if:`, so it is true by construction whenever we
-          # get here -- echoing it would print "true" on every release. Derive
-          # the answer from the code instead.
-          {
-            echo 'markdown<<PROFILE_EOF'
-            python3 scripts/check_accepted_profile.py --markdown
-            echo 'PROFILE_EOF'
-          } >> "$GITHUB_OUTPUT"
-          python3 scripts/check_accepted_profile.py
 
       - name: Get previous release tag
         id: previous_tag

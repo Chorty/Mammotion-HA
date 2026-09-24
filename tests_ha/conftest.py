@@ -6,8 +6,9 @@ import pytest
 
 _PRIVATE_EVIDENCE_TESTS = {
     "test_accepted_profile_check.py": {
+        # Needs the Gate 5 evidence file itself; the profile-drift test does
+        # not, because the snapshot is tracked at scripts/accepted-profile.json.
         "test_the_accepted_snapshot_is_a_real_gate5_pass",
-        "test_the_shipped_profile_is_the_accepted_one",
     },
     "test_heading_trust.py": {
         "test_mirror_predicts_the_driven_direction_on_banked_hardware_pulses",
