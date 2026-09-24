@@ -347,7 +347,7 @@ That is why 1053 passing tests said nothing about it.
   from `toward`.
 - `_TOWARD_MIRROR_DEGREES` is one constant again (was three copies of 90.13).
 
-⚠️ `docs/accepted-profile.json` is UNTOUCHED. No Gate 5 is owed.
+⚠️ `scripts/accepted-profile.json` is UNTOUCHED. No Gate 5 is owed.
 
 **What beta101 shipped** (carried from `958a99ff`, cut same-day as beta100 but
 not deployed until 2026-09-04):
@@ -1028,7 +1028,7 @@ evidence there is where the real risk sits (see standing decision 7).
    stops after ~1 pulse; `waypoint_tolerance` defaults 0.08 (accepted **0.15**);
    `calibrated_forward_heading_offset_degrees` defaults **116.5** where the
    profile is **102.4**.
-   ✅ **Send `docs/accepted-profile.json` verbatim and verify key-by-key.**
+   ✅ **Send `scripts/accepted-profile.json` verbatim and verify key-by-key.**
 
 ### Measured constants
 

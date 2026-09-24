@@ -43,7 +43,7 @@ SENSOR_PREFIX = "sensor.back_yard_clip_skywalker_"
 ZONE = "1343645155037768237"
 ANCHOR = (4.94, -3.82)
 SITING = Path("docs/evidence-phase1-siting-20260912.json")
-PROFILE = Path("docs/accepted-profile.json")
+PROFILE = Path("scripts/accepted-profile.json")
 
 YARD_LAT = 34.0247
 YARD_LON = -84.7698

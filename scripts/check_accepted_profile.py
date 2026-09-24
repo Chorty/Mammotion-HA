@@ -18,7 +18,7 @@ echoing it would print "true" on every release by construction.
 So the question a release page should answer is not "did someone tick a box"
 but "is the profile in this build the accepted one", which is derivable from the
 repository. This script derives it: it parses the profile out of the card and
-diffs it against the snapshot in `docs/accepted-profile.json`.
+diffs it against the snapshot in `scripts/accepted-profile.json`.
 
 USAGE
     check_accepted_profile.py                 human-readable verdict
@@ -40,7 +40,7 @@ import re
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 CARD = REPO / "custom_components/mammotion/www/mammotion-custom-path-card.js"
-ACCEPTED = REPO / "docs/accepted-profile.json"
+ACCEPTED = REPO / "scripts/accepted-profile.json"
 
 
 def _strip_line_comments(src: str) -> str:
