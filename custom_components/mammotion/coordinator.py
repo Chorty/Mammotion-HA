@@ -610,6 +610,11 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         """Return whether any camera entity still has a viewer."""
         return any(self._active_camera_sessions.values())
 
+    @property
+    def dual_camera_stream_available(self) -> bool:
+        """Return whether the current stream token supports both vision cameras."""
+        return self._dual_camera_stream_available
+
     @callback
     def register_webrtc_session_control(
         self, control: WebRTCSessionControl | None, camera_key: str = "default"

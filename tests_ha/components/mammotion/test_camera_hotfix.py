@@ -221,6 +221,40 @@ async def test_camera_state_tracks_successful_offer() -> None:
 
 
 @pytest.mark.asyncio
+async def test_right_camera_offer_uses_dual_stream_availability() -> None:
+    """Right camera can negotiate when the coordinator has a dual-stream token."""
+    coordinator = _coordinator()
+    coordinator._dual_camera_stream_available = True
+    coordinator.async_check_stream_expiry = AsyncMock(
+        return_value=(MagicMock(), MagicMock())
+    )
+    coordinator.async_register_camera_session = AsyncMock()
+
+    camera = object.__new__(MammotionWebRTCCamera)
+    camera._join_lock = asyncio.Lock()
+    camera._agora_handler = SimpleNamespace(candidates=[])
+    camera.entity_description = SimpleNamespace(key="right_vision_camera", target_uid=2)
+    camera._sessions = set()
+    camera._attr_is_streaming = False
+    camera._hass = MagicMock()
+    camera.async_write_ha_state = MagicMock()
+    camera.coordinator = coordinator
+    camera._perform_webrtc_negotiation = AsyncMock(return_value="answer-sdp")
+    messages = []
+
+    await camera.async_handle_async_webrtc_offer(
+        "offer-sdp", "right-session", messages.append
+    )
+
+    assert coordinator.dual_camera_stream_available is True
+    coordinator.async_register_camera_session.assert_awaited_once_with(
+        "right_vision_camera", "right-session"
+    )
+    assert camera._attr_is_streaming is True
+    assert len(messages) == 1
+
+
+@pytest.mark.asyncio
 async def test_camera_offer_reports_temporary_unavailability() -> None:
     """A missing cloud token produces a temporary error and remains idle."""
     camera = object.__new__(MammotionWebRTCCamera)
