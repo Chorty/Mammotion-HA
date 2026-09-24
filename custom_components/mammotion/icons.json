@@ -81,6 +81,9 @@
       "positioning_mode": {
         "default": "mdi:map-marker"
       },
+      "rtk_correction_source": {
+        "default": "mdi:satellite-uplink"
+      },
       "connect_type": {
         "default": "mdi:wifi"
       },

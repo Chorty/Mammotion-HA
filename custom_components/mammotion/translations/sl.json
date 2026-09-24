@@ -326,6 +326,14 @@
           "unknown": "Neznano"
         }
       },
+      "rtk_correction_source": {
+        "name": "Vir popravkov RTK",
+        "state": {
+          "lora": "Bazna postaja LoRa",
+          "internet": "Internet",
+          "nrtk": "Omrežni RTK"
+        }
+      },
       "rtk_app_connect_type": {
         "name": "Vrsta povezave",
         "state": {

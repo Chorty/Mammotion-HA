@@ -326,6 +326,14 @@
           "unknown": "Necunoscut"
         }
       },
+      "rtk_correction_source": {
+        "name": "Sursă corecție RTK",
+        "state": {
+          "lora": "Stație de bază LoRa",
+          "internet": "Internet",
+          "nrtk": "RTK de rețea"
+        }
+      },
       "rtk_app_connect_type": {
         "name": "Tip de conexiune",
         "state": {

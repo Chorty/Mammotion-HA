@@ -326,6 +326,14 @@
           "unknown": "Okänd"
         }
       },
+      "rtk_correction_source": {
+        "name": "RTK-korrektionskälla",
+        "state": {
+          "lora": "LoRa-basstation",
+          "internet": "Internet",
+          "nrtk": "Nätverks-RTK"
+        }
+      },
       "rtk_app_connect_type": {
         "name": "Anslutningstyp",
         "state": {

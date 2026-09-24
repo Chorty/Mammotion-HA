@@ -185,6 +185,14 @@
           "unknown": "Unknown"
         }
       },
+      "rtk_correction_source": {
+        "name": "RTK correction source",
+        "state": {
+          "lora": "LoRa base station",
+          "internet": "Internet",
+          "nrtk": "Network RTK"
+        }
+      },
       "rtk_app_connect_type": {
         "name": "App Connection Type",
         "state": {

@@ -326,6 +326,14 @@
           "unknown": "Sconosciuto"
         }
       },
+      "rtk_correction_source": {
+        "name": "Sorgente correzione RTK",
+        "state": {
+          "lora": "Stazione base LoRa",
+          "internet": "Internet",
+          "nrtk": "RTK di rete"
+        }
+      },
       "rtk_app_connect_type": {
         "name": "Tipo di connessione",
         "state": {

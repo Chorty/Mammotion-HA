@@ -336,6 +336,14 @@
           "unknown": "Ismeretlen"
         }
       },
+      "rtk_correction_source": {
+        "name": "RTK-korrekció forrása",
+        "state": {
+          "lora": "LoRa bázisállomás",
+          "internet": "Internet",
+          "nrtk": "Hálózati RTK"
+        }
+      },
       "rtk_app_connect_type": {
         "name": "Kapcsolat típusa",
         "state": {

@@ -326,6 +326,14 @@
           "unknown": "Onbekend"
         }
       },
+      "rtk_correction_source": {
+        "name": "RTK-correctiebron",
+        "state": {
+          "lora": "LoRa-basisstation",
+          "internet": "Internet",
+          "nrtk": "Netwerk-RTK"
+        }
+      },
       "rtk_app_connect_type": {
         "name": "Verbindingstype",
         "state": {
