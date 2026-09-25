@@ -84,7 +84,7 @@ def _extract_stream_tokens(response: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError(
             "HA get_tokens response did not include "
             + ", ".join(missing)
-            + f": {json.dumps(response, indent=2)}"
+            + "; response details were redacted"
         )
     return service_response
 
