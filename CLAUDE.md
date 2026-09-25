@@ -24,7 +24,33 @@ prose around them is still true. **One grep against the tree beats this file.**
 
 ---
 
-## Current build: beta114 (deployed 2026-09-22; backend `chorty-0.8.12.post7`)
+## 🔒 Where live state lives now (since 2026-09-23)
+
+`docs/` and `tests/` are **no longer in this public repo**. `docs/` is a
+**local-only nested git repo** (branch `private`, no remote) on the operator's
+machine, and the parent repo cannot track files inside it. Public tests live
+in `tests_ha/`; `tests_ha/conftest.py` skips the few tests that need private
+hardware evidence when `docs/` is absent. **The authoritative deploy log and
+live state are in the private `docs/deploy-runbook-p0.md`, not in this file.**
+This file's build sections below are a historical summary and **will lag**.
+Requery the host before acting on any of them.
+
+- The accepted-profile snapshot the release workflow checks now lives at
+  `scripts/accepted-profile.json` (moved out of `docs/`, PR #25).
+- Private helper scripts are kept out of git via `.git/info/exclude`. Never
+  `git add -f` them.
+
+## Current build: beta115 (deployed 2026-09-24; backend `chorty-0.8.12.post7`)
+
+✅ **beta115 verified and browser-confirmed** (card footer `v0.6.4-beta115`). It
+adds a read-only **`sensor.<mower>_rtk_correction_source`** (`lora` / `internet`
+/ `nrtk`; `unknown` until the report proves the field arrived, because
+pymammotion defaults `rtk_switch` to LoRa). On this yard it reads **`lora`**. No
+motion-control-law change; the accepted profile still matches 2026-08-18. Since
+then `main` has only gained the release-workflow fix (PR #25, card comment
+only) and script chores (PR #26). The host runs `main`.
+
+### Previously: beta114 (deployed 2026-09-22; backend `chorty-0.8.12.post7`)
 
 ✅ **beta114 verified 2026-09-22 ~16:12-16:35 UTC** — 52/52 identical, card md5
 `e9b98b10` both paths, 68 services, gate disarmed
