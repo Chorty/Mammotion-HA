@@ -31,9 +31,13 @@ def post_service(
     service: str,
     payload: dict[str, Any],
     timeout: int,
+    *,
+    return_response: bool = True,
 ) -> dict[str, Any]:
-    """Call a Home Assistant response service and return service_response."""
-    url = f"{ha_url.rstrip('/')}/api/services/{domain}/{service}?return_response"
+    """Call a Home Assistant service and optionally return its response data."""
+    url = f"{ha_url.rstrip('/')}/api/services/{domain}/{service}"
+    if return_response:
+        url += "?return_response"
     request = urllib.request.Request(
         url,
         data=json.dumps(payload).encode(),
@@ -45,6 +49,9 @@ def post_service(
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
+            if not return_response:
+                response.read()
+                return {}
             return json.load(response).get("service_response", {})
     except urllib.error.HTTPError as err:
         detail = err.read().decode(errors="replace")
