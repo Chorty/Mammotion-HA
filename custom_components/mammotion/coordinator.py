@@ -153,6 +153,21 @@ _RUNNING_JOB_FIELDS = {
     "ultra_wave": "ultra_wave",
 }
 
+
+def vision_camera_slots(device_name: str) -> int:
+    """Return how many vision cameras the stream token should enable.
+
+    The token request always carries three ``cameraStates`` slots, and the
+    mower publishes slot ``n`` as Agora uid ``n + 1``.  Vision mowers expose
+    two front cameras; Yuka adds a rear camera in slot 2.
+    """
+    if DeviceType.is_luba1(device_name):
+        return 0
+    if DeviceType.is_yuka(device_name):
+        return 3
+    return 2
+
+
 MAINTENANCE_INTERVAL = timedelta(minutes=60)
 DEFAULT_INTERVAL = timedelta(minutes=30)
 REPORT_INTERVAL = timedelta(minutes=5)
@@ -446,8 +461,7 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
             return None, None
 
         self._dual_camera_stream_available = False
-        device_type = DeviceType.value_of_str(self.device_name)
-        if device_type is not None and device_type.is_luba2():
+        if vision_camera_slots(self.device_name) > 1:
             try:
                 dual_stream_data = await self._request_dual_camera_stream()
             except Exception as err:  # noqa: BLE001 — dual mode is optional
@@ -526,7 +540,7 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
     async def _request_dual_camera_stream(
         self,
     ) -> Response[StreamSubscriptionResponse]:
-        """Request both Luba 2 vision feeds from the app's stream-token endpoint."""
+        """Request every vision feed from the app's stream-token endpoint."""
         http = self.manager.mammotion_http
         if http is None:
             return Response(code=503, msg="Cloud session unavailable")
@@ -534,6 +548,7 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         login_info = http.login_info
         if login_info is None:
             return Response(code=STREAM_AUTH_ERROR_CODE, msg="Not logged in")
+        slots = vision_camera_slots(self.device_name)
         session = aiohttp_client.async_get_clientsession(self.hass)
         async with asyncio.timeout(30):
             async with session.post(
@@ -542,9 +557,7 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
                     "deviceId": self.device.iot_id,
                     "mode": 0,
                     "cameraStates": [
-                        {"cameraState": 1},
-                        {"cameraState": 1},
-                        {"cameraState": 0},
+                        {"cameraState": int(slot < slots)} for slot in range(3)
                     ],
                 },
                 headers={
