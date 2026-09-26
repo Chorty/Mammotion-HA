@@ -215,6 +215,31 @@ async def test_camera_state_tracks_successful_offer() -> None:
 
 
 @pytest.mark.asyncio
+async def test_second_camera_offer_mints_its_own_token() -> None:
+    """Reusing a sibling's token makes Agora quit the sibling (code 2003)."""
+    camera = object.__new__(MammotionWebRTCCamera)
+    camera._join_lock = asyncio.Lock()
+    camera._agora_handler = SimpleNamespace(candidates=[])
+    camera.entity_description = SimpleNamespace(key="webrtc_camera_right", target_uid=2)
+    camera._sessions = set()
+    camera._attr_is_streaming = False
+    camera._hass = MagicMock()
+    camera.async_write_ha_state = MagicMock()
+    camera.coordinator = SimpleNamespace(
+        async_check_stream_expiry=AsyncMock(return_value=(MagicMock(), MagicMock())),
+        clear_stream_data=MagicMock(),
+        has_active_camera_sessions=True,
+        dual_camera_stream_available=True,
+        async_register_camera_session=AsyncMock(),
+    )
+    camera._perform_webrtc_negotiation = AsyncMock(return_value="answer-sdp")
+
+    await camera.async_handle_async_webrtc_offer("offer-sdp", "session", MagicMock())
+
+    camera.coordinator.async_check_stream_expiry.assert_awaited_once_with(force=True)
+
+
+@pytest.mark.asyncio
 async def test_right_camera_offer_uses_dual_stream_availability() -> None:
     """Right camera can negotiate when the coordinator has a dual-stream token."""
     coordinator = _coordinator()
