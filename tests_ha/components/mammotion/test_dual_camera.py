@@ -108,7 +108,7 @@ async def test_closing_one_camera_keeps_the_other_camera_stream_alive() -> None:
 async def test_dual_camera_token_requests_every_vision_stream(
     device_name: str, states: list[int]
 ) -> None:
-    """The token enables one cameraStates slot per vision feed the mower has."""
+    """The token asks for both front feeds, and the rear one only on Yuka."""
     coordinator = object.__new__(ConcreteCoordinator)
     coordinator.device_name = device_name
     response = MagicMock(status=200)
