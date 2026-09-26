@@ -415,3 +415,32 @@ def test_camera_remains_available_with_live_mqtt_transport() -> None:
     )
 
     assert camera.available is True
+
+
+@pytest.mark.asyncio
+async def test_stream_401_renews_the_rejected_bearer_once_then_retries() -> None:
+    """A 401 renews the exact bearer the request carried, then retries once."""
+    rejected = _response(401, with_data=False)
+    good = _response(200, with_data=True)
+    coordinator = _coordinator(rejected, good)
+    coordinator.manager.mammotion_http = SimpleNamespace(
+        login_info=SimpleNamespace(access_token="bearer-before-401")
+    )
+    coordinator.manager.token_manager = SimpleNamespace(
+        refresh_invoke_token=AsyncMock()
+    )
+    coordinator.store_cloud_credentials = MagicMock()
+    context, _ = _agora_context()
+
+    with patch(
+        "custom_components.mammotion.coordinator.AgoraAPIClient",
+        return_value=context,
+    ):
+        stream_data, _ = await coordinator.async_check_stream_expiry(force=True)
+
+    assert stream_data is good.data
+    coordinator.manager.token_manager.refresh_invoke_token.assert_awaited_once_with(
+        "bearer-before-401"
+    )
+    coordinator.store_cloud_credentials.assert_called_once()
+    assert coordinator.manager.refresh_stream_subscription.await_count == 2

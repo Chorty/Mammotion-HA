@@ -401,6 +401,9 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         for delay in STREAM_RETRY_DELAYS:
             if delay:
                 await asyncio.sleep(delay)
+            # The bearer this request goes out with, so a 401 refreshes only if no
+            # other caller has already replaced it.
+            request_token = self._current_access_token()
             try:
                 stream_data = await self.manager.refresh_stream_subscription(
                     self.device_name, self.device.iot_id
@@ -431,9 +434,9 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
                     "Camera stream token request returned 401; refreshing cloud credentials and retrying"
                 )
                 try:
-                    await self.manager.token_manager.force_refresh(
-                        TransportType.CLOUD_MAMMOTION
-                    )
+                    # A 401 means the server rejected a bearer our clock still
+                    # considers valid, so renew it regardless of expiry.
+                    await self.manager.token_manager.refresh_invoke_token(request_token)
                     self.last_token_refresh = datetime.datetime.now(datetime.UTC)
                     self.store_cloud_credentials()
                 except (
@@ -536,6 +539,12 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         self.last_camera_stream_failure_code = None
         LOGGER.debug("Camera stream credentials refreshed")
         return stream_data.data, agora_response
+
+    def _current_access_token(self) -> str | None:
+        """Return the HTTP bearer the next cloud request will carry, if logged in."""
+        http = getattr(self.manager, "mammotion_http", None)
+        login_info = http.login_info if http is not None else None
+        return login_info.access_token if login_info is not None else None
 
     async def _request_dual_camera_stream(
         self,
