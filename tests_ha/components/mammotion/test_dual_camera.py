@@ -9,7 +9,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from custom_components.mammotion.agora_websocket import AgoraWebSocketHandler
-from custom_components.mammotion.camera import async_setup_entry
+from custom_components.mammotion.camera import (
+    CAMERAS,
+    MammotionWebRTCCamera,
+    async_setup_entry,
+)
 from custom_components.mammotion.coordinator import MammotionBaseUpdateCoordinator
 
 
@@ -22,36 +26,37 @@ class ConcreteCoordinator(MammotionBaseUpdateCoordinator):
 
 
 @pytest.mark.asyncio
-async def test_luba2_setup_adds_left_and_right_cameras() -> None:
-    """Luba 2 gets separate entities while setup remains cloud-I/O free."""
+@pytest.mark.parametrize(
+    ("device_name", "keys", "uids"),
+    [
+        ("Luba-AAAAAA", [], []),
+        ("Luba-VS00CLD", ["webrtc_camera", "webrtc_camera_right"], [1, 2]),
+        ("Luba-VP00CLD", ["webrtc_camera", "webrtc_camera_right"], [1, 2]),
+        (
+            "Yuka-000CLD",
+            ["webrtc_camera", "webrtc_camera_right", "webrtc_camera_rear"],
+            [1, 2, 3],
+        ),
+    ],
+)
+async def test_setup_adds_one_camera_per_vision_feed(
+    device_name: str, keys: list[str], uids: list[int]
+) -> None:
+    """Vision mowers get left and right feeds, Yuka the rear one too."""
     mower = SimpleNamespace(
-        device=SimpleNamespace(device_name="Luba 2 AWD 5000"),
+        device=SimpleNamespace(device_name=device_name),
         reporting_coordinator=MagicMock(),
     )
     entry = SimpleNamespace(runtime_data=SimpleNamespace(mowers=[mower]))
     add_entities = MagicMock()
-    luba2 = SimpleNamespace(is_luba2=MagicMock(return_value=True))
 
-    with (
-        patch(
-            "custom_components.mammotion.camera.DeviceType.is_luba1",
-            return_value=False,
-        ),
-        patch(
-            "custom_components.mammotion.camera.DeviceType.value_of_str",
-            return_value=luba2,
-        ),
-        patch("custom_components.mammotion.camera.MammotionWebRTCCamera") as camera,
-    ):
+    with patch("custom_components.mammotion.camera.MammotionWebRTCCamera") as camera:
         await async_setup_entry(MagicMock(), entry, add_entities)
 
     descriptions = [call.args[1] for call in camera.call_args_list]
-    assert [description.key for description in descriptions] == [
-        "webrtc_camera",
-        "webrtc_camera_right",
-    ]
-    assert [description.target_uid for description in descriptions] == [None, 2]
-    assert len(add_entities.call_args.args[0]) == 2
+    assert [description.key for description in descriptions] == keys
+    assert [description.target_uid for description in descriptions] == uids
+    assert len(add_entities.call_args.args[0]) == len(keys)
 
 
 def test_agora_handler_ignores_the_other_vision_peer() -> None:
@@ -96,9 +101,16 @@ async def test_closing_one_camera_keeps_the_other_camera_stream_alive() -> None:
 
 
 @pytest.mark.asyncio
-async def test_dual_camera_token_requests_both_vision_streams() -> None:
-    """The app's token endpoint is asked for left and right, but not 360 feeds."""
+@pytest.mark.parametrize(
+    ("device_name", "states"),
+    [("Luba-VS00CLD", [1, 1, 0]), ("Yuka-000CLD", [1, 1, 1])],
+)
+async def test_dual_camera_token_requests_every_vision_stream(
+    device_name: str, states: list[int]
+) -> None:
+    """The token enables one cameraStates slot per vision feed the mower has."""
     coordinator = object.__new__(ConcreteCoordinator)
+    coordinator.device_name = device_name
     response = MagicMock(status=200)
     response.json = AsyncMock(return_value={"code": 200, "data": {}})
     response_context = MagicMock()
@@ -134,10 +146,28 @@ async def test_dual_camera_token_requests_both_vision_streams() -> None:
     assert request.kwargs["json"] == {
         "deviceId": "mower-id",
         "mode": 0,
-        "cameraStates": [
-            {"cameraState": 1},
-            {"cameraState": 1},
-            {"cameraState": 0},
-        ],
+        "cameraStates": [{"cameraState": state} for state in states],
     }
     assert request.kwargs["headers"]["Authorization"] == "Bearer access-token"
+
+
+def test_camera_names_come_from_the_translation_key() -> None:
+    """A None name would label every feed with the bare device name."""
+    coordinator = MagicMock()
+    coordinator.device.device_name = "Luba-VS00CLD"
+    coordinator.device_name = "Luba-VS00CLD"
+    coordinator.unique_name = "Luba-VS00CLD"
+    translations = {
+        f"component.mammotion.entity.camera.{description.key}.name": description.key
+        for description in CAMERAS
+    }
+
+    names = []
+    for description in CAMERAS:
+        camera = MammotionWebRTCCamera(coordinator, description, MagicMock())
+        camera.platform_data = SimpleNamespace(
+            platform_name="mammotion", domain="camera"
+        )
+        names.append(camera._name_internal(None, translations))  # noqa: SLF001
+
+    assert names == ["webrtc_camera", "webrtc_camera_right", "webrtc_camera_rear"]

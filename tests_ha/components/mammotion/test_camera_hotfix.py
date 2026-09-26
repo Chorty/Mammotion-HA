@@ -78,19 +78,13 @@ async def test_camera_setup_does_not_fetch_tokens() -> None:
     """Platform setup creates entities without contacting camera cloud APIs."""
     coordinator = SimpleNamespace(async_check_stream_expiry=AsyncMock())
     mower = SimpleNamespace(
-        device=SimpleNamespace(device_name="Luba-test"),
+        device=SimpleNamespace(device_name="Luba-VS00CLD"),
         reporting_coordinator=coordinator,
     )
     entry = SimpleNamespace(runtime_data=SimpleNamespace(mowers=[mower]))
     add_entities = MagicMock()
 
-    with (
-        patch(
-            "custom_components.mammotion.camera.DeviceType.is_luba1",
-            return_value=False,
-        ),
-        patch("custom_components.mammotion.camera.MammotionWebRTCCamera"),
-    ):
+    with patch("custom_components.mammotion.camera.MammotionWebRTCCamera"):
         await async_setup_entry(MagicMock(), entry, add_entities)
 
     coordinator.async_check_stream_expiry.assert_not_awaited()
@@ -195,7 +189,7 @@ async def test_camera_state_tracks_successful_offer() -> None:
     camera = object.__new__(MammotionWebRTCCamera)
     camera._join_lock = asyncio.Lock()
     camera._agora_handler = SimpleNamespace(candidates=[])
-    camera.entity_description = SimpleNamespace(key="webrtc_camera", target_uid=None)
+    camera.entity_description = SimpleNamespace(key="webrtc_camera", target_uid=1)
     camera._sessions = set()
     camera._attr_is_streaming = False
     camera._hass = MagicMock()
@@ -260,7 +254,7 @@ async def test_camera_offer_reports_temporary_unavailability() -> None:
     camera = object.__new__(MammotionWebRTCCamera)
     camera._join_lock = asyncio.Lock()
     camera._agora_handler = SimpleNamespace(candidates=[])
-    camera.entity_description = SimpleNamespace(key="webrtc_camera", target_uid=None)
+    camera.entity_description = SimpleNamespace(key="webrtc_camera", target_uid=1)
     camera._sessions = set()
     camera._attr_is_streaming = False
     camera._hass = MagicMock()
@@ -313,7 +307,7 @@ async def test_overlapping_camera_offers_wait_instead_of_returning_409() -> None
     camera = object.__new__(MammotionWebRTCCamera)
     camera._join_lock = asyncio.Lock()
     camera._agora_handler = SimpleNamespace(candidates=[])
-    camera.entity_description = SimpleNamespace(key="webrtc_camera", target_uid=None)
+    camera.entity_description = SimpleNamespace(key="webrtc_camera", target_uid=1)
     camera._sessions = set()
     camera._attr_is_streaming = False
     camera._hass = MagicMock()
