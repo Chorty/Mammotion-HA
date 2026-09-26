@@ -128,8 +128,6 @@ class AgoraWebSocketHandler:
         self.hass = hass
         self._recover_stream = recover_stream
         self._keepalive = keepalive
-        # Luba 2 publishes its left and right vision feeds as separate peers.
-        # Other mower models retain the existing subscribe-all behavior.
         self._target_uid = target_uid
         self._websocket: ClientConnection | None = None
         self._connection_state = "DISCONNECTED"
