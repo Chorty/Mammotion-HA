@@ -1313,6 +1313,16 @@ has repeatedly caught real errors before they reached hardware.
 - **Every real run:** explicit operator go/no-go immediately before dispatch,
   fresh corridor scan against the map, daylight, gate verified disarmed after.
 - **A run that stops safely on a named refusal is a FAIL**, not a smaller number.
+- **Record before you move on.** After any deploy, merge, hardware test or
+  operator decision, write it into the private `docs/` (the deploy runbook, `TODO.md`
+  or the relevant plan) and **commit it in the docs repo** before starting the next
+  task. A chat can end or be summarized at any point, and anything learned but
+  unwritten is lost. A Stop hook (`.claude/hooks/docs-commit-check.sh`, local
+  settings) blocks a reply once while `docs/` has uncommitted changes.
+  🔑 **Several chats share this working folder.** Keep one chat per workstream, work
+  on code in a separate `git worktree` when another chat owns the root checkout,
+  and commit docs right after each milestone so two chats never hold edits to the
+  same file.
 
 ### Credentials
 
