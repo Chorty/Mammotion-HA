@@ -137,3 +137,55 @@ def test_an_aborted_final_turn_still_disarms(
 
     assert calls["turns"] == ["turn1", "turn2", "turn3", "turn4"]
     assert calls["gate"] == [True, False]
+
+
+# The 2026-09-27 repeat: turn 3 was split 4000 + 4000 + 4000 + 32 ms. The
+# service rejects duration_ms below 50, so HA answered HTTP 400, and
+# post_service's SystemExit ended the run before its last turn.
+
+
+@pytest.mark.parametrize(
+    ("total_ms", "expected"),
+    [
+        (6000, [4000, 2000]),
+        (7428, [4000, 3428]),
+        (12032, [4000, 4000, 2016, 2016]),
+        (16000, [4000, 4000, 4000, 4000]),
+        (4030, [2015, 2015]),
+        (30, [50]),
+    ],
+)
+def test_turn_pulses_are_never_below_the_service_minimum(
+    total_ms: int, expected: list[int]
+) -> None:
+    """Only a sub-50 ms remainder changes the split; every other turn is unchanged."""
+    module = _load()
+
+    plan = module.turn_pulse_plan(total_ms)
+
+    assert plan == expected
+    assert all(module.MIN_PULSE_MS <= ms <= module.PULSE_MS for ms in plan)
+    assert sum(plan) == max(total_ms, module.MIN_PULSE_MS)
+
+
+def test_a_refused_pulse_aborts_the_turn_cleanly_and_is_recorded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A service error becomes a recorded abort, not an exception through the run."""
+    module = _load()
+    sent: list[int] = []
+
+    def refuse_second(*_a: Any, **_k: Any) -> dict[str, Any]:
+        sent.append(1)
+        if len(sent) == 2:
+            raise SystemExit("HA service call failed: HTTP 400: 400: Bad Request")
+        return {"real_pulse_completed": True}
+
+    monkeypatch.setattr(module, "post_service", refuse_second)
+    record: dict[str, Any] = {"legs": [], "turns": []}
+
+    turn = module.drive_turn("u", "t", "turn3", 7.48, record, dry_run=False)
+
+    assert record["turns"] == [turn]
+    assert [p["ok"] for p in turn["pulses"]] == [True, False]
+    assert "HTTP 400" in turn["abort"]
