@@ -53,6 +53,9 @@ TURN_TARGET_DEG = 90.0
 
 #: Safety bounds. A leg that overshoots this far has lost the plot; stop.
 LEG_ABORT_M = 3.5
+#: manual_velocity_pulse_test rejects duration_ms below this (services.py schema).
+#: A 32 ms turn remainder hit it on 2026-09-27 and the HTTP 400 ended the run.
+MIN_PULSE_MS = 50
 MAX_PULSES_PER_LEG = 8
 MAX_PULSES_PER_TURN = 4
 
@@ -119,10 +122,42 @@ def set_gate(url: str, token: str, *, on: bool) -> None:
     )
 
 
+def turn_pulse_plan(total_ms: int) -> list[int]:
+    """Split a turn into pulses of at most PULSE_MS, none shorter than MIN_PULSE_MS.
+
+    The split is the original one (whole PULSE_MS chunks, then the remainder)
+    except when the remainder is under MIN_PULSE_MS: then the last two pieces
+    are evened out, so every other turn is commanded exactly as before.
+    """
+    total_ms = max(int(total_ms), MIN_PULSE_MS)
+    plan = [PULSE_MS] * (total_ms // PULSE_MS)
+    remainder = total_ms % PULSE_MS
+    if remainder:
+        plan.append(remainder)
+    if len(plan) >= 2 and plan[-1] < MIN_PULSE_MS:
+        pair = plan[-2] + plan[-1]
+        plan[-2:] = [pair - pair // 2, pair // 2]
+    return plan
+
+
 def pulse(
     url: str, token: str, action: str, duration_ms: int, *, dry_run: bool
 ) -> dict[str, Any]:
-    """Dispatch one bounded velocity pulse and return its result."""
+    """Dispatch one bounded velocity pulse and return its result.
+
+    A refused service call (``post_service`` raises SystemExit on any HTTP
+    error) comes back as an ``error`` so the caller aborts cleanly and records
+    why, instead of the exception tearing through the run.
+    """
+    try:
+        return _post_pulse(url, token, action, duration_ms, dry_run=dry_run)
+    except SystemExit as err:
+        return {"error": f"service call failed: {err}"}
+
+
+def _post_pulse(
+    url: str, token: str, action: str, duration_ms: int, *, dry_run: bool
+) -> dict[str, Any]:
     return post_service(
         url,
         token,
@@ -145,6 +180,8 @@ def pulse(
 
 def pulse_ok(result: dict[str, Any], *, dry_run: bool) -> tuple[bool, str]:
     """Judge one pulse -- did it send, and did its stop confirm."""
+    if result.get("error"):
+        return False, result["error"]
     if dry_run:
         failing = [
             g["name"] for g in result.get("safety_gates", []) if not g.get("passed")
@@ -249,9 +286,9 @@ def drive_turn(
         "commanded_ms": total_ms,
         "pulses": [],
     }
-    remaining = total_ms
-    while remaining > 0:
-        this_ms = min(PULSE_MS, remaining)
+    # Recorded before driving, so a turn cut short still appears in the record.
+    record["turns"].append(turn)
+    for this_ms in turn_pulse_plan(total_ms):
         result = pulse(url, token, "turn_left", this_ms, dry_run=dry_run)
         ok, why = pulse_ok(result, dry_run=dry_run)
         turn["pulses"].append({"utc": now_iso(), "ms": this_ms, "ok": ok, "why": why})
@@ -259,10 +296,8 @@ def drive_turn(
         if not ok:
             turn["abort"] = why
             break
-        remaining -= this_ms
         if dry_run:
             break
-    record["turns"].append(turn)
     return turn
 
 
