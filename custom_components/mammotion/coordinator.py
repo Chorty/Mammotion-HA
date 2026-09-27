@@ -47,6 +47,11 @@ from pymammotion.aliyun.exceptions import (
 from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.client import MammotionClient
 from pymammotion.const import MAMMOTION_API_DOMAIN
+from pymammotion.data.error_codes import (
+    bundled_error_codes,
+    fetched_error_codes,
+    set_fetched_error_codes,
+)
 from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.data.model.device import (
     MowerDevice,
@@ -85,6 +90,7 @@ from pymammotion.transport.base import (
     TransportType,
 )
 from pymammotion.transport.ble import BLETransport
+from pymammotion.transport.cloud import CloudTransport
 from pymammotion.utility.constant import MOWING_ACTIVE_MODES, WorkMode
 from pymammotion.utility.device_type import DeviceType
 from pymammotion.utility.plan_id import make_copy_name, new_mower_plan_id
@@ -108,6 +114,8 @@ from .const import (
 from .error_codes import describe_error_code
 
 if TYPE_CHECKING:
+    from pymammotion.http.http import MammotionHTTP
+
     from . import MammotionConfigEntry
 
 
@@ -193,6 +201,20 @@ CLOUD_SEND_LIMIT_STATES = ("ok", "rate_limited")
 DEVICE_NOT_RESPONDING_CODE = 50504
 STREAM_AUTH_ERROR_CODE = 401
 STREAM_RETRY_DELAYS = (0, 2, 4)
+
+
+async def async_install_cloud_error_codes(
+    hass: HomeAssistant, http: MammotionHTTP
+) -> None:
+    """Fetch the account's error-code table and install it for this process.
+
+    Since pymammotion 0.9.6 the table is one process-wide copy, not a field on
+    each device's ``errors``. Installing it overlays the library's bundled CSV,
+    which is read on first use, so that read happens off the event loop.
+    """
+    table = await http.get_all_error_codes()
+    await hass.async_add_executor_job(bundled_error_codes)
+    set_fetched_error_codes(table)
 
 
 class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
@@ -1089,8 +1111,8 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         cloud_transport = (
             handle.get_transport(cloud_tt) if cloud_tt is not None else None
         )
-        auth_locked = bool(
-            cloud_transport is not None
+        auth_locked = (
+            isinstance(cloud_transport, CloudTransport)
             and cloud_transport.is_unrecoverable_auth_failure
         )
 
@@ -4017,7 +4039,7 @@ class MammotionDeviceErrorUpdateCoordinator(
 
     def _cloud_error_text(self, code: int) -> tuple[str, str, str]:
         """Return (module, implication, solution) from the cloud table, if any."""
-        error_info: ErrorInfo | None = self.data.errors.error_codes.get(f"{code}")
+        error_info: ErrorInfo | None = fetched_error_codes().get(f"{code}")
         if error_info is None:
             return "", "", ""
         language = self.hass.config.language
@@ -4106,7 +4128,7 @@ class MammotionDeviceErrorUpdateCoordinator(
         return {
             "pushed_faults": pushed,
             "logged_faults": logged,
-            "cloud_error_table_loaded": bool(self.data.errors.error_codes),
+            "cloud_error_table_loaded": bool(fetched_error_codes()),
         }
 
     async def _async_update_data(self) -> MowingDevice:
@@ -4116,11 +4138,11 @@ class MammotionDeviceErrorUpdateCoordinator(
         device = self.manager.get_device_by_name(self.device_name)
         assert device is not None
         try:
-            if not device.errors.error_codes and self.has_cloud_account:
+            if not fetched_error_codes() and self.has_cloud_account:
                 http = self.manager.mammotion_http
                 if http is not None:
                     try:
-                        device.errors.error_codes = await http.get_all_error_codes()
+                        await async_install_cloud_error_codes(self.hass, http)
                     except AuthError, FailedRequestException, GatewayTimeoutException:
                         pass
         except DeviceOfflineException:
@@ -4168,14 +4190,14 @@ class MammotionDeviceErrorUpdateCoordinator(
             await self.async_send_and_wait(
                 "read_write_device", "bidire_comm_cmd", rw_id=5, rw=1, context=3
             )
-            if not device.errors.error_codes and self.has_cloud_account:
+            if not fetched_error_codes() and self.has_cloud_account:
                 http = self.manager.mammotion_http
                 if http is not None:
                     # has_cloud_account only means credentials are
                     # configured, not that the cloud session is currently
                     # live -- error-code lookup is best-effort.
                     try:
-                        device.errors.error_codes = await http.get_all_error_codes()
+                        await async_install_cloud_error_codes(self.hass, http)
                     except AuthError, FailedRequestException, GatewayTimeoutException:
                         pass
 
@@ -4475,7 +4497,7 @@ class MammotionSpinoCoordinator(MammotionBaseUpdateCoordinator[PoolCleanerDevice
         """Return a human-readable description of the most recent fault."""
         try:
             error_code = abs(self.data.pool_state.error_log[0].code)
-            error_info: ErrorInfo = self.data.errors.error_codes[f"{error_code}"]
+            error_info: ErrorInfo = fetched_error_codes()[f"{error_code}"]
             implication = (
                 getattr(error_info, f"{self.hass.config.language}_implication")
                 if hasattr(error_info, f"{self.hass.config.language}_implication")
@@ -4519,8 +4541,8 @@ class MammotionSpinoCoordinator(MammotionBaseUpdateCoordinator[PoolCleanerDevice
                         for check_version in check_versions:
                             if check_version.device_id == cast(Any, self.device).iot_id:
                                 self.data.apply_version_check(check_version)
-                    if not self.data.errors.error_codes:
-                        self.data.errors.error_codes = await http.get_all_error_codes()
+                    if not fetched_error_codes():
+                        await async_install_cloud_error_codes(self.hass, http)
                 except ReLoginRequiredError as err:
                     raise ConfigEntryAuthFailed(
                         f"Re-authentication required for Mammotion account: {err}"
