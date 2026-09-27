@@ -5241,6 +5241,9 @@ _BLE_QUEUE_DEPTH_LIMIT = 0
 #: Maximum time a motion item may wait to start in the command queue. If this
 #: expires the item is disarmed, so a later queue recovery cannot execute it.
 _BLE_MOTION_QUEUE_START_TIMEOUT_SECONDS = 2.0
+#: Emergency-stop writes dispatched outside the command queue. Held here so the
+#: event loop's weak reference cannot let one be garbage-collected mid-write.
+_DIRECT_MOTION_DISPATCHES: set[asyncio.Task[None]] = set()
 #: Maximum time allowed for the BLE GATT write itself. Motion timing begins only
 #: after this awaited write completes.
 _BLE_MOTION_WRITE_TIMEOUT_SECONDS = 4.0
@@ -8080,10 +8083,26 @@ async def _send_ble_motion_command_confirmed(  # noqa: C901
     )
     enqueued_monotonic = time.monotonic()
     try:
-        await handle.queue.enqueue(
-            _dispatch,
-            priority=Priority.EMERGENCY if emergency_stop else Priority.NORMAL,
-        )
+        if emergency_stop:
+            # pymammotion >= 0.9.6 refuses to queue a direct-send priority
+            # (EMERGENCY/USER): the queue processor is strictly sequential, so a
+            # queued stop would still wait out whatever work it is running. The
+            # stop is dispatched now instead, as its own task so a cancelled
+            # caller cannot abort the write. It still cannot overtake a write
+            # already on the wire: BLETransport serializes GATT writes behind
+            # its operation lock.
+            dispatch_task = loop.create_task(
+                _dispatch(), name=f"mammotion-emergency-stop-{coordinator.device_name}"
+            )
+            _DIRECT_MOTION_DISPATCHES.add(dispatch_task)
+            dispatch_task.add_done_callback(_DIRECT_MOTION_DISPATCHES.discard)
+            # The outcome is reported through ``completed``; retrieve the task's
+            # own copy of any exception so it is never logged as unretrieved.
+            dispatch_task.add_done_callback(
+                lambda task: task.cancelled() or task.exception()
+            )
+        else:
+            await handle.queue.enqueue(_dispatch, priority=Priority.NORMAL)
     except BaseException:
         # The real DeviceCommandQueue only inserts here, but eager test/dummy
         # queues may execute the work inline. Consume the mirrored future
