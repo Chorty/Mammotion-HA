@@ -157,8 +157,15 @@ def _pulse_coordinator(
         priority: object = None,
         **_kwargs: object,
     ) -> None:
-        """Run fixture queue work immediately while preserving the queue API."""
-        del priority
+        """Run fixture queue work immediately while preserving the queue API.
+
+        Refuses the direct-send priorities exactly as pymammotion's
+        DeviceCommandQueue does since 0.9.6. A stand-in that accepted them is
+        what let beta118 ship an emergency stop the real queue rejects.
+        """
+        if getattr(priority, "is_direct", False):
+            msg = f"{priority.name} is a direct-send priority and must not be queued"
+            raise ValueError(msg)
         await cast(Callable[[], Coroutine[object, object, None]], work)()
 
     def build_command(

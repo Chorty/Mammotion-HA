@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-from pymammotion.messaging.command_queue import DeviceCommandQueue, Priority
+from pymammotion.messaging.command_queue import DeviceCommandQueue
 from pymammotion.transport.base import NoTransportAvailableError, TransportType
 from pymammotion.transport.ble import BLETransport, BLETransportConfig
 
@@ -863,8 +863,12 @@ async def test_confirmed_ble_motion_waits_for_gatt_write() -> None:
 
 
 @pytest.mark.asyncio
-async def test_normal_motion_teardown_stop_uses_emergency_queue_priority() -> None:
-    """A bounded pulse's zero write bypasses normal queue work."""
+async def test_normal_motion_teardown_stop_bypasses_the_queue() -> None:
+    """A bounded pulse's zero write never enters the command queue.
+
+    pymammotion >= 0.9.6 refuses to queue EMERGENCY at all. It is sent on its
+    own task instead, so it cannot wait behind queued or in-flight work.
+    """
     coordinator = _pulse_coordinator()
     handle = coordinator.manager.mower(coordinator.device_name)
     priorities: list[object] = []
@@ -884,7 +888,8 @@ async def test_normal_motion_teardown_stop_uses_emergency_queue_priority() -> No
     )
 
     assert result["ok"] is True
-    assert priorities == [Priority.EMERGENCY]
+    assert priorities == []
+    handle._send_marked.assert_awaited_once()  # noqa: SLF001
 
 
 @pytest.mark.asyncio
