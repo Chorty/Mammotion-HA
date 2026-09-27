@@ -20,13 +20,23 @@ merely dropped. It had been, twice over:
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
 from functools import partial
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
+import pytest
+from pymammotion.data import error_codes as pymammotion_error_codes
+from pymammotion.data.model.errors import DeviceErrors
+
+from custom_components.mammotion import coordinator as coordinator_module
 from custom_components.mammotion.coordinator import (
     MammotionDeviceErrorUpdateCoordinator as ErrorCoordinator,
+)
+from custom_components.mammotion.coordinator import (
+    async_install_cloud_error_codes,
 )
 from custom_components.mammotion.error_codes import (
     describe_error_code,
@@ -36,6 +46,16 @@ from custom_components.mammotion.error_codes import (
 
 #: The code the app showed while Home Assistant showed nothing.
 ORIENTATION_UNAVAILABLE = 1309
+
+#: Stands in for pymammotion's process-wide cloud table, one per test.
+_CLOUD_TABLE: dict[str, Any] = {}
+
+
+@pytest.fixture(autouse=True)
+def _isolated_cloud_table(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Since pymammotion 0.9.6 the cloud table is process-wide, not per device."""
+    _CLOUD_TABLE.clear()
+    monkeypatch.setattr(coordinator_module, "fetched_error_codes", lambda: _CLOUD_TABLE)
 
 
 def _blank_cloud_row(module: str = "mcu") -> SimpleNamespace:
@@ -64,15 +84,17 @@ def _error_coordinator(
     coordinator = SimpleNamespace(
         device_name="Luba-TEST",
         hass=SimpleNamespace(config=SimpleNamespace(language=language)),
+        # The real pymammotion type: a stand-in with an ``error_codes`` field is
+        # what let beta117 ship reading an attribute 0.9.6 had removed.
         data=SimpleNamespace(
-            errors=SimpleNamespace(
+            errors=DeviceErrors(
                 err_code_list=err_code_list or [],
                 err_code_list_time=err_code_list_time or [],
-                error_codes=error_codes or {},
             )
         ),
         _notification_codes=notifications or [],
     )
+    _CLOUD_TABLE.update(error_codes or {})
     for name in ("_latest_fault", "_cloud_error_text"):
         setattr(
             coordinator,
@@ -255,3 +277,73 @@ def test_a_malformed_push_records_nothing_rather_than_a_zero() -> None:
         == 0
     )
     assert coordinator._notification_codes == []
+
+
+def test_cloud_text_comes_from_the_process_wide_table() -> None:
+    """The localised cloud row is read from pymammotion's table, not the device."""
+    row = SimpleNamespace(
+        module="navigation",
+        en_implication="Robot orientation unavailable",
+        en_solution="Drive into a task area",
+    )
+    coordinator = _error_coordinator(
+        err_code_list=[ORIENTATION_UNAVAILABLE],
+        err_code_list_time=[1725159492],
+        error_codes={"1309": row},
+    )
+
+    message = ErrorCoordinator.get_error_message(coordinator, 1)
+
+    assert "1309" in message
+    assert "Robot orientation unavailable" in message
+    assert ErrorCoordinator.error_log_snapshot(coordinator)["cloud_error_table_loaded"]
+
+
+@pytest.mark.asyncio
+async def test_update_fetches_the_cloud_table_once_it_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The setup path that failed on beta117: no ``DeviceErrors.error_codes`` access."""
+    install = AsyncMock()
+    monkeypatch.setattr(coordinator_module, "async_install_cloud_error_codes", install)
+    http = object()
+    device = SimpleNamespace(errors=DeviceErrors())
+    coordinator = SimpleNamespace(
+        device_name="Luba-TEST",
+        hass=object(),
+        has_cloud_account=True,
+        manager=SimpleNamespace(
+            get_device_by_name=lambda _name: device, mammotion_http=http
+        ),
+        _async_short_circuit_update=AsyncMock(return_value=None),
+    )
+
+    result = await ErrorCoordinator._async_update_data(coordinator)
+
+    assert result is device
+    install.assert_awaited_once_with(coordinator.hass, http)
+
+
+@pytest.mark.asyncio
+async def test_installing_the_cloud_table_warms_the_bundle_off_the_loop() -> None:
+    """The overlay reads pymammotion's bundled CSV; that must not run on the loop."""
+    row = dataclasses.replace(
+        pymammotion_error_codes.bundled_error_codes()["1309"],
+        en_implication="Robot orientation unavailable",
+    )
+    http = SimpleNamespace(get_all_error_codes=AsyncMock(return_value={"1309": row}))
+    executor_calls: list[Any] = []
+
+    async def _executor(func: Any, *args: Any) -> Any:
+        executor_calls.append(func)
+        return func(*args)
+
+    hass = SimpleNamespace(async_add_executor_job=_executor)
+    try:
+        await async_install_cloud_error_codes(hass, http)
+        installed = pymammotion_error_codes.fetched_error_codes()["1309"]
+    finally:
+        pymammotion_error_codes.set_fetched_error_codes(None)
+
+    assert executor_calls == [pymammotion_error_codes.bundled_error_codes]
+    assert installed.en_implication == "Robot orientation unavailable"
