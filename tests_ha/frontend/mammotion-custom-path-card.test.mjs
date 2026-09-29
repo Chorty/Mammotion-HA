@@ -67,7 +67,11 @@ const {
   ACCEPTED_PROFILE_ACCEPTED_ON,
   LUBA_ACCEPTANCE_PROFILE,
   MAX_NIGHT_SEGMENT_METRES,
+  BLE_COVERAGE_FALLBACK_URL,
+  BLE_COVERAGE_URLS,
   BLE_MAX_ZOOM,
+  bleCoverageUrls,
+  DEFAULT_SERVICE_DOMAIN,
   bleDomainFor,
   bleRampColor,
   blePannedZoom,
@@ -2151,4 +2155,158 @@ test("the planned route never changes the map's own scale", () => {
     !/mow_path/i.test(body),
     "_getAllPoints must not reference the planned route",
   );
+});
+
+// ---- Service domain and the coverage asset URL (fork split, step 1) ---------
+// The card becomes its own repo and calls the companion's services. Both
+// changes must leave today's dashboards exactly as they are.
+
+function configured(extra = {}) {
+  const element = new MammotionCustomPathCard();
+  element.setConfig({ entity: "lawn_mower.test", ...extra });
+  return element;
+}
+
+test("the service domain defaults to this integration", () => {
+  assert.equal(DEFAULT_SERVICE_DOMAIN, "mammotion");
+  assert.equal(configured()._config.domain, "mammotion");
+  assert.equal(
+    configured({ domain: "mammotion_motion" })._config.domain,
+    "mammotion_motion",
+  );
+});
+
+test("a malformed domain is refused at setConfig, not mid-run", () => {
+  for (const domain of [
+    "",
+    "Mammotion",
+    "mammotion.motion",
+    "mammotion-motion",
+    5,
+    null,
+  ]) {
+    assert.throws(
+      () => configured({ domain }),
+      /domain must be an integration domain/,
+    );
+  }
+});
+
+test("every service call goes to the configured domain", async () => {
+  for (const domain of [undefined, "mammotion_motion"]) {
+    const element = configured(domain ? { domain } : {});
+    const calls = [];
+    element._hass = {
+      callService: async (...args) => {
+        calls.push(args);
+        return { response: { ok: true } };
+      },
+    };
+
+    const response = await element._callService("export_map", {});
+
+    assert.deepEqual(response, { ok: true });
+    assert.equal(calls[0][0], domain ?? "mammotion");
+    assert.equal(calls[0][1], "export_map");
+    assert.equal(calls[0][2].entity_id, "lawn_mower.test");
+    assert.equal(calls[0][4], true);
+  }
+});
+
+test("the domain changes no dispatched value", () => {
+  // The profile travels in every payload. Selecting the companion must send
+  // byte-identical motion, and must not add a `domain` key to it.
+  const payloads = ["mammotion", "mammotion_motion"].map((domain) => {
+    const element = configured({ domain });
+    element._runtimeState = card()._runtimeState;
+    element._waypoints = [{ x: 2, y: 2 }];
+    return [element._motionPayload(false), element._motionPayload(true)];
+  });
+
+  assert.deepEqual(payloads[0], payloads[1]);
+  for (const { payload } of payloads[1]) {
+    assert.equal("domain" in payload, false);
+  }
+});
+
+test("the coverage asset resolves next to the card, then falls back", () => {
+  const origin = "https://ha.local:8123";
+  // Served by this integration: both candidates are the same URL, fetched once.
+  assert.deepEqual(
+    bleCoverageUrls(
+      `${origin}/mammotion/mammotion-custom-path-card.js?v=0.6.4-beta119&build=abc`,
+    ),
+    [`${origin}/mammotion/ble-coverage.json`],
+  );
+  // Served from the card's own HACS repo: its copy first, then this one's.
+  assert.deepEqual(
+    bleCoverageUrls(
+      `${origin}/hacsfiles/mammotion-clicktogo-card/mammotion-custom-path-card.js?v=1`,
+    ),
+    [
+      `${origin}/hacsfiles/mammotion-clicktogo-card/ble-coverage.json`,
+      `${origin}/mammotion/ble-coverage.json`,
+    ],
+  );
+  // No usable module URL: only the integration-served path.
+  assert.deepEqual(bleCoverageUrls(undefined), [BLE_COVERAGE_FALLBACK_URL]);
+  assert.deepEqual(bleCoverageUrls("not a url"), [BLE_COVERAGE_FALLBACK_URL]);
+  // The card resolved its own module URL at import.
+  assert.match(BLE_COVERAGE_URLS[0], /\/www\/ble-coverage\.json$/);
+});
+
+test("a missing card-relative asset falls back to the integration's copy", async () => {
+  const element = configured();
+  const realFetch = globalThis.fetch;
+  const fetched = [];
+  globalThis.fetch = async (url) => {
+    fetched.push(url);
+    if (url === "https://h/hacsfiles/c/ble-coverage.json") {
+      return { ok: false, status: 404 };
+    }
+    return { ok: true, json: async () => ({ baseline: [] }) };
+  };
+  try {
+    await element._loadBleCoverage([
+      "https://h/hacsfiles/c/ble-coverage.json",
+      "https://h/mammotion/ble-coverage.json",
+    ]);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+
+  assert.deepEqual(fetched, [
+    "https://h/hacsfiles/c/ble-coverage.json",
+    "https://h/mammotion/ble-coverage.json",
+  ]);
+  assert.deepEqual(element._bleCoverage, { baseline: [] });
+  assert.equal(
+    element._bleCoverageUrl,
+    "https://h/mammotion/ble-coverage.json",
+  );
+  assert.equal(element._bleCoverageError, null);
+});
+
+test("when every coverage URL fails the overlay turns off and names each", async () => {
+  const element = configured();
+  element._bleOverlay = "baseline";
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) =>
+    url.endsWith("/a.json")
+      ? { ok: false, status: 404 }
+      : { ok: true, json: async () => ({ proxies: [] }) };
+  try {
+    await element._loadBleCoverage(["https://h/a.json", "https://h/b.json"]);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+
+  assert.equal(element._bleCoverage, null);
+  assert.equal(element._bleOverlay, "");
+  assert.match(element._bleCoverageError, /https:\/\/h\/a\.json: HTTP 404/);
+  assert.match(
+    element._bleCoverageError,
+    /https:\/\/h\/b\.json: asset has no baseline array/,
+  );
+  assert.equal(element._loadingBleCoverage, false);
 });
