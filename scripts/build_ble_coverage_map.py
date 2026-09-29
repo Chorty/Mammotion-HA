@@ -41,10 +41,11 @@ SITING = REPO / "docs" / "evidence-phase1-siting-20260912.json"
 ADVERT_LOG = REPO / "scripts" / "ble_proxy_coverage_log.jsonl"
 TRACE_LOG = REPO / "scripts" / "ble_proxy_connected_trace_log.jsonl"
 DEFAULT_OUT = REPO / "docs" / "ble-coverage-map.html"
-# 🔑 The click-to-go card reads this at runtime. The integration already serves
-# WWW_DIR at "/mammotion" (see async_setup in __init__.py), so the card fetches
-# it from "/mammotion/ble-coverage.json" -- an absolute path that holds whether
-# the card itself was loaded from /mammotion/ or /hacsfiles/. Unlike the HTML
+# 🔑 The click-to-go card reads this at runtime. It resolves the file next to
+# its own URL first, then falls back to "/mammotion/ble-coverage.json", which
+# the integration serves (WWW_DIR at "/mammotion", see async_setup in
+# __init__.py) whether the card was loaded from /mammotion/ or /hacsfiles/.
+# The card-relative URL is what a separate card repo will use. Unlike the HTML
 # viewer this asset IS committed: it is deployed to the host with the card, and
 # its own input (the siting evidence JSON) is committed too.
 CARD_ASSET = REPO / "custom_components" / "mammotion" / "www" / "ble-coverage.json"
