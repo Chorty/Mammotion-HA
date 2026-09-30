@@ -5298,6 +5298,7 @@ def _ble_link_liveness(  # noqa: C901
         "cooldown_remaining_seconds": None,
         "last_send_age_seconds": None,
         "queue_depth": None,
+        "queue_in_flight": None,
         "queue_dispatch_paused": None,
         "saga_active": None,
         "stall_threshold_seconds": _BLE_SEND_STALL_SECONDS,
@@ -5364,6 +5365,10 @@ def _ble_link_liveness(  # noqa: C901
         if pending is not None:
             with contextlib.suppress(Exception):
                 report["queue_depth"] = int(pending.qsize())
+                # qsize excludes the item the single queue worker has already
+                # taken. Keep that item visible to the preflight settle wait.
+                unfinished = int(pending._unfinished_tasks)  # noqa: SLF001
+                report["queue_in_flight"] = max(unfinished - report["queue_depth"], 0)
 
     # --- verdict -----------------------------------------------------------
     if report["is_connected"] is not True:
@@ -6480,13 +6485,14 @@ async def _settle_ble_command_queue(
     """
     report = _ble_link_liveness(coordinator)
     deadline = time.monotonic() + _BLE_QUEUE_SETTLE_TIMEOUT_SECONDS
-    while (
-        not report["live"]
-        and report["reason"] in _BLE_TRANSIENT_QUEUE_REASONS
-        and time.monotonic() < deadline
+    while time.monotonic() < deadline and (
+        (not report["live"] and report["reason"] in _BLE_TRANSIENT_QUEUE_REASONS)
+        or (report["live"] and (report.get("queue_in_flight") or 0) > 0)
     ):
         await asyncio.sleep(_BLE_QUEUE_SETTLE_POLL_SECONDS)
         report = _ble_link_liveness(coordinator)
+    if report["live"] and (report.get("queue_in_flight") or 0) > 0:
+        report = {**report, "live": False, "reason": "command_queue_in_flight"}
     return report
 
 
@@ -7667,7 +7673,7 @@ def _wrap_exclusive_manual_motion(  # noqa: C901
     return wrapped
 
 
-async def _manual_velocity_pulse_test(
+async def _manual_velocity_pulse_test(  # noqa: C901
     coordinator: MammotionReportUpdateCoordinator,
     *,
     action: str = "forward",
@@ -7689,6 +7695,7 @@ async def _manual_velocity_pulse_test(
         post_command_sample_delays = tuple(
             followup_interval_seconds * (index + 1) for index in range(followup_samples)
         )
+    queue_settle: dict[str, Any] | None = None
     if hasattr(coordinator, "async_start_report_stream"):
         stream_duration_ms = int(
             (max(post_command_sample_delays, default=0.0) + 10) * 1000
@@ -7705,7 +7712,7 @@ async def _manual_velocity_pulse_test(
             )
         # The calls above enqueue BLE commands; let them clear before the
         # ble_link_live gate below demands an empty queue.
-        await _settle_ble_command_queue(coordinator)
+        queue_settle = await _settle_ble_command_queue(coordinator)
 
     before = _custom_path_telemetry_snapshot(coordinator)
     gates = _manual_velocity_pulse_gates(
@@ -7715,6 +7722,12 @@ async def _manual_velocity_pulse_test(
         confirm_blades_off=confirm_blades_off,
         confirm_clear_area=confirm_clear_area,
     )
+    if queue_settle is not None and not queue_settle["live"]:
+        for gate in gates:
+            if gate["name"] == "ble_link_live":
+                gate["passed"] = False
+                gate["diagnostics"] = queue_settle
+                break
     blockers = [gate["name"] for gate in gates if not gate["passed"]]
     service = _manual_velocity_action_service(action)
     command = {
@@ -7752,6 +7765,7 @@ async def _manual_velocity_pulse_test(
         "real_pulse_allowed": not dry_run and not blockers,
         "blockers": blockers,
         "safety_gates": gates,
+        "queue_settle": queue_settle,
         "samples": [{"label": "before", "telemetry": before}],
         "stop_result": {"attempted": False, "ok": None, "error": None},
         "command_result": {"attempted": False, "ok": None, "error": None},
@@ -7774,28 +7788,45 @@ async def _manual_velocity_pulse_test(
         use_wifi=use_wifi,
     )
     command_ok = result["command_result"]["ok"] is True
+
     # Bare bounded pulse -- this is the A/B harness for the app-parity cadence
     # question (plan item B1): same action and duration, run once with
     # motion_refresh_interval_ms=0 and once with 200, tape-measure both.
-    result["motion_refresh"] = await _motion_refresh_window(
-        coordinator,
-        resend=functools.partial(
-            _manual_velocity_command_attempt,
+    async def resend_checked() -> None:
+        refresh_result = await _manual_velocity_command_attempt(
             coordinator,
             action=action,
             speed=speed,
             use_wifi=use_wifi,
-        ),
-        duration_seconds=duration_ms / 1000,
-        refresh_interval_ms=motion_refresh_interval_ms,
-    )
+        )
+        if refresh_result["ok"] is not True:
+            raise RuntimeError(refresh_result["error"] or "motion refresh failed")
+
+    if command_ok:
+        result["motion_refresh"] = await _motion_refresh_window(
+            coordinator,
+            resend=resend_checked,
+            duration_seconds=duration_ms / 1000,
+            refresh_interval_ms=motion_refresh_interval_ms,
+        )
+    else:
+        # The first send may have failed after an uncertain write. Never issue
+        # another movement command; proceed immediately to a confirmed stop.
+        result["motion_refresh"] = {
+            "refresh_enabled": False,
+            "refresh_interval_ms": motion_refresh_interval_ms,
+            "refresh_commands_sent": 0,
+            "refresh_write_durations_ms": [],
+            "refresh_write_completions_elapsed_ms": [],
+            "reason": "initial_command_failed",
+        }
     after_command = _custom_path_telemetry_snapshot(coordinator)
     result["samples"].append(
         {"label": "after_command_window", "telemetry": after_command}
     )
-    if stop_mode == "delayed" and stop_delay_ms > 0:
+    if command_ok and stop_mode == "delayed" and stop_delay_ms > 0:
         await _motion_open_sleep(coordinator, stop_delay_ms / 1000)
-    if stop_mode in {"immediate", "delayed"}:
+    if not command_ok or stop_mode in {"immediate", "delayed"}:
         result["stop_result"] = await _manual_velocity_stop_attempt(
             coordinator,
             use_wifi=use_wifi,
@@ -7825,7 +7856,9 @@ async def _manual_velocity_pulse_test(
     result["measured_delta"] = _telemetry_position_delta(before, final_telemetry)
     result["immediate_delta"] = _telemetry_position_delta(before, after_stop)
     stop_ok = result["stop_result"]["ok"] is True or stop_mode == "firmware"
-    result["real_pulse_completed"] = command_ok and stop_ok
+    result["real_pulse_completed"] = (
+        command_ok and stop_ok and "refresh_error" not in result["motion_refresh"]
+    )
     return result
 
 

@@ -3767,6 +3767,126 @@ async def test_manual_velocity_pulse_test_defaults_to_dry_run() -> None:
 
 
 @pytest.mark.asyncio
+async def test_failed_initial_pulse_never_sends_refresh_and_stops(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A queue-start timeout must lead to a stop, never a later movement write."""
+    coordinator = _pulse_coordinator()
+    command = AsyncMock(return_value={"ok": False, "error": "queue_start_timeout"})
+    refresh = AsyncMock()
+    stop = AsyncMock(return_value={"ok": True})
+    monkeypatch.setattr(mammotion_services, "_manual_velocity_command_attempt", command)
+    monkeypatch.setattr(mammotion_services, "_motion_refresh_window", refresh)
+    monkeypatch.setattr(mammotion_services, "_manual_velocity_stop_attempt", stop)
+    monkeypatch.setattr(
+        mammotion_services,
+        "_manual_velocity_pulse_gates",
+        lambda *_args, **_kwargs: [{"name": "ble_link_live", "passed": True}],
+    )
+    monkeypatch.setattr(
+        mammotion_services,
+        "_settle_ble_command_queue",
+        AsyncMock(return_value={"live": True, "reason": None}),
+    )
+
+    result = await _manual_velocity_pulse_test(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        followup_samples=0,
+        motion_refresh_interval_ms=200,
+    )
+
+    command.assert_awaited_once()
+    refresh.assert_not_awaited()
+    stop.assert_awaited_once()
+    assert result["motion_refresh"]["reason"] == "initial_command_failed"
+    assert result["real_pulse_completed"] is False
+
+
+@pytest.mark.asyncio
+async def test_in_flight_settle_timeout_blocks_pulse_before_send(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A gate snapshot cannot override the earlier busy-worker verdict."""
+    coordinator = _pulse_coordinator()
+    command = AsyncMock()
+    monkeypatch.setattr(mammotion_services, "_manual_velocity_command_attempt", command)
+    monkeypatch.setattr(
+        mammotion_services,
+        "_manual_velocity_pulse_gates",
+        lambda *_args, **_kwargs: [{"name": "ble_link_live", "passed": True}],
+    )
+    monkeypatch.setattr(
+        mammotion_services,
+        "_settle_ble_command_queue",
+        AsyncMock(return_value={"live": False, "reason": "command_queue_in_flight"}),
+    )
+
+    result = await _manual_velocity_pulse_test(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        followup_samples=0,
+    )
+
+    command.assert_not_awaited()
+    assert result["blockers"] == ["ble_link_live"]
+    assert result["safety_gates"][0]["diagnostics"]["reason"] == (
+        "command_queue_in_flight"
+    )
+
+
+@pytest.mark.asyncio
+async def test_failed_refresh_stops_and_fails_the_pulse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed refresh result must not be mistaken for successful delivery."""
+    coordinator = _pulse_coordinator()
+    command = AsyncMock(
+        side_effect=[
+            {"ok": True, "error": None},
+            {"ok": False, "error": "queue_start_timeout"},
+        ]
+    )
+    stop = AsyncMock(return_value={"ok": True})
+    monkeypatch.setattr(mammotion_services, "_manual_velocity_command_attempt", command)
+    monkeypatch.setattr(mammotion_services, "_manual_velocity_stop_attempt", stop)
+    monkeypatch.setattr(
+        mammotion_services,
+        "_manual_velocity_pulse_gates",
+        lambda *_args, **_kwargs: [{"name": "ble_link_live", "passed": True}],
+    )
+    monkeypatch.setattr(
+        mammotion_services,
+        "_settle_ble_command_queue",
+        AsyncMock(return_value={"live": True, "reason": None}),
+    )
+    monkeypatch.setattr(
+        mammotion_services,
+        "_motion_open_sleep",
+        AsyncMock(),
+    )
+
+    result = await _manual_velocity_pulse_test(
+        coordinator,
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        followup_samples=0,
+        duration_ms=1000,
+        motion_refresh_interval_ms=200,
+    )
+
+    assert command.await_count == 2
+    stop.assert_awaited_once()
+    assert "queue_start_timeout" in result["motion_refresh"]["refresh_error"]
+    assert result["real_pulse_completed"] is False
+
+
+@pytest.mark.asyncio
 async def test_manual_velocity_pulse_test_firmware_mode_skips_explicit_stop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
