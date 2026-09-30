@@ -117,7 +117,7 @@ def set_gate(url: str, token: str, *, on: bool) -> None:
             "on" if on else "off",
             "--yes",
         ],
-        check=False,
+        check=True,
         capture_output=True,
     )
 
@@ -339,15 +339,17 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915
     }
     emit(f"start {start}  rtk {state['position']['rtk_status_label']}")
 
-    if not args.dry_run:
-        set_gate(url, token, on=True)
-        emit(f"ARMED {now_iso()}")
+    aborted_reason: str | None = None
     try:
+        if not args.dry_run:
+            set_gate(url, token, on=True)
+            emit(f"ARMED {now_iso()}")
         rate = INITIAL_TURN_RATE_DEG_S
         for index in range(4):
             leg = drive_leg(url, token, f"leg{index + 1}", record, dry_run=args.dry_run)
             if leg.get("abort"):
                 emit(f"ABORT on {leg['label']}: {leg['abort']}")
+                aborted_reason = str(leg["abort"])
                 break
             # Turn 1's true angle is only knowable once leg 2 exists; from then
             # on, re-derive the rate from what the previous turn actually did.
@@ -380,6 +382,7 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915
             )
             if turn.get("abort"):
                 emit(f"ABORT on {turn['label']}: {turn['abort']}")
+                aborted_reason = str(turn["abort"])
                 break
     finally:
         if not args.dry_run:
@@ -393,6 +396,8 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915
         )
         record["ended_utc"] = now_iso()
         record["final_rtk"] = final["position"]["rtk_status_label"]
+        record["status"] = "aborted" if aborted_reason else "completed"
+        record["abort_reason"] = aborted_reason
         path = (
             args.out
             / f"rtk_square_{'dry' if args.dry_run else 'real'}_{int(time.time())}.json"
@@ -412,10 +417,11 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915
                 f"  {turn['label']}: commanded {turn['commanded_ms']} ms  achieved {turn.get('achieved_deg')}"
             )
         emit(f"record: {path}")
-        emit(
-            "NOW TAPE-MEASURE the real distance from the start mark -- that is the headline number."
-        )
-    return 0
+        if not args.dry_run and not aborted_reason:
+            emit(
+                "NOW TAPE-MEASURE the real distance from the start mark -- that is the headline number."
+            )
+    return 1 if aborted_reason else 0
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ stubbed, so nothing is sent anywhere.
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -111,9 +112,11 @@ def test_the_gate_is_disarmed_even_though_the_run_added_a_turn(
 
 
 def test_an_aborted_final_turn_still_disarms(
-    runner: tuple[ModuleType, dict[str, list[Any]]], monkeypatch: pytest.MonkeyPatch
+    runner: tuple[ModuleType, dict[str, list[Any]]],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    """A refusal on the new fourth turn is a stop, not a stranded armed gate."""
+    """A refusal disarms and exits nonzero, so automation cannot report success."""
     module, calls = runner
 
     def aborting_turn(
@@ -133,10 +136,33 @@ def test_an_aborted_final_turn_still_disarms(
 
     monkeypatch.setattr(module, "drive_turn", aborting_turn)
 
-    module.main()
+    assert module.main() == 1
 
     assert calls["turns"] == ["turn1", "turn2", "turn3", "turn4"]
     assert calls["gate"] == [True, False]
+    record = json.loads(next(tmp_path.glob("rtk_square_real_*.json")).read_text())
+    assert record["status"] == "aborted"
+    assert record["abort_reason"] == "blockers: ['ble_client_not_connected']"
+
+
+def test_failed_arm_still_attempts_disarm(
+    runner: tuple[ModuleType, dict[str, list[Any]]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An options-flow failure cannot skip the finally-block disarm attempt."""
+    module, calls = runner
+
+    def fail_arm(_url: str, _token: str, *, on: bool) -> None:
+        calls["gate"].append(on)
+        if on:
+            raise RuntimeError("arm helper failed")
+
+    monkeypatch.setattr(module, "set_gate", fail_arm)
+
+    with pytest.raises(RuntimeError, match="arm helper failed"):
+        module.main()
+
+    assert calls["gate"] == [True, False]
+    assert calls["legs"] == []
 
 
 # The 2026-09-27 repeat: turn 3 was split 4000 + 4000 + 4000 + 32 ms. The
