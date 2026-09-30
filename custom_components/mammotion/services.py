@@ -16916,6 +16916,12 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
         confirm_blades_off=confirm_blades_off,
         confirm_clear_area=confirm_clear_area,
     )
+    if queue_settle is not None and not queue_settle["live"]:
+        for gate in gates:
+            if gate["name"] == "ble_link_live":
+                gate["passed"] = False
+                gate["diagnostics"] = queue_settle
+                break
     runtime_safety = _runtime_motion_safety_summary(
         initial_telemetry,
         ha_state=ha_state,

@@ -3218,7 +3218,7 @@ async def test_vio_linear_pulse_reuses_settled_position_without_sample_wait(
     sleep_delays: list[float] = []
     refresh_settle_seconds: list[float] = []
     queue_settles: list[int] = []
-    queue_live = {"value": True}
+    queue_reports = [True, True]
 
     async def fake_sleep(delay: float) -> None:
         sleep_delays.append(delay)
@@ -3259,10 +3259,11 @@ async def test_vio_linear_pulse_reuses_settled_position_without_sample_wait(
 
     async def fake_queue_settle(*_args: object) -> dict[str, object]:
         queue_settles.append(1)
+        live = queue_reports.pop(0)
         return {
-            "live": queue_live["value"],
-            "reason": None if queue_live["value"] else "command_queue_backlogged",
-            "queue_depth": 0 if queue_live["value"] else 1,
+            "live": live,
+            "reason": None if live else "command_queue_backlogged",
+            "queue_depth": 0 if live else 1,
         }
 
     monkeypatch.setattr(mammotion_services.asyncio, "sleep", fake_sleep)
@@ -3313,7 +3314,7 @@ async def test_vio_linear_pulse_reuses_settled_position_without_sample_wait(
     # A persistent queue is named and refused before a second pulse, rather
     # than surfacing as the hardware run's generic command_failed.
     coordinator.data.mowing_state.pos_x = 1.0
-    queue_live["value"] = False
+    queue_reports.extend([True, False])
     blocked = await _raw_pymammotion_execute_vector_segment(
         coordinator,
         [{"x": 1.0, "y": 1.0}, {"x": 1.8, "y": 1.0}],

@@ -240,6 +240,40 @@ async def test_the_vector_segment_executor_settles_before_it_gates(
 
 
 @pytest.mark.asyncio
+async def test_vector_segment_refuses_a_still_busy_queue(monkeypatch) -> None:
+    """Click-to-go must honor a timed-out settle despite a later empty qsize."""
+    monkeypatch.setattr(
+        services,
+        "_settle_ble_command_queue",
+        AsyncMock(return_value={"live": False, "reason": "command_queue_in_flight"}),
+    )
+    monkeypatch.setattr(
+        services,
+        "_manual_velocity_pulse_gates",
+        lambda *_args, **_kwargs: [{"name": "ble_link_live", "passed": True}],
+    )
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await services._raw_pymammotion_execute_vector_segment(  # noqa: SLF001
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.9, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        turn_mode="legacy",
+        sample_delays=(0,),
+    )
+
+    assert "ble_link_live" in result["blockers"], {
+        "stop_reason": result.get("stop_reason"),
+        "queue_settle": result.get("queue_settle"),
+        "gates": result.get("safety_gates"),
+    }
+    assert result["commands_sent"] == 0
+    assert result["queue_settle"]["reason"] == "command_queue_in_flight"
+
+
+@pytest.mark.asyncio
 async def test_a_dry_run_segment_never_waits_on_the_queue(monkeypatch) -> None:
     """A dry run enqueues nothing, so it must stay instant and not settle."""
     called: list[int] = []
