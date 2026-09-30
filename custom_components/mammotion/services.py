@@ -7826,7 +7826,11 @@ async def _manual_velocity_pulse_test(  # noqa: C901
     )
     if command_ok and stop_mode == "delayed" and stop_delay_ms > 0:
         await _motion_open_sleep(coordinator, stop_delay_ms / 1000)
-    if not command_ok or stop_mode in {"immediate", "delayed"}:
+    if (
+        not command_ok
+        or "refresh_error" in result["motion_refresh"]
+        or stop_mode in {"immediate", "delayed"}
+    ):
         result["stop_result"] = await _manual_velocity_stop_attempt(
             coordinator,
             use_wifi=use_wifi,

@@ -3767,8 +3767,10 @@ async def test_manual_velocity_pulse_test_defaults_to_dry_run() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("stop_mode", ["immediate", "firmware"])
 async def test_failed_initial_pulse_never_sends_refresh_and_stops(
     monkeypatch: pytest.MonkeyPatch,
+    stop_mode: str,
 ) -> None:
     """A queue-start timeout must lead to a stop, never a later movement write."""
     coordinator = _pulse_coordinator()
@@ -3796,6 +3798,7 @@ async def test_failed_initial_pulse_never_sends_refresh_and_stops(
         confirm_clear_area=True,
         followup_samples=0,
         motion_refresh_interval_ms=200,
+        stop_mode=stop_mode,
     )
 
     command.assert_awaited_once()
@@ -3840,8 +3843,10 @@ async def test_in_flight_settle_timeout_blocks_pulse_before_send(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("stop_mode", ["immediate", "firmware"])
 async def test_failed_refresh_stops_and_fails_the_pulse(
     monkeypatch: pytest.MonkeyPatch,
+    stop_mode: str,
 ) -> None:
     """A failed refresh result must not be mistaken for successful delivery."""
     coordinator = _pulse_coordinator()
@@ -3878,6 +3883,7 @@ async def test_failed_refresh_stops_and_fails_the_pulse(
         followup_samples=0,
         duration_ms=1000,
         motion_refresh_interval_ms=200,
+        stop_mode=stop_mode,
     )
 
     assert command.await_count == 2
