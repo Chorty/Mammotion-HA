@@ -457,6 +457,35 @@ async def test_verify_refuses_to_confirm_across_a_link_drop(
 
 
 @pytest.mark.asyncio
+async def test_verify_refuses_to_confirm_when_the_link_drops_after_the_reports(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """🚨 A drop with NO later report leaves every sample on the old epoch.
+
+    Each sample's ``epoch`` is stamped when the report is published, so a drop
+    that no report follows is invisible in the samples alone: the reports read
+    before it are distinct and agree, and the check called that a confirmed stop
+    "on one unbroken link". Only the handle's live ``position_epoch`` sees it.
+    """
+    handle = _real_handle(with_ble=True)
+    await handle.on_raw_message(_report(1.0, 1.0))
+
+    async def _drop() -> None:
+        await handle.remove_transport(TransportType.BLE)
+
+    steps = [
+        _deliver(handle, 1.0, 1.0),
+        _deliver(handle, 1.0, 1.0),
+        _drop,
+        None,
+    ]
+    verdict = await _run_verify(monkeypatch, _VerifyCoordinator(handle), steps)
+    assert verdict["verdict"] == "cannot_confirm_link_changed"
+    assert len({s["position_epoch"] for s in verdict["samples"]}) == 1
+    assert len({s["live_position_epoch"] for s in verdict["samples"]}) == 2
+
+
+@pytest.mark.asyncio
 async def test_verify_flags_a_mower_that_is_still_moving(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

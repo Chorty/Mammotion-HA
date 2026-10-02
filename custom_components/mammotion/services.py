@@ -7302,22 +7302,27 @@ _COMMS_ABORT_STATIONARY_TOLERANCE_M = 0.05
 
 def _abort_position_sample(
     coordinator: MammotionReportUpdateCoordinator,
-) -> tuple[float | None, float | None, int | None, int | None]:
+) -> tuple[float | None, float | None, int | None, int | None, int | None]:
     """Read the latest published position report without sending anything.
 
-    Returns ``(x, y, epoch, sequence)`` from ``handle.latest_position_sample``.
-    ``sequence`` advances on every position report, including a byte-identical
-    one; ``epoch`` advances only at a transport boundary (a BLE drop or a
-    transport swap). Position comes from the same sample, so a counted report
-    and the coordinates judged are the same report. All four are ``None`` on a
-    backend that publishes no position samples.
+    Returns ``(x, y, epoch, sequence, live_epoch)``. The first four come from
+    ``handle.latest_position_sample``: ``sequence`` advances on every position
+    report, including a byte-identical one; ``epoch`` is the transport epoch the
+    report was published in. Position comes from the same sample, so a counted
+    report and the coordinates judged are the same report. ``live_epoch`` is the
+    handle's current ``position_epoch``, which advances at a transport boundary
+    (a BLE drop or a transport swap) even when no report follows -- the sample's
+    own ``epoch`` cannot see that. All five are ``None`` when not published.
     """
     sample: Any = None
+    live_epoch: Any = None
     with contextlib.suppress(Exception):
         handle = coordinator.manager.mower(coordinator.device_name)
         sample = getattr(handle, "latest_position_sample", None)
+        live_epoch = getattr(handle, "position_epoch", None)
+    live = live_epoch if isinstance(live_epoch, int) else None
     if sample is None:
-        return (None, None, None, None)
+        return (None, None, None, None, live)
     x, y = getattr(sample, "x", None), getattr(sample, "y", None)
     epoch, sequence = getattr(sample, "epoch", None), getattr(sample, "sequence", None)
     return (
@@ -7325,6 +7330,7 @@ def _abort_position_sample(
         float(y) if isinstance(y, int | float) else None,
         epoch if isinstance(epoch, int) else None,
         sequence if isinstance(sequence, int) else None,
+        live,
     )
 
 
@@ -7376,7 +7382,7 @@ async def _verify_stationary_after_comms_abort(
     for index in range(_COMMS_ABORT_VERIFY_SAMPLES):
         if index:
             await asyncio.sleep(_COMMS_ABORT_VERIFY_INTERVAL_SECONDS)
-        x, y, epoch, sequence = _abort_position_sample(coordinator)
+        x, y, epoch, sequence, live_epoch = _abort_position_sample(coordinator)
         samples.append(
             {
                 "index": index,
@@ -7384,11 +7390,19 @@ async def _verify_stationary_after_comms_abort(
                 "y": y,
                 "position_epoch": epoch,
                 "position_sequence": sequence,
+                "live_position_epoch": live_epoch,
             }
         )
 
     epochs = {s["position_epoch"] for s in samples if s["position_epoch"] is not None}
-    if len(epochs) > 1:
+    # A drop that no report follows leaves every sample on the old epoch; only
+    # the handle's live epoch shows it.
+    live_epochs = {
+        s["live_position_epoch"]
+        for s in samples
+        if s["live_position_epoch"] is not None
+    }
+    if len(epochs) > 1 or len(live_epochs) > 1:
         return {
             "verdict": "cannot_confirm_link_changed",
             "samples": samples,
