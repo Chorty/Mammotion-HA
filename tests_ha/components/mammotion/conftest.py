@@ -124,6 +124,7 @@ def _pulse_coordinator(
     ble_usable: bool = True,
     ble_last_send_age: float | None = 1.0,
     ble_queue_depth: int = 0,
+    ble_queue_in_flight: int = 0,
     ble_queue_paused: bool = False,
 ) -> SimpleNamespace:
     """Build a coordinator fixture for manual velocity pulse tests.
@@ -199,7 +200,10 @@ def _pulse_coordinator(
         queue=SimpleNamespace(
             is_saga_active=False,
             _transport_gate=SimpleNamespace(is_set=lambda: not ble_queue_paused),
-            _queue=SimpleNamespace(qsize=lambda: ble_queue_depth),
+            _queue=SimpleNamespace(
+                qsize=lambda: ble_queue_depth,
+                _unfinished_tasks=ble_queue_depth + ble_queue_in_flight,
+            ),
             enqueue=enqueue_immediately,
         ),
         commands=commands,

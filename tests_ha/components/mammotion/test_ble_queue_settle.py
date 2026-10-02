@@ -18,6 +18,7 @@ import pytest
 
 from custom_components.mammotion import services
 from custom_components.mammotion.coordinator import MammotionBaseUpdateCoordinator
+from custom_components.mammotion.services import _ble_link_liveness
 
 from .conftest import _pulse_coordinator
 
@@ -25,6 +26,14 @@ from .conftest import _pulse_coordinator
 def _report(reason: str | None, *, live: bool) -> dict[str, Any]:
     """Build a liveness report shaped like ``_ble_link_liveness`` returns."""
     return {"live": live, "reason": reason, "queue_depth": 0 if live else 1}
+
+
+def test_liveness_reports_dequeued_work_separately_from_pending_depth() -> None:
+    """A busy worker is visible even after it removes its item from qsize."""
+    report = _ble_link_liveness(_pulse_coordinator(ble_queue_in_flight=1))
+
+    assert report["queue_depth"] == 0
+    assert report["queue_in_flight"] == 1
 
 
 @pytest.mark.asyncio
@@ -136,6 +145,51 @@ async def test_an_already_live_link_is_not_delayed(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_in_flight_command_is_waited_out_even_when_pending_queue_is_empty(
+    monkeypatch,
+) -> None:
+    """A dequeued report command still occupies the worker and must drain."""
+    reports = [
+        {**_report(None, live=True), "queue_in_flight": 1},
+        {**_report(None, live=True), "queue_in_flight": 1},
+        {**_report(None, live=True), "queue_in_flight": 0},
+    ]
+    seen = 0
+
+    def fake_liveness(_coordinator: Any) -> dict[str, Any]:
+        nonlocal seen
+        report = reports[min(seen, len(reports) - 1)]
+        seen += 1
+        return report
+
+    monkeypatch.setattr(services, "_ble_link_liveness", fake_liveness)
+    monkeypatch.setattr(services, "_BLE_QUEUE_SETTLE_POLL_SECONDS", 0.0)
+
+    result = await services._settle_ble_command_queue(object())  # noqa: SLF001
+
+    assert result["live"] is True
+    assert result["queue_in_flight"] == 0
+    assert seen == 3
+
+
+@pytest.mark.asyncio
+async def test_stuck_in_flight_command_fails_the_settle_gate(monkeypatch) -> None:
+    """An empty pending queue must not make a busy worker look safe."""
+    monkeypatch.setattr(
+        services,
+        "_ble_link_liveness",
+        lambda _c: {**_report(None, live=True), "queue_in_flight": 1},
+    )
+    monkeypatch.setattr(services, "_BLE_QUEUE_SETTLE_POLL_SECONDS", 0.0)
+    monkeypatch.setattr(services, "_BLE_QUEUE_SETTLE_TIMEOUT_SECONDS", 0.01)
+
+    result = await services._settle_ble_command_queue(object())  # noqa: SLF001
+
+    assert result["live"] is False
+    assert result["reason"] == "command_queue_in_flight"
+
+
+@pytest.mark.asyncio
 async def test_the_vector_segment_executor_settles_before_it_gates(
     monkeypatch,
 ) -> None:
@@ -183,6 +237,40 @@ async def test_the_vector_segment_executor_settles_before_it_gates(
         "be refused on a command the previous segment queued"
     )
     assert result["queue_settle"] == _report(None, live=True)
+
+
+@pytest.mark.asyncio
+async def test_vector_segment_refuses_a_still_busy_queue(monkeypatch) -> None:
+    """Click-to-go must honor a timed-out settle despite a later empty qsize."""
+    monkeypatch.setattr(
+        services,
+        "_settle_ble_command_queue",
+        AsyncMock(return_value={"live": False, "reason": "command_queue_in_flight"}),
+    )
+    monkeypatch.setattr(
+        services,
+        "_manual_velocity_pulse_gates",
+        lambda *_args, **_kwargs: [{"name": "ble_link_live", "passed": True}],
+    )
+    coordinator = _pulse_coordinator(position=(1.0, 1.0, 0.0))
+
+    result = await services._raw_pymammotion_execute_vector_segment(  # noqa: SLF001
+        coordinator,
+        [{"x": 1.0, "y": 1.0}, {"x": 1.9, "y": 1.0}],
+        dry_run=False,
+        confirm_blades_off=True,
+        confirm_clear_area=True,
+        turn_mode="legacy",
+        sample_delays=(0,),
+    )
+
+    assert "ble_link_live" in result["blockers"], {
+        "stop_reason": result.get("stop_reason"),
+        "queue_settle": result.get("queue_settle"),
+        "gates": result.get("safety_gates"),
+    }
+    assert result["commands_sent"] == 0
+    assert result["queue_settle"]["reason"] == "command_queue_in_flight"
 
 
 @pytest.mark.asyncio

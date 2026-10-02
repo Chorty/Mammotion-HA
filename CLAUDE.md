@@ -1186,9 +1186,11 @@ page.** `scripts/build_ble_coverage_map.py` emits two things:
 - `docs/ble-coverage-map.html` (gitignored) — a standalone viewer kept for
   offline analysis. ✏️ **Built first by mistake**: the ask was always an overlay
   on the card's own map, and a standalone page did not answer it.
-🔑 **The card fetches `/mammotion/ble-coverage.json`** — `async_setup` already
-registers `StaticPathConfig("/mammotion", WWW_DIR)`, so that absolute path holds
-whether the card was loaded from `/mammotion/` or `/hacsfiles/`. **No backend
+🔑 **The card fetches `ble-coverage.json` next to its own URL, then falls back
+to `/mammotion/ble-coverage.json`** — `async_setup` registers
+`StaticPathConfig("/mammotion", WWW_DIR)`, so the fallback holds whether the
+card was loaded from `/mammotion/` or `/hacsfiles/`; the card-relative URL is
+what the separate card repo will use. **No backend
 service was added**; the fetch is lazy, so a session that never opens the
 overlay never downloads it, and any failure switches the overlay off rather than
 breaking the map.
