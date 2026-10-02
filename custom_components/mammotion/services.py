@@ -7302,19 +7302,35 @@ _COMMS_ABORT_STATIONARY_TOLERANCE_M = 0.05
 
 def _abort_position_sample(
     coordinator: MammotionReportUpdateCoordinator,
-) -> tuple[float | None, float | None, int | None]:
-    """Read position and its report epoch without sending anything."""
-    telemetry = _custom_path_telemetry_snapshot(coordinator)
-    position = telemetry.get("position") or {}
-    epoch: int | None = None
+) -> tuple[float | None, float | None, int | None, int | None, int | None]:
+    """Read the latest published position report without sending anything.
+
+    Returns ``(x, y, epoch, sequence, live_epoch)``. The first four come from
+    ``handle.latest_position_sample``: ``sequence`` advances on every position
+    report, including a byte-identical one; ``epoch`` is the transport epoch the
+    report was published in. Position comes from the same sample, so a counted
+    report and the coordinates judged are the same report. ``live_epoch`` is the
+    handle's current ``position_epoch``, which advances at a transport boundary
+    (a BLE drop or a transport swap) even when no report follows -- the sample's
+    own ``epoch`` cannot see that. All five are ``None`` when not published.
+    """
+    sample: Any = None
+    live_epoch: Any = None
     with contextlib.suppress(Exception):
         handle = coordinator.manager.mower(coordinator.device_name)
-        epoch = getattr(handle, "position_epoch", None)
-    x, y = position.get("x"), position.get("y")
+        sample = getattr(handle, "latest_position_sample", None)
+        live_epoch = getattr(handle, "position_epoch", None)
+    live = live_epoch if isinstance(live_epoch, int) else None
+    if sample is None:
+        return (None, None, None, None, live)
+    x, y = getattr(sample, "x", None), getattr(sample, "y", None)
+    epoch, sequence = getattr(sample, "epoch", None), getattr(sample, "sequence", None)
     return (
         float(x) if isinstance(x, int | float) else None,
         float(y) if isinstance(y, int | float) else None,
-        epoch,
+        epoch if isinstance(epoch, int) else None,
+        sequence if isinstance(sequence, int) else None,
+        live,
     )
 
 
@@ -7332,10 +7348,15 @@ async def _verify_stationary_after_comms_abort(
     exactly when it has gone blind -- and the right response to going blind is to
     fix the link and go look, not to relax.
 
-    So liveness is proven independently: ``handle.position_epoch`` advances on
-    every position report, and only if it advanced during the window does an
-    unchanged position mean anything. The four verdicts are deliberately
-    asymmetric -- two of them are "cannot confirm", not "fine".
+    So liveness is proven independently, from the position sample's
+    ``sequence``, which advances on every position report. Only new reports
+    inside ONE ``epoch`` count: the epoch advances when a transport drops or is
+    replaced, so an epoch change means the link broke during the window, and
+    that can never be evidence the feed was alive. (Before 2026-09-28 this read
+    ``handle.position_epoch`` as if it were per-report. It is not, so the check
+    could never confirm a stop, and a mid-window disconnect read as "alive".)
+    The verdicts are deliberately asymmetric -- three of them are "cannot
+    confirm", not "fine".
 
     Sends no command of any kind: this reads cached coordinator telemetry and
     transport attributes only. It never requests reports, because a report
@@ -7361,12 +7382,43 @@ async def _verify_stationary_after_comms_abort(
     for index in range(_COMMS_ABORT_VERIFY_SAMPLES):
         if index:
             await asyncio.sleep(_COMMS_ABORT_VERIFY_INTERVAL_SECONDS)
-        x, y, epoch = _abort_position_sample(coordinator)
-        samples.append({"index": index, "x": x, "y": y, "position_epoch": epoch})
+        x, y, epoch, sequence, live_epoch = _abort_position_sample(coordinator)
+        samples.append(
+            {
+                "index": index,
+                "x": x,
+                "y": y,
+                "position_epoch": epoch,
+                "position_sequence": sequence,
+                "live_position_epoch": live_epoch,
+            }
+        )
 
     epochs = {s["position_epoch"] for s in samples if s["position_epoch"] is not None}
-    located = [s for s in samples if s["x"] is not None and s["y"] is not None]
-    if len(epochs) <= 1:
+    # A drop that no report follows leaves every sample on the old epoch; only
+    # the handle's live epoch shows it.
+    live_epochs = {
+        s["live_position_epoch"]
+        for s in samples
+        if s["live_position_epoch"] is not None
+    }
+    if len(epochs) > 1 or len(live_epochs) > 1:
+        return {
+            "verdict": "cannot_confirm_link_changed",
+            "samples": samples,
+            "detail": (
+                "The link dropped or was replaced during the window, so the "
+                "reports that arrived cannot show the mower held still. Check the "
+                "mower in person."
+            ),
+        }
+    # One report per distinct sequence: re-reading the same report is not new
+    # evidence, and its position must not be counted twice.
+    reports: dict[int, dict[str, Any]] = {}
+    for s in samples:
+        if s["position_sequence"] is not None:
+            reports.setdefault(s["position_sequence"], s)
+    if len(reports) <= 1:
         return {
             "verdict": "cannot_confirm_feed_stale",
             "samples": samples,
@@ -7376,6 +7428,11 @@ async def _verify_stationary_after_comms_abort(
                 "a confirmed stop. Check the mower in person."
             ),
         }
+    located = [
+        reports[seq]
+        for seq in sorted(reports)
+        if reports[seq]["x"] is not None and reports[seq]["y"] is not None
+    ]
     if len(located) < 2:
         return {
             "verdict": "cannot_confirm_feed_stale",
@@ -7394,12 +7451,13 @@ async def _verify_stationary_after_comms_abort(
         "net_drift_m": round(drift, 4),
         "tolerance_m": _COMMS_ABORT_STATIONARY_TOLERANCE_M,
         "detail": (
-            f"Position moved {spread:.3f} m across {len(located)} live reports "
+            f"Position moved {spread:.3f} m across {len(located)} new reports "
             f"(tolerance {_COMMS_ABORT_STATIONARY_TOLERANCE_M} m) -- the mower "
             "may still be driving."
             if moving
-            else f"Position held within {spread:.3f} m across {len(located)} "
-            "live reports; the feed was demonstrably alive throughout."
+            else f"Position held within {spread:.3f} m across {len(located)} new "
+            "reports on one unbroken link; the feed was demonstrably alive "
+            "throughout."
         ),
     }
 
@@ -7438,6 +7496,8 @@ async def _verify_and_update_abort_notification(
         "cannot_confirm_feed_stale": "⚠️ Could NOT confirm - the position feed "
         "went silent.",
         "cannot_confirm_link_down": "⚠️ Could NOT confirm - BLE did not come back.",
+        "cannot_confirm_link_changed": "⚠️ Could NOT confirm - the link dropped "
+        "during the check.",
     }
     try:
         verdict = await _verify_stationary_after_comms_abort(coordinator)
