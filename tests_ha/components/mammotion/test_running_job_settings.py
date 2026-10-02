@@ -385,6 +385,63 @@ def test_out_of_range_plan_values_are_clamped_into_the_plan_not_just_the_display
     assert coordinator.operation_settings.channel_width == 14
 
 
+# --- a refused change must leave HA's state as it was ------------------------
+
+
+def _refusal_entity(coordinator: Any, key: str) -> Any:
+    coordinator.last_update_success = True
+    limits = DeviceLimits(
+        blade_height=RangeLimit(min=25, max=70),
+        working_speed=RangeLimit(min=0.2, max=1.2),
+        path_spacing=RangeLimit(min=20, max=35),
+    )
+    entity = MammotionWorkingNumberEntity(coordinator, _description(key), limits)
+    entity.async_write_ha_state = MagicMock()
+    return entity
+
+
+async def test_a_refused_mid_job_change_is_not_left_in_the_plan() -> None:
+    """🚨 The refused value used to stay in the plan for the NEXT job.
+
+    `set_fn` wrote it before the fail-closed read refused, so the entity
+    snapped back to the running job's value while HA's plan quietly kept the
+    refused one -- invisible until the next job HA started used it.
+    """
+    coordinator = _coordinator(reply=CommandTimeoutError("bidire_reqconver_path", 1))
+    entity = _refusal_entity(coordinator, "working_speed")
+    shown_before = entity.native_value
+
+    with pytest.raises(HomeAssistantError) as raised:
+        await entity.async_set_native_value(0.5)
+
+    assert raised.value.translation_key == "running_job_unreadable"
+    coordinator.async_send_command.assert_not_awaited()
+    assert coordinator.operation_settings.speed == pytest.approx(0.2)
+    assert entity.native_value == shown_before
+
+
+async def test_a_refused_change_is_recorded_on_the_entity_until_one_succeeds() -> None:
+    """The error toast was the only signal; the entity now keeps the refusal."""
+    coordinator = _coordinator(reply=CommandTimeoutError("bidire_reqconver_path", 1))
+    entity = _refusal_entity(coordinator, "blade_height")
+
+    with pytest.raises(HomeAssistantError):
+        await entity.async_set_native_value(45)
+
+    refused = entity.extra_state_attributes["last_refused_change"]
+    assert refused["value"] == 45
+    assert refused["reason"] == "running_job_unreadable"
+    assert refused["at"]
+    entity.async_write_ha_state.assert_called()
+
+    coordinator.manager.send_command_and_wait.side_effect = None
+    coordinator.manager.send_command_and_wait.return_value = _job_reply()
+    await entity.async_set_native_value(45)
+
+    assert "last_refused_change" not in entity.extra_state_attributes
+    assert _sent_route(coordinator).blade_height == 45
+
+
 # --- reading the job when a mow starts, without being asked ------------------
 
 
