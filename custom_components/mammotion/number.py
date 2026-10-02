@@ -1,7 +1,8 @@
 """Number entities for the Mammotion integration."""
 
+import copy
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, is_dataclass
 from typing import Any
 
 from homeassistant.components.number import (
@@ -19,8 +20,10 @@ from homeassistant.const import (
     UnitOfSpeed,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 from pymammotion.data.model.device import PoolCleanerDevice
 from pymammotion.data.model.device_limits import DeviceLimits
 from pymammotion.utility.device_config import DeviceConfig
@@ -366,6 +369,9 @@ class MammotionWorkingNumberEntity(MammotionConfigNumberEntity):
     own next-job plan otherwise; the ``value_source`` attribute says which.
     """
 
+    #: The last change the fail-closed path refused, until a change succeeds.
+    _last_refused_change: dict[str, Any] | None = None
+
     def __init__(
         self,
         coordinator: MammotionBaseUpdateCoordinator[Any],
@@ -443,9 +449,18 @@ class MammotionWorkingNumberEntity(MammotionConfigNumberEntity):
         return self.entity_description.native_step
 
     @property
-    def extra_state_attributes(self) -> dict[str, str]:
-        """Say whether the value is the running job's or HA's next-job plan."""
-        return {"value_source": self.coordinator.working_setting_source()}
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Say whether the value is the running job's or HA's next-job plan.
+
+        ``last_refused_change`` names the last change the mower's running job
+        could not be read for (so nothing was sent), until a change succeeds.
+        """
+        attributes: dict[str, Any] = {
+            "value_source": self.coordinator.working_setting_source()
+        }
+        if self._last_refused_change is not None:
+            attributes["last_refused_change"] = self._last_refused_change
+        return attributes
 
     async def async_added_to_hass(self) -> None:
         """Restore the last plan value, then keep it inside the model's limits."""
@@ -475,15 +490,39 @@ class MammotionWorkingNumberEntity(MammotionConfigNumberEntity):
         number the operator picked against the DISPLAYED range and converts it
         afterwards, and the displayed maximum is rounded outward: 2.8 in comes
         back as 71.1 mm against a 70 mm device limit.
+
+        A change refused because the running job could not be read sends
+        nothing, so it also leaves nothing behind: the plan and the shown value
+        go back to what they were. 🚨 It used to stay in the plan, invisible
+        behind the running job's value, until the next job HA started sent it.
         """
         value = self._clamped(value)
         if self._attr_native_value == value:
             return
+        shown_before = self._attr_native_value
+        plan = getattr(self.coordinator, "operation_settings", None)
+        plan_before = copy.copy(plan) if is_dataclass(plan) else None
         self._attr_native_value = value
         if self.entity_description.set_fn is not None:
             self.entity_description.set_fn(self.coordinator, value)
         if self.entity_description.set_async_fn is not None:
-            await self.entity_description.set_async_fn(self.coordinator, value)
+            try:
+                await self.entity_description.set_async_fn(self.coordinator, value)
+            except HomeAssistantError as err:
+                if err.translation_key != "running_job_unreadable":
+                    raise
+                if plan_before is not None:
+                    for field in fields(plan_before):
+                        setattr(plan, field.name, getattr(plan_before, field.name))
+                self._attr_native_value = shown_before
+                self._last_refused_change = {
+                    "value": value,
+                    "reason": err.translation_key,
+                    "at": dt_util.utcnow().isoformat(),
+                }
+                self.async_write_ha_state()
+                raise
+        self._last_refused_change = None
         self.async_write_ha_state()
 
 
