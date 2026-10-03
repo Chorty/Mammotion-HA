@@ -247,7 +247,7 @@ const NIGHT_GO_PROFILE = Object.freeze({
 });
 // Bump on EVERY deploy (date + b-counter) so the footer/console banner proves
 // which build the browser actually loaded.
-const CARD_VERSION = "0.6.4-beta122";
+const CARD_VERSION = "0.6.4-beta123";
 
 // ---- Service domain ---------------------------------------------------------
 // The integration whose services the card calls. Today that is this fork,
