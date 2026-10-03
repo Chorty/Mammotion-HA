@@ -37,6 +37,7 @@ from webrtc_models import RTCIceCandidateInit, RTCIceServer
 from . import MammotionConfigEntry
 from .agora_api import AgoraResponse
 from .agora_websocket import AgoraWebSocketHandler
+from .const import has_rear_camera
 from .coordinator import MammotionBaseUpdateCoordinator
 from .entity import MammotionCameraBaseEntity
 
@@ -75,7 +76,7 @@ CAMERAS: tuple[MammotionCameraEntityDescription, ...] = (
         key="webrtc_camera_rear",
         stream_fn=lambda coordinator: coordinator.get_stream_data(),
         target_uid=3,
-        exists_fn=DeviceType.is_yuka,
+        exists_fn=has_rear_camera,
     ),
 )
 

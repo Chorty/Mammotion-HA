@@ -110,6 +110,7 @@ from .const import (
     EXPIRED_CREDENTIAL_EXCEPTIONS,
     LOGGER,
     NO_REQUEST_MODES,
+    has_rear_camera,
 )
 from .error_codes import describe_error_code
 
@@ -574,8 +575,8 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         if login_info is None:
             return Response(code=STREAM_AUTH_ERROR_CODE, msg="Not logged in")
         # The mower publishes cameraStates slot n as Agora uid n + 1: both
-        # front cameras on every vision mower, the rear one only on Yuka.
-        camera_states = [1, 1, int(DeviceType.is_yuka(self.device_name))]
+        # front cameras on every vision mower, the rear one on original Yuka.
+        camera_states = [1, 1, int(has_rear_camera(self.device_name))]
         session = aiohttp_client.async_get_clientsession(self.hass)
         async with asyncio.timeout(30):
             async with session.post(
@@ -1708,6 +1709,8 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
                 self.device_name
             ):
                 blade_height = 0
+            else:
+                self.validate_route_overrides({"blade_height": blade_height})
 
             await self.async_send_command(
                 "operate_on_device",
@@ -2254,6 +2257,7 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         ``running_job_unreadable`` and sends NOTHING, rather than pushing a
         plan the mower never asked for.
         """
+        self.validate_route_overrides(route_overrides or {})
         job = await self._async_read_running_job()
         settings = self._settings_for_running_job(job)
         for key, value in (route_overrides or {}).items():
@@ -2286,6 +2290,23 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         )
         self.async_update_listeners()
         return sent
+
+    def validate_route_overrides(self, overrides: dict[str, Any]) -> None:
+        """Reject explicit route settings outside this mower's native limits."""
+        limits = cast(MowingDevice, self.data).device_limits
+        for field, limit in (
+            ("speed", limits.working_speed),
+            ("channel_width", limits.path_spacing),
+            ("blade_height", limits.blade_height),
+        ):
+            if field not in overrides:
+                continue
+            value = overrides[field]
+            if not limit.min <= value <= limit.max:
+                raise HomeAssistantError(
+                    f"{field} must be between {limit.min:g} and {limit.max:g} "
+                    "in the mower's native units"
+                )
 
     async def _async_send_modified_route(
         self, operation_settings: OperationSettings

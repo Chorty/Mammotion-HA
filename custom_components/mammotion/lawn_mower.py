@@ -67,9 +67,7 @@ START_MOW_SCHEMA: VolDictType = {
 
 START_STOP_BLADES_SCHEMA: VolDictType = {
     vol.Required("start_stop", default=True): cv.boolean,
-    vol.Optional("blade_height", default=30): vol.All(
-        vol.Coerce(int), vol.Range(min=15, max=100)
-    ),
+    vol.Optional("blade_height"): vol.All(vol.Coerce(int), vol.Range(min=15, max=100)),
 }
 
 SET_NON_WORK_HOURS_SCHEMA: VolDictType = {
@@ -244,6 +242,10 @@ class MammotionLawnMowerEntity(MammotionBaseEntity, LawnMowerEntity):
             route_overrides.update(kwargs)
             if attributes:
                 route_overrides["areas"] = list(dict.fromkeys(attributes))
+
+            # Service schema bounds cover the product line; the individual
+            # mower may have a narrower native range. Check before cancellation.
+            self.coordinator.validate_route_overrides(route_overrides)
 
             # Merge onto coordinator's restored settings so UI-configured values
             # (speed, blade_height, etc.) are preserved when not explicitly provided.
