@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pymammotion.aliyun.exceptions import DeviceOfflineException
 
 from custom_components.mammotion.camera import (
     MammotionWebRTCCamera,
@@ -792,6 +793,28 @@ async def test_failed_stop_keeps_publisher_marked_for_retry() -> None:
     assert coordinator._camera_publisher_on is True
     assert _publisher_commands(coordinator) == [STOP_PUBLISHER]
 
+    coordinator.async_send_command.return_value = True
+    await coordinator.async_stop_camera_publisher_if_idle()
+
+    assert coordinator._camera_publisher_on is False
+    assert _publisher_commands(coordinator) == [STOP_PUBLISHER, STOP_PUBLISHER]
+
+
+@pytest.mark.asyncio
+async def test_offline_stop_keeps_publisher_marked_for_retry() -> None:
+    """An offline stop does not clear publisher state or mask offer cleanup."""
+    coordinator = _coordinator()
+    coordinator._camera_publisher_on = True
+    coordinator.async_send_command.side_effect = DeviceOfflineException(
+        "offline", "private-iot-id"
+    )
+
+    await coordinator.async_stop_camera_publisher_if_idle()
+
+    assert coordinator._camera_publisher_on is True
+    assert _publisher_commands(coordinator) == [STOP_PUBLISHER]
+
+    coordinator.async_send_command.side_effect = None
     coordinator.async_send_command.return_value = True
     await coordinator.async_stop_camera_publisher_if_idle()
 

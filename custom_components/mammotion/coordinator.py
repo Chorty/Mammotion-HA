@@ -681,7 +681,13 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
                 return
             try:
                 await self.leave_webrtc_channel()
-            except (CommandTimeoutError, HomeAssistantError) as err:
+            except (
+                CommandTimeoutError,
+                DeviceOfflineException,
+                HomeAssistantError,
+                NoTransportAvailableError,
+                TimeoutError,
+            ) as err:
                 LOGGER.warning(
                     "Unable to stop the idle camera stream: %s",
                     type(err).__name__,
