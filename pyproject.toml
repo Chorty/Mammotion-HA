@@ -9,13 +9,17 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.14.2"
 dependencies = [
-    # Fork build: released 0.8.12 plus the audited BLE teardown and BluFi
-    # reassembly fixes. No upstream release carries the teardown fix yet.
-    # Written without spaces around "@" deliberately: hassfest rejects any
-    # requirement string containing a space. Real motion is authorized by the
-    # behavioural probes in custom_components/mammotion/backend_capability.py,
-    # never by this version number.
-    "pymammotion@https://github.com/Chorty/PyMammotion/releases/download/chorty-0.8.12.post4/pymammotion-0.8.12.post4-py3-none-any.whl",
+    # Fork build of upstream 0.9.6 plus the audited BLE teardown fix, the
+    # position stream and the subscription leases. Written without spaces
+    # around "@" deliberately: hassfest rejects any requirement string
+    # containing a space. Real motion is authorized by the behavioural probes
+    # in custom_components/mammotion/backend_capability.py, never by this
+    # version number.
+    # 🚨 Must equal the pin in custom_components/mammotion/manifest.json and
+    # requirements_test.txt; tests_ha/test_pymammotion_pin.py enforces it. This
+    # one stayed on 0.8.12.post4 through two pin bumps, so every release's
+    # `uv lock` locked a backend the integration no longer shipped.
+    "pymammotion@https://github.com/Chorty/PyMammotion/releases/download/chorty-0.9.6.post1/pymammotion-0.9.6.post1-py3-none-any.whl",
     "homeassistant>=2026.1.0",
     "autotyping>=24.3.0",
     "websockets>=15.0.1",

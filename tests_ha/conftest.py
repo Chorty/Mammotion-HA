@@ -1,5 +1,6 @@
 """Keep hardware-evidence regressions local when private docs are absent."""
 
+import importlib.metadata
 from pathlib import Path
 
 import pytest
@@ -41,6 +42,11 @@ _PRIVATE_EVIDENCE_TESTS = {
         "test_reproduces_67_of_67_on_the_20260913_evidence",
     },
 }
+
+
+def pytest_report_header() -> str:
+    """Name the backend under test on every run, so a stale venv is visible."""
+    return f"pymammotion: {importlib.metadata.version('pymammotion')}"
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
