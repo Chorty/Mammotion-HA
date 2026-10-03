@@ -32,17 +32,27 @@ class ConcreteCoordinator(MammotionBaseUpdateCoordinator):
         ("Luba-AAAAAA", [], []),
         ("Luba-VS00CLD", ["webrtc_camera", "webrtc_camera_right"], [1, 2]),
         ("Luba-VP00CLD", ["webrtc_camera", "webrtc_camera_right"], [1, 2]),
+        ("Luba-MN00CLD", ["webrtc_camera", "webrtc_camera_right"], [1, 2]),
+        ("Luba-MB00CLD", ["webrtc_camera", "webrtc_camera_right"], [1, 2]),
         (
             "Yuka-000CLD",
             ["webrtc_camera", "webrtc_camera_right", "webrtc_camera_rear"],
             [1, 2, 3],
         ),
+        ("Yuka-MN00CLD", ["webrtc_camera", "webrtc_camera_right"], [1, 2]),
+        ("Yuka-YM00CLD", ["webrtc_camera", "webrtc_camera_right"], [1, 2]),
+        ("Yuka-VP00CLD", ["webrtc_camera", "webrtc_camera_right"], [1, 2]),
+        ("Yuka-MV00CLD", ["webrtc_camera", "webrtc_camera_right"], [1, 2]),
+        ("Yuka-ML00CLD", ["webrtc_camera", "webrtc_camera_right"], [1, 2]),
+        ("Ezy-VT00CLD", ["webrtc_camera", "webrtc_camera_right"], [1, 2]),
+        ("Ezy-LD00CLD", ["webrtc_camera", "webrtc_camera_right"], [1, 2]),
+        ("Luba-LD00CLD", ["webrtc_camera", "webrtc_camera_right"], [1, 2]),
     ],
 )
 async def test_setup_adds_one_camera_per_vision_feed(
     device_name: str, keys: list[str], uids: list[int]
 ) -> None:
-    """Vision mowers get left and right feeds, Yuka the rear one too."""
+    """Only the original Yuka advertises the rear feed to HA."""
     mower = SimpleNamespace(
         device=SimpleNamespace(device_name=device_name),
         reporting_coordinator=MagicMock(),
@@ -85,6 +95,9 @@ async def test_closing_one_camera_keeps_the_other_camera_stream_alive() -> None:
     coordinator = object.__new__(ConcreteCoordinator)
     coordinator._active_camera_sessions = {}  # noqa: SLF001
     coordinator._camera_session_lock = asyncio.Lock()  # noqa: SLF001
+    coordinator._camera_offer_lock = asyncio.Lock()  # noqa: SLF001
+    coordinator._camera_publisher_on = True  # noqa: SLF001
+    coordinator._webrtc_session_controls = {}  # noqa: SLF001
     coordinator.leave_webrtc_channel = AsyncMock()
 
     await coordinator.async_register_camera_session("left", "left-session")
@@ -103,12 +116,17 @@ async def test_closing_one_camera_keeps_the_other_camera_stream_alive() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("device_name", "states"),
-    [("Luba-VS00CLD", [1, 1, 0]), ("Yuka-000CLD", [1, 1, 1])],
+    [
+        ("Luba-VS00CLD", [1, 1, 0]),
+        ("Yuka-000CLD", [1, 1, 1]),
+        ("Yuka-MN00CLD", [1, 1, 0]),
+        ("Yuka-VP00CLD", [1, 1, 0]),
+    ],
 )
 async def test_dual_camera_token_requests_every_vision_stream(
     device_name: str, states: list[int]
 ) -> None:
-    """The token enables one cameraStates slot per vision feed the mower has."""
+    """The token asks for the rear feed only on original Yuka."""
     coordinator = object.__new__(ConcreteCoordinator)
     coordinator.device_name = device_name
     response = MagicMock(status=200)

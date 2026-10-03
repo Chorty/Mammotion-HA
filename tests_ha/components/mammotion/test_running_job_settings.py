@@ -40,7 +40,10 @@ from custom_components.mammotion.coordinator import (
     _RUNNING_JOB_READ_MAX_ATTEMPTS as MAX_READ_ATTEMPTS,
 )
 from custom_components.mammotion.coordinator import MammotionReportUpdateCoordinator
-from custom_components.mammotion.lawn_mower import START_MOW_SCHEMA
+from custom_components.mammotion.lawn_mower import (
+    START_MOW_SCHEMA,
+    START_STOP_BLADES_SCHEMA,
+)
 from custom_components.mammotion.number import (
     LUBA_WORKING_ENTITIES,
     NUMBER_WORKING_ENTITIES,
@@ -99,6 +102,7 @@ def _coordinator(
 ) -> Any:
     """Build a report coordinator with real methods and a stubbed transport."""
     data = MowingDevice()
+    data.mower_state.sub_model_id = "HM030070LB2PAWD30OMNI"
     data.report_data.dev.sys_status = sys_status
     data.report_data.work.bp_hash = ZONE
     data.report_data.work.area = 40 << 16
@@ -882,6 +886,40 @@ async def test_start_mow_modify_sends_nothing_on_a_zero_filled_job() -> None:
 
     assert err.value.translation_key == "running_job_unreadable"
     coordinator.async_send_command.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("speed", 1.0), ("channel_width", 10), ("blade_height", 80)],
+)
+async def test_start_mow_modify_rejects_out_of_model_limits(
+    field: str, value: float
+) -> None:
+    """The broad service schema cannot send values outside this mower's limits."""
+    coordinator = _coordinator()
+    coordinator.data.mower_state.sub_model_id = "27"  # max speed 0.8, blade 25-70
+
+    with pytest.raises(HomeAssistantError, match=field):
+        await coordinator.async_modify_plan_route({field: value})
+
+    coordinator.manager.send_command_and_wait.assert_not_awaited()
+    coordinator.async_send_command.assert_not_awaited()
+
+
+async def test_start_blades_rejects_out_of_model_height() -> None:
+    """Manual blade start cannot bypass the mower's blade-height range."""
+    coordinator = _coordinator()
+
+    with pytest.raises(HomeAssistantError, match="blade_height"):
+        await coordinator.async_start_stop_blades(True, 80)
+
+    coordinator.async_send_command.assert_not_awaited()
+    assert "blade_height" not in vol.Schema(START_STOP_BLADES_SCHEMA)(
+        {"start_stop": True}
+    )
+
+    await coordinator.async_start_stop_blades(True)
+    assert coordinator.async_send_command.await_args.kwargs["cut_knife_height"] == 60
 
 
 def test_start_mow_schema_does_not_default_the_route_fields() -> None:

@@ -14,8 +14,15 @@ from pymammotion.transport.base import (
     NoTransportAvailableError,
 )
 from pymammotion.utility.constant import WorkMode
+from pymammotion.utility.device_type import DeviceType
 
 DOMAIN: Final = "mammotion"
+
+
+def has_rear_camera(device_name: str) -> bool:
+    """Return whether the app exposes the rear camera selector for this model."""
+    return DeviceType.value_of_str(device_name) == DeviceType.LUBA_YUKA
+
 
 DEVICE_SUPPORT = ("Luba", "Yuka")
 SCAN_INTERVAL = timedelta(hours=1)

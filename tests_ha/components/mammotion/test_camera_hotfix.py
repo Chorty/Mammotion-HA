@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pymammotion.aliyun.exceptions import DeviceOfflineException
 
 from custom_components.mammotion.camera import (
     MammotionWebRTCCamera,
@@ -58,7 +59,9 @@ def _coordinator(*responses):
     coordinator._dual_camera_stream_available = False
     coordinator._active_camera_sessions = {}
     coordinator._camera_session_lock = asyncio.Lock()
+    coordinator._camera_offer_lock = asyncio.Lock()
     coordinator._webrtc_session_controls = {}
+    coordinator._camera_publisher_on = False
     return coordinator
 
 
@@ -191,6 +194,10 @@ async def test_camera_state_tracks_successful_offer() -> None:
     camera._agora_handler = SimpleNamespace(candidates=[])
     camera.entity_description = SimpleNamespace(key="webrtc_camera", target_uid=1)
     camera._sessions = set()
+    camera._pending_sessions = set()
+    camera._cancelled_sessions = set()
+    camera._offer_tasks = set()
+    camera._removing = False
     camera._attr_is_streaming = False
     camera._hass = MagicMock()
     camera.async_write_ha_state = MagicMock()
@@ -222,6 +229,10 @@ async def test_second_camera_offer_mints_its_own_token() -> None:
     camera._agora_handler = SimpleNamespace(candidates=[])
     camera.entity_description = SimpleNamespace(key="webrtc_camera_right", target_uid=2)
     camera._sessions = set()
+    camera._pending_sessions = set()
+    camera._cancelled_sessions = set()
+    camera._offer_tasks = set()
+    camera._removing = False
     camera._attr_is_streaming = False
     camera._hass = MagicMock()
     camera.async_write_ha_state = MagicMock()
@@ -254,6 +265,10 @@ async def test_right_camera_offer_uses_dual_stream_availability() -> None:
     camera._agora_handler = SimpleNamespace(candidates=[])
     camera.entity_description = SimpleNamespace(key="right_vision_camera", target_uid=2)
     camera._sessions = set()
+    camera._pending_sessions = set()
+    camera._cancelled_sessions = set()
+    camera._offer_tasks = set()
+    camera._removing = False
     camera._attr_is_streaming = False
     camera._hass = MagicMock()
     camera.async_write_ha_state = MagicMock()
@@ -281,6 +296,10 @@ async def test_camera_offer_reports_temporary_unavailability() -> None:
     camera._agora_handler = SimpleNamespace(candidates=[])
     camera.entity_description = SimpleNamespace(key="webrtc_camera", target_uid=1)
     camera._sessions = set()
+    camera._pending_sessions = set()
+    camera._cancelled_sessions = set()
+    camera._offer_tasks = set()
+    camera._removing = False
     camera._attr_is_streaming = False
     camera._hass = MagicMock()
     camera.async_write_ha_state = MagicMock()
@@ -289,6 +308,7 @@ async def test_camera_offer_reports_temporary_unavailability() -> None:
         clear_stream_data=MagicMock(),
         has_active_camera_sessions=False,
         dual_camera_stream_available=False,
+        async_stop_camera_publisher_if_idle=AsyncMock(),
     )
     messages = []
 
@@ -334,6 +354,10 @@ async def test_overlapping_camera_offers_wait_instead_of_returning_409() -> None
     camera._agora_handler = SimpleNamespace(candidates=[])
     camera.entity_description = SimpleNamespace(key="webrtc_camera", target_uid=1)
     camera._sessions = set()
+    camera._pending_sessions = set()
+    camera._cancelled_sessions = set()
+    camera._offer_tasks = set()
+    camera._removing = False
     camera._attr_is_streaming = False
     camera._hass = MagicMock()
     camera.async_write_ha_state = MagicMock()
@@ -348,6 +372,7 @@ async def test_overlapping_camera_offers_wait_instead_of_returning_409() -> None
     camera.coordinator = SimpleNamespace(
         async_check_stream_expiry=unavailable,
         has_active_camera_sessions=False,
+        async_stop_camera_publisher_if_idle=AsyncMock(),
     )
     first_messages = []
     second_messages = []
@@ -444,3 +469,377 @@ async def test_stream_401_renews_the_rejected_bearer_once_then_retries() -> None
     )
     coordinator.store_cloud_credentials.assert_called_once()
     assert coordinator.manager.refresh_stream_subscription.await_count == 2
+
+
+START_PUBLISHER = (("device_agora_join_channel_with_position",), {"enter_state": 1})
+STOP_PUBLISHER = (("device_agora_join_channel_with_position",), {"enter_state": 0})
+
+
+def _publisher_commands(coordinator) -> list[tuple]:
+    """Return the start/stop-publisher commands the coordinator sent, in order."""
+    return [
+        (call.args, call.kwargs)
+        for call in coordinator.async_send_command.await_args_list
+        if call.args == ("device_agora_join_channel_with_position",)
+    ]
+
+
+def _registered_camera(coordinator, key: str = "webrtc_camera", target_uid: int = 1):
+    """Build a camera entity registered with the coordinator as a stream owner."""
+    camera = object.__new__(MammotionWebRTCCamera)
+    camera._join_lock = coordinator.camera_offer_lock
+    camera._teardown_lock = asyncio.Lock()
+    camera._agora_handler = SimpleNamespace(candidates=[], disconnect=AsyncMock())
+    camera.entity_description = SimpleNamespace(key=key, target_uid=target_uid)
+    camera._sessions = set()
+    camera._pending_sessions = set()
+    camera._cancelled_sessions = set()
+    camera._offer_tasks = set()
+    camera._removing = False
+    camera._attr_is_streaming = False
+    camera._hass = MagicMock()
+    camera.async_write_ha_state = MagicMock()
+    camera.coordinator = coordinator
+    coordinator.register_webrtc_session_control(camera, key)
+    return camera
+
+
+@pytest.mark.asyncio
+async def test_failed_offer_stops_the_publisher_it_started() -> None:
+    """An offer that cannot get a token must not leave the mower streaming.
+
+    The offer asks the mower to publish before it requests the token, so a
+    failure after that point used to leave video running with no viewer.
+    """
+    coordinator = _coordinator(_response(500, with_data=False))
+    camera = _registered_camera(coordinator)
+    messages = []
+
+    await camera.async_handle_async_webrtc_offer(
+        "offer-sdp", "session", messages.append
+    )
+
+    assert messages[0].code == "503"
+    assert _publisher_commands(coordinator) == [START_PUBLISHER, STOP_PUBLISHER]
+    assert coordinator._camera_publisher_on is False
+    assert camera.has_pending_offer is False
+
+
+@pytest.mark.asyncio
+async def test_viewer_leaving_mid_negotiation_stops_the_publisher() -> None:
+    """A close that arrives while the offer negotiates is honoured afterwards.
+
+    Home Assistant registers the close callback before the offer runs and does
+    not cancel the offer, so the close used to be dropped and the session then
+    registered with no viewer, keeping the mower publishing indefinitely.
+    """
+    coordinator = _coordinator()
+
+    async def start_stream(*, force):
+        await coordinator.join_webrtc_channel()
+        return MagicMock(), MagicMock()
+
+    coordinator.async_check_stream_expiry = start_stream
+    camera = _registered_camera(coordinator)
+    negotiating = asyncio.Event()
+    finish = asyncio.Event()
+
+    async def negotiate(*_args):
+        negotiating.set()
+        await finish.wait()
+        return "answer-sdp"
+
+    camera._perform_webrtc_negotiation = negotiate
+    messages = []
+    offer = asyncio.create_task(
+        camera.async_handle_async_webrtc_offer("offer-sdp", "session", messages.append)
+    )
+    await negotiating.wait()
+
+    camera.close_webrtc_session("session")
+    finish.set()
+    await offer
+
+    assert messages == []
+    assert not coordinator.has_active_camera_sessions
+    assert camera._sessions == set()
+    assert camera._attr_is_streaming is False
+    assert _publisher_commands(coordinator) == [START_PUBLISHER, STOP_PUBLISHER]
+    camera._agora_handler.disconnect.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_last_viewer_closing_keeps_publisher_for_a_negotiating_sibling() -> None:
+    """Closing the last live view must not stop a sibling camera mid-offer.
+
+    The sibling's offer stops the publisher itself if it then fails.
+    """
+    coordinator = _coordinator()
+    coordinator._camera_publisher_on = True
+    left = _registered_camera(coordinator, "webrtc_camera", 1)
+    right = _registered_camera(coordinator, "webrtc_camera_right", 2)
+    await coordinator.async_register_camera_session("webrtc_camera", "left-session")
+    left._sessions.add("left-session")
+    right._pending_sessions.add("right-session")
+
+    await left.async_close_webrtc_session("left-session")
+
+    assert _publisher_commands(coordinator) == []
+
+    right._pending_sessions.discard("right-session")
+    await coordinator.async_stop_camera_publisher_if_idle()
+
+    assert _publisher_commands(coordinator) == [STOP_PUBLISHER]
+
+
+@pytest.mark.asyncio
+async def test_last_viewer_close_preserves_same_camera_pending_offer() -> None:
+    """Closing an old viewer cannot disconnect a queued offer's Agora handler."""
+    coordinator = _coordinator()
+    coordinator._camera_publisher_on = True
+    camera = _registered_camera(coordinator)
+    await coordinator.async_register_camera_session("webrtc_camera", "old-session")
+    camera._sessions.add("old-session")
+    camera._pending_sessions.add("new-session")
+
+    await camera.async_close_webrtc_session("old-session")
+
+    camera._agora_handler.disconnect.assert_not_awaited()
+    assert _publisher_commands(coordinator) == []
+    assert camera.has_pending_offer
+
+    camera._pending_sessions.discard("new-session")
+    await coordinator.async_stop_camera_publisher_if_idle()
+    assert _publisher_commands(coordinator) == [STOP_PUBLISHER]
+
+
+@pytest.mark.asyncio
+async def test_recovery_does_not_restart_publisher_without_a_viewer() -> None:
+    """A delayed peer-recovery task cannot revive an idle mower stream."""
+    coordinator = _coordinator()
+    coordinator.async_check_stream_expiry = AsyncMock()
+    camera = _registered_camera(coordinator)
+
+    await camera._recover_stream()
+
+    coordinator.async_check_stream_expiry.assert_not_awaited()
+    assert _publisher_commands(coordinator) == []
+
+
+@pytest.mark.asyncio
+async def test_idle_unload_sends_no_command_when_nothing_was_started() -> None:
+    """Unloading an idle camera does not wake the mower with a stop command."""
+    coordinator = _coordinator()
+    camera = _registered_camera(coordinator)
+
+    await coordinator.async_stop_camera_publisher_if_idle()
+
+    assert _publisher_commands(coordinator) == []
+    assert camera.has_pending_offer is False
+
+
+@pytest.mark.asyncio
+async def test_unload_cancels_pending_offer_before_unregistering_camera() -> None:
+    """An offer cannot register a viewer after its camera entity is removed."""
+    coordinator = _coordinator()
+
+    async def start_stream(*, force):
+        await coordinator.join_webrtc_channel()
+        return MagicMock(), MagicMock()
+
+    coordinator.async_check_stream_expiry = start_stream
+    camera = _registered_camera(coordinator)
+    negotiating = asyncio.Event()
+
+    async def negotiate(*_args):
+        negotiating.set()
+        await asyncio.Event().wait()
+
+    camera._perform_webrtc_negotiation = negotiate
+    messages = []
+    offer = asyncio.create_task(
+        camera.async_handle_async_webrtc_offer("offer-sdp", "session", messages.append)
+    )
+    await negotiating.wait()
+
+    with patch(
+        "custom_components.mammotion.camera.MammotionCameraBaseEntity.async_will_remove_from_hass",
+        new_callable=AsyncMock,
+    ):
+        await camera.async_will_remove_from_hass()
+
+    assert offer.cancelled()
+    assert camera._offer_tasks == set()
+    assert camera._pending_sessions == set()
+    assert not coordinator.has_active_camera_sessions
+    assert coordinator._webrtc_session_controls == {}
+    assert _publisher_commands(coordinator) == [START_PUBLISHER, STOP_PUBLISHER]
+
+    messages = []
+    await camera.async_handle_async_webrtc_offer(
+        "offer-sdp", "after-unload", messages.append
+    )
+    assert messages[0].code == "503"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel_task", [False, True])
+async def test_offer_closed_during_session_registration_is_released(
+    cancel_task: bool,
+) -> None:
+    """A close or cancellation cannot strand a registered coordinator viewer."""
+    coordinator = _coordinator()
+
+    async def start_stream(*, force):
+        await coordinator.join_webrtc_channel()
+        return MagicMock(), MagicMock()
+
+    coordinator.async_check_stream_expiry = start_stream
+    registered = asyncio.Event()
+    finish_registration = asyncio.Event()
+    original_register = coordinator.async_register_camera_session
+
+    async def register_then_wait(camera_key, session_id):
+        await original_register(camera_key, session_id)
+        registered.set()
+        await finish_registration.wait()
+
+    coordinator.async_register_camera_session = register_then_wait
+    camera = _registered_camera(coordinator)
+    camera._perform_webrtc_negotiation = AsyncMock(return_value="answer-sdp")
+    messages = []
+    offer = asyncio.create_task(
+        camera.async_handle_async_webrtc_offer("offer-sdp", "session", messages.append)
+    )
+    await registered.wait()
+
+    if cancel_task:
+        offer.cancel()
+    else:
+        camera.close_webrtc_session("session")
+        finish_registration.set()
+    await asyncio.gather(offer, return_exceptions=True)
+
+    assert messages == []
+    assert camera._sessions == set()
+    assert not coordinator.has_active_camera_sessions
+    assert _publisher_commands(coordinator) == [START_PUBLISHER, STOP_PUBLISHER]
+
+
+@pytest.mark.asyncio
+async def test_sibling_offer_waits_for_right_camera_refresh_and_negotiation() -> None:
+    """A sibling cannot clear the right offer's dual-stream flag mid-refresh."""
+    coordinator = _coordinator()
+    right = _registered_camera(coordinator, "webrtc_camera_right", 2)
+    left = _registered_camera(coordinator, "webrtc_camera", 1)
+    right_waiting = asyncio.Event()
+    left_started = asyncio.Event()
+    release_right = asyncio.Event()
+
+    async def refresh(*, force):
+        if asyncio.current_task().get_name() == "right-offer":
+            await coordinator.join_webrtc_channel()
+            coordinator._dual_camera_stream_available = True
+            right_waiting.set()
+            await release_right.wait()
+            return MagicMock(), MagicMock()
+        left_started.set()
+        coordinator._dual_camera_stream_available = False
+        return None, None
+
+    coordinator.async_check_stream_expiry = refresh
+    right._perform_webrtc_negotiation = AsyncMock(return_value="answer-sdp")
+    right_messages = []
+    left_messages = []
+    right_offer = asyncio.create_task(
+        right.async_handle_async_webrtc_offer(
+            "offer-sdp", "right-session", right_messages.append
+        ),
+        name="right-offer",
+    )
+    await right_waiting.wait()
+    left_offer = asyncio.create_task(
+        left.async_handle_async_webrtc_offer(
+            "offer-sdp", "left-session", left_messages.append
+        ),
+        name="left-offer",
+    )
+    await asyncio.sleep(0)
+    assert left.has_pending_offer
+    assert not left_started.is_set()
+
+    release_right.set()
+    await asyncio.gather(right_offer, left_offer)
+
+    assert left_started.is_set()
+    assert len(right_messages) == 1
+    assert right._attr_is_streaming is True
+    assert left_messages[0].code == "503"
+    assert _publisher_commands(coordinator) == [START_PUBLISHER]
+
+    await right.async_close_webrtc_session("right-session")
+    assert _publisher_commands(coordinator) == [START_PUBLISHER, STOP_PUBLISHER]
+
+
+@pytest.mark.asyncio
+async def test_failed_stop_keeps_publisher_marked_for_retry() -> None:
+    """A failed command must not be reported as a confirmed publisher stop."""
+    coordinator = _coordinator()
+    coordinator._camera_publisher_on = True
+    coordinator.async_send_command.return_value = False
+
+    await coordinator.async_stop_camera_publisher_if_idle()
+
+    assert coordinator._camera_publisher_on is True
+    assert _publisher_commands(coordinator) == [STOP_PUBLISHER]
+
+    coordinator.async_send_command.return_value = True
+    await coordinator.async_stop_camera_publisher_if_idle()
+
+    assert coordinator._camera_publisher_on is False
+    assert _publisher_commands(coordinator) == [STOP_PUBLISHER, STOP_PUBLISHER]
+
+
+@pytest.mark.asyncio
+async def test_offline_stop_keeps_publisher_marked_for_retry() -> None:
+    """An offline stop does not clear publisher state or mask offer cleanup."""
+    coordinator = _coordinator()
+    coordinator._camera_publisher_on = True
+    coordinator.async_send_command.side_effect = DeviceOfflineException(
+        "offline", "private-iot-id"
+    )
+
+    await coordinator.async_stop_camera_publisher_if_idle()
+
+    assert coordinator._camera_publisher_on is True
+    assert _publisher_commands(coordinator) == [STOP_PUBLISHER]
+
+    coordinator.async_send_command.side_effect = None
+    coordinator.async_send_command.return_value = True
+    await coordinator.async_stop_camera_publisher_if_idle()
+
+    assert coordinator._camera_publisher_on is False
+    assert _publisher_commands(coordinator) == [STOP_PUBLISHER, STOP_PUBLISHER]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("active_viewer", [False, True])
+async def test_diagnostic_refresh_preserves_only_an_active_publisher(
+    active_viewer: bool,
+) -> None:
+    """The refresh button stops an idle stream but keeps an existing view."""
+    coordinator = _coordinator()
+    if active_viewer:
+        await coordinator.async_register_camera_session("webrtc_camera", "viewer")
+
+    async def refresh(*, force):
+        await coordinator.join_webrtc_channel()
+        return MagicMock(), MagicMock()
+
+    coordinator.async_check_stream_expiry = refresh
+
+    await coordinator.async_refresh_camera_stream()
+
+    assert _publisher_commands(coordinator) == (
+        [START_PUBLISHER] if active_viewer else [START_PUBLISHER, STOP_PUBLISHER]
+    )

@@ -31,12 +31,14 @@ from pymammotion.http.model.camera_stream import (
     StreamSubscriptionResponse,
 )
 from pymammotion.http.model.http import Response
+from pymammotion.utility.device_type import DeviceType
 from webrtc_models import RTCIceCandidateInit, RTCIceServer
 
 from . import MammotionConfigEntry
 from .agora_api import AgoraResponse
 from .agora_websocket import AgoraWebSocketHandler
-from .coordinator import MammotionBaseUpdateCoordinator, vision_camera_slots
+from .const import has_rear_camera
+from .coordinator import MammotionBaseUpdateCoordinator
 from .entity import MammotionCameraBaseEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -54,6 +56,8 @@ class MammotionCameraEntityDescription(CameraEntityDescription):
     ]
     # Agora uid the mower publishes this feed under: cameraStates slot + 1.
     target_uid: int
+    # Whether a mower (by device name) has this camera at all.
+    exists_fn: Callable[[str], bool] = lambda _device_name: True
 
 
 # One description per cameraStates slot, in slot order.
@@ -72,6 +76,7 @@ CAMERAS: tuple[MammotionCameraEntityDescription, ...] = (
         key="webrtc_camera_rear",
         stream_fn=lambda coordinator: coordinator.get_stream_data(),
         target_uid=3,
+        exists_fn=has_rear_camera,
     ),
 )
 
@@ -86,10 +91,12 @@ async def async_setup_entry(
     entities: list[MammotionWebRTCCamera] = []
 
     for mower in mowers:
-        slots = vision_camera_slots(mower.device.device_name)
+        if DeviceType.is_luba1(mower.device.device_name):
+            continue
         entities.extend(
             MammotionWebRTCCamera(mower.reporting_coordinator, entity_description, hass)
-            for entity_description in CAMERAS[:slots]
+            for entity_description in CAMERAS
+            if entity_description.exists_fn(mower.device.device_name)
         )
     async_add_entities(entities)
 
@@ -112,7 +119,7 @@ class MammotionWebRTCCamera(MammotionCameraBaseEntity):
         self.access_tokens: collections.deque = collections.deque([], 2)
         self.async_update_token()
         self._create_stream_lock: asyncio.Lock | None = None
-        self._join_lock = asyncio.Lock()
+        self._join_lock = coordinator.camera_offer_lock
         self.coordinator = coordinator
         self._agora_handler = AgoraWebSocketHandler(
             hass,
@@ -124,6 +131,11 @@ class MammotionWebRTCCamera(MammotionCameraBaseEntity):
         self._attr_translation_key = entity_description.key
         self._stream_data: StreamSubscriptionResponse | None = None
         self._sessions: set[str] = set()
+        # Offers still negotiating, and those whose viewer left meanwhile.
+        self._pending_sessions: set[str] = set()
+        self._cancelled_sessions: set[str] = set()
+        self._offer_tasks: set[asyncio.Task[Any]] = set()
+        self._removing = False
         self._teardown_lock = asyncio.Lock()
         self._attr_model = coordinator.device.device_name
 
@@ -146,6 +158,14 @@ class MammotionWebRTCCamera(MammotionCameraBaseEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         """Disconnect this camera without stopping a sibling camera's feed."""
+        self._removing = True
+        # Keep this entity registered until its pending offers have finished
+        # cleanup, so they remain visible to the mower-wide idle check.
+        offer_tasks = tuple(self._offer_tasks)
+        for task in offer_tasks:
+            task.cancel()
+        if offer_tasks:
+            await asyncio.gather(*offer_tasks, return_exceptions=True)
         self.coordinator.register_webrtc_session_control(
             None, self.entity_description.key
         )
@@ -156,13 +176,7 @@ class MammotionWebRTCCamera(MammotionCameraBaseEntity):
             await self.coordinator.async_release_camera_session(
                 self.entity_description.key, session_id
             )
-        if not sessions and not self.coordinator.has_active_camera_sessions:
-            try:
-                await self.coordinator.manager.stop_stream(
-                    self.coordinator.device.device_name
-                )
-            except Exception as ex:  # noqa: BLE001 - unload cleanup is best effort
-                _LOGGER.debug("Camera unload failed: %s", type(ex).__name__)
+        await self.coordinator.async_stop_camera_publisher_if_idle()
         self._set_streaming(False)
         await super().async_will_remove_from_hass()
 
@@ -178,6 +192,11 @@ class MammotionWebRTCCamera(MammotionCameraBaseEntity):
         """Return placeholder image to use when no stream is available."""
         return PLACEHOLDER.read_bytes()
 
+    @property
+    def has_pending_offer(self) -> bool:
+        """Return whether a viewer's offer is still being negotiated."""
+        return bool(self._pending_sessions)
+
     async def async_handle_async_webrtc_offer(
         self, offer_sdp: str, session_id: str, send_message: WebRTCSendMessage
     ) -> None:
@@ -186,78 +205,123 @@ class MammotionWebRTCCamera(MammotionCameraBaseEntity):
         This replaces the JavaScript SDK functionality and performs the WebRTC
         negotiation directly in Python.
         """
-
-        try:
-            await asyncio.wait_for(self._join_lock.acquire(), timeout=45)
-        except TimeoutError:
-            _LOGGER.warning(
-                "Camera offer timed out waiting for another negotiation (%s)",
-                session_id,
-            )
-            send_message(WebRTCError("503", "Camera is busy; please retry"))
+        if self._removing:
+            send_message(WebRTCError("503", "Camera is unavailable"))
             return
+        # Home Assistant registers close_webrtc_session before this runs and
+        # does not cancel the offer when the viewer leaves, so a close can
+        # arrive at any point below; track it rather than dropping it.
+        self._pending_sessions.add(session_id)
+        task = asyncio.current_task()
+        if task is not None:
+            self._offer_tasks.add(task)
+        acquired = False
+        try:
+            try:
+                await asyncio.wait_for(self._join_lock.acquire(), timeout=45)
+                acquired = True
+            except TimeoutError:
+                _LOGGER.warning(
+                    "Camera offer timed out waiting for another negotiation (%s)",
+                    session_id,
+                )
+                send_message(WebRTCError("503", "Camera is busy; please retry"))
+                return
+
+            if session_id not in self._cancelled_sessions and not self._removing:
+                await self._async_negotiate_offer(offer_sdp, session_id, send_message)
+        except asyncio.CancelledError, Exception:
+            # Registration may have completed just as cancellation arrived.
+            # The finalizer releases any resulting coordinator session.
+            self._cancelled_sessions.add(session_id)
+            raise
+        finally:
+            self._pending_sessions.discard(session_id)
+            cancelled = session_id in self._cancelled_sessions
+            self._cancelled_sessions.discard(session_id)
+            if acquired:
+                self._join_lock.release()
+            try:
+                if cancelled and session_id in self._sessions:
+                    await self.async_close_webrtc_session(session_id)
+                if session_id not in self._sessions:
+                    # The offer failed or its viewer left: nobody is watching
+                    # the publisher this offer started.
+                    await self.coordinator.async_stop_camera_publisher_if_idle()
+            finally:
+                if task is not None:
+                    self._offer_tasks.discard(task)
+
+    async def _async_negotiate_offer(
+        self, offer_sdp: str, session_id: str, send_message: WebRTCSendMessage
+    ) -> None:
+        """Fetch stream credentials and negotiate one viewer's offer."""
+        (
+            stream_data,
+            agora_response,
+        ) = await self.coordinator.async_check_stream_expiry(
+            # Every viewer joins with its own token.  Agora treats a second
+            # join carrying the same token as the same session and quits
+            # the first (on_notification code 2003), freezing the sibling
+            # camera; a fresh token for the same Agora uid coexists.
+            force=True
+        )
+        self._agora_handler.candidates = []
 
         try:
-            (
-                stream_data,
-                agora_response,
-            ) = await self.coordinator.async_check_stream_expiry(
-                # Every viewer joins with its own token.  Agora treats a second
-                # join carrying the same token as the same session and quits
-                # the first (on_notification code 2003), freezing the sibling
-                # camera; a fresh token for the same Agora uid coexists.
-                force=True
-            )
-            self._agora_handler.candidates = []
-
-            try:
-                if stream_data is None or agora_response is None:
-                    _LOGGER.warning("Camera stream is temporarily unavailable")
-                    send_message(
-                        WebRTCError(
-                            "503",
-                            "Camera stream is temporarily unavailable",
-                        )
+            if stream_data is None or agora_response is None:
+                _LOGGER.warning("Camera stream is temporarily unavailable")
+                send_message(
+                    WebRTCError(
+                        "503",
+                        "Camera stream is temporarily unavailable",
                     )
-                    return
-
-                if (
-                    self.entity_description.target_uid != 1
-                    and not self.coordinator.dual_camera_stream_available
-                ):
-                    send_message(WebRTCError("503", "Vision stream unavailable"))
-                    return
-
-                agora_data = stream_data
-
-                # Start WebSocket connection and WebRTC negotiation
-                answer_sdp = await self._perform_webrtc_negotiation(
-                    offer_sdp, agora_data, session_id, agora_response
                 )
+                return
 
-                if answer_sdp:
-                    await self.coordinator.async_register_camera_session(
-                        self.entity_description.key, session_id
-                    )
-                    self._sessions.add(session_id)
-                    send_message(WebRTCAnswer(answer_sdp))
-                    self._set_streaming(True)
-                    _LOGGER.info("WebRTC negotiation completed successfully")
-                else:
-                    if not self.coordinator.has_active_camera_sessions:
-                        self.coordinator.clear_stream_data()
-                    send_message(WebRTCError("500", "WebRTC negotiation failed"))
+            if (
+                self.entity_description.target_uid != 1
+                and not self.coordinator.dual_camera_stream_available
+            ):
+                send_message(WebRTCError("503", "Vision stream unavailable"))
+                return
 
-            except (
-                websockets.exceptions.WebSocketException,
-                json.JSONDecodeError,
-            ) as ex:
+            agora_data = stream_data
+
+            # Start WebSocket connection and WebRTC negotiation
+            answer_sdp = await self._perform_webrtc_negotiation(
+                offer_sdp, agora_data, session_id, agora_response
+            )
+
+            if answer_sdp and session_id in self._cancelled_sessions:
+                _LOGGER.debug("Camera viewer left before negotiation finished")
+                if not self._sessions:
+                    await self._agora_handler.disconnect()
+            elif answer_sdp:
+                # Track locally before awaiting coordinator registration so
+                # cancellation cannot leave an untracked coordinator viewer.
+                self._sessions.add(session_id)
+                await self.coordinator.async_register_camera_session(
+                    self.entity_description.key, session_id
+                )
+                if session_id in self._cancelled_sessions or self._removing:
+                    return
+                send_message(WebRTCAnswer(answer_sdp))
+                self._set_streaming(True)
+                _LOGGER.info("WebRTC negotiation completed successfully")
+            else:
                 if not self.coordinator.has_active_camera_sessions:
                     self.coordinator.clear_stream_data()
-                _LOGGER.error("WebRTC offer failed: %s", type(ex).__name__)
                 send_message(WebRTCError("500", "WebRTC negotiation failed"))
-        finally:
-            self._join_lock.release()
+
+        except (
+            websockets.exceptions.WebSocketException,
+            json.JSONDecodeError,
+        ) as ex:
+            if not self.coordinator.has_active_camera_sessions:
+                self.coordinator.clear_stream_data()
+            _LOGGER.error("WebRTC offer failed: %s", type(ex).__name__)
+            send_message(WebRTCError("500", "WebRTC negotiation failed"))
 
     async def async_on_webrtc_candidate(
         self, session_id: str, candidate: RTCIceCandidateInit
@@ -271,9 +335,11 @@ class MammotionWebRTCCamera(MammotionCameraBaseEntity):
     @callback
     def close_webrtc_session(self, session_id: str) -> None:
         """Schedule cleanup when the frontend ends a native WebRTC session."""
-        if session_id not in self._sessions:
-            return
-        self.hass.async_create_task(self.async_close_webrtc_session(session_id))
+        if session_id in self._pending_sessions:
+            # The offer is still negotiating; it drops the session when done.
+            self._cancelled_sessions.add(session_id)
+        elif session_id in self._sessions:
+            self.hass.async_create_task(self.async_close_webrtc_session(session_id))
 
     async def async_close_webrtc_session(self, session_id: str) -> None:
         """Close WebRTC session."""
@@ -283,22 +349,18 @@ class MammotionWebRTCCamera(MammotionCameraBaseEntity):
         await self.coordinator.async_release_camera_session(
             self.entity_description.key, session_id
         )
-        if not self._sessions:
-            await self._agora_handler.disconnect()
+        # A queued offer may already own this handler. Keep the decision and
+        # disconnect under the same lock that gates offer negotiation.
+        async with self.coordinator.camera_offer_lock:
+            if not self._sessions and not self._pending_sessions:
+                await self._agora_handler.disconnect()
         self._set_streaming(bool(self._sessions))
 
-    async def async_teardown_stream(self, *, stop_device: bool = True) -> None:
-        """Leave this camera's Agora session and optionally stop the mower."""
+    async def async_teardown_stream(self) -> None:
+        """Leave this camera's Agora session; the coordinator stops the mower."""
         async with self._teardown_lock:
             self._sessions.clear()
             await self._agora_handler.disconnect()
-            if stop_device:
-                try:
-                    await self.coordinator.manager.stop_stream(
-                        self.coordinator.device.device_name
-                    )
-                except Exception as ex:  # noqa: BLE001 - teardown is best effort
-                    _LOGGER.debug("Camera stop failed: %s", type(ex).__name__)
             self._set_streaming(False)
 
     async def _fpv_keepalive(self) -> bool:
@@ -321,11 +383,16 @@ class MammotionWebRTCCamera(MammotionCameraBaseEntity):
         its debounce window: nudge the device with a BLE sync, then refresh the
         stream subscription so it rejoins the channel.
         """
-        stream_data, agora_response = await self.coordinator.async_check_stream_expiry(
-            force=True
-        )
-        if stream_data is None or agora_response is None:
-            self._set_streaming(False)
+        async with self.coordinator.camera_offer_lock:
+            interested_offers = self._pending_sessions - self._cancelled_sessions
+            if self._removing or (not self._sessions and not interested_offers):
+                return
+            (
+                stream_data,
+                agora_response,
+            ) = await self.coordinator.async_check_stream_expiry(force=True)
+            if stream_data is None or agora_response is None:
+                self._set_streaming(False)
 
     async def _perform_webrtc_negotiation(
         self,
