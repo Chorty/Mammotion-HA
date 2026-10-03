@@ -2162,11 +2162,16 @@ async def test_vector_segment_reports_stale_stream_after_feed_dies_mid_run(
     async def no_sleep(_: float) -> None:
         return None
 
+    publish_report = coordinator.async_get_reports.side_effect
+
     async def advancing_then_frozen(count: int = 5) -> None:
         # Feed advances ~9cm per refresh until it dies, then repeats verbatim.
+        # A live feed also publishes a new position sample (the pre-motion
+        # warm-up waits for one); a dead one publishes nothing.
         if not state["frozen"]:
             state["y"] += 0.09
             coordinator.data.mowing_state.pos_y = state["y"]
+            publish_report()
 
     monkeypatch.setattr(mammotion_services.asyncio, "sleep", no_sleep)
     coordinator.async_get_reports.side_effect = advancing_then_frozen

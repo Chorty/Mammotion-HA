@@ -14359,6 +14359,102 @@ async def _refresh_position_after_raw_motion(
     return result
 
 
+#: How long `_warm_position_feed` waits for a new position report. On
+#: 2026-10-03 the first payload arrived 0.41 s after a `count=5` request; the
+#: historical worst feed latency is ~4 s.
+_POSITION_FEED_WARMUP_TIMEOUT_SECONDS = 4.0
+_POSITION_FEED_WARMUP_POLL_SECONDS = 0.1
+
+
+async def _warm_position_feed(
+    coordinator: MammotionReportUpdateCoordinator,
+    *,
+    timeout_seconds: float = _POSITION_FEED_WARMUP_TIMEOUT_SECONDS,
+    poll_interval_seconds: float = _POSITION_FEED_WARMUP_POLL_SECONDS,
+) -> dict[str, Any]:
+    """Request reports and wait for a NEW position report before any motion.
+
+    🚨 An idle mower does not stream position. On 2026-10-03 the vector
+    executor sent its first pulse (the 2.0 s VIO calibration drive) 108 s after
+    the last payload and only requested reports after the stop, so the first
+    2.58 s of driving had no position feed at all. Every later pulse began
+    inside the previous pulse's `count=5` burst, which is why only the first
+    one was blind. Record: docs/findings-backend-096-clicktogo-leg-20261003.md;
+    rule: predeclaration Amendment 6.
+
+    A report is fresh only when its ``sequence`` is past the baseline taken
+    before the request AND it belongs to the transport epoch that was live when
+    the request was sent: a sample from a replaced link is not evidence that
+    THIS link is reporting. Re-reading a cached sample is never fresh.
+    """
+    started = time.monotonic()
+    result: dict[str, Any] = {
+        "ok": False,
+        "reason": None,
+        "method": "request_reports_count_5",
+        "timeout_seconds": timeout_seconds,
+        "baseline_sequence": None,
+        "baseline_epoch": None,
+        "fresh_sequence": None,
+        "fresh_epoch": None,
+        "fresh_valid_for_motion": None,
+        "fresh_receipt_age_seconds": None,
+        "polls": 0,
+        "elapsed_seconds": None,
+        "error": None,
+    }
+    handle: Any = None
+    with contextlib.suppress(Exception):
+        handle = coordinator.manager.mower(coordinator.device_name)
+    live_epoch = getattr(handle, "position_epoch", None)
+    if handle is None or not isinstance(live_epoch, int):
+        result["reason"] = "position_stream_unavailable"
+        result["elapsed_seconds"] = round(time.monotonic() - started, 3)
+        return result
+    baseline = getattr(handle, "latest_position_sample", None)
+    baseline_sequence = getattr(baseline, "sequence", None)
+    # pymammotion numbers samples from 1, so 0 is "nothing published yet".
+    baseline_sequence = baseline_sequence if isinstance(baseline_sequence, int) else 0
+    result["baseline_sequence"] = baseline_sequence
+    result["baseline_epoch"] = live_epoch
+    try:
+        await coordinator.async_get_reports(count=5)
+    except Exception as err:  # noqa: BLE001
+        result["reason"] = "report_request_failed"
+        result["error"] = f"{type(err).__name__}: {err}"
+        result["elapsed_seconds"] = round(time.monotonic() - started, 3)
+        return result
+    # Bound by poll count, not wall clock, for the same reason as
+    # `_settle_linear_position_feed`: a test that stubs asyncio.sleep must still
+    # terminate in a fixed number of iterations.
+    max_polls = max(1, math.ceil(timeout_seconds / poll_interval_seconds))
+    for poll in range(max_polls + 1):
+        sample = getattr(handle, "latest_position_sample", None)
+        sequence = getattr(sample, "sequence", None)
+        if isinstance(sequence, int) and sequence > baseline_sequence:
+            result["fresh_sequence"] = sequence
+            result["fresh_epoch"] = getattr(sample, "epoch", None)
+            if result["fresh_epoch"] != live_epoch:
+                result["reason"] = "position_epoch_changed"
+                break
+            received_at = getattr(sample, "received_at_monotonic", None)
+            if isinstance(received_at, int | float):
+                result["fresh_receipt_age_seconds"] = round(
+                    max(time.monotonic() - received_at, 0.0), 3
+                )
+            result["fresh_valid_for_motion"] = getattr(sample, "valid_for_motion", None)
+            result["ok"] = True
+            result["reason"] = "fresh_position_report"
+            break
+        if poll == max_polls:
+            result["reason"] = "no_fresh_position_report"
+            break
+        result["polls"] += 1
+        await asyncio.sleep(poll_interval_seconds)
+    result["elapsed_seconds"] = round(time.monotonic() - started, 3)
+    return result
+
+
 async def _settle_linear_position_feed(
     coordinator: MammotionReportUpdateCoordinator,
     before_telemetry: dict[str, Any],
@@ -17405,6 +17501,16 @@ async def _raw_pymammotion_execute_vector_segment(  # noqa: C901, PLR0913
     if blockers and not dry_run:
         result["stop_reason"] = "safety_gates_failed"
         return result
+    if not dry_run:
+        # 🚨 The first motion command of EVERY branch below (calibration drive,
+        # turn or linear) must start on a live position feed -- see
+        # `_warm_position_feed`. Nothing has been sent yet, so a refusal here
+        # needs no stop.
+        warmup = await _warm_position_feed(coordinator)
+        result["position_feed_warmup"] = warmup
+        if not warmup["ok"]:
+            result["stop_reason"] = "position_feed_not_live"
+            return result
 
     # Shared budget for the post-turn and mid-drive VIO corrections. A turn can
     # translate the mower enough to change the bearing to a short waypoint; the
