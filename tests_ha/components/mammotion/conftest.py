@@ -2,6 +2,7 @@
 
 import time
 from collections.abc import Callable, Coroutine
+from functools import partial
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock
@@ -106,6 +107,24 @@ def _coordinator(plan: Plan | None = None) -> SimpleNamespace:
         get_area_entity_name=lambda area_hash: (
             "Front Main" if area_hash == LARGE_HASH else f"area {area_hash}"
         ),
+    )
+
+
+def _publish_position_report(
+    handle: SimpleNamespace, *_args: object, **_kwargs: object
+) -> None:
+    """Publish one new position sample, as a real report request does.
+
+    The vector executor refuses to move until a report newer than its baseline
+    arrives in the live epoch (`_warm_position_feed`), so the fixture's report
+    request must actually produce one.
+    """
+    previous = handle.latest_position_sample
+    handle.latest_position_sample = SimpleNamespace(
+        sequence=(previous.sequence if previous is not None else 0) + 1,
+        epoch=handle.position_epoch,
+        received_at_monotonic=time.monotonic(),
+        valid_for_motion=True,
     )
 
 
@@ -318,4 +337,9 @@ def _pulse_coordinator(
             raise RuntimeError(f"{command_name} write failed")
 
     handle._send_marked.side_effect = simulate_confirmed_write  # noqa: SLF001
+
+    handle.latest_position_sample = None
+    coordinator.async_get_reports.side_effect = partial(
+        _publish_position_report, handle
+    )
     return coordinator
