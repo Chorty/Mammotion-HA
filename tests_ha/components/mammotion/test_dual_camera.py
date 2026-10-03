@@ -85,6 +85,9 @@ async def test_closing_one_camera_keeps_the_other_camera_stream_alive() -> None:
     coordinator = object.__new__(ConcreteCoordinator)
     coordinator._active_camera_sessions = {}  # noqa: SLF001
     coordinator._camera_session_lock = asyncio.Lock()  # noqa: SLF001
+    coordinator._camera_offer_lock = asyncio.Lock()  # noqa: SLF001
+    coordinator._camera_publisher_on = True  # noqa: SLF001
+    coordinator._webrtc_session_controls = {}  # noqa: SLF001
     coordinator.leave_webrtc_channel = AsyncMock()
 
     await coordinator.async_register_camera_session("left", "left-session")

@@ -20907,20 +20907,14 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
 
     async def handle_refresh_stream(call: ServiceCall) -> None:
         mower = _require_camera_mower(hass, call.data[ATTR_ENTITY_ID])
-        (
-            stream_data,
-            agora_response,
-        ) = await mower.reporting_coordinator.async_check_stream_expiry(force=True)
-        if stream_data is None or agora_response is None:
-            raise HomeAssistantError(
-                translation_domain=DOMAIN,
-                translation_key="camera_temporarily_unavailable",
-            )
+        await mower.reporting_coordinator.async_refresh_camera_stream()
 
     async def handle_start_video(call: ServiceCall) -> None:
         mower = _require_camera_mower(hass, call.data[ATTR_ENTITY_ID])
         try:
-            await mower.reporting_coordinator.join_webrtc_channel()
+            coordinator = mower.reporting_coordinator
+            async with coordinator.camera_offer_lock:
+                await coordinator.join_webrtc_channel()
         except HomeAssistantError as err:
             raise HomeAssistantError(
                 translation_domain=DOMAIN,
@@ -20930,7 +20924,9 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
     async def handle_stop_video(call: ServiceCall) -> None:
         mower = _require_camera_mower(hass, call.data[ATTR_ENTITY_ID])
         try:
-            await mower.reporting_coordinator.leave_webrtc_channel()
+            coordinator = mower.reporting_coordinator
+            async with coordinator.camera_offer_lock:
+                await coordinator.leave_webrtc_channel()
         except HomeAssistantError as err:
             raise HomeAssistantError(
                 translation_domain=DOMAIN,

@@ -2929,6 +2929,8 @@ async def test_refresh_camera_stream_raises_when_unavailable() -> None:
     """Camera refresh button surfaces a translated HA error if refresh fails."""
     coordinator = SimpleNamespace(
         async_check_stream_expiry=AsyncMock(return_value=(None, None)),
+        async_stop_camera_publisher_if_idle=AsyncMock(),
+        _camera_offer_lock=asyncio.Lock(),
     )
 
     with pytest.raises(HomeAssistantError):
@@ -2939,10 +2941,15 @@ async def test_refresh_camera_stream_raises_when_unavailable() -> None:
 async def test_refresh_camera_stream_succeeds_when_available() -> None:
     """Camera refresh helper returns without error when stream data is available."""
     coordinator = SimpleNamespace(
-        async_check_stream_expiry=AsyncMock(return_value=(SimpleNamespace(), None)),
+        async_check_stream_expiry=AsyncMock(
+            return_value=(SimpleNamespace(), SimpleNamespace())
+        ),
+        async_stop_camera_publisher_if_idle=AsyncMock(),
+        _camera_offer_lock=asyncio.Lock(),
     )
 
     await MammotionBaseUpdateCoordinator.async_refresh_camera_stream(coordinator)
+    coordinator.async_stop_camera_publisher_if_idle.assert_awaited_once()
 
 
 @pytest.mark.asyncio

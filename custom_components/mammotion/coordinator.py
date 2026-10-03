@@ -122,8 +122,12 @@ if TYPE_CHECKING:
 class WebRTCSessionControl(Protocol):
     """Teardown surface for a camera entity that owns a mower stream."""
 
-    async def async_teardown_stream(self, *, stop_device: bool = True) -> None:
-        """Disconnect this camera's Agora session and optionally stop the mower."""
+    @property
+    def has_pending_offer(self) -> bool:
+        """Return whether a viewer's offer is still being negotiated."""
+
+    async def async_teardown_stream(self) -> None:
+        """Disconnect this camera's Agora session."""
 
 
 #: A displacement must clear this before it counts as a driven leg worth taking
@@ -263,7 +267,11 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         self._dual_camera_stream_available = False
         self._active_camera_sessions: dict[str, set[str]] = {}
         self._camera_session_lock = asyncio.Lock()
+        # Serialize offers and publisher stops across every camera of this mower.
+        self._camera_offer_lock = asyncio.Lock()
         self._webrtc_session_controls: dict[str, WebRTCSessionControl] = {}
+        # Set when HA asks the mower to publish video; cleared once a stop lands.
+        self._camera_publisher_on = False
         _mammotion_data = config_entry.data.get(CONF_MAMMOTION_DATA) or {}
         try:
             _user_account = int(
@@ -613,6 +621,8 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
 
     async def join_webrtc_channel(self) -> None:
         """Start stream command."""
+        # Mark before sending: a command that errors may still have landed.
+        self._camera_publisher_on = True
         await self.async_send_command(
             "device_agora_join_channel_with_position", enter_state=1
         )
@@ -623,14 +633,15 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
             if self._webrtc_session_controls:
                 await asyncio.gather(
                     *(
-                        control.async_teardown_stream(stop_device=False)
+                        control.async_teardown_stream()
                         for control in self._webrtc_session_controls.values()
                     ),
                     return_exceptions=True,
                 )
-            await self.async_send_command(
+            if await self.async_send_command(
                 "device_agora_join_channel_with_position", enter_state=0
-            )
+            ):
+                self._camera_publisher_on = False
         finally:
             self._active_camera_sessions.clear()
             self.clear_stream_data()
@@ -639,6 +650,41 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
     def has_active_camera_sessions(self) -> bool:
         """Return whether any camera entity still has a viewer."""
         return any(self._active_camera_sessions.values())
+
+    @property
+    def camera_offer_lock(self) -> asyncio.Lock:
+        """Return the mower-wide lock for offers and publisher stops."""
+        return self._camera_offer_lock
+
+    @property
+    def has_pending_camera_offer(self) -> bool:
+        """Return whether any camera entity is still negotiating a viewer."""
+        return any(
+            control.has_pending_offer
+            for control in self._webrtc_session_controls.values()
+        )
+
+    async def async_stop_camera_publisher_if_idle(self) -> None:
+        """Stop a publisher that was started for a viewer who never got a session.
+
+        Every offer asks the mower to publish before the token, relay and
+        negotiation steps, so an offer that fails or is abandoned would
+        otherwise leave the mower streaming with nobody watching.
+        """
+        async with self._camera_offer_lock, self._camera_session_lock:
+            if (
+                not self._camera_publisher_on
+                or self.has_active_camera_sessions
+                or self.has_pending_camera_offer
+            ):
+                return
+            try:
+                await self.leave_webrtc_channel()
+            except (CommandTimeoutError, HomeAssistantError) as err:
+                LOGGER.warning(
+                    "Unable to stop the idle camera stream: %s",
+                    type(err).__name__,
+                )
 
     @property
     def dual_camera_stream_available(self) -> bool:
@@ -673,8 +719,9 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
             sessions.remove(session_id)
             if not sessions:
                 del self._active_camera_sessions[camera_key]
-            if not self.has_active_camera_sessions:
-                await self.leave_webrtc_channel()
+        # A sibling still negotiating needs the publisher. The offer lock also
+        # prevents a new offer from starting while the stop command is in flight.
+        await self.async_stop_camera_publisher_if_idle()
 
     def clear_stream_data(self) -> None:
         """Discard cached stream and relay credentials."""
@@ -1293,9 +1340,15 @@ class MammotionBaseUpdateCoordinator[DataT](DataUpdateCoordinator[DataT]):
         return False
 
     async def async_refresh_camera_stream(self) -> None:
-        """Refresh camera stream credentials and cache immediately."""
-        stream_data, _ = await self.async_check_stream_expiry(force=True)
-        if stream_data is None:
+        """Refresh camera credentials without leaving an idle publisher on."""
+        try:
+            async with self._camera_offer_lock:
+                stream_data, agora_response = await self.async_check_stream_expiry(
+                    force=True
+                )
+        finally:
+            await self.async_stop_camera_publisher_if_idle()
+        if stream_data is None or agora_response is None:
             raise HomeAssistantError(
                 translation_domain=DOMAIN,
                 translation_key="camera_temporarily_unavailable",
