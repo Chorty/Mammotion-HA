@@ -29,6 +29,7 @@ import json
 import math
 import os
 import sys
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -149,7 +150,8 @@ def daylight_vio_verdict(
         )
     if not status_window:
         reasons.append("no visual_positioning_status in the look-back window")
-    elif any(s != VIO_REQUIRED_STATUS for s in status_window):
+    # Stock 0.6.16 publishes the enum upper-case (SIGNAL_GOOD); the fork lower.
+    elif any(str(s).lower() != VIO_REQUIRED_STATUS for s in status_window):
         reasons.append(
             f"visual_positioning_status not all {VIO_REQUIRED_STATUS}: "
             f"{sorted(set(status_window))}"
@@ -209,6 +211,34 @@ def _history(
     ]
 
 
+def _export_vio_window(
+    url: str, token: str, seconds: int, interval: float = 5.0
+) -> list[str]:
+    """Sample vio_tracked_features from the companion export across the window.
+
+    The fork's ``sensor.*_vio_tracked_features`` entity (whose recorder history
+    this runner used to read) does not exist on the split stack. The companion
+    export carries the same live value (``current_orientation.vio_tracked_features``,
+    from the mower's vision feed), so the window is sampled actively instead:
+    one read every ``interval`` seconds for ``seconds``, ending at dispatch.
+    Non-numeric reads are kept as strings; ``daylight_vio_verdict`` skips them
+    exactly as it skipped ``unavailable`` history states, and a window with no
+    numeric read at all halts.
+    """
+    samples: list[str] = []
+    deadline = time.monotonic() + seconds
+    while True:
+        state = post_service(
+            url, token, MOTION_DOMAIN, "export_runtime_state", {"entity_id": ENTITY}, 90
+        )
+        samples.append(
+            str((state.get("current_orientation") or {}).get("vio_tracked_features"))
+        )
+        if time.monotonic() >= deadline:
+            return samples
+        time.sleep(interval)
+
+
 def halt(message: str) -> None:
     """Print a halt reason and exit 2."""
     print("HALT:", message)
@@ -251,16 +281,11 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915
     keep_outs = [_points(v) for v in siting["keep_out_polygons"].values()]
     grid = siting["grid"]
 
+    features_window = _export_vio_window(url, token, VIO_WINDOW_SECONDS)
     now = datetime.datetime.now(datetime.UTC)
     reasons = daylight_vio_verdict(
         sun_elevation=solar_elevation_degrees(now),
-        features_window=window_values(
-            _history(
-                url, token, SENSOR_PREFIX + "vio_tracked_features", VIO_WINDOW_SECONDS
-            ),
-            now,
-            VIO_WINDOW_SECONDS,
-        ),
+        features_window=features_window,
         status_window=window_values(
             _history(
                 url,
