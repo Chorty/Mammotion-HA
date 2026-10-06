@@ -40,7 +40,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from mammotion_ha_helpers import load_dotenv, post_service  # noqa: E402
+from mammotion_ha_helpers import MOTION_DOMAIN, load_dotenv, post_service  # noqa: E402
 
 ENTITY = "lawn_mower.back_yard_clip_skywalker"
 
@@ -79,7 +79,7 @@ def read_state(url: str, token: str) -> dict[str, Any]:
     """Return the mower's runtime state, retrying an empty service response."""
     for _ in range(5):
         state = post_service(
-            url, token, "mammotion", "export_runtime_state", {"entity_id": ENTITY}, 90
+            url, token, MOTION_DOMAIN, "export_runtime_state", {"entity_id": ENTITY}, 90
         )
         if state.get("position"):
             return state
@@ -161,7 +161,7 @@ def _post_pulse(
     return post_service(
         url,
         token,
-        "mammotion",
+        MOTION_DOMAIN,
         "manual_velocity_pulse_test",
         {
             "entity_id": ENTITY,

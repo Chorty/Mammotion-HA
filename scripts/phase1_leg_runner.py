@@ -36,7 +36,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from mammotion_ha_helpers import post_service  # noqa: E402
+from mammotion_ha_helpers import MOTION_DOMAIN, post_service  # noqa: E402
 
 ENTITY = "lawn_mower.back_yard_clip_skywalker"
 SENSOR_PREFIX = "sensor.back_yard_clip_skywalker_"
@@ -286,7 +286,7 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915
     target = (args.tx, args.ty)
     cell = min(grid, key=lambda r: math.hypot(r["x"] - target[0], r["y"] - target[1]))
     runtime = post_service(
-        url, token, "mammotion", "export_runtime_state", {"entity_id": ENTITY}, 90
+        url, token, MOTION_DOMAIN, "export_runtime_state", {"entity_id": ENTITY}, 90
     )
     pos, facing, blade = runtime["position"], runtime["map_facing"], runtime["blade"]
     start = (pos["x"], pos["y"])
@@ -349,7 +349,7 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915
         return post_service(
             url,
             token,
-            "mammotion",
+            MOTION_DOMAIN,
             "raw_pymammotion_execute_vector_segment",
             payload,
             400,
@@ -384,7 +384,7 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915
     timing = post_service(
         url,
         token,
-        "mammotion",
+        MOTION_DOMAIN,
         "motion_dispatch_timing_report",
         {"entity_id": ENTITY},
         60,
@@ -393,7 +393,7 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915
         json.dumps(timing, indent=1)
     )
     after = post_service(
-        url, token, "mammotion", "export_runtime_state", {"entity_id": ENTITY}, 90
+        url, token, MOTION_DOMAIN, "export_runtime_state", {"entity_id": ENTITY}, 90
     )["position"]
     meta = {
         "label": args.label,
