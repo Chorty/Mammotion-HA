@@ -745,10 +745,10 @@ class S2Run:
         self.summary.setdefault("sun_checks", []).append(
             {"why": why, "elevation_deg": round(elevation, 2)}
         )
-        if elevation < SUN_MIN_CACHED_VIO_DEG:
+        floor = float(getattr(self.args, "min_cached_vio_sun", SUN_MIN_CACHED_VIO_DEG))
+        if elevation < floor:
             raise Abort(
-                f"sun {elevation:.1f} deg < {SUN_MIN_CACHED_VIO_DEG} with a cached VIO "
-                f"window ({why})"
+                f"sun {elevation:.1f} deg < {floor} with a cached VIO window ({why})"
             )
 
     def prearm(self) -> dict[str, Any]:
@@ -2017,6 +2017,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=ROOT_LEVELS,
         default=None,
         help="operator-supplied root logger level to restore (HA cannot report it)",
+    )
+    run.add_argument(
+        "--min-cached-vio-sun",
+        type=float,
+        default=SUN_MIN_CACHED_VIO_DEG,
+        help="sun floor for a cached VIO window (Amendment 8: operator waiver to 10)",
     )
     run.add_argument("--raw-delay", type=float, default=RAW_DEFAULT_DELAY_S)
     run.add_argument("--repo-root", type=Path, default=None)
