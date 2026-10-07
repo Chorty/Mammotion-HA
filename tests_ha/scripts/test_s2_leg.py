@@ -498,12 +498,37 @@ def test_landing_outside_tolerance_fails(tmp_path: Path) -> None:
     assert verdict["outcome"] == "FAIL"
 
 
-def test_debug_only_cause_is_flagged_not_resolved(tmp_path: Path) -> None:
-    """Debug only cause is flagged not resolved."""
+def test_debug_only_cause_is_inconclusive(tmp_path: Path) -> None:
+    """Amendment 6 s3: a debug-only-caused criterion-3 miss is INCONCLUSIVE (step 2a)."""
     rows = [r for r in DEFAULT_ROWS if r not in (62.5, 63.5)]
     root = make_dir(tmp_path, rows=rows, operator_stop=False)
     verdict = score_dir(root, debug_only_cause=True)
-    assert verdict["outcome"] == "UNDETERMINED"
+    assert verdict["outcome"] == "INCONCLUSIVE"
+
+
+def test_ble_prefixed_stop_after_send_is_inconclusive(tmp_path: Path) -> None:
+    """Amendment 6 s11: any ble_* stop after a send, stops confirmed, is INCONCLUSIVE."""
+    verdict = score_dir(
+        make_dir(tmp_path, stop_reason="ble_send_stalled", operator_stop=False)
+    )
+    assert verdict["outcome"] == "INCONCLUSIVE"
+
+
+def test_ble_prefixed_stop_with_nothing_sent_is_inconclusive(tmp_path: Path) -> None:
+    """Amendment 6 s11: a ble_* refusal with nothing sent is pre-dispatch INCONCLUSIVE."""
+    verdict = score_dir(
+        make_dir(tmp_path, commands_sent=0, stop_reason="ble_transport_not_usable")
+    )
+    assert verdict["outcome"] == "INCONCLUSIVE"
+
+
+def test_unproved_disarm_outranks_an_unevaluable_criterion_3(tmp_path: Path) -> None:
+    """Amendment 6 s4: an unproved disarm is checked first and is a FAIL."""
+    verdict = score_dir(
+        make_dir(tmp_path, raw_at=80.0, post_epoch=4, operator_stop=False)
+    )
+    assert verdict["criterion_3"]["status"] == "UNEVALUABLE"
+    assert verdict["outcome"] == "FAIL"
 
 
 # --------------------------------------------------------------- run (fakes)

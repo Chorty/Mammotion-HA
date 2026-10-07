@@ -139,7 +139,7 @@ C3_MAX_GAP_S = 2.0
 LANDING_TOLERANCE_M = 0.15
 RAW_AFTER_DISARM_S = 15.0
 NOTHING_SENT_INCONCLUSIVE = {"ble_client_not_connected", "position_feed_not_live"}
-#: Executor stop reasons that name a BLE loss after a send (Amendment 2 s8).
+#: Superseded by Amendment 6 s11 (any `ble_*` stop reason); kept for reference.
 BLE_LOSS_AFTER_SEND = {"ble_transport_lost", "ble_client_not_connected"}
 
 SOAK_LOGGERS = re.compile(r"mammotion|pymammotion|bluetooth|esphome", re.IGNORECASE)
@@ -1751,6 +1751,12 @@ def decide(ctx: dict[str, Any]) -> tuple[str, list[dict[str, Any]], str]:  # noq
         ctx["arm_rc"] not in (None, 0),
         f"rc {ctx['arm_rc']}",
     ):
+        if ctx["disarm_proved"] is True and ctx["leg"] is None:
+            return (
+                "INCONCLUSIVE",
+                path,
+                "arm helper failed but both flags are proved false: pre-dispatch (Amendment 6 s5)",
+            )
         return "FAIL", path, "arm cannot be proved; the session ends"
     if ctx["leg"] is None:
         c4_pre = ctx.get("c4_pre")
@@ -1770,8 +1776,7 @@ def decide(ctx: dict[str, Any]) -> tuple[str, list[dict[str, Any]], str]:  # noq
                     path,
                     (
                         "a session started after arming but no leg record: real-call "
-                        "response lost (Amendment 2 s8); score by hand from last_session "
-                        "plus the recorder, else INCONCLUSIVE"
+                        "response lost (Amendment 6 s12: INCONCLUSIVE, no hand-scoring)"
                     ),
                 )
             return (
@@ -1787,7 +1792,7 @@ def decide(ctx: dict[str, Any]) -> tuple[str, list[dict[str, Any]], str]:  # noq
     if step("nothing sent", sent == 0, f"stop_reason {reason}"):
         if disarm_unproved:
             return "FAIL", path, "disarm cannot be proved"
-        if reason in NOTHING_SENT_INCONCLUSIVE:
+        if reason in NOTHING_SENT_INCONCLUSIVE or str(reason).startswith("ble_"):
             return (
                 "INCONCLUSIVE",
                 path,
@@ -1799,16 +1804,18 @@ def decide(ctx: dict[str, Any]) -> tuple[str, list[dict[str, Any]], str]:  # noq
             f"real-call refusal {reason} with commands_sent 0 (Amendment 2 s3)",
         )
     c1, c2, c3, c4 = ctx["c1"], ctx["c2"], ctx["c3"], ctx["c4"]
+    if step(
+        "s5.0 disarm/arm not proved (criterion 4, Amendment 6 s4)",
+        disarm_unproved or c4["status"] != "PASS",
+        "; ".join(c4["problems"]),
+    ):
+        return "FAIL", path, "disarm cannot be proved"
     if ctx["debug_only_cause"] and (c3["status"] == "MISS" or c2["status"] == "FAIL"):
         step("debug-only exception recorded as a criterion 2/3 cause", True)
         return (
-            "UNDETERMINED",
+            "INCONCLUSIVE",
             path,
-            (
-                "Amendment 5 s3 makes a debug-only-caused criterion-2/3 miss INCONCLUSIVE, "
-                "but s5 step 3 makes any criterion-3 miss with warm-up ok a FAIL; the "
-                "predeclaration does not order these. Operator adjudication required."
-            ),
+            "debug-only exception caused the criterion-2/3 miss (Amendment 6 s3, step 2a)",
         )
     if step(
         "s5.1 criterion 3 unevaluable",
@@ -1842,12 +1849,6 @@ def decide(ctx: dict[str, Any]) -> tuple[str, list[dict[str, Any]], str]:  # noq
             path,
             "criterion 3 miss with position_feed_warmup.ok (Amendment 5 s5.3)",
         )
-    if step(
-        "s5.4 disarm/arm not proved (criterion 4)",
-        disarm_unproved or c4["status"] != "PASS",
-        "; ".join(c4["problems"]),
-    ):
-        return "FAIL", path, "disarm cannot be proved"
     rtk = _rtk_left_fix(leg)
     if step("s5.4 RTK left Fix mid-leg", bool(rtk), str(rtk)):
         return "INCONCLUSIVE", path, "RTK left Fix mid-leg"
@@ -1856,7 +1857,7 @@ def decide(ctx: dict[str, Any]) -> tuple[str, list[dict[str, Any]], str]:  # noq
         reason != "target_reached",
         str(reason),
     ):
-        if reason in BLE_LOSS_AFTER_SEND and not c2["unconfirmed_stops"]:
+        if str(reason).startswith("ble_") and not c2["unconfirmed_stops"]:
             return (
                 "INCONCLUSIVE",
                 path,
