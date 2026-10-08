@@ -1147,3 +1147,56 @@ def test_register_falsifier_states(tmp_path: Path) -> None:
     verdict = score_dir(ok)
     assert verdict["outcome"] == "FAIL"  # landing miss; support needs no PASS
     assert verdict["register_falsifier"]["status"].startswith("SUPPORTED")
+
+
+def test_ble_loss_with_an_unconfirmed_stop_fails(tmp_path: Path) -> None:
+    """Amendment 9 second review 2.2: BLE loss plus an unconfirmed stop is FAIL."""
+    root = make_dir(
+        tmp_path, stop_reason="position_unavailable", post_epoch=4, operator_stop=False
+    )
+    leg_path = root / "runner" / "leg_S2.json"
+    leg = json.loads(leg_path.read_text())
+    leg["command_results"] = [command(60.0), command(64.0, stop_ok=False)]
+    leg_path.write_text(json.dumps(leg))
+    verdict = score_dir(root)
+    assert verdict["outcome"] == "FAIL"
+    assert verdict["reason"] == "BLE loss after a send with an unconfirmed stop"
+
+
+def test_ble_epoch_comes_from_the_earliest_postleg_attempt(tmp_path: Path) -> None:
+    """Amendment 9 second review 1: the earliest attempt's epoch decides, not the closing one."""
+    attempts = [
+        {
+            "before_utc": at(75.0),
+            "after_utc": at(75.5),
+            "export": export(seq=111, epoch=3, age=4.5),
+        },
+        {
+            "before_utc": at(77.0),
+            "after_utc": at(77.5),
+            "export": export(seq=111, epoch=4, age=4.5),
+        },
+    ]
+    verdict = score_dir(
+        make_dir(
+            tmp_path,
+            stop_reason="position_unavailable",
+            postleg_attempts=attempts,
+            operator_stop=False,
+        )
+    )
+    ble = next(
+        s
+        for s in verdict["precedence_path"]
+        if s["step"] == "A9 s3a BLE loss after a send"
+    )
+    assert ble["applies"] is False
+    assert verdict["outcome"] == "FAIL"
+    assert "BLE" not in verdict["reason"]
+    later_first = make_dir(
+        tmp_path / "b",
+        stop_reason="position_unavailable",
+        postleg_attempts=list(reversed(attempts)),
+        operator_stop=False,
+    )
+    assert score_dir(later_first)["outcome"] == "INCONCLUSIVE"
