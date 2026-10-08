@@ -771,6 +771,14 @@ class S2Run:
                 f"blocker {(record or {}).get('blocker')!r}"
             )
 
+    def travel_speed_postleg(self) -> None:
+        """Amendment 9 s4: read-only register read after the disarm proof."""
+        record = self.host.service(
+            MOTION_DOMAIN, "read_travel_speed", {"entity_id": ENTITY}
+        )
+        self.save("travel_speed_postleg.json", record)
+        self.summary["travel_speed_postleg"] = record
+
     def prearm(self) -> dict[str, Any]:
         """Amendment 5 s1: bracketed pre-arm export with receipt_age_s >= 5."""
         attempts: list[dict[str, Any]] = []
@@ -1100,6 +1108,8 @@ class S2Run:
                     self.restore_root_level()
                 if self.summary["disarm"]["attempted"]:
                     self._guarded("raw_and_live", self.raw_and_live)
+                if self.summary["arm"]["attempted"]:
+                    self._guarded("travel_speed_postleg", self.travel_speed_postleg)
                 if self.summary["arm"]["attempted"]:
                     self._guarded("collect", lambda: self.collect(prearm_before))
                 self.save("summary.json", self.summary)
@@ -1758,6 +1768,28 @@ def _rtk_left_fix(leg: dict[str, Any]) -> list[str]:
     return [str(x) for x in labels if x is not None and x != "Fix"]
 
 
+def effective_stop_reason(leg: dict[str, Any]) -> Any:
+    """Amendment 9 s3a: a calibration failure carries its real cause inside."""
+    reason = leg.get("stop_reason")
+    if reason == "vio_calibration_failed":
+        inner = ((leg.get("vio") or {}).get("calibration") or {}).get("reason")
+        if inner:
+            return inner
+    return reason
+
+
+def ble_lost_after_send(leg: dict[str, Any], c3: dict[str, Any]) -> bool:
+    """Amendment 9 s3a: a ble_* cause, or a post-send position-epoch change."""
+    if str(effective_stop_reason(leg)).startswith("ble_"):
+        return True
+    fresh, post = c3.get("fresh_epoch"), c3.get("post_epoch")
+    return fresh is not None and post is not None and fresh != post
+
+
+#: Amendment 9 s3c: a card abort or a missing reason after arming.
+OPERATOR_OR_MISSING_REASONS = {None, "operator_stop"}
+
+
 def decide(ctx: dict[str, Any]) -> tuple[str, list[dict[str, Any]], str]:  # noqa: C901, PLR0911, PLR0912
     """Outcome: pre-dispatch classes, then Amendment 5 s5 precedence."""
     path: list[dict[str, Any]] = []
@@ -1813,7 +1845,11 @@ def decide(ctx: dict[str, Any]) -> tuple[str, list[dict[str, Any]], str]:  # noq
     if step("nothing sent", sent == 0, f"stop_reason {reason}"):
         if disarm_unproved:
             return "FAIL", path, "disarm cannot be proved"
-        if reason in NOTHING_SENT_INCONCLUSIVE or str(reason).startswith("ble_"):
+        if (
+            reason in NOTHING_SENT_INCONCLUSIVE
+            or reason in OPERATOR_OR_MISSING_REASONS
+            or str(reason).startswith("ble_")
+        ):
             return (
                 "INCONCLUSIVE",
                 path,
@@ -1839,8 +1875,30 @@ def decide(ctx: dict[str, Any]) -> tuple[str, list[dict[str, Any]], str]:  # noq
             "debug-only exception caused the criterion-2/3 miss (Amendment 6 s3, step 2a)",
         )
     op = ctx["operator_stop"]
-    named_refusal = reason != "target_reached" and not str(reason).startswith("ble_")
+    named_refusal = reason != "target_reached"
     if named_refusal and c3["status"] == "UNEVALUABLE":
+        if step(
+            "A9 s3c operator_stop or missing stop_reason after a send",
+            reason in OPERATOR_OR_MISSING_REASONS,
+            str(reason),
+        ):
+            return (
+                "INCONCLUSIVE",
+                path,
+                f"stop_reason {reason!r} after arming (Amendment 9 s3c)",
+            )
+        if step(
+            "A9 s3a BLE loss after a send",
+            ble_lost_after_send(leg, c3),
+            str(effective_stop_reason(leg)),
+        ):
+            if c2["unconfirmed_stops"]:
+                return "FAIL", path, "BLE loss after a send with an unconfirmed stop"
+            return (
+                "INCONCLUSIVE",
+                path,
+                "BLE loss after the first send, all stops confirmed (Amendment 2 s8, 9 s3a)",
+            )
         # Amendment 9 s3: a named refusal after a send fails on criterion 1
         # alone, so an unevaluable criterion 3 no longer masks it. The
         # operator-stop and RTK exceptions keep their precedence.
@@ -1862,7 +1920,7 @@ def decide(ctx: dict[str, Any]) -> tuple[str, list[dict[str, Any]], str]:  # noq
             "A9 named refusal after send: RTK left Fix", bool(rtk_left), str(rtk_left)
         ):
             return "INCONCLUSIVE", path, "RTK left Fix mid-leg"
-        step("A9 named refusal after send", True, str(reason))
+        step("A9 named refusal after send", True, str(effective_stop_reason(leg)))
         return (
             "FAIL",
             path,
@@ -1907,7 +1965,13 @@ def decide(ctx: dict[str, Any]) -> tuple[str, list[dict[str, Any]], str]:  # noq
         reason != "target_reached",
         str(reason),
     ):
-        if str(reason).startswith("ble_") and not c2["unconfirmed_stops"]:
+        if reason in OPERATOR_OR_MISSING_REASONS:
+            return (
+                "INCONCLUSIVE",
+                path,
+                f"stop_reason {reason!r} after arming (Amendment 9 s3c)",
+            )
+        if ble_lost_after_send(leg, c3) and not c2["unconfirmed_stops"]:
             return (
                 "INCONCLUSIVE",
                 path,
@@ -1930,6 +1994,30 @@ def decide(ctx: dict[str, Any]) -> tuple[str, list[dict[str, Any]], str]:  # noq
     return "PASS", path, "criteria 1-4 met"
 
 
+def register_falsifier(root: Path, leg: dict[str, Any] | None) -> dict[str, Any]:
+    """Amendment 9 s4: say whether this attempt tests the speed-register hypothesis."""
+    pre = _load(root / "travel_speed_prearm.json") or {}
+    post = _load(root / "travel_speed_postleg.json") or {}
+    both_pinned = pre.get("pinned") is True and post.get("pinned") is True
+    cause = effective_stop_reason(leg) if leg else None
+    if not both_pinned:
+        status = "NOT_TESTED: register not proved pinned before and after"
+    elif cause == "insufficient_calibration_distance":
+        status = "FIRED: pinned register, calibration still short"
+    elif leg and leg.get("stop_reason") == "target_reached":
+        status = "SUPPORTED: pinned register, target reached (support, not proof)"
+    else:
+        status = f"NOT_TESTED: other cause {cause!r}"
+    return {
+        "status": status,
+        "prearm_pinned": pre.get("pinned"),
+        "prearm_speed_mps": pre.get("speed_mps"),
+        "postleg_pinned": post.get("pinned"),
+        "postleg_speed_mps": post.get("speed_mps"),
+        "effective_stop_reason": cause,
+    }
+
+
 def score_dir(
     root: Path,
     *,
@@ -1939,8 +2027,12 @@ def score_dir(
     """Score one attempt directory; pure, offline."""
     summary = _load(root / "summary.json")
     record = _load(root / "operator_record.json") or {}
-    if operator_stop is None and isinstance(record.get("operator_stop_mid_leg"), bool):
-        operator_stop = record["operator_stop_mid_leg"]
+    if operator_stop is None:
+        # Amendment 9 s7: the canonical key, then S2's spelling.
+        for key in ("operator_stop_mid_leg", "operator_stop"):
+            if isinstance(record.get(key), bool):
+                operator_stop = record[key]
+                break
     if debug_only_cause is None:
         debug_only_cause = bool(record.get("debug_only_exception_cause"))
     legs = sorted((root / "runner").glob("leg_*.json")) + sorted(
@@ -2026,6 +2118,7 @@ def score_dir(
         )
         verdict["position_feed_warmup"] = leg.get("position_feed_warmup")
     outcome, path, why = decide(ctx)
+    verdict["register_falsifier"] = register_falsifier(root, leg)
     verdict.update(
         outcome=outcome,
         reason=why,

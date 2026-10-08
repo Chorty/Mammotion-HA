@@ -1019,3 +1019,94 @@ def test_ble_stop_after_send_with_unevaluable_criterion_3_stays_inconclusive(
         )
     )
     assert verdict["outcome"] == "INCONCLUSIVE"
+
+
+def _with_calibration(root: Path, inner: str) -> Path:
+    """Give the leg record a calibration failure with *inner* as its cause."""
+    leg_path = root / "runner" / "leg_S2.json"
+    leg = json.loads(leg_path.read_text())
+    leg["vio"] = {"calibration": {"passed": False, "reason": inner}}
+    leg_path.write_text(json.dumps(leg))
+    return root
+
+
+def test_calibration_ble_loss_after_send_is_inconclusive(tmp_path: Path) -> None:
+    """Amendment 9 s3a (review blocker 1): the inner ble_* cause decides, not the wrapper."""
+    root = make_dir(
+        tmp_path,
+        stop_reason="vio_calibration_failed",
+        post_epoch=4,
+        operator_stop=False,
+    )
+    verdict = score_dir(_with_calibration(root, "ble_transport_lost"))
+    assert verdict["outcome"] == "INCONCLUSIVE"
+    assert verdict["precedence_path"][-1]["step"] == "A9 s3a BLE loss after a send"
+
+
+def test_short_calibration_with_same_epoch_is_a_fail(tmp_path: Path) -> None:
+    """Amendment 9 s3: S2's cause with no BLE loss is FAIL when c3 is unevaluable."""
+    root = make_dir(
+        tmp_path / "a",
+        stop_reason="vio_calibration_failed",
+        operator_stop=False,
+    )
+    leg_path = root / "runner" / "leg_S2.json"
+    leg = json.loads(leg_path.read_text())
+    for c in leg["command_results"]:
+        c.pop("motion_refresh", None)
+    leg_path.write_text(json.dumps(leg))
+    verdict = score_dir(_with_calibration(root, "insufficient_calibration_distance"))
+    assert verdict["criterion_3"]["status"] == "UNEVALUABLE"
+    assert verdict["outcome"] == "FAIL"
+
+
+def test_operator_stop_reason_or_missing_reason_is_inconclusive(tmp_path: Path) -> None:
+    """Amendment 9 s3c: a card abort or a missing reason after arming."""
+    for i, reason in enumerate(("operator_stop", None)):
+        sent = score_dir(
+            make_dir(
+                tmp_path / f"s{i}",
+                stop_reason=reason,
+                post_epoch=4,
+                operator_stop=False,
+            )
+        )
+        assert sent["outcome"] == "INCONCLUSIVE"
+        unsent = score_dir(
+            make_dir(tmp_path / f"u{i}", commands_sent=0, stop_reason=reason)
+        )
+        assert unsent["outcome"] == "INCONCLUSIVE"
+
+
+def test_s2_operator_record_key_is_read(tmp_path: Path) -> None:
+    """Amendment 9 s7 (review 2): S2's 'operator_stop' key is accepted."""
+    root = make_dir(tmp_path)
+    (root / "operator_record.json").write_text(json.dumps({"operator_stop": False}))
+    assert score_dir(root)["outcome"] == "PASS"
+
+
+def test_register_falsifier_states(tmp_path: Path) -> None:
+    """Amendment 9 s4: fires only with both reads pinned and a short calibration."""
+    pinned = {"pinned": True, "speed_mps": 0.7}
+    root = make_dir(
+        tmp_path / "f", stop_reason="vio_calibration_failed", operator_stop=False
+    )
+    _with_calibration(root, "insufficient_calibration_distance")
+    assert score_dir(root)["register_falsifier"]["status"].startswith("NOT_TESTED")
+    for name in ("travel_speed_prearm.json", "travel_speed_postleg.json"):
+        (root / name).write_text(json.dumps(pinned))
+    assert score_dir(root)["register_falsifier"]["status"].startswith("FIRED")
+    ok = make_dir(tmp_path / "p", operator_stop=False)
+    for name in ("travel_speed_prearm.json", "travel_speed_postleg.json"):
+        (ok / name).write_text(json.dumps(pinned))
+    assert score_dir(ok)["register_falsifier"]["status"].startswith("SUPPORTED")
+
+
+def test_postleg_travel_speed_read_follows_the_disarm(tmp_path: Path) -> None:
+    """Amendment 9 s4: the post-leg read happens after the disarm, and is saved."""
+    run, _host, _proc, log = make_run(tmp_path)
+    assert run.execute() == EXIT_OK
+    reads = [i for i, e in enumerate(log) if "read_travel_speed" in e]
+    assert len(reads) == 2
+    assert reads[1] > log.index("helper:off")
+    assert (run.out / "travel_speed_postleg.json").exists()
