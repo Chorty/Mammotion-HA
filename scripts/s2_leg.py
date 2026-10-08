@@ -138,7 +138,13 @@ DISARM_ATTEMPTS = 3
 C3_MAX_GAP_S = 2.0
 LANDING_TOLERANCE_M = 0.15
 RAW_AFTER_DISARM_S = 15.0
-NOTHING_SENT_INCONCLUSIVE = {"ble_client_not_connected", "position_feed_not_live"}
+NOTHING_SENT_INCONCLUSIVE = {
+    "ble_client_not_connected",
+    "position_feed_not_live",
+    # Amendment 9 s2: the companion's own pin re-read refused before the claim.
+    "travel_speed_not_pinned",
+    "travel_speed_unreadable",
+}
 #: Superseded by Amendment 6 s11 (any `ble_*` stop reason); kept for reference.
 BLE_LOSS_AFTER_SEND = {"ble_transport_lost", "ble_client_not_connected"}
 
@@ -751,6 +757,20 @@ class S2Run:
                 f"sun {elevation:.1f} deg < {floor} with a cached VIO window ({why})"
             )
 
+    def check_travel_speed(self) -> None:
+        """Amendment 9 s2: the speed register reads pinned before arming."""
+        record = self.host.service(
+            MOTION_DOMAIN, "read_travel_speed", {"entity_id": ENTITY}
+        )
+        self.save("travel_speed_prearm.json", record)
+        self.summary["travel_speed_prearm"] = record
+        if not isinstance(record, dict) or record.get("pinned") is not True:
+            raise Abort(
+                "travel speed not pinned before arming: "
+                f"{(record or {}).get('speed_mps')!r} m/s, "
+                f"blocker {(record or {}).get('blocker')!r}"
+            )
+
     def prearm(self) -> dict[str, Any]:
         """Amendment 5 s1: bracketed pre-arm export with receipt_age_s >= 5."""
         attempts: list[dict[str, Any]] = []
@@ -1043,6 +1063,7 @@ class S2Run:
                     self.summary["profiler"] = {"requested": False}
                 stage = "prearm"
                 self.check_sun("pre-arm (pre-arm receipt_age_s >= 5 means cached VIO)")
+                self.check_travel_speed()
                 prearm = self.prearm()
                 prearm_before = prearm["before_utc"]
                 stage = "arm"
@@ -1817,13 +1838,42 @@ def decide(ctx: dict[str, Any]) -> tuple[str, list[dict[str, Any]], str]:  # noq
             path,
             "debug-only exception caused the criterion-2/3 miss (Amendment 6 s3, step 2a)",
         )
+    op = ctx["operator_stop"]
+    named_refusal = reason != "target_reached" and not str(reason).startswith("ble_")
+    if named_refusal and c3["status"] == "UNEVALUABLE":
+        # Amendment 9 s3: a named refusal after a send fails on criterion 1
+        # alone, so an unevaluable criterion 3 no longer masks it. The
+        # operator-stop and RTK exceptions keep their precedence.
+        rtk_left = _rtk_left_fix(leg)
+        if op is None:
+            step("A9 named refusal after send", False, "operator stop NOT RECORDED")
+            return (
+                "UNDETERMINED",
+                path,
+                "operator stop mid-leg not recorded; rescore with --operator-stop yes|no",
+            )
+        if step("A9 named refusal after send: operator stop", op is True):
+            return (
+                "INCONCLUSIVE",
+                path,
+                "operator stop mid-leg (Amendment 5 s5.2), no retry",
+            )
+        if step(
+            "A9 named refusal after send: RTK left Fix", bool(rtk_left), str(rtk_left)
+        ):
+            return "INCONCLUSIVE", path, "RTK left Fix mid-leg"
+        step("A9 named refusal after send", True, str(reason))
+        return (
+            "FAIL",
+            path,
+            f"named stop reason {reason} after a send; criterion 3 not needed (Amendment 9 s3)",
+        )
     if step(
         "s5.1 criterion 3 unevaluable",
         c3["status"] == "UNEVALUABLE",
         "; ".join(c3["unevaluable"]),
     ):
         return "INCONCLUSIVE", path, "criterion 3 unevaluable (Amendment 5 s5.1)"
-    op = ctx["operator_stop"]
     if op is None:
         step("s5.2 operator stop mid-leg", False, "NOT RECORDED")
         return (

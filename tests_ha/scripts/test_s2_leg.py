@@ -568,6 +568,7 @@ class FakeHost:
         self.armed = False
         self.readback_never = readback_never
         self.syslog: list[dict[str, Any]] = []
+        self.travel_speed = 0.70
 
     def host_utc(self) -> str:
         """Return the fake host UTC."""
@@ -588,6 +589,14 @@ class FakeHost:
         self.log.append(
             f"service:{domain}.{service}:{json.dumps(data, sort_keys=True)}"
         )
+        if service == "read_travel_speed":
+            pinned = abs(self.travel_speed - 0.70) <= 0.035
+            return {
+                "ok": True,
+                "speed_mps": self.travel_speed,
+                "pinned": pinned,
+                "blocker": None if pinned else "travel_speed_not_pinned",
+            }
         return {}
 
     def timing_report(self) -> dict[str, Any]:
@@ -934,3 +943,79 @@ def test_score_does_not_mutate_inputs(tmp_path: Path) -> None:
     before = {p.name: p.read_bytes() for p in root.rglob("*.json")}
     score_dir(root)
     assert before == {p.name: p.read_bytes() for p in root.rglob("*.json")}
+
+
+def test_unpinned_travel_speed_stops_before_arming(tmp_path: Path) -> None:
+    """Amendment 9 s2: a register off the pin is pre-dispatch; nothing is armed."""
+    run, host, _proc, log = make_run(tmp_path)
+    host.travel_speed = 0.80
+    assert run.execute() == EXIT_PRE_DISPATCH
+    assert not any(e.startswith("helper:") for e in log)
+    record = json.loads((run.out / "travel_speed_prearm.json").read_text())
+    assert record["blocker"] == "travel_speed_not_pinned"
+
+
+def test_pinned_travel_speed_is_read_before_the_arm(tmp_path: Path) -> None:
+    """Amendment 9 s2: the read happens, and before the helper arms."""
+    run, _host, _proc, log = make_run(tmp_path)
+    assert run.execute() == EXIT_OK
+    read = next(i for i, e in enumerate(log) if "read_travel_speed" in e)
+    assert read < log.index("helper:on")
+
+
+def test_companion_pin_refusal_with_nothing_sent_is_inconclusive(
+    tmp_path: Path,
+) -> None:
+    """Amendment 9 s2: the companion's own pin refusal sends nothing; retry."""
+    verdict = score_dir(
+        make_dir(tmp_path, commands_sent=0, stop_reason="travel_speed_not_pinned")
+    )
+    assert verdict["outcome"] == "INCONCLUSIVE"
+
+
+def test_named_refusal_after_send_fails_despite_unevaluable_criterion_3(
+    tmp_path: Path,
+) -> None:
+    """Amendment 9 s3: S2's shape (vio_calibration_failed, c3 unevaluable) is FAIL."""
+    verdict = score_dir(
+        make_dir(
+            tmp_path,
+            stop_reason="vio_calibration_failed",
+            post_epoch=4,
+            operator_stop=False,
+        )
+    )
+    assert verdict["criterion_3"]["status"] == "UNEVALUABLE"
+    assert verdict["outcome"] == "FAIL"
+    assert verdict["precedence_path"][-1]["step"] == "A9 named refusal after send"
+
+
+def test_named_refusal_after_send_keeps_the_operator_stop_exception(
+    tmp_path: Path,
+) -> None:
+    """Amendment 9 s3: an operator stop still makes it INCONCLUSIVE; unrecorded is undetermined."""
+    stopped = score_dir(
+        make_dir(
+            tmp_path / "a",
+            stop_reason="vio_calibration_failed",
+            post_epoch=4,
+            operator_stop=True,
+        )
+    )
+    assert stopped["outcome"] == "INCONCLUSIVE"
+    unknown = score_dir(
+        make_dir(tmp_path / "b", stop_reason="vio_calibration_failed", post_epoch=4)
+    )
+    assert unknown["outcome"] == "UNDETERMINED"
+
+
+def test_ble_stop_after_send_with_unevaluable_criterion_3_stays_inconclusive(
+    tmp_path: Path,
+) -> None:
+    """Amendment 9 s3 does not touch Amendment 6 s11's ble_* class."""
+    verdict = score_dir(
+        make_dir(
+            tmp_path, stop_reason="ble_send_stalled", post_epoch=4, operator_stop=False
+        )
+    )
+    assert verdict["outcome"] == "INCONCLUSIVE"
