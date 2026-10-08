@@ -973,42 +973,6 @@ def test_companion_pin_refusal_with_nothing_sent_is_inconclusive(
     assert verdict["outcome"] == "INCONCLUSIVE"
 
 
-def test_named_refusal_after_send_fails_despite_unevaluable_criterion_3(
-    tmp_path: Path,
-) -> None:
-    """Amendment 9 s3: S2's shape (vio_calibration_failed, c3 unevaluable) is FAIL."""
-    verdict = score_dir(
-        make_dir(
-            tmp_path,
-            stop_reason="vio_calibration_failed",
-            post_epoch=4,
-            operator_stop=False,
-        )
-    )
-    assert verdict["criterion_3"]["status"] == "UNEVALUABLE"
-    assert verdict["outcome"] == "FAIL"
-    assert verdict["precedence_path"][-1]["step"] == "A9 named refusal after send"
-
-
-def test_named_refusal_after_send_keeps_the_operator_stop_exception(
-    tmp_path: Path,
-) -> None:
-    """Amendment 9 s3: an operator stop still makes it INCONCLUSIVE; unrecorded is undetermined."""
-    stopped = score_dir(
-        make_dir(
-            tmp_path / "a",
-            stop_reason="vio_calibration_failed",
-            post_epoch=4,
-            operator_stop=True,
-        )
-    )
-    assert stopped["outcome"] == "INCONCLUSIVE"
-    unknown = score_dir(
-        make_dir(tmp_path / "b", stop_reason="vio_calibration_failed", post_epoch=4)
-    )
-    assert unknown["outcome"] == "UNDETERMINED"
-
-
 def test_ble_stop_after_send_with_unevaluable_criterion_3_stays_inconclusive(
     tmp_path: Path,
 ) -> None:
@@ -1043,23 +1007,6 @@ def test_calibration_ble_loss_after_send_is_inconclusive(tmp_path: Path) -> None
     assert verdict["precedence_path"][-1]["step"] == "A9 s3a BLE loss after a send"
 
 
-def test_short_calibration_with_same_epoch_is_a_fail(tmp_path: Path) -> None:
-    """Amendment 9 s3: S2's cause with no BLE loss is FAIL when c3 is unevaluable."""
-    root = make_dir(
-        tmp_path / "a",
-        stop_reason="vio_calibration_failed",
-        operator_stop=False,
-    )
-    leg_path = root / "runner" / "leg_S2.json"
-    leg = json.loads(leg_path.read_text())
-    for c in leg["command_results"]:
-        c.pop("motion_refresh", None)
-    leg_path.write_text(json.dumps(leg))
-    verdict = score_dir(_with_calibration(root, "insufficient_calibration_distance"))
-    assert verdict["criterion_3"]["status"] == "UNEVALUABLE"
-    assert verdict["outcome"] == "FAIL"
-
-
 def test_operator_stop_reason_or_missing_reason_is_inconclusive(tmp_path: Path) -> None:
     """Amendment 9 s3c: a card abort or a missing reason after arming."""
     for i, reason in enumerate(("operator_stop", None)):
@@ -1085,8 +1032,105 @@ def test_s2_operator_record_key_is_read(tmp_path: Path) -> None:
     assert score_dir(root)["outcome"] == "PASS"
 
 
+def test_postleg_travel_speed_read_follows_the_disarm(tmp_path: Path) -> None:
+    """Amendment 9 s4: the post-leg read happens after the disarm, and is saved."""
+    run, _host, _proc, log = make_run(tmp_path)
+    assert run.execute() == EXIT_OK
+    reads = [i for i, e in enumerate(log) if "read_travel_speed" in e]
+    assert len(reads) == 2
+    assert reads[1] > log.index("helper:off")
+    assert (run.out / "travel_speed_postleg.json").exists()
+
+
+def _strip_refresh(root: Path) -> Path:
+    """Make criterion 3 unevaluable by window, as a calibration-phase stop is."""
+    leg_path = root / "runner" / "leg_S2.json"
+    leg = json.loads(leg_path.read_text())
+    for c in leg["command_results"]:
+        c.pop("motion_refresh", None)
+    leg_path.write_text(json.dumps(leg))
+    return root
+
+
+def _set_leg(root: Path, **fields: Any) -> Path:
+    """Overwrite top-level fields of the leg record."""
+    leg_path = root / "runner" / "leg_S2.json"
+    leg = json.loads(leg_path.read_text())
+    leg.update(fields)
+    leg_path.write_text(json.dumps(leg))
+    return root
+
+
+def test_short_calibration_with_same_epoch_is_a_fail(tmp_path: Path) -> None:
+    """Amendment 9 s3: S2's shape, BLE proved live, c3 unevaluable by window, is FAIL."""
+    root = make_dir(tmp_path, stop_reason="vio_calibration_failed", operator_stop=False)
+    _with_calibration(_strip_refresh(root), "insufficient_calibration_distance")
+    verdict = score_dir(root)
+    assert verdict["criterion_3"]["status"] == "UNEVALUABLE"
+    assert verdict["outcome"] == "FAIL"
+    assert verdict["precedence_path"][-1]["step"] == "A9 named refusal after send"
+
+
+def test_named_refusal_keeps_operator_stop_and_undetermined(tmp_path: Path) -> None:
+    """Amendment 9 s3: operator stop is INCONCLUSIVE; unrecorded is UNDETERMINED."""
+    stopped = make_dir(
+        tmp_path / "a", stop_reason="vio_calibration_failed", operator_stop=True
+    )
+    _with_calibration(_strip_refresh(stopped), "insufficient_calibration_distance")
+    assert score_dir(stopped)["outcome"] == "INCONCLUSIVE"
+    unknown = make_dir(tmp_path / "b", stop_reason="vio_calibration_failed")
+    _with_calibration(_strip_refresh(unknown), "insufficient_calibration_distance")
+    assert score_dir(unknown)["outcome"] == "UNDETERMINED"
+
+
+@pytest.mark.parametrize("reason", ["position_unavailable", "vio_calibration_failed"])
+def test_epoch_change_alone_is_ble_loss(tmp_path: Path, reason: str) -> None:
+    """Review 2 blocker: an epoch change with a non-ble_* reason is INCONCLUSIVE."""
+    root = make_dir(
+        tmp_path / "e", stop_reason=reason, post_epoch=4, operator_stop=False
+    )
+    if reason == "vio_calibration_failed":
+        _with_calibration(root, "insufficient_calibration_distance")
+    verdict = score_dir(root)
+    assert verdict["outcome"] == "INCONCLUSIVE"
+    assert verdict["precedence_path"][-1]["step"] == "A9 s3a BLE loss after a send"
+    windowless = make_dir(
+        tmp_path / "w", stop_reason=reason, post_epoch=4, operator_stop=False
+    )
+    _strip_refresh(windowless)
+    assert score_dir(windowless)["outcome"] == "INCONCLUSIVE"
+
+
+def test_missing_fresh_epoch_leaves_ble_unproved(tmp_path: Path) -> None:
+    """Amendment 9 s3a: no fresh epoch means BLE liveness is not proved."""
+    root = make_dir(tmp_path, stop_reason="position_unavailable", operator_stop=False)
+    _set_leg(root, position_feed_warmup={"ok": True, "fresh_sequence": 100})
+    verdict = score_dir(root)
+    assert verdict["outcome"] == "INCONCLUSIVE"
+    assert "not proved" in verdict["reason"]
+
+
+@pytest.mark.parametrize("reason", ["ble_send_stalled", "operator_stop", None])
+def test_ble_and_card_abort_outrank_a_criterion3_miss(
+    tmp_path: Path, reason: str | None
+) -> None:
+    """Review 2 item 2: these are INCONCLUSIVE even with an evaluable c3 MISS."""
+    rows = [r for r in DEFAULT_ROWS if r not in (62.5, 63.5)]
+    verdict = score_dir(
+        make_dir(tmp_path, rows=rows, stop_reason=reason, operator_stop=False)
+    )
+    assert verdict["criterion_3"]["status"] == "MISS"
+    assert verdict["outcome"] == "INCONCLUSIVE"
+
+
+def test_operator_stop_reason_never_undetermined(tmp_path: Path) -> None:
+    """Review 2 nit 3: a recorded operator_stop reason needs no operator record."""
+    verdict = score_dir(make_dir(tmp_path, stop_reason="operator_stop"))
+    assert verdict["outcome"] == "INCONCLUSIVE"
+
+
 def test_register_falsifier_states(tmp_path: Path) -> None:
-    """Amendment 9 s4: fires only with both reads pinned and a short calibration."""
+    """Amendment 9 s4: fires or supports only with both reads pinned."""
     pinned = {"pinned": True, "speed_mps": 0.7}
     root = make_dir(
         tmp_path / "f", stop_reason="vio_calibration_failed", operator_stop=False
@@ -1096,17 +1140,10 @@ def test_register_falsifier_states(tmp_path: Path) -> None:
     for name in ("travel_speed_prearm.json", "travel_speed_postleg.json"):
         (root / name).write_text(json.dumps(pinned))
     assert score_dir(root)["register_falsifier"]["status"].startswith("FIRED")
-    ok = make_dir(tmp_path / "p", operator_stop=False)
+    ok = make_dir(tmp_path / "p", final_xy=(1.5, 1.0), operator_stop=False)
+    _set_leg(ok, vio={"calibration": {"passed": True, "reason": None}})
     for name in ("travel_speed_prearm.json", "travel_speed_postleg.json"):
         (ok / name).write_text(json.dumps(pinned))
-    assert score_dir(ok)["register_falsifier"]["status"].startswith("SUPPORTED")
-
-
-def test_postleg_travel_speed_read_follows_the_disarm(tmp_path: Path) -> None:
-    """Amendment 9 s4: the post-leg read happens after the disarm, and is saved."""
-    run, _host, _proc, log = make_run(tmp_path)
-    assert run.execute() == EXIT_OK
-    reads = [i for i, e in enumerate(log) if "read_travel_speed" in e]
-    assert len(reads) == 2
-    assert reads[1] > log.index("helper:off")
-    assert (run.out / "travel_speed_postleg.json").exists()
+    verdict = score_dir(ok)
+    assert verdict["outcome"] == "FAIL"  # landing miss; support needs no PASS
+    assert verdict["register_falsifier"]["status"].startswith("SUPPORTED")
