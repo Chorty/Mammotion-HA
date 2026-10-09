@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import datetime
 
+import pytest
+
+from scripts import phase1_leg_runner as runner
 from scripts.phase1_leg_runner import (
     VIO_REQUIRED_STATUS,
     VIO_WINDOW_SECONDS,
@@ -242,3 +245,70 @@ def test_the_2026_09_12_dusk_collapse_still_halts_under_the_operator_rule() -> N
         allow_recovered_vio_dip=True,
     )
     assert any("vio_tracked_features" in r for r in reasons)
+
+
+# --- Split stack, 2026-10-06: stock status casing and export-sampled features ---
+
+
+def test_stock_upper_case_status_passes_and_bad_status_still_halts() -> None:
+    """SIGNAL_GOOD (stock 0.6.16) passes; any other status still halts."""
+    good = daylight_vio_verdict(
+        sun_elevation=50.0,
+        features_window=["80"] * 13,
+        status_window=["SIGNAL_GOOD"],
+    )
+    bad = daylight_vio_verdict(
+        sun_elevation=50.0,
+        features_window=["80"] * 13,
+        status_window=["SIGNAL_GOOD", "SIGNAL_BAD"],
+    )
+    assert good == []
+    assert any("visual_positioning_status" in r for r in bad)
+
+
+def _sampled(values: list[object], monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Run _export_vio_window against a fake export and a fake clock."""
+    feed = iter(values)
+    clock = {"t": 0.0}
+    calls: list[tuple[str, str]] = []
+
+    def fake_post(_url, _token, domain, service, _payload, _timeout):
+        calls.append((domain, service))
+        return {"current_orientation": {"vio_tracked_features": next(feed)}}
+
+    monkeypatch.setattr(runner, "post_service", fake_post)
+    monkeypatch.setattr(runner.time, "monotonic", lambda: clock["t"])
+    monkeypatch.setattr(
+        runner.time, "sleep", lambda s: clock.__setitem__("t", clock["t"] + s)
+    )
+    samples = runner._export_vio_window("http://stub", "t", 60, interval=5.0)  # noqa: SLF001
+    assert set(calls) == {("mammotion_motion", "export_runtime_state")}
+    return samples
+
+
+def test_export_window_spans_the_whole_60_s(monkeypatch: pytest.MonkeyPatch) -> None:
+    """13 reads 5 s apart, from the companion export."""
+    samples = _sampled([80] * 13, monkeypatch)
+    assert samples == ["80"] * 13
+
+
+def test_a_dusk_collapse_in_the_sampled_window_still_halts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The 2026-09-12 shape (features collapse to 14) halts via the export path."""
+    samples = _sampled(
+        [80, 80, 78, 60, 41, 22, 14, 14, 14, 14, 14, 14, 14], monkeypatch
+    )
+    reasons = daylight_vio_verdict(
+        sun_elevation=50.0, features_window=samples, status_window=["SIGNAL_GOOD"]
+    )
+    assert any("vio_tracked_features min 14" in r for r in reasons)
+
+
+def test_an_export_with_no_feature_value_halts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A window where the export never carries a number is not healthy."""
+    samples = _sampled([None] * 13, monkeypatch)
+    reasons = daylight_vio_verdict(
+        sun_elevation=50.0, features_window=samples, status_window=["SIGNAL_GOOD"]
+    )
+    assert any("no numeric vio_tracked_features" in r for r in reasons)

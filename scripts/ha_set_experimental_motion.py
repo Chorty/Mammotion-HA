@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turn the experimental manual-motion gate on or off, and prove which it is.
+"""Turn the companion's motion gate on or off, and prove which it is.
 
 This exists because arming motion is the one action worth doing deliberately
 rather than inline. It is a single narrow entry point, so it can be allowlisted
@@ -7,6 +7,15 @@ without granting arbitrary execution, and it always reports the resulting
 runtime state instead of trusting the flow's return value -- on 2026-07-31 the
 options flow answered ``create_entry`` with an empty ``data`` payload while
 having applied the change correctly, so the reply is not evidence.
+
+Since the 2026-10-06 split the gate lives on the ``mammotion_motion`` companion,
+not the upstream ``mammotion`` entry, and it is TWO options:
+``enable_experimental_motion`` and ``enable_supervised_qualification``. The
+stock backend (pymammotion 0.10.7) is unaudited, so real motion needs both.
+They move together: ``on`` sets both true, ``off`` sets both false, and any
+readback where they disagree -- or disagree with the request -- is a failure.
+A failed ``on`` immediately submits ``off`` before exiting, so a half-armed gate
+is never left behind.
 
 Usage:
     scripts/ha_set_experimental_motion.py on|off [--yes]
@@ -35,20 +44,20 @@ from typing import Any
 # HTTP 500 whose only detail (`UnknownEntry`) is in the HA container log, not in
 # the reply. That cost a live session on 2026-09-01, mid-run-preparation, and it
 # reads exactly like a BLE fault because arming is what surfaces it.
-DOMAIN = "mammotion"
+DOMAIN = "mammotion_motion"
 ENTITY_ID = "lawn_mower.back_yard_clip_skywalker"
 
-# The options-flow field is `prefer_ble_over_wifi`, NOT the `prefer_ble` used
-# elsewhere in this integration. Submitting the wrong name fails the whole flow
-# with a bare HTTP 400 and no field-level detail.
-FLOW_FIELDS = (
-    ("prefer_ble_over_wifi", True),
-    ("movement_use_wifi", False),
-    ("mow_path_fetch_enabled", False),
-)
+#: The companion options flow's complete schema. Anything else -- a missing
+#: field, an extra one, a renamed one -- means this script no longer knows what
+#: it is submitting, so it aborts the flow instead of guessing.
+GATE_FIELDS = ("enable_experimental_motion", "enable_supervised_qualification")
 
 
-def _api(path: str, payload: dict | None = None) -> Any:
+class GateError(SystemExit):
+    """A gate change that could not be made or proved; exits non-zero."""
+
+
+def _api(path: str, payload: dict | None = None, *, method: str | None = None) -> Any:
     """Call the HA REST API, surfacing the error body rather than a bare code."""
     request = urllib.request.Request(
         os.environ["HA_URL"].rstrip("/") + path,
@@ -57,44 +66,81 @@ def _api(path: str, payload: dict | None = None) -> Any:
             "Content-Type": "application/json",
         },
         data=None if payload is None else json.dumps(payload).encode(),
-        method="GET" if payload is None else "POST",
+        method=method or ("GET" if payload is None else "POST"),
     )
     try:
         with urllib.request.urlopen(request, timeout=45) as response:
             return json.loads(response.read() or "{}")
     except urllib.error.HTTPError as err:
-        raise SystemExit(
+        raise GateError(
             f"HTTP {err.code} on {path}: {err.read().decode()[:400]}"
         ) from err
 
 
 def _entry_id() -> str:
-    """Resolve the live mammotion config entry id, never a hardcoded constant."""
+    """Resolve the one LOADED companion entry, never a hardcoded constant."""
     entries = _api("/api/config/config_entries/entry")
     matches = [e for e in entries if e.get("domain") == DOMAIN]
     if not matches:
-        raise SystemExit(f"No {DOMAIN} config entry found on this Home Assistant.")
+        raise GateError(f"No {DOMAIN} config entry found on this Home Assistant.")
     if len(matches) > 1:
         found = ", ".join(f"{e['entry_id']} ({e.get('title')})" for e in matches)
-        raise SystemExit(f"Multiple {DOMAIN} entries; disambiguate manually: {found}")
+        raise GateError(f"Multiple {DOMAIN} entries; disambiguate manually: {found}")
+    if matches[0].get("state") != "loaded":
+        raise GateError(
+            f"{DOMAIN} entry {matches[0]['entry_id']} is {matches[0].get('state')!r},"
+            " not loaded; its options cannot be proved."
+        )
     return str(matches[0]["entry_id"])
 
 
-def report() -> bool:
-    """Print the live motion gate state and return whether it is enabled."""
+def read_gate() -> tuple[bool, bool, dict[str, Any]]:
+    """Return (experimental, supervised_qualification, motion report) from HA."""
     response = _api(
-        "/api/services/mammotion/export_runtime_state?return_response",
+        f"/api/services/{DOMAIN}/export_runtime_state?return_response",
         {"entity_id": ENTITY_ID},
     )
-    state = response.get("service_response", {})
-    motion = state.get("experimental_motion", {}) or {}
+    motion = response.get("service_response", {}).get("experimental_motion")
+    if not isinstance(motion, dict) or not isinstance(motion.get("enabled"), bool):
+        raise GateError("export_runtime_state returned no experimental_motion report.")
+    qualification = motion.get("supervised_qualification")
+    if not isinstance(qualification, bool):
+        raise GateError("export_runtime_state returned no supervised_qualification.")
+    return motion["enabled"], qualification, motion
+
+
+def report() -> tuple[bool, bool]:
+    """Print the live gate state and return both flags."""
+    enabled, qualification, motion = read_gate()
     session = (motion.get("active_session") or {}).get("session_id")
-    print(f"  enabled             : {motion.get('enabled')}")
-    print(f"  real_motion_allowed : {motion.get('real_motion_allowed')}")
-    print(f"  blockers            : {motion.get('blockers')}")
-    print(f"  active_session      : {session}")
-    print(f"  work_mode           : {state.get('work_mode_label')}")
-    return bool(motion.get("enabled"))
+    print(f"  enabled                  : {enabled}")
+    print(f"  supervised_qualification : {qualification}")
+    print(f"  real_motion_allowed      : {motion.get('real_motion_allowed')}")
+    print(f"  blockers                 : {motion.get('blockers')}")
+    print(f"  active_session           : {session}")
+    return enabled, qualification
+
+
+def _submit(target: bool) -> None:
+    """Run the options flow once, submitting exactly the two gate fields."""
+    flow = _api("/api/config/config_entries/options/flow", {"handler": _entry_id()})
+    names = {f["name"] for f in flow.get("data_schema", []) if "name" in f}
+    if flow.get("type") != "form" or names != set(GATE_FIELDS):
+        if flow.get("flow_id"):
+            _api(
+                f"/api/config/config_entries/options/flow/{flow['flow_id']}",
+                method="DELETE",
+            )
+        raise GateError(
+            f"Unexpected options flow (type={flow.get('type')!r}, fields={sorted(names)});"
+            " aborted without submitting."
+        )
+    result = _api(
+        f"/api/config/config_entries/options/flow/{flow['flow_id']}",
+        dict.fromkeys(GATE_FIELDS, target),
+    )
+    if result.get("type") != "create_entry":
+        raise GateError(f"Options flow did not save: {json.dumps(result)[:300]}")
 
 
 def main() -> int:
@@ -109,13 +155,13 @@ def main() -> int:
     args = parser.parse_args()
 
     print("Current state:")
-    enabled = report()
+    current = report()
 
     if args.action == "status":
         return 0
 
     target = args.action == "on"
-    if enabled == target:
+    if current == (target, target):
         print(f"\nAlready {'enabled' if target else 'disabled'}; nothing to do.")
         return 0
 
@@ -126,31 +172,23 @@ def main() -> int:
             print("Aborted; gate unchanged.")
             return 1
 
-    flow = _api("/api/config/config_entries/options/flow", {"handler": _entry_id()})
-
-    # Carry every other option through unchanged: the flow replaces the whole
-    # options dict, so an omitted field is silently reset to its default.
-    #
-    # Read those values from the flow's OWN schema defaults, which is what the
-    # UI editor does. Do NOT read them from /api/config/config_entries/entry --
-    # that endpoint does not expose `options` at all (it returns {} whatever is
-    # configured), so preserving from it would quietly reset every other option
-    # to a hardcoded default on each toggle.
-    current = {
-        field["name"]: field.get("default")
-        for field in flow.get("data_schema", [])
-        if "name" in field
-    }
-    submission = {field: current.get(field, default) for field, default in FLOW_FIELDS}
-    submission["enable_experimental_motion"] = target
-    print(f"\nPreserving: {json.dumps({k: submission[k] for k, _ in FLOW_FIELDS})}")
-    _api(f"/api/config/config_entries/options/flow/{flow['flow_id']}", submission)
-
-    print("\nState after change:")
-    if report() is not target:
-        print("\nFAILED: the gate did not reach the requested state.")
-        return 1
-    print(f"\nOK: experimental motion is now {'ON' if target else 'OFF'}.")
+    try:
+        _submit(target)
+        print("\nState after change:")
+        after = report()
+        if after != (target, target):
+            raise GateError(f"Gate readback {after} != requested {(target, target)}.")
+    except SystemExit:
+        if target:
+            # Fail closed: never leave a half-armed or unproved gate behind.
+            print("\nARM FAILED; submitting OFF before exiting.", file=sys.stderr)
+            try:
+                _submit(False)
+                print("Disarm readback:", report(), file=sys.stderr)
+            except SystemExit as err:
+                print(f"DISARM ALSO FAILED: {err}", file=sys.stderr)
+        raise
+    print(f"\nOK: motion gate is now {'ON' if target else 'OFF'} (both flags).")
     return 0
 
 

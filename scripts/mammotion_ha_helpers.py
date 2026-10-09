@@ -11,6 +11,12 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+#: Service domain of the retained motion closure since the 2026-10-06 split:
+#: upstream Mammotion-HA no longer registers export_runtime_state, the raw
+#: executors, the pulse test or the timing report -- the mammotion_motion
+#: companion does. Runners call these through this one constant.
+MOTION_DOMAIN = "mammotion_motion"
+
 
 def load_dotenv(path: Path = Path(".env")) -> None:
     """Load simple KEY=VALUE lines from .env without external dependencies."""
