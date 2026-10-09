@@ -1,0 +1,173 @@
+name: Upstream backend canary
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Monday, 13:23 UTC. Schedules become active only on the default branch.
+    - cron: "23 13 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    name: Latest stable pymammotion (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+      - name: Install the shipping test environment
+        run: python -m pip install -r requirements_test.txt
+      - name: Resolve Home Assistant component requirements
+        run: |
+          mkdir -p canary-artifacts
+          python - <<'PY' > canary-artifacts/component-requirements.txt
+          import importlib.util, json, pathlib
+          root = pathlib.Path(importlib.util.find_spec("homeassistant").origin).parent / "components"
+          manifest = json.loads(pathlib.Path("custom_components/mammotion/manifest.json").read_text())
+          seen, reqs = set(), set()
+          stack = list(manifest.get("dependencies", []))
+          while stack:
+              name = stack.pop()
+              if name in seen:
+                  continue
+              seen.add(name)
+              path = root / name / "manifest.json"
+              if not path.exists():
+                  continue
+              data = json.loads(path.read_text())
+              reqs.update(data.get("requirements", []))
+              stack.extend(data.get("dependencies", []))
+              stack.extend(data.get("after_dependencies", []))
+          print("\n".join(sorted(reqs)))
+          PY
+          python -m pip install -r canary-artifacts/component-requirements.txt
+      - name: Snapshot backend versions
+        id: versions
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/upstream_canary.py snapshot --output canary-artifacts/versions.json
+      - name: Replace only the candidate environment's backend
+        env:
+          CANDIDATE_VERSION: ${{ steps.versions.outputs.candidate }}
+        run: |
+          python -m pip freeze > canary-artifacts/shipping-packages.txt
+          python -m pip install --upgrade "pymammotion==$CANDIDATE_VERSION" 2>&1 | tee canary-artifacts/install.txt
+          python -m pip freeze > canary-artifacts/candidate-packages.txt
+          python - <<'PY'
+          import importlib.metadata, os
+          actual = importlib.metadata.version("pymammotion")
+          wanted = os.environ["CANDIDATE_VERSION"]
+          print(f"Canary pymammotion: {actual}; expected: {wanted}")
+          assert actual == wanted, "Canary did not install the resolved candidate"
+          PY
+      - name: Check candidate dependencies
+        id: dependencies
+        continue-on-error: true
+        run: python -m pip check 2>&1 | tee canary-artifacts/pip-check.txt
+      - name: Run the complete backend test suite
+        id: tests
+        run: |
+          # Keep the installed-pin assertion visible; summary separates it.
+          python -m pytest tests_ha --tb=short --junitxml=canary-artifacts/tests.xml 2>&1 | tee canary-artifacts/pytest.txt
+      - name: Exercise native backend contracts without hardware
+        id: native
+        if: always() && steps.versions.outcome == 'success' && steps.tests.outcome != 'skipped'
+        run: python scripts/probe_backend_contract.py --output canary-artifacts/native-contract.json 2>&1 | tee canary-artifacts/native-contract.txt
+      - name: Summarize compatibility failures
+        if: always() && steps.versions.outcome == 'success'
+        env:
+          DEPENDENCY_OUTCOME: ${{ steps.dependencies.outcome }}
+          TEST_OUTCOME: ${{ steps.tests.outcome }}
+          NATIVE_OUTCOME: ${{ steps.native.outcome }}
+        run: |
+          python scripts/upstream_canary.py summary --snapshot canary-artifacts/versions.json --junit canary-artifacts/tests.xml --output canary-artifacts/results.json
+          printf '\nDependency audit: **%s**; suite step: **%s**; native contract probe: **%s**.\n' "$DEPENDENCY_OUTCOME" "$TEST_OUTCOME" "$NATIVE_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain logs even when installation or tests fail
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-canary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: canary-artifacts/
+          if-no-files-found: warn
+          retention-days: 30
+
+  drift:
+    name: Weekly upstream drift report
+    # Never grant issue-write permission to code from a PR or feature branch.
+    if: github.repository == 'Chorty/Mammotion-HA' && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    concurrency:
+      group: upstream-backend-drift
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: python -m pip install packaging
+      - name: Compare our wheel base with upstream versions
+        id: versions
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/upstream_canary.py snapshot --output canary-artifacts/versions.json
+      - name: Create or update one drift issue
+        if: steps.versions.outputs.drift == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const v = JSON.parse(fs.readFileSync('canary-artifacts/versions.json', 'utf8'));
+            const marker = '<!-- mammotion-upstream-backend-drift -->';
+            const title = 'Upstream pymammotion drift';
+            const body = [
+              marker,
+              'Upstream versions differ from the shipping fork wheel base.',
+              '',
+              `- Shipping pin: \`${v.shipping_version}\``,
+              `- Fork wheel base: \`${v.fork_base_version}\``,
+              `- Latest stable PyPI backend: \`${v.latest_upstream_version}\``,
+              `- Upstream HA release: \`${v.upstream_ha_release}\` (backend \`${v.upstream_ha_backend_version}\`)`,
+              '',
+              'Follow BACKEND_MIGRATION.md. This report does not authorize a bump, deployment, or motion.',
+              `Sources: [PyPI](${v.sources.pypi}), [upstream release](${v.sources.upstream_release}), [manifest](${v.sources.upstream_manifest}).`
+            ].join('\n');
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              ...context.repo, state: 'open', per_page: 100
+            });
+            const existing = issues.find(i => !i.pull_request && i.title === title && (i.body || '').includes(marker));
+            if (existing) {
+              if (existing.body !== body) {
+                await github.rest.issues.update({...context.repo, issue_number: existing.number, body});
+              }
+              core.notice(`Drift tracked in issue #${existing.number}`);
+            } else {
+              const result = await github.rest.issues.create({...context.repo, title, body});
+              core.notice(`Created drift issue #${result.data.number}`);
+            }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: upstream-drift-${{ github.run_id }}-${{ github.run_attempt }}
+          path: canary-artifacts/
+          if-no-files-found: warn
+          retention-days: 30
