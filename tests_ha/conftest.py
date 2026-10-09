@@ -41,6 +41,13 @@ _PRIVATE_EVIDENCE_TESTS = {
     "test_score_queue_measurement.py": {
         "test_reproduces_67_of_67_on_the_20260913_evidence",
     },
+    "test_s2_leg.py": {
+        "test_s1_scores_criteria_1_2_4_pass_and_3_unevaluable_for_missing_brackets",
+        "test_s1_window_matches_the_recorded_criterion3_window",
+        "test_s1_admission_given_the_inferred_postleg_before",
+        "test_score_cli_prints_json",
+        "test_fixture_has_no_emails",
+    },
 }
 
 
